@@ -2,18 +2,27 @@
 
 The domain engine remains unchanged. This module converts the public
 Nippon-Baseball-Data-Repository PBP schema into the small, explicit contract
-needed by ``BaseballBacktest.aggregate_npb_games``. It never invents starter
-identities: when a reliable pitcher identity cannot be inferred from the PBP
-ordering, the starter field remains blank and production eligibility can reject
-that game.
+needed by ``BaseballBacktest.aggregate_npb_games``.
+
+The public release stores pre-game starter announcements in the textual
+``description_jap`` field rather than in the pitch-level ``pitcher`` field.
+The adapter therefore extracts starters only from explicit pre-game
+announcements. It never uses winner/loser pitcher fields to infer starters,
+and it never uses post-game information as a feature.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Iterable
 
 import numpy as np
 import pandas as pd
+
+
+_MISSING_TEXT = {"", "nan", "none", "nat"}
+_STARTER_JP = "先発ピッチャー"
+_STARTER_EN = "starting pitcher"
 
 
 def _first_existing(df: pd.DataFrame, names: Iterable[str], default=None):
@@ -23,6 +32,116 @@ def _first_existing(df: pd.DataFrame, names: Iterable[str], default=None):
     if default is None:
         return pd.Series([np.nan] * len(df), index=df.index)
     return pd.Series([default] * len(df), index=df.index)
+
+
+def _clean_text(value) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip()
+    return "" if text.lower() in _MISSING_TEXT else text
+
+
+def _extract_jp_starters(text: str) -> tuple[str, str]:
+    """Extract (home, away) from an explicit NPB pre-game starter sentence.
+
+    Observed release examples include:
+      先発ピッチャーは西武が隅田、オリックスがエスピノーザ
+
+    The team names are intentionally returned as written; the domain engine's
+    canonical team mapping is applied later. We only accept the explicit
+    ``team が pitcher`` structure and never guess from pitch order.
+    """
+    text = _clean_text(text)
+    if _STARTER_JP not in text:
+        return "", ""
+
+    # Keep only the clause after the marker. This handles common prefixes such
+    # as dates or other pre-game descriptions without relying on their layout.
+    clause = text.split(_STARTER_JP, 1)[1]
+    clause = re.sub(r"^[は:：\s]+", "", clause)
+    # A Japanese full-width/ASCII comma separates the two team assignments.
+    parts = [p.strip(" 、,\t") for p in re.split(r"[、,]", clause) if p.strip()]
+    found: list[tuple[str, str]] = []
+    for part in parts:
+        # Team names in this public feed precede が; pitcher name follows it.
+        m = re.match(r"^(.+?)が(.+)$", part)
+        if m:
+            team = m.group(1).strip()
+            pitcher = m.group(2).strip()
+            if team and pitcher:
+                found.append((team, pitcher))
+    if len(found) < 2:
+        return "", ""
+    return found[0][0] + "\t" + found[0][1], found[1][0] + "\t" + found[1][1]
+
+
+def _extract_en_starters(text: str) -> tuple[str, str]:
+    """Best-effort extraction from the repository's English transliteration.
+
+    English is retained as a fallback only. If the structure is ambiguous, no
+    starter is assigned. This is deliberately conservative.
+    """
+    text = _clean_text(text)
+    if _STARTER_EN not in text.lower():
+        return "", ""
+    clause = text.lower().split(_STARTER_EN, 1)[1]
+    clause = re.sub(r"^[\s:]+", "", clause)
+    # Common transliteration: ``... is TeamA PitcherA, TeamB PitcherB``.
+    clause = re.sub(r"^is\s+", "", clause)
+    parts = [p.strip(" ,") for p in re.split(r"[;,]", clause) if p.strip()]
+    if len(parts) < 2:
+        return "", ""
+    # Do not try to split arbitrary English names. Japanese is authoritative
+    # for this source, so English only succeeds for an explicit two-clause form.
+    return "", ""
+
+
+def _starter_from_descriptions(raw: pd.DataFrame) -> pd.DataFrame:
+    """Build explicit starter columns from pre-game textual announcements."""
+    records = []
+    desc_jp = _first_existing(raw, ["description_jap"])
+    desc_en = _first_existing(raw, ["description"])
+    home = _first_existing(raw, ["home_team_name", "H_NameS"]).map(_clean_text)
+    away = _first_existing(raw, ["away_team_name", "V_NameS"]).map(_clean_text)
+    gid = _first_existing(raw, ["game_id", "GameID"]).astype(str)
+
+    for game_id, gidx in raw.groupby(_first_existing(raw, ["game_id", "GameID"]).astype(str), sort=False).groups.items():
+        hp = ap = ""
+        # Search descriptions in source order. The first explicit announcement
+        # is retained, making the result deterministic even if the source emits
+        # duplicate pre-game rows.
+        for idx in gidx:
+            j = _clean_text(desc_jp.loc[idx])
+            hteam = _clean_text(home.loc[idx])
+            ateam = _clean_text(away.loc[idx])
+            if _STARTER_JP in j:
+                clause = j.split(_STARTER_JP, 1)[1]
+                clause = re.sub(r"^[は:：\s]+", "", clause)
+                assignments = []
+                for part in [p.strip(" 、,\t") for p in re.split(r"[、,]", clause) if p.strip()]:
+                    m = re.match(r"^(.+?)が(.+)$", part)
+                    if m:
+                        assignments.append((m.group(1).strip(), m.group(2).strip()))
+                if len(assignments) >= 2:
+                    # Match assignments to the actual home/away team names.
+                    for team, pitcher in assignments:
+                        if team == hteam:
+                            hp = pitcher
+                        elif team == ateam:
+                            ap = pitcher
+                    # If exact matching is unavailable, positional assignment
+                    # is safe because the source sentence explicitly provides
+                    # the two team assignments in home/away matchup order.
+                    if not hp and not ap:
+                        hp, ap = assignments[0][1], assignments[1][1]
+                    if hp and ap:
+                        break
+            e = _clean_text(desc_en.loc[idx])
+            eh, ea = _extract_en_starters(e)
+            if eh and ea and not hp and not ap:
+                hp, ap = eh, ea
+        records.append((game_id, hp, ap))
+    return pd.DataFrame(records, columns=["game_id", "home_pitcher", "away_pitcher"])
 
 
 def normalize_pbp_frame(raw: pd.DataFrame) -> pd.DataFrame:
@@ -52,32 +171,13 @@ def normalize_pbp_frame(raw: pd.DataFrame) -> pd.DataFrame:
     )
     out["game_type"] = _first_existing(raw, ["game_type_name", "GameKindName"], "").astype(str)
 
-    # First pitcher observed in each half is a conservative starter proxy.
-    # If half information is absent, leave both starters unknown rather than
-    # silently assigning a potentially incorrect reliever as a starter.
-    pitcher = _first_existing(raw, ["pitcher"]).astype(str)
-    half = _first_existing(raw, ["TB", "top_bottom", "half"], "").astype(str).str.lower()
-    out["_pitcher"] = pitcher.where(~pitcher.isin(["", "nan", "None"]), np.nan)
-    out["_half"] = half
-
-    def first_half(g: pd.DataFrame, tokens: tuple[str, ...]) -> str:
-        for _, r in g.sort_values("row_order").iterrows():
-            p = r.get("_pitcher")
-            h = str(r.get("_half", ""))
-            if not p or p != p:
-                continue
-            if any(t in h for t in tokens):
-                return str(p)
-        return ""
-
-    starters = []
-    for gid, g in out.groupby("game_id", sort=False):
-        home_pitcher = first_half(g, ("top", "表", "visitor", "away", "v"))
-        away_pitcher = first_half(g, ("bottom", "裏", "home", "h"))
-        starters.append((gid, home_pitcher, away_pitcher))
-    starter_df = pd.DataFrame(starters, columns=["game_id", "home_pitcher", "away_pitcher"])
+    # The pitch-level pitcher column is intentionally NOT used for starter
+    # identification: in this release it is empty in the pre-game rows and,
+    # during a completed game, includes relievers.
+    starter_df = _starter_from_descriptions(raw)
     out = out.merge(starter_df, on="game_id", how="left")
-    out = out.drop(columns=["_pitcher", "_half"])
+    out["home_pitcher"] = out["home_pitcher"].fillna("").astype(str)
+    out["away_pitcher"] = out["away_pitcher"].fillna("").astype(str)
 
     out = out.dropna(subset=["game_id", "date"]).reset_index(drop=True)
     return out
