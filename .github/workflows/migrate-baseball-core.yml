@@ -30,8 +30,10 @@ jobs:
             echo "LEGACY_REPO_TOKEN secret is required because the legacy Baseball repository is private."
             exit 1
           fi
-          git clone --depth 1 --branch v4.4-baseball-integration \
-            "https://x-access-token:${LEGACY_REPO_TOKEN}@github.com/sasasotaro1202-star/Baseball.git" legacy-baseball
+          auth=$(printf 'x-access-token:%s' "$LEGACY_REPO_TOKEN" | base64 -w 0)
+          git -c http.extraheader="AUTHORIZATION: basic $auth" clone --depth 1 --branch v4.4-baseball-integration --single-branch https://github.com/sasasotaro1202-star/Baseball.git legacy-baseball
+          test -s legacy-baseball/baseball_backtest.py
+          git -C legacy-baseball rev-parse HEAD
 
       - name: Copy Baseball-only implementation
         shell: bash
