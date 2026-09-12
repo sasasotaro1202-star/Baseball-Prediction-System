@@ -46,7 +46,10 @@ def test_market_line_requires_available_at_for_known_line():
 def test_market_line_pit_requires_both_observed_and_available_before_cutoff():
     assert line().pit_usable("2026-01-01T00:05:00+00:00")
     assert not line(available_at="2026-01-01T00:06:00+00:00").pit_usable("2026-01-01T00:05:00+00:00")
-    assert not line(available_at="2026-01-01T00:06:00+00:00", observed_at="2026-01-01T00:07:00+00:00").pit_usable("2026-01-01T00:05:00+00:00")
+    assert not line(
+        observed_at="2026-01-01T00:07:00+00:00",
+        available_at="2026-01-01T00:08:00+00:00",
+    ).pit_usable("2026-01-01T00:05:00+00:00")
 
 
 def test_integer_total_has_push_not_low_or_high():
