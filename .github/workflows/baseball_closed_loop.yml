@@ -8,7 +8,7 @@ on:
 permissions:
   contents: write
 
-a concurrency:
+concurrency:
   group: baseball-closed-loop
   cancel-in-progress: true
 
@@ -50,26 +50,30 @@ jobs:
               raise SystemExit('PIT stage blocked: ' + '; '.join(stage.blockers))
           PY
 
-      - name: Stage historical NPB data
+      - name: Stage historical NPB PBP release data
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          mkdir -p data/npb_games
-          python - <<'PY'
-          import requests
-          from pathlib import Path
-          base = 'https://github.com/armstjc/Nippon-Baseball-Data-Repository/releases/download/pbp'
-          out = Path('data/npb_games')
-          for year in range(2020, 2027):
-              for month in range(1, 13):
-                  url = f'{base}/{year}-{month:02d}_pbp.csv'
-                  r = requests.get(url, timeout=30)
-                  if r.status_code == 200 and r.content:
-                      (out / f'{year}-{month:02d}_pbp.csv').write_bytes(r.content)
-          files = list(out.glob('*_pbp.csv'))
-          if not files:
-              raise SystemExit('No historical NPB PBP files were staged')
-          print(f'Staged {len(files)} NPB files')
-          PY
+          mkdir -p data
+          for year in $(seq 2020 2026); do
+            for attempt in 1 2 3; do
+              if gh release download pbp \
+                --repo armstjc/Nippon-Baseball-Data-Repository \
+                --pattern "${year}-*_pbp.csv" \
+                --dir data \
+                --clobber; then
+                break
+              fi
+              if [ "$attempt" -lt 3 ]; then sleep $((attempt * 5)); fi
+            done
+          done
+          total_files=$(find data -maxdepth 1 -name '*_pbp.csv' | wc -l | tr -d ' ')
+          echo "NPB PBP files staged: $total_files"
+          if [ "$total_files" -lt 1 ]; then
+            echo "NPB release download produced no PBP CSV files" >&2
+            exit 1
+          fi
 
       - name: Run chronological Baseball OOS research
         env:
@@ -87,17 +91,11 @@ jobs:
       - name: Preserve research diagnostics
         if: always()
         run: |
-          mkdir -p results
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          p = Path('results/research_execution_manifest.json')
-          if p.exists():
-              obj = json.loads(p.read_text(encoding='utf-8'))
-              print(json.dumps(obj, ensure_ascii=False, indent=2))
-          else:
-              print('research_execution_manifest.json not produced')
-          PY
+          if [ -s results/research_execution_manifest.json ]; then
+            cat results/research_execution_manifest.json
+          else
+            echo 'research_execution_manifest.json not produced'
+          fi
 
       - name: Commit research and PIT ledgers
         if: always()
