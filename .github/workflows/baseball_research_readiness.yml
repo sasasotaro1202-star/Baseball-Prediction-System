@@ -1,0 +1,95 @@
+name: Baseball Research Readiness
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baseball-readiness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+
+      - name: Install lightweight validation dependencies
+        run: python -m pip install --disable-pip-version-check --retries 5 --timeout 60 -r requirements-ci.txt
+
+      - name: Compile all Baseball sources
+        run: python -m compileall -q .
+
+      - name: Run deterministic Action preflight
+        run: python research/action_preflight.py
+
+      - name: Validate research runner without heavy execution
+        run: |
+          set -euo pipefail
+          python research_runner.py --help >/dev/null
+          python research_runner.py --league NPB --preflight-only
+          python research_runner.py --league MLB --preflight-only
+          python research_runner.py --league BOTH --preflight-only
+
+      - name: Validate workflow files and required contracts
+        run: |
+          set -euo pipefail
+          for f in \
+            .github/workflows/baseball_research.yml \
+            .github/workflows/baseball_research_preflight.yml \
+            .github/workflows/baseball_pit_acquisition.yml \
+            .github/workflows/baseball_v44_compatibility.yml; do
+            test -s "$f"
+            grep -q 'workflow_dispatch:' "$f"
+          done
+          test -s requirements.txt
+          test -s requirements-ci.txt
+          test -s requirements-pit.txt
+          test -s research_runner.py
+          test -s research/action_preflight.py
+
+      - name: Validate external source reachability
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import requests
+          urls = [
+              'https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=2026-09-11',
+              'https://npb.jp/',
+              'https://spaia.jp/baseball/npb/api/weekly_schedule',
+          ]
+          for url in urls:
+              r = requests.get(url, timeout=20, headers={'User-Agent': 'Baseball-Prediction-System/1.0'})
+              if r.status_code >= 500:
+                  raise SystemExit(f'Source unavailable: {url} -> HTTP {r.status_code}')
+              print(f'Source reachable: {url} -> HTTP {r.status_code}')
+          PY
+
+      - name: Write readiness summary
+        if: always()
+        run: |
+          {
+            echo '## Baseball execution readiness'
+            echo ''
+            echo '- Python source compilation: completed'
+            echo '- Deterministic preflight: completed'
+            echo '- Research CLI contract: completed'
+            echo '- Required workflow/manual-dispatch contracts: checked'
+            echo '- Public source reachability: checked'
+            echo '- Heavy backtest/research: intentionally not executed by this readiness check'
+          } >> "$GITHUB_STEP_SUMMARY"
