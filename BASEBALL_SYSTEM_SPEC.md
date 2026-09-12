@@ -1,4 +1,4 @@
-# Baseball Prediction & Research System — Formal Specification v1.1
+# Baseball Prediction & Research System — Formal Specification v1.2
 
 ## Scope
 - Baseball only: NPB + MLB.
@@ -8,6 +8,17 @@
 
 ## Prediction eligibility
 A production prediction is eligible only when the game, league, start time, both starting pitchers, required data, PIT snapshot, roster/availability state, feature completeness, model and calibration artifact are valid. If either starter is unconfirmed, exclude the game. Missing critical data is not replaced by a guess.
+
+## Accuracy targets
+The research system's explicit target is **80%+ accuracy for each defined classification output where that metric is statistically and operationally meaningful**. This is a target, not a guaranteed achieved result. The system must never manufacture or overstate accuracy to satisfy the target.
+
+For primary win prediction:
+- NPB: target Accuracy >= 80% for the 3-class Home/Draw/Away outcome.
+- MLB: target Accuracy >= 80% for the 2-class Home/Away outcome.
+
+For the separate NPB Top-Draw selection: target hit rate >= 80% is aspirational and must be reported independently from the all-game 3-class accuracy. Because a forced daily draw selection can be intrinsically difficult, the system must allow `NO_SELECTION` when the evidence does not justify a draw selection; it must not force a false 80% claim.
+
+For score candidates and Low/High, accuracy must be defined explicitly by the evaluation contract rather than conflated with win accuracy. The system should target >= 80% only for metrics whose denominator and event definition make an 80% target meaningful; otherwise optimize and report the appropriate proper scoring rule, MAE, top-k hit rate, calibration, or other domain metric.
 
 ## PIT / provenance
 Every research-critical observation must distinguish event time, source timestamp, retrieval time and source availability time. Retrieval time never proves historical availability. PIT filtering must fail closed when availability cannot be established. Missing, unavailable and unverifiable are distinct from TRUE_ZERO.
@@ -51,6 +62,9 @@ Candidates are reproducible, versioned and registered. Failed candidates remain 
 
 ## Execution policy
 Heavy backtests / GitHub Actions are not run automatically merely because code was changed. Lightweight inspection/tests and heavy research execution are separate operations. Any executed run must be reported accurately.
+
+## Accuracy-governance rule
+The 80% target is a **promotion target, not a permission to overfit**. A candidate cannot be promoted merely because it reaches 80% on one convenient slice. It must satisfy chronological OOS, independent holdout, calibration, minimum sample-size, stability, and leakage gates. If 80% is not achieved, report the measured result and continue research rather than altering labels, thresholds, eligibility, or evaluation windows to manufacture the target.
 
 ## Canonical implementation direction
 Keep the existing `baseball_backtest.py` as the domain engine while progressively wiring PIT snapshots, availability timestamps, market-line snapshots, calibration, production prediction logging, MLB lifecycle and post-game auditing around it. Do not copy another sport's model into Baseball.
