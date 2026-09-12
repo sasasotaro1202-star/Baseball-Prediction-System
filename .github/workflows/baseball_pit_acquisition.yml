@@ -1,0 +1,90 @@
+name: Baseball PIT Acquisition
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/30 * * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: baseball-pit-acquisition
+  cancel-in-progress: true
+
+jobs:
+  acquire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+
+      - name: Install acquisition dependencies
+        run: python -m pip install --disable-pip-version-check --retries 5 --timeout 60 -r requirements-ci.txt
+
+      - name: Run PIT acquisition
+        run: |
+          set -euo pipefail
+          python -m py_compile data/pit_acquisition.py core/pit_snapshot.py core/pit_replay.py
+          python data/pit_acquisition.py
+
+      - name: Validate PIT ledger
+        run: |
+          set -euo pipefail
+          test -s data/pit/acquisition_runs.jsonl
+          test -s data/pit/source_snapshots.jsonl
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          allowed = {
+              "OBSERVED",
+              "OBSERVED_UNVERIFIABLE_ANNOUNCEMENT_TIME",
+              "UNAVAILABLE",
+              "MISSING",
+              "UNVERIFIABLE",
+          }
+          for path in [
+              Path("data/pit/source_snapshots.jsonl"),
+              Path("data/pit/event_observations.jsonl"),
+              Path("data/pit/availability_observations.jsonl"),
+              Path("data/pit/acquisition_runs.jsonl"),
+          ]:
+              for line in path.read_text(encoding="utf-8").splitlines():
+                  if not line.strip():
+                      continue
+                  obj = json.loads(line)
+                  status = obj.get("status")
+                  if status is not None and status not in allowed:
+                      raise SystemExit(f"Unexpected status {status} in {path}")
+          print("PIT ledger validation OK")
+          PY
+
+      - name: Commit PIT observations
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/pit
+          if git diff --cached --quiet; then
+            echo 'No PIT changes to commit.'
+          else
+            git commit -m 'Update Baseball PIT observations'
+            git push
+          fi
+
+      - name: Upload acquisition diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: baseball-pit-${{ github.run_id }}
+          path: data/pit/**
+          if-no-files-found: warn
+          retention-days: 14
