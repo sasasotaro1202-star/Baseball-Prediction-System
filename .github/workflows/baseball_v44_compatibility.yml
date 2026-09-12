@@ -12,6 +12,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: baseball-compatibility-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   compatibility:
     runs-on: ubuntu-latest
@@ -25,12 +29,13 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
+          cache-dependency-path: requirements-ci.txt
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-          python -m pip install scikit-learn pytest
+      - name: Install lightweight CI dependencies
+        run: python -m pip install -r requirements-ci.txt
+
+      - name: Compile Baseball sources
+        run: python -m compileall -q .
 
       - name: Run Baseball compatibility tests
         env:
