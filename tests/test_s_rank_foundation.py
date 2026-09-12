@@ -17,25 +17,25 @@ def test_pit_excludes_future_availability():
     assert out.rows_out == 1 and out.frame.iloc[0]["event_id"] == "a"
 
 
-def test_snapshot_rejects_future_availability():
-    try:
-        make_snapshot(event_id="g", league="MLB", entity_type="starter", entity_id="p",
-                      source="test", payload={}, prediction_cutoff="2026-01-01T00:00:00+00:00",
-                      available_at="2026-01-01T00:00:01+00:00")
-    except ValueError:
-        return
-    raise AssertionError("future availability was accepted")
+def test_snapshot_allows_late_observation_for_future_pit_replay():
+    snap = make_snapshot(
+        event_id="g", league="MLB", entity_type="starter", entity_id="p",
+        source="test", payload={}, prediction_cutoff="2026-01-01T00:00:00+00:00",
+        available_at="2026-01-01T00:00:01+00:00",
+        retrieved_at="2026-01-01T00:01:00+00:00",
+    )
+    assert snap.available_at == "2026-01-01T00:00:01+00:00"
 
 
 def test_starter_gate_requires_both():
     record = AvailabilityRecord("g", "MLB", "A", "B", "p1", None, "2026-01-01T00:00:00+00:00", None,
-                                "UNVERIFIABLE", None, "test", "2025-12-31T23:00:00+00:00", "2026-01-01T00:00:00+00:00")
+                                "UNVERIFIABLE", None, "test", "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00")
     ok, reasons = prediction_eligible(record)
     assert not ok and "away_starter_not_confirmed" in reasons
 
 
 def test_market_line_classification():
-    line = TotalRunsLine("g", "MLB", 7.5, "test", "2026-01-01T00:00:00+00:00", "2025-12-31T23:00:00+00:00")
+    line = TotalRunsLine("g", "MLB", 7.5, "test", "2026-01-01T00:00:00+00:00", "2026-01-01T00:01:00+00:00")
     line.validate()
     assert classify_total(7, 7.5) == "LOW"
     assert classify_total(8, 7.5) == "HIGH"
