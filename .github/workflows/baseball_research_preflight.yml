@@ -35,9 +35,10 @@ jobs:
       - name: Compile all sources
         run: python -m compileall -q .
 
-      - name: Import and CLI contract
-        env:
-          BASEBALL_TIME_BUDGET_SEC: '30'
+      - name: Run deterministic preflight
+        run: python research/action_preflight.py
+
+      - name: Validate research CLI contract
         run: |
           set -euo pipefail
           python research_runner.py --help
