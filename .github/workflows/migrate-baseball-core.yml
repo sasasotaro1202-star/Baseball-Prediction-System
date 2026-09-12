@@ -22,14 +22,21 @@ jobs:
           fetch-depth: 0
 
       - name: Clone legacy Baseball integration branch
+        env:
+          LEGACY_REPO_TOKEN: ${{ secrets.LEGACY_REPO_TOKEN }}
         run: |
-          git clone --depth 1 --branch v4.4-baseball-integration https://github.com/sasasotaro1202-star/Baseball.git legacy-baseball
+          set -euo pipefail
+          if [ -z "$LEGACY_REPO_TOKEN" ]; then
+            echo "LEGACY_REPO_TOKEN secret is required because the legacy Baseball repository is private."
+            exit 1
+          fi
+          git clone --depth 1 --branch v4.4-baseball-integration \
+            "https://x-access-token:${LEGACY_REPO_TOKEN}@github.com/sasasotaro1202-star/Baseball.git" legacy-baseball
 
       - name: Copy Baseball-only implementation
         shell: bash
         run: |
           set -euo pipefail
-
           cp -f legacy-baseball/baseball_backtest.py .
           cp -f legacy-baseball/baseball_backtest_runtime_patch.py .
           cp -f legacy-baseball/baseball_mlb_score_hilo_patch.py .
@@ -75,9 +82,6 @@ jobs:
           cp -f legacy-baseball/DATA_SOURCES.md .
           cp -f legacy-baseball/DATA_SOURCE_POLICY.json .
 
-          # Keep only lightweight/validation workflows. Heavy production,
-          # research, recovery, parallel-compute and scheduled backtest jobs
-          # are intentionally not migrated.
           rm -f .github/workflows/baseball_*.yml .github/workflows/baseball-*.yml .github/workflows/validate-code.yml
           mkdir -p .github/workflows
           for f in legacy-baseball/.github/workflows/baseball_pit_acquisition.yml \
