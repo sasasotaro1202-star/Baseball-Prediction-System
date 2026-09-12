@@ -30,7 +30,10 @@ jobs:
           LEGACY_REPO_TOKEN: ${{ secrets.LEGACY_REPO_TOKEN }}
         run: |
           set -euo pipefail
-          git -c http.extraheader="AUTHORIZATION: bearer $LEGACY_REPO_TOKEN" clone --branch v4.4-baseball-integration --single-branch https://github.com/sasasotaro1202-star/Baseball.git legacy-baseball
+          rm -rf legacy-baseball
+          git -c http.extraheader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$LEGACY_REPO_TOKEN" | base64 -w 0)" clone --branch v4.4-baseball-integration --single-branch https://github.com/sasasotaro1202-star/Baseball.git legacy-baseball
+          test -s legacy-baseball/baseball_backtest.py
+          git -C legacy-baseball rev-parse HEAD
 
       - name: Copy Baseball-only implementation
         shell: bash
