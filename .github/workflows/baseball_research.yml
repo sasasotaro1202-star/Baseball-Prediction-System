@@ -39,7 +39,6 @@ jobs:
   research:
     runs-on: ubuntu-latest
     timeout-minutes: 35
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -54,18 +53,51 @@ jobs:
       - name: Install research dependencies
         run: python -m pip install -r requirements.txt
 
+      - name: Preflight repository and Python imports
+        run: |
+          python -m compileall -q .
+          python - <<'PY'
+          import importlib
+          modules = [
+              "baseball_backtest",
+              "research_runner",
+              "data.npb_pbp_adapter",
+              "research.validation_pipeline",
+              "research.adoption_gate",
+              "prediction.runner",
+              "prediction.prediction_log",
+              "evaluation.calibration",
+          ]
+          for name in modules:
+              importlib.import_module(name)
+              print(f"OK: {name}")
+          PY
+
       - name: Stage NPB PBP release data
         if: ${{ inputs.league == 'NPB' || inputs.league == 'BOTH' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           mkdir -p data
-          gh release download pbp \
-            --repo armstjc/Nippon-Baseball-Data-Repository \
-            --pattern "${{ inputs.npb_year }}-*_pbp.csv" \
-            --dir data \
-            --clobber
-          test -n "$(find data -maxdepth 1 -name '*_pbp.csv' -print -quit)"
+          for attempt in 1 2 3; do
+            rm -f data/*_pbp.csv
+            if gh release download pbp \
+              --repo armstjc/Nippon-Baseball-Data-Repository \
+              --pattern "${{ inputs.npb_year }}-*_pbp.csv" \
+              --dir data \
+              --clobber; then
+              if find data -maxdepth 1 -name '*_pbp.csv' -print -quit | grep -q .; then
+                break
+              fi
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "NPB release download failed after 3 attempts" >&2
+              exit 1
+            fi
+            sleep $((attempt * 5))
+          done
+          find data -maxdepth 1 -name '*_pbp.csv' -print
 
       - name: Run strict research runner
         env:
@@ -77,6 +109,22 @@ jobs:
             --league "${{ inputs.league }}" \
             --mlb-start "${{ inputs.mlb_start }}" \
             --mlb-end "${{ inputs.mlb_end }}"
+
+      - name: Verify research manifest
+        run: |
+          test -s results/research_execution_manifest.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path("results/research_execution_manifest.json")
+          manifest = json.loads(path.read_text(encoding="utf-8"))
+          print(json.dumps(manifest, ensure_ascii=False, indent=2))
+          if manifest.get("overall_status") != "SUCCESS":
+              raise SystemExit("Research manifest is not SUCCESS")
+          for result in manifest.get("results", []):
+              if result.get("status") != "SUCCESS" or int(result.get("predictions", 0)) <= 0:
+                  raise SystemExit(f"Invalid research result: {result}")
+          PY
 
       - name: Upload research artifacts
         if: always()
