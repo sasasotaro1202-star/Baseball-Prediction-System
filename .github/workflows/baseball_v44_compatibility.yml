@@ -1,0 +1,56 @@
+name: Baseball v4.4 Bridge Compatibility
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install scikit-learn pytest
+
+      - name: Run lightweight Baseball compatibility tests
+        env:
+          BASEBALL_TIME_BUDGET_SEC: '120'
+        run: |
+          python -m pytest -q \
+            tests/test_v44_foundation.py \
+            tests/test_bridge_compatibility.py \
+            tests/test_npb_outcome.py \
+            tests/test_npb_production_output.py \
+            tests/test_npb_research_lifecycle.py \
+            tests/test_validation_pipeline.py \
+            tests/test_npb_draw_rank.py \
+            tests/test_s_rank_foundation.py \
+            tests/test_s_rank_prediction.py \
+            tests/test_pit_replay.py \
+            tests/test_hardening_pit_runner.py \
+            tests/test_market_and_prediction_ledger_hardening.py \
+            tests/test_calibration_hardening.py \
+            tests/test_adoption_gate_hardening.py \
+            tests/test_runner_contract_hardening.py \
+            tests/test_baseball_prediction_adapter.py \
+            tests/test_result_audit_hardening.py
