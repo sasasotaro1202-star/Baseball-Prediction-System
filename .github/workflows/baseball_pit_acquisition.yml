@@ -25,10 +25,10 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-          cache-dependency-path: requirements-ci.txt
+          cache-dependency-path: requirements-pit.txt
 
       - name: Install acquisition dependencies
-        run: python -m pip install --disable-pip-version-check --retries 5 --timeout 60 -r requirements-ci.txt
+        run: python -m pip install --disable-pip-version-check --retries 5 --timeout 60 -r requirements-pit.txt
 
       - name: Run PIT acquisition
         run: |
