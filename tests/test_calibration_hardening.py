@@ -14,8 +14,13 @@ def test_calibration_rejects_nonfinite_input():
         TemperatureCalibration().transform(np.array([[0.5, np.nan]]))
 
 
-def test_calibration_normalizes_rows():
-    out = TemperatureCalibration(temperature=1.0).transform(np.array([[2.0, 1.0]]))
+def test_calibration_requires_probability_bounds():
+    with pytest.raises(ValueError, match="\[0,1\]"):
+        TemperatureCalibration().transform(np.array([[2.0, 1.0]]))
+
+
+def test_calibration_normalizes_valid_rows():
+    out = TemperatureCalibration(temperature=1.0).transform(np.array([[0.2, 0.1]]))
     assert np.allclose(out.sum(axis=1), 1.0)
     assert np.all(out >= 0)
 
