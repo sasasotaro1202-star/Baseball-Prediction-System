@@ -67,17 +67,32 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
+          from datetime import datetime, timezone
           import requests
-          urls = [
-              'https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=2026-09-11',
-              'https://npb.jp/',
-              'https://spaia.jp/baseball/npb/api/weekly_schedule',
+
+          today = datetime.now(timezone.utc).date().isoformat()
+          checks = [
+              ("MLB_STATS_API", f"https://statsapi.mlb.com/api/v1/schedule?sportId=1&date={today}", True),
+              ("NPB_OFFICIAL", "https://npb.jp/", True),
+              ("SPAIA_OPTIONAL", "https://spaia.jp/baseball/npb/api/weekly_schedule", False),
           ]
-          for url in urls:
-              r = requests.get(url, timeout=20, headers={'User-Agent': 'Baseball-Prediction-System/1.0'})
-              if r.status_code >= 500:
-                  raise SystemExit(f'Source unavailable: {url} -> HTTP {r.status_code}')
-              print(f'Source reachable: {url} -> HTTP {r.status_code}')
+          session = requests.Session()
+          session.headers.update({"User-Agent": "Baseball-Prediction-System/1.1"})
+          failures = []
+          for name, url, required in checks:
+              try:
+                  r = session.get(url, timeout=20, allow_redirects=True)
+                  ok = 200 <= r.status_code < 400
+                  print(f"{name}: HTTP {r.status_code} -> {'OK' if ok else 'FAIL'}")
+                  if not ok and required:
+                      failures.append(f"{name}: HTTP {r.status_code}")
+              except Exception as exc:
+                  print(f"{name}: ERROR {type(exc).__name__}: {exc}")
+                  if required:
+                      failures.append(f"{name}: {type(exc).__name__}")
+          if failures:
+              raise SystemExit("Required external source checks failed: " + "; ".join(failures))
+          print("External source readiness OK; optional source failures do not block execution.")
           PY
 
       - name: Write readiness summary
@@ -90,6 +105,7 @@ jobs:
             echo '- Deterministic preflight: completed'
             echo '- Research CLI contract: completed'
             echo '- Required workflow/manual-dispatch contracts: checked'
-            echo '- Public source reachability: checked'
+            echo '- Required external sources: checked'
+            echo '- Optional source failures: non-blocking, matching PIT acquisition fallback behavior'
             echo '- Heavy backtest/research: intentionally not executed by this readiness check'
           } >> "$GITHUB_STEP_SUMMARY"
