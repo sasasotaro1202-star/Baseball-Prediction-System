@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "principles": [
+    "Use the strongest practical source for each feature rather than one provider for everything.",
+    "Prefer first-party/official sources for canonical schedules, identities and final results.",
+    "Prefer specialist structured sources for granular game/PBP/player metrics when they expose the required fields reliably.",
+    "Use a fallback only when explicitly allowed for that feature.",
+    "Never replace missing critical values with estimates or arbitrary substitutions.",
+    "Store provenance and preserve the source hierarchy in audits."
+  ],
+  "NPB": {
+    "schedule_result_identity": {
+      "primary": "https://npb.jp/",
+      "fallback": "https://spaia.jp/baseball/npb/",
+      "critical": true
+    },
+    "starting_pitchers": {
+      "primary": "https://spaia.jp/baseball/npb/api/flash_atbat_history",
+      "validation": "https://npb.jp/",
+      "critical": true
+    },
+    "pitcher_game_lines": {
+      "primary": "https://spaia.jp/baseball/npb/api/both_pitcher_game_stats",
+      "fallback": null,
+      "critical": true
+    },
+    "batting_game_lines": {
+      "primary": "https://spaia.jp/baseball/npb/api/both_batter_stats",
+      "fallback": null,
+      "critical": false
+    },
+    "lineups": {
+      "primary": "https://spaia.jp/baseball/npb/api/starting_members_for_flash",
+      "fallback": null,
+      "critical": false
+    },
+    "play_by_play": {
+      "primary": "https://spaia.jp/baseball/npb/api/game_text_pbp",
+      "fallback": "public NPB PBP repositories",
+      "critical": false
+    },
+    "historical_reference_statistics": {
+      "primary": "https://npb.jp/bis/",
+      "fallback": "public NPB data repositories",
+      "critical": false
+    },
+    "weather": {
+      "primary": "https://archive-api.open-meteo.com/v1/archive",
+      "fallback": null,
+      "critical": false
+    }
+  },
+  "MLB": {
+    "schedule_result_identity": {
+      "primary": "https://statsapi.mlb.com/api/v1",
+      "fallback": null,
+      "critical": true
+    },
+    "starting_pitchers": {
+      "primary": "https://statsapi.mlb.com/api/v1",
+      "fallback": null,
+      "critical": true,
+      "rule": "Only use a starter for a pregame prediction when the starter is confirmed by a game-day/pre-first-pitch source. Do not substitute the postgame actual starter into a historical pregame feature row."
+    },
+    "game_results": {
+      "primary": "https://statsapi.mlb.com/api/v1",
+      "fallback": null,
+      "critical": true
+    },
+    "pitch_level_and_pitcher_detail": {
+      "primary": "Baseball Savant / Statcast",
+      "fallback": "MLB Stats API",
+      "critical": false,
+      "rule": "Use only records whose publication/event timestamp is not later than the prediction cutoff for pregame features."
+    },
+    "advanced_batting_pitching_reference": {
+      "primary": "FanGraphs",
+      "fallback": "MLB Stats API / Baseball Reference",
+      "critical": false,
+      "rule": "Historical reference metrics must respect the prediction cutoff; no season-final values may leak into earlier games."
+    },
+    "weather": {
+      "primary": "Open-Meteo historical archive / forecast snapshot when available",
+      "fallback": null,
+      "critical": false,
+      "rule": "Never synthesize missing weather. Historical backtests may only consume archived observations available for the target date."
+    }
+  }
+}
