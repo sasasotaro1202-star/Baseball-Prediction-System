@@ -3,7 +3,15 @@
 from __future__ import annotations
 
 import importlib
+import sys
 from pathlib import Path
+
+# When invoked as ``python research/action_preflight.py``, Python puts the
+# ``research`` directory first on sys.path. Explicitly add the repository root
+# so root modules such as baseball_backtest are importable in Actions.
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 REQUIRED_MODULES = (
     "baseball_backtest",
