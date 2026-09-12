@@ -39,7 +39,6 @@ jobs:
   research:
     runs-on: ubuntu-latest
     timeout-minutes: 35
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -90,6 +89,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p data
+          success=0
           for attempt in 1 2 3; do
             rm -f data/*_pbp.csv
             if gh release download pbp \
@@ -98,24 +98,25 @@ jobs:
               --dir data \
               --clobber; then
               if find data -maxdepth 1 -name '*_pbp.csv' -print -quit | grep -q .; then
+                success=1
                 break
               fi
             fi
-            if [ "$attempt" -eq 3 ]; then
-              echo "NPB release download failed after 3 attempts" >&2
-              exit 1
-            fi
-            sleep $((attempt * 5))
+            if [ "$attempt" -lt 3 ]; then sleep $((attempt * 5)); fi
           done
+          if [ "$success" -ne 1 ]; then
+            echo "NPB release download failed after 3 attempts" >&2
+            exit 1
+          fi
           find data -maxdepth 1 -name '*_pbp.csv' -print
 
       - name: Run strict research runner
-        continue-on-error: true
         env:
           BASEBALL_TIME_BUDGET_SEC: '1500'
           NPB_RETRAIN_EVERY: '150'
           MLB_ENRICH_STARTERS: '0'
         run: |
+          set -euo pipefail
           python research_runner.py \
             --league "${{ inputs.league }}" \
             --mlb-start "${{ inputs.mlb_start }}" \
@@ -123,19 +124,19 @@ jobs:
             --retries 2
 
       - name: Verify research manifest
-        if: always()
-        continue-on-error: true
         run: |
-          if [ ! -s results/research_execution_manifest.json ]; then
-            echo "RESEARCH_STATUS=NO_MANIFEST"
-            exit 0
-          fi
+          set -euo pipefail
+          test -s results/research_execution_manifest.json
           python - <<'PY'
           import json
           from pathlib import Path
           manifest = json.loads(Path("results/research_execution_manifest.json").read_text(encoding="utf-8"))
           print(json.dumps(manifest, ensure_ascii=False, indent=2))
-          print("RESEARCH_STATUS=" + str(manifest.get("overall_status", "UNKNOWN")))
+          if manifest.get("overall_status") != "SUCCESS":
+              raise SystemExit("Research manifest is not SUCCESS")
+          for result in manifest.get("results", []):
+              if result.get("status") != "SUCCESS" or int(result.get("predictions", 0)) <= 0:
+                  raise SystemExit(f"Research league failed: {result}")
           PY
 
       - name: Write GitHub summary
