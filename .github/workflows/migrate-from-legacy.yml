@@ -10,14 +10,27 @@ jobs:
   migrate:
     runs-on: ubuntu-latest
     steps:
+      - name: Validate legacy token is present
+        env:
+          LEGACY_REPO_TOKEN: ${{ secrets.LEGACY_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$LEGACY_REPO_TOKEN" ]; then
+            echo "LEGACY_REPO_TOKEN is required to read the private legacy Baseball repository."
+            exit 1
+          fi
+
       - name: Checkout target repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Clone legacy Baseball integration branch
+        env:
+          LEGACY_REPO_TOKEN: ${{ secrets.LEGACY_REPO_TOKEN }}
         run: |
-          git clone --branch v4.4-baseball-integration --single-branch https://github.com/sasasotaro1202-star/Baseball.git legacy-baseball
+          set -euo pipefail
+          git -c http.extraheader="AUTHORIZATION: bearer $LEGACY_REPO_TOKEN" clone --branch v4.4-baseball-integration --single-branch https://github.com/sasasotaro1202-star/Baseball.git legacy-baseball
 
       - name: Copy Baseball-only implementation
         shell: bash
@@ -25,83 +38,44 @@ jobs:
           set -euo pipefail
           src="$GITHUB_WORKSPACE/legacy-baseball"
           dst="$GITHUB_WORKSPACE"
-
           cp "$src/baseball_backtest.py" "$dst/baseball_backtest.py"
-          cp "$src/BASEBALL_SYSTEM_SPEC.md" "$dst/BASEBALL_SYSTEM_SPEC.md"
-          cp "$src/DATA_SOURCES.md" "$dst/DATA_SOURCES.md"
-          cp "$src/DATA_SOURCE_POLICY.json" "$dst/DATA_SOURCE_POLICY.json"
-          cp "$src/BACKTEST_AUDIT.md" "$dst/BACKTEST_AUDIT.md"
-          cp "$src/config.json" "$dst/config.json"
-
+          for f in BASEBALL_SYSTEM_SPEC.md DATA_SOURCES.md DATA_SOURCE_POLICY.json BACKTEST_AUDIT.md config.json; do
+            [ -f "$src/$f" ] && cp "$src/$f" "$dst/$f"
+          done
           for d in core data evaluation monitoring prediction research tests; do
             if [ -d "$src/$d" ]; then
               mkdir -p "$dst/$d"
-              rsync -a --delete \
-                --exclude='soccer/' \
-                --exclude='*.csv' \
-                --exclude='*.parquet' \
-                --exclude='*.feather' \
-                --exclude='*.pkl' \
-                --exclude='*.joblib' \
-                --exclude='*.zip' \
-                --exclude='results/' \
-                "$src/$d/" "$dst/$d/"
+              rsync -a --delete --exclude='soccer/' --exclude='*.csv' --exclude='*.parquet' --exclude='*.feather' --exclude='*.pkl' --exclude='*.joblib' --exclude='*.zip' --exclude='results/' "$src/$d/" "$dst/$d/"
             fi
           done
-
           mkdir -p "$dst/.github/workflows"
-          cp "$src/.github/workflows/baseball_pit_acquisition.yml" "$dst/.github/workflows/baseball_pit_acquisition.yml"
-          cp "$src/.github/workflows/baseball_v44_compatibility.yml" "$dst/.github/workflows/baseball_v44_compatibility.yml"
-
+          for f in baseball_pit_acquisition.yml baseball_v44_compatibility.yml; do
+            [ -f "$src/.github/workflows/$f" ] && cp "$src/.github/workflows/$f" "$dst/.github/workflows/$f"
+          done
           rm -rf "$dst/legacy-baseball"
 
       - name: Remove non-Baseball artifacts
         shell: bash
         run: |
           set -euo pipefail
-          find data -maxdepth 1 -type d -name 'soccer' -prune -exec rm -rf {} + 2>/dev/null || true
-          rm -f .github/workflows/openfootball-data-acquisition.yml
-          rm -f .github/workflows/soccer-data-acquisition.yml
-          rm -f .github/workflows/pipeline.yml
-          rm -f .github/workflows/pipeline-parallel.yml
-          rm -f .github/workflows/trigger-api.yml
-          rm -f .github/workflows/trigger-run.json
+          rm -rf data/soccer
+          rm -f .github/workflows/openfootball-data-acquisition.yml .github/workflows/soccer-data-acquisition.yml .github/workflows/pipeline.yml .github/workflows/pipeline-parallel.yml .github/workflows/trigger-api.yml .github/workflows/trigger-run.json
 
-      - name: Validate migration shape without running backtests
+      - name: Validate migration without running backtests
         shell: bash
         run: |
           set -euo pipefail
           test -s baseball_backtest.py
           test -s BASEBALL_SYSTEM_SPEC.md
-          test -d core
-          test -d data
-          test -d evaluation
-          test -d monitoring
-          test -d prediction
-          test -d research
-          test -d tests
-          ! find . -path '*/soccer/*' -type f | grep -q .
+          for d in core data evaluation monitoring prediction research tests; do test -d "$d"; done
           python -m py_compile baseball_backtest.py
-          python - <<'PY'
-          import pathlib
-          forbidden = []
-          for p in pathlib.Path('.github/workflows').glob('*'):
-              text = p.read_text(errors='ignore')
-              if 'soccer' in text.lower() or 'openfootball' in text.lower():
-                  forbidden.append(str(p))
-          if forbidden:
-              raise SystemExit(f'Non-Baseball workflow references remain: {forbidden}')
-          print('Migration shape validation passed; no backtest executed.')
-          PY
+          python -m compileall -q core data evaluation monitoring prediction research tests
+          if find . -path '*/soccer/*' -type f | grep -q .; then exit 1; fi
+          echo 'Migration validation passed. No backtest/research workload was executed.'
 
       - name: Commit migration
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          if git diff --cached --quiet; then
-            echo "No migration changes to commit."
-          else
-            git commit -m "Migrate Baseball v4.4 integration system"
-            git push origin HEAD:main
-          fi
+          if git diff --cached --quiet; then echo "No migration changes to commit."; else git commit -m "Migrate Baseball v4.4 integration system"; git push origin HEAD:main; fi
