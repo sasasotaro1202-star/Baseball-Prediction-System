@@ -21,14 +21,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Checkout legacy Baseball integration branch
+      - name: Checkout public legacy Baseball integration branch
         uses: actions/checkout@v4
         with:
           repository: sasasotaro1202-star/Baseball
           ref: v4.4-baseball-integration
-          token: ${{ secrets.LEGACY_REPO_TOKEN }}
           path: legacy-baseball
           fetch-depth: 1
+          persist-credentials: false
 
       - name: Validate legacy checkout
         shell: bash
