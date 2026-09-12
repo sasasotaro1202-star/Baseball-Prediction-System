@@ -86,10 +86,14 @@ jobs:
                   print(f"{name}: HTTP {r.status_code} -> {'OK' if ok else 'FAIL'}")
                   if not ok and required:
                       failures.append(f"{name}: HTTP {r.status_code}")
+                  elif not ok:
+                      print(f"{name}: optional/non-blocking source failure")
               except Exception as exc:
                   print(f"{name}: ERROR {type(exc).__name__}: {exc}")
                   if required:
                       failures.append(f"{name}: {type(exc).__name__}")
+                  else:
+                      print(f"{name}: optional/non-blocking source error")
           if failures:
               raise SystemExit("Required external source checks failed: " + "; ".join(failures))
           print("External source readiness OK; optional source failures do not block execution.")
