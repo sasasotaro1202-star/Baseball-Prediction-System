@@ -1,0 +1,112 @@
+name: Migrate Baseball Core From Legacy
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: baseball-core-migration
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout destination repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Clone legacy Baseball integration branch
+        run: |
+          git clone --depth 1 --branch v4.4-baseball-integration \
+            https://github.com/sasasotaro1202-star/Baseball.git legacy-baseball
+
+      - name: Copy Baseball-only implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Core Baseball engine and supporting modules.
+          cp -f legacy-baseball/baseball_backtest.py .
+          cp -f legacy-baseball/baseball_backtest_runtime_patch.py .
+          cp -f legacy-baseball/baseball_mlb_score_hilo_patch.py .
+          cp -f legacy-baseball/baseball_production_runtime_patch.py .
+          cp -f legacy-baseball/baseball_quality_runtime_patch.py .
+          cp -f legacy-baseball/backtest_audit_v2.py .
+          cp -f legacy-baseball/elo_baseline_all.py .
+          cp -f legacy-baseball/mlb_incremental_acquire.py .
+          cp -f legacy-baseball/npb_backtest_normalization_patch.py .
+          cp -f legacy-baseball/npb_multi_source.py .
+          cp -f legacy-baseball/npb_official_schedule_patch.py .
+          cp -f legacy-baseball/npb_quality_runtime_patch.py .
+          cp -f legacy-baseball/npb_runtime_patch.py .
+          cp -f legacy-baseball/production_data_quality_gate.py .
+          cp -f legacy-baseball/production_integrity_gate.py .
+          cp -f legacy-baseball/run.py .
+          cp -f legacy-baseball/source_quality_gate.py .
+          cp -f legacy-baseball/config.json .
+          cp -f legacy-baseball/requirements.txt .
+
+          # Baseball-only directories.
+          for d in core evaluation prediction research monitoring pipelines exact_parallel; do
+            rm -rf "$d"
+            cp -a "legacy-baseball/$d" "$d"
+          done
+
+          # Parallel research helpers contain a few legacy soccer adapters.
+          rm -rf parallel
+          cp -a legacy-baseball/parallel parallel
+          rm -f parallel/acquire_openfootball.py \
+                parallel/acquire_soccer_historical.py \
+                parallel/soccer_outcome_model.py
+
+          # NPB historical data used by the existing engine.
+          rm -rf data/npb
+          mkdir -p data/npb
+          cp -a legacy-baseball/data/npb/. data/npb/
+          cp -f legacy-baseball/data/availability.py data/availability.py
+          cp -f legacy-baseball/data/market_lines.py data/market_lines.py
+          cp -f legacy-baseball/data/pit_acquisition.py data/pit_acquisition.py
+          cp -f legacy-baseball/data/source_registry.py data/source_registry.py
+
+          # Documentation and tests for the Baseball system.
+          rm -rf docs tests
+          cp -a legacy-baseball/docs docs
+          cp -a legacy-baseball/tests tests
+          cp -f legacy-baseball/BASEBALL_SYSTEM_SPEC.md .
+          cp -f legacy-baseball/BACKTEST_AUDIT.md .
+          cp -f legacy-baseball/DATA_SOURCES.md .
+          cp -f legacy-baseball/DATA_SOURCE_POLICY.json .
+
+          # Only the Baseball workflows are migrated. Soccer/legacy pipeline
+          # workflows are deliberately excluded to keep this repository clean.
+          rm -rf .github/workflows/baseball_*.yml
+          rm -rf .github/workflows/baseball-*.yml
+          mkdir -p .github/workflows
+          for f in legacy-baseball/.github/workflows/baseball_*.yml legacy-baseball/.github/workflows/baseball-*.yml legacy-baseball/.github/workflows/validate-code.yml; do
+            [ -f "$f" ] && cp -f "$f" .github/workflows/
+          done
+
+          rm -rf legacy-baseball
+
+      - name: Remove migration workflow from copied set if necessary
+        run: test -f .github/workflows/migrate-baseball-core.yml
+
+      - name: Commit migrated Baseball implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No migration changes."
+            exit 0
+          fi
+          git commit -m "Migrate Baseball core from v4.4 integration"
+          git push origin main
