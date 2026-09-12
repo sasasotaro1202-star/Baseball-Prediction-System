@@ -38,7 +38,8 @@ def test_score_matrix_produces_draw_probability():
     p = score_matrix_to_outcomes(matrix)
     assert p.shape == (3,)
     assert p.sum() == pytest.approx(1.0)
-    assert p[1] == pytest.approx(0.20 / matrix.sum())
+    # Rows are home runs and columns are away runs, so the diagonal is DRAW.
+    assert p[1] == pytest.approx(0.79 / matrix.sum())
 
 
 def test_npb_probability_shape_is_strict():
