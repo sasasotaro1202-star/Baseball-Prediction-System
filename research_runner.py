@@ -26,17 +26,17 @@ def run_one(league: str, data_dir: Path, *, mlb_start: int, mlb_end: int) -> dic
 
             pbp = load_public_pbp(data_dir)
             games = bt.aggregate_npb_games(pbp)
-            bt.run_walkforward(games, "NPB")
+            frame = bt.run_walkforward(games, "NPB")
             result["games"] = int(len(games))
             result["starter_coverage"] = float(games["confirmed_starters"].mean()) if len(games) else 0.0
-            result["predictions"] = int(len(bt.results))
+            result["predictions"] = int(len(frame))
         else:
             games = bt.load_mlb(mlb_start, mlb_end)
             if not games.empty and "confirmed_starters" in games:
                 result["starter_coverage"] = float(games["confirmed_starters"].mean())
-            bt.run_walkforward(games, "MLB")
+            frame = bt.run_walkforward(games, "MLB")
             result["games"] = int(len(games))
-            result["predictions"] = int(len(bt.results))
+            result["predictions"] = int(len(frame))
         result["status"] = "SUCCESS" if result["predictions"] > 0 else "NO_PREDICTIONS"
     except Exception as exc:
         result["error"] = f"{type(exc).__name__}: {exc}"
