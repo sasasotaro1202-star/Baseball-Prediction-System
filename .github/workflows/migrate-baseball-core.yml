@@ -86,15 +86,27 @@ jobs:
           cp -f legacy-baseball/DATA_SOURCES.md .
           cp -f legacy-baseball/DATA_SOURCE_POLICY.json .
 
-          rm -f .github/workflows/baseball_*.yml .github/workflows/baseball-*.yml .github/workflows/validate-code.yml
-          mkdir -p .github/workflows
-          for f in legacy-baseball/.github/workflows/baseball_pit_acquisition.yml \
-                   legacy-baseball/.github/workflows/baseball_v44_compatibility.yml \
-                   legacy-baseball/.github/workflows/validate-code.yml; do
-            [ -f "$f" ] && cp -f "$f" .github/workflows/
-          done
-
           rm -rf legacy-baseball
+
+      - name: Remove non-Baseball artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          find . -type f -path '*/soccer/*' -delete
+          rm -rf data/soccer
+          rm -f .github/workflows/openfootball-data-acquisition.yml .github/workflows/soccer-data-acquisition.yml .github/workflows/pipeline.yml .github/workflows/pipeline-parallel.yml .github/workflows/trigger-api.yml .github/workflows/trigger-run.json
+
+      - name: Validate migration without running backtests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s baseball_backtest.py
+          test -s BASEBALL_SYSTEM_SPEC.md
+          for d in core data evaluation monitoring prediction research tests; do test -d "$d"; done
+          python -m py_compile baseball_backtest.py
+          python -m compileall -q core data evaluation monitoring prediction research tests
+          if find . -path '*/soccer/*' -type f | grep -q .; then exit 1; fi
+          echo 'Migration validation passed. No backtest/research workload was executed.'
 
       - name: Commit migrated Baseball implementation
         shell: bash
