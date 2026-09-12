@@ -6,9 +6,6 @@ import importlib
 import sys
 from pathlib import Path
 
-# When invoked as ``python research/action_preflight.py``, Python puts the
-# ``research`` directory first on sys.path. Explicitly add the repository root
-# so root modules such as baseball_backtest are importable in Actions.
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -19,6 +16,7 @@ REQUIRED_MODULES = (
     "data.npb_pbp_adapter",
     "research.validation_pipeline",
     "research.adoption_gate",
+    "research.closed_loop_governance",
     "prediction.runner",
     "prediction.prediction_log",
     "evaluation.calibration",
@@ -32,8 +30,10 @@ REQUIRED_FILES = (
     Path("baseball_backtest.py"),
     Path("data/pit_acquisition.py"),
     Path("core/pit_snapshot.py"),
+    Path("core/pit_replay.py"),
     Path("prediction/runner.py"),
     Path("evaluation/calibration.py"),
+    Path("research/closed_loop_governance.py"),
 )
 
 
