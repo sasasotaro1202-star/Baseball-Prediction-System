@@ -44,20 +44,16 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-          allowed = {
-              "KNOWN",
-              "OBSERVED",
-              "OBSERVED_UNVERIFIABLE_ANNOUNCEMENT_TIME",
-              "UNAVAILABLE",
-              "MISSING",
-              "UNVERIFIABLE",
-          }
-          for path in [
+          allowed = {"KNOWN", "OBSERVED", "OBSERVED_UNVERIFIABLE_ANNOUNCEMENT_TIME", "UNAVAILABLE", "MISSING", "UNVERIFIABLE"}
+          required = [
               Path("data/pit/source_snapshots.jsonl"),
               Path("data/pit/event_observations.jsonl"),
               Path("data/pit/availability_observations.jsonl"),
               Path("data/pit/acquisition_runs.jsonl"),
-          ]:
+          ]
+          for path in required:
+              if not path.exists():
+                  raise SystemExit(f"Missing PIT ledger file: {path}")
               for line in path.read_text(encoding="utf-8").splitlines():
                   if not line.strip():
                       continue
@@ -73,7 +69,9 @@ jobs:
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add data/pit
+          # PIT JSONL is intentionally ignored for local cleanliness, so force-add
+          # the generated immutable ledger files when the acquisition Action runs.
+          git add -f data/pit/*.jsonl
           if git diff --cached --quiet; then
             echo 'No PIT changes to commit.'
           else
@@ -81,7 +79,8 @@ jobs:
             for attempt in 1 2 3; do
               if git push; then exit 0; fi
               if [ "$attempt" -lt 3 ]; then
-                git pull --rebase --autostash origin main
+                git fetch origin main
+                git rebase origin/main
                 sleep $((attempt * 3))
               fi
             done
