@@ -21,17 +21,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Clone legacy Baseball integration branch
-        env:
-          LEGACY_REPO_TOKEN: ${{ secrets.LEGACY_REPO_TOKEN }}
+      - name: Checkout legacy Baseball integration branch
+        uses: actions/checkout@v4
+        with:
+          repository: sasasotaro1202-star/Baseball
+          ref: v4.4-baseball-integration
+          token: ${{ secrets.LEGACY_REPO_TOKEN }}
+          path: legacy-baseball
+          fetch-depth: 1
+
+      - name: Validate legacy checkout
+        shell: bash
         run: |
           set -euo pipefail
-          if [ -z "$LEGACY_REPO_TOKEN" ]; then
-            echo "LEGACY_REPO_TOKEN secret is required because the legacy Baseball repository is private."
-            exit 1
-          fi
-          auth=$(printf 'x-access-token:%s' "$LEGACY_REPO_TOKEN" | base64 -w 0)
-          git -c http.extraheader="AUTHORIZATION: basic $auth" clone --depth 1 --branch v4.4-baseball-integration --single-branch https://github.com/sasasotaro1202-star/Baseball.git legacy-baseball
           test -s legacy-baseball/baseball_backtest.py
           git -C legacy-baseball rev-parse HEAD
 
