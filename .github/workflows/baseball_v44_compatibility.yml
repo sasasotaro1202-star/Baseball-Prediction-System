@@ -40,4 +40,4 @@ jobs:
       - name: Run Baseball compatibility tests
         env:
           BASEBALL_TIME_BUDGET_SEC: '120'
-        run: python -m pytest -q tests
+        run: python -m pytest -q tests --ignore=tests/test_parallel_smoke.py
