@@ -17,8 +17,7 @@ jobs:
 
       - name: Clone legacy Baseball integration branch
         run: |
-          git clone --branch v4.4-baseball-integration --single-branch \
-            https://github.com/sasasotaro1202-star/Baseball.git legacy-baseball
+          git clone --branch v4.4-baseball-integration --single-branch https://github.com/sasasotaro1202-star/Baseball.git legacy-baseball
 
       - name: Copy Baseball-only implementation
         shell: bash
@@ -27,7 +26,6 @@ jobs:
           src="$GITHUB_WORKSPACE/legacy-baseball"
           dst="$GITHUB_WORKSPACE"
 
-          # Canonical Baseball engine and specification.
           cp "$src/baseball_backtest.py" "$dst/baseball_backtest.py"
           cp "$src/BASEBALL_SYSTEM_SPEC.md" "$dst/BASEBALL_SYSTEM_SPEC.md"
           cp "$src/DATA_SOURCES.md" "$dst/DATA_SOURCES.md"
@@ -35,11 +33,11 @@ jobs:
           cp "$src/BACKTEST_AUDIT.md" "$dst/BACKTEST_AUDIT.md"
           cp "$src/config.json" "$dst/config.json"
 
-          # Baseball-specific source/runtime modules.
           for d in core data evaluation monitoring prediction research tests; do
             if [ -d "$src/$d" ]; then
               mkdir -p "$dst/$d"
               rsync -a --delete \
+                --exclude='soccer/' \
                 --exclude='*.csv' \
                 --exclude='*.parquet' \
                 --exclude='*.feather' \
@@ -51,17 +49,17 @@ jobs:
             fi
           done
 
-          # Only the dedicated Baseball PIT acquisition workflow is migrated.
           mkdir -p "$dst/.github/workflows"
           cp "$src/.github/workflows/baseball_pit_acquisition.yml" "$dst/.github/workflows/baseball_pit_acquisition.yml"
           cp "$src/.github/workflows/baseball_v44_compatibility.yml" "$dst/.github/workflows/baseball_v44_compatibility.yml"
 
           rm -rf "$dst/legacy-baseball"
 
-      - name: Remove accidental non-Baseball workflow/data artifacts
+      - name: Remove non-Baseball artifacts
         shell: bash
         run: |
           set -euo pipefail
+          find data -maxdepth 1 -type d -name 'soccer' -prune -exec rm -rf {} + 2>/dev/null || true
           rm -f .github/workflows/openfootball-data-acquisition.yml
           rm -f .github/workflows/soccer-data-acquisition.yml
           rm -f .github/workflows/pipeline.yml
@@ -82,6 +80,7 @@ jobs:
           test -d prediction
           test -d research
           test -d tests
+          ! find . -path '*/soccer/*' -type f | grep -q .
           python -m py_compile baseball_backtest.py
           python - <<'PY'
           import pathlib
