@@ -55,15 +55,22 @@ class TotalRunsLine:
 
 
 def low_high_threshold(line: float) -> tuple[float, float]:
-    """Return the integer Low/High boundary for a standard baseball total."""
+    """Return the inclusive integer boundaries for Low/High.
+
+    For half-point totals such as 7.5, Low is 7 or fewer and High is 8 or
+    more. For integer totals, the exact line is a PUSH, so the returned pair
+    is the first High integer and the first integer above it.
+    """
     line = float(line)
     if abs(line * 2 - round(line * 2)) > 1e-9 or line < 0:
         raise ValueError("market line must be an integer or half-point")
     if line.is_integer():
-        cutoff = int(line)
+        low_max = int(line) - 1
+        high_min = int(line) + 1
     else:
-        cutoff = int(line + 0.5)
-    return float(cutoff), float(cutoff + 1)
+        low_max = int(line)
+        high_min = low_max + 1
+    return float(low_max), float(high_min)
 
 
 def classify_total(total_runs: int, line: float) -> str:
