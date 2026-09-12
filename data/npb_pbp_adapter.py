@@ -75,12 +75,10 @@ def normalize_pbp_frame(raw: pd.DataFrame) -> pd.DataFrame:
         home_pitcher = first_half(g, ("top", "表", "visitor", "away", "v"))
         away_pitcher = first_half(g, ("bottom", "裏", "home", "h"))
         starters.append((gid, home_pitcher, away_pitcher))
-    starter_df = pd.DataFrame(starters, columns=["game_id", "home_starter", "away_starter"])
+    starter_df = pd.DataFrame(starters, columns=["game_id", "home_pitcher", "away_pitcher"])
     out = out.merge(starter_df, on="game_id", how="left")
     out = out.drop(columns=["_pitcher", "_half"])
 
-    # Keep only rows with an identifiable game and date. Duplicate game rows are
-    # intentional at PBP level and are reduced by the domain aggregator.
     out = out.dropna(subset=["game_id", "date"]).reset_index(drop=True)
     return out
 
