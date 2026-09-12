@@ -15,7 +15,7 @@ def test_calibration_rejects_nonfinite_input():
 
 
 def test_calibration_requires_probability_bounds():
-    with pytest.raises(ValueError, match="\[0,1\]"):
+    with pytest.raises(ValueError, match=r"\[0,1\]"):
         TemperatureCalibration().transform(np.array([[2.0, 1.0]]))
 
 
