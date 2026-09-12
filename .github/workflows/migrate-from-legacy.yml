@@ -1,0 +1,108 @@
+name: Migrate Baseball system from legacy repository
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Clone legacy Baseball integration branch
+        run: |
+          git clone --branch v4.4-baseball-integration --single-branch \
+            https://github.com/sasasotaro1202-star/Baseball.git legacy-baseball
+
+      - name: Copy Baseball-only implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="$GITHUB_WORKSPACE/legacy-baseball"
+          dst="$GITHUB_WORKSPACE"
+
+          # Canonical Baseball engine and specification.
+          cp "$src/baseball_backtest.py" "$dst/baseball_backtest.py"
+          cp "$src/BASEBALL_SYSTEM_SPEC.md" "$dst/BASEBALL_SYSTEM_SPEC.md"
+          cp "$src/DATA_SOURCES.md" "$dst/DATA_SOURCES.md"
+          cp "$src/DATA_SOURCE_POLICY.json" "$dst/DATA_SOURCE_POLICY.json"
+          cp "$src/BACKTEST_AUDIT.md" "$dst/BACKTEST_AUDIT.md"
+          cp "$src/config.json" "$dst/config.json"
+
+          # Baseball-specific source/runtime modules.
+          for d in core data evaluation monitoring prediction research tests; do
+            if [ -d "$src/$d" ]; then
+              mkdir -p "$dst/$d"
+              rsync -a --delete \
+                --exclude='*.csv' \
+                --exclude='*.parquet' \
+                --exclude='*.feather' \
+                --exclude='*.pkl' \
+                --exclude='*.joblib' \
+                --exclude='*.zip' \
+                --exclude='results/' \
+                "$src/$d/" "$dst/$d/"
+            fi
+          done
+
+          # Only the dedicated Baseball PIT acquisition workflow is migrated.
+          mkdir -p "$dst/.github/workflows"
+          cp "$src/.github/workflows/baseball_pit_acquisition.yml" "$dst/.github/workflows/baseball_pit_acquisition.yml"
+          cp "$src/.github/workflows/baseball_v44_compatibility.yml" "$dst/.github/workflows/baseball_v44_compatibility.yml"
+
+          rm -rf "$dst/legacy-baseball"
+
+      - name: Remove accidental non-Baseball workflow/data artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/openfootball-data-acquisition.yml
+          rm -f .github/workflows/soccer-data-acquisition.yml
+          rm -f .github/workflows/pipeline.yml
+          rm -f .github/workflows/pipeline-parallel.yml
+          rm -f .github/workflows/trigger-api.yml
+          rm -f .github/workflows/trigger-run.json
+
+      - name: Validate migration shape without running backtests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s baseball_backtest.py
+          test -s BASEBALL_SYSTEM_SPEC.md
+          test -d core
+          test -d data
+          test -d evaluation
+          test -d monitoring
+          test -d prediction
+          test -d research
+          test -d tests
+          python -m py_compile baseball_backtest.py
+          python - <<'PY'
+          import pathlib
+          forbidden = []
+          for p in pathlib.Path('.github/workflows').glob('*'):
+              text = p.read_text(errors='ignore')
+              if 'soccer' in text.lower() or 'openfootball' in text.lower():
+                  forbidden.append(str(p))
+          if forbidden:
+              raise SystemExit(f'Non-Baseball workflow references remain: {forbidden}')
+          print('Migration shape validation passed; no backtest executed.')
+          PY
+
+      - name: Commit migration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No migration changes to commit."
+          else
+            git commit -m "Migrate Baseball v4.4 integration system"
+            git push origin HEAD:main
+          fi
