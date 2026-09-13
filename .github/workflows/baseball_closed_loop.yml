@@ -152,6 +152,8 @@ jobs:
           import pandas as pd
           from data.npb_pbp_adapter import normalize_pbp_frame
 
+          # Adapter-aware validation: the public release schema is allowed to
+          # evolve, while the normalized research contract stays fixed.
           files = sorted(Path('data').glob('*_pbp.csv'))
           expected = {str(y) for y in range(2020, 2027)}
           years = {p.name[:4] for p in files}
@@ -164,9 +166,6 @@ jobs:
               if p.stat().st_size == 0:
                   raise SystemExit(f'empty PBP file: {p}')
 
-              # The public release schema uses home_total_runs/away_total_runs
-              # (mapped by the adapter to home_score/away_score). Do not require
-              # the adapter's internal names in the raw release asset.
               sample = pd.read_csv(p, nrows=100, low_memory=False)
               required_raw = {'game_id', 'home_total_runs', 'away_total_runs'}
               legacy_raw = {'GameID', 'H_R', 'V_R'}
@@ -183,7 +182,8 @@ jobs:
                   raise SystemExit(f'no usable home scores in sample: {p}')
               if pd.to_numeric(normalized['away_score'], errors='coerce').isna().all():
                   raise SystemExit(f'no usable away scores in sample: {p}')
-              if (pd.to_numeric(normalized[['home_score', 'away_score']].stack(), errors='coerce') < 0).any():
+              score_values = pd.to_numeric(normalized[['home_score', 'away_score']].stack(), errors='coerce')
+              if (score_values < 0).any():
                   raise SystemExit(f'negative NPB scores in sample: {p}')
               normalized_files += 1
               total_rows += len(normalized)
