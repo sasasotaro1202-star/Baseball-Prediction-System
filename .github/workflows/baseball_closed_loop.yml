@@ -52,11 +52,12 @@ jobs:
             data/2024-*_pbp.csv
             data/2025-*_pbp.csv
             data/.npb_official_schedule_cache/**
-          key: baseball-npb-historical-v3-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          key: baseball-npb-historical-v4-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
           restore-keys: |
+            baseball-npb-historical-v4-${{ runner.os }}-
             baseball-npb-historical-v3-${{ runner.os }}-
             baseball-npb-historical-v2-${{ runner.os }}-
-            baseball-npb-historical-v2-${{ runner.os }}-${{ hashFiles('requirements.txt') }}-
+            baseball-npb-historical-v3-${{ runner.os }}-${{ hashFiles('requirements.txt') }}-
 
       - name: Install research dependencies
         timeout-minutes: 10
@@ -197,7 +198,7 @@ jobs:
           if normalized_files <= 0 or usable_game_rows <= 0:
               raise SystemExit('NPB staged release set contains no usable game rows')
           print(f'NPB staged source integrity OK: files={normalized_files}, announcement_only={announcement_only_files}, sampled_rows={sampled_rows}, usable_game_rows={usable_game_rows}')
-          print('Final score integrity is deferred to the research adapter, which repairs realized labels from official NPB result pages before OOS research.')
+          print('Final score integrity is deferred to the production NPB target-repair adapter.')
           PY
           mkdir -p data/.npb_official_schedule_cache
           printf '%s\n' 'NPB_SOURCE_STAGE_READY' > data/.npb_stage_ready
@@ -215,7 +216,7 @@ jobs:
             data/2024-*_pbp.csv
             data/2025-*_pbp.csv
             data/.npb_official_schedule_cache/**
-          key: baseball-npb-historical-v3-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          key: baseball-npb-historical-v4-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
 
       - name: Run chronological Baseball OOS research
         timeout-minutes: 60
@@ -223,7 +224,7 @@ jobs:
           BASEBALL_TIME_BUDGET_SEC: '1500'
           NPB_RETRAIN_EVERY: '150'
           MLB_ENRICH_STARTERS: '0'
-        run: python -u research_runner.py --league BOTH --mlb-start 2020 --mlb-end 2026 --retries 3
+        run: python -u research_runner_v6.py --league BOTH --mlb-start 2020 --mlb-end 2026 --retries 3
 
       - name: Verify research manifest
         timeout-minutes: 5
