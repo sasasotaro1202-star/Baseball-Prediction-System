@@ -18,6 +18,14 @@ import pandas as pd
 import requests
 
 DETAIL_URL = "https://npb.jp/games/{year}/schedule_{month:02d}_detail.html"
+TEAM_RESULT_URL = "https://npb.jp/bis/teams/results_{code}_{month:02d}.html"
+TEAM_RESULT_CODES = {
+    "g": "読売ジャイアンツ", "t": "阪神タイガース", "d": "中日ドラゴンズ",
+    "c": "広島東洋カープ", "s": "東京ヤクルトスワローズ", "db": "横浜DeNAベイスターズ",
+    "h": "福岡ソフトバンクホークス", "f": "北海道日本ハムファイターズ",
+    "e": "東北楽天ゴールデンイーグルス", "m": "千葉ロッテマリーンズ",
+    "l": "埼玉西武ライオンズ", "b": "オリックス・バファローズ",
+}
 TEAM = {
     "巨人": "読売ジャイアンツ", "読売": "読売ジャイアンツ", "読売ジャイアンツ": "読売ジャイアンツ",
     "阪神": "阪神タイガース", "阪神タイガース": "阪神タイガース",
@@ -61,24 +69,27 @@ class _Rows(HTMLParser):
 def months_for_year(year: int) -> tuple[int, ...]:
     return tuple(range(6, 11)) if year == 2020 else tuple(range(3, 11))
 
-def _fetch_month(year: int, month: int, retries: int = 3) -> list[dict]:
-    url = DETAIL_URL.format(year=year, month=month)
+def _request_rows(url: str, retries: int = 3) -> list[list[str]]:
     last = None
     for attempt in range(retries):
         try:
-            r = requests.get(url, timeout=20, headers={"User-Agent": "Baseball-Prediction-System/3.0"})
+            r = requests.get(url, timeout=20, headers={"User-Agent": "Baseball-Prediction-System/4.0"})
             if r.status_code == 404: return []
             r.raise_for_status()
-            parser = _Rows(); parser.feed(r.text); break
+            parser = _Rows(); parser.feed(r.text)
+            return parser.rows
         except Exception as exc:
             last = exc
             if attempt + 1 < retries: time.sleep(attempt + 1)
-    else:
-        raise RuntimeError(f"official NPB schedule failed: {url}: {last}")
+    raise RuntimeError(f"official NPB source failed: {url}: {last}")
+
+def _fetch_month(year: int, month: int, retries: int = 3) -> list[dict]:
+    url = DETAIL_URL.format(year=year, month=month)
+    rows = _request_rows(url, retries=retries)
     date_re = re.compile(r"^(\d{1,2})/(\d{1,2})")
     score_re = re.compile(r"^(.+?)\s+(\d+)\s*-\s*(\d+)\s+(.+?)$")
     current_date = None; out = []
-    for row in parser.rows:
+    for row in rows:
         if len(row) < 2: continue
         dm = date_re.search(row[0])
         if dm: current_date = f"{year:04d}-{int(dm.group(1)):02d}-{int(dm.group(2)):02d}"
@@ -91,9 +102,52 @@ def _fetch_month(year: int, month: int, retries: int = 3) -> list[dict]:
             out.append({"date": current_date, "home": home, "away": away, "home_score": int(hs), "away_score": int(aws), "source_url": url})
     return out
 
+def _fetch_team_month(year: int, month: int, code: str, team: str, cache: Path) -> list[dict]:
+    url = TEAM_RESULT_URL.format(code=code, month=month)
+    cache_path = cache / f"{year}-{month:02d}_{code}_team_v1.csv"
+    if cache_path.exists() and cache_path.stat().st_size > 0:
+        try: return pd.read_csv(cache_path).to_dict("records")
+        except Exception: cache_path.unlink(missing_ok=True)
+    rows = _request_rows(url)
+    date_re = re.compile(r"^(\d{1,2})(?:/(\d{1,2}))?$")
+    score_re = re.compile(r"^(\d+)\s*-\s*(\d+)$")
+    current_month = month
+    out = []
+    for row in rows:
+        if len(row) < 7: continue
+        d = row[0].strip()
+        dm = date_re.match(d)
+        if dm:
+            day = int(dm.group(2) or dm.group(1)) if dm.group(2) else int(dm.group(1))
+            if "/" in d: current_month = int(dm.group(1)); day = int(dm.group(2))
+            current_date = f"{year:04d}-{current_month:02d}-{day:02d}"
+        else:
+            continue
+        opponent = canon_team(row[1])
+        score = row[6].strip()
+        m = score_re.match(score)
+        if not m or opponent not in set(TEAM.values()): continue
+        if "中止" in " ".join(row): continue
+        out.append({"date": current_date, "team": team, "opponent": opponent, "team_score": int(m.group(1)), "opponent_score": int(m.group(2)), "source_url": url})
+    if out: pd.DataFrame(out).to_csv(cache_path, index=False)
+    return out
+
+def _team_result_fallback(years: Iterable[int], cache_dir: str | Path) -> pd.DataFrame:
+    cache = Path(cache_dir); cache.mkdir(parents=True, exist_ok=True)
+    jobs = [(int(y), m, code, team) for y in sorted(set(int(y) for y in years)) for m in months_for_year(int(y)) for code, team in TEAM_RESULT_CODES.items()]
+    rows = []
+    with ThreadPoolExecutor(max_workers=12) as ex:
+        pending = {ex.submit(_fetch_team_month, y, m, code, team, cache): (y, m, code, team) for y, m, code, team in jobs}
+        for fut in as_completed(pending):
+            rows.extend(fut.result())
+    if not rows: return pd.DataFrame(columns=["date","team","opponent","team_score","opponent_score","source_url"])
+    return pd.DataFrame(rows).drop_duplicates(["date","team","opponent"], keep="last").reset_index(drop=True)
+
 def official_schedule(years: Iterable[int], cache_dir: str | Path) -> pd.DataFrame:
     cache = Path(cache_dir); cache.mkdir(parents=True, exist_ok=True)
-    jobs = [(int(y), m) for y in sorted(set(years)) for m in months_for_year(int(y))]; rows = []
+    years = sorted(set(int(y) for y in years))
+    jobs = [(y, m) for y in years for m in months_for_year(y)]
+    rows = []
     with ThreadPoolExecutor(max_workers=min(12, max(1, len(jobs)))) as ex:
         pending = {}
         for year, month in jobs:
@@ -105,8 +159,32 @@ def official_schedule(years: Iterable[int], cache_dir: str | Path) -> pd.DataFra
         for fut in as_completed(pending):
             year, month, path = pending[fut]; got = fut.result()
             if got: pd.DataFrame(got).to_csv(path, index=False); rows.extend(got)
-    if not rows: return pd.DataFrame(columns=["date","home","away","home_score","away_score","source_url"])
-    return pd.DataFrame(rows).drop_duplicates(["date","home","away"]).reset_index(drop=True)
+    if rows:
+        schedule = pd.DataFrame(rows).drop_duplicates(["date","home","away"]).reset_index(drop=True)
+    else:
+        schedule = pd.DataFrame(columns=["date","home","away","home_score","away_score","source_url"])
+    # NPB's schedule-detail endpoint can expose upcoming games without realized
+    # scores depending on server/cache state. Fall back to the official team
+    # result tables, which are realized-result pages and carry each team's score.
+    fallback_years = []
+    for year in years:
+        if schedule.empty or not ((pd.to_datetime(schedule["date"], errors="coerce", utc=True).dt.year == year) & schedule["home_score"].notna() & schedule["away_score"].notna()).any():
+            fallback_years.append(year)
+    if fallback_years:
+        team_rows = _team_result_fallback(fallback_years, cache)
+        if not team_rows.empty:
+            repaired = schedule.copy()
+            if not repaired.empty:
+                repaired["date_key"] = repaired["date"].astype(str); repaired["home_key"] = repaired["home"].map(canon_team); repaired["away_key"] = repaired["away"].map(canon_team)
+            pairs = team_rows.copy(); pairs["date_key"] = pairs["date"].astype(str); pairs["team_key"] = pairs["team"].map(canon_team); pairs["opp_key"] = pairs["opponent"].map(canon_team)
+            home = pairs.rename(columns={"team_key":"home_key","opp_key":"away_key","team_score":"home_score","opponent_score":"away_score"})[["date_key","home_key","away_key","home_score","away_score","source_url"]]
+            if repaired.empty:
+                repaired = home.rename(columns={"date_key":"date","home_key":"home","away_key":"away"})
+            else:
+                repaired = repaired.drop(columns=[c for c in ["home_score","away_score","source_url"] if c in repaired.columns]).merge(home, on=["date_key","home_key","away_key"], how="outer")
+                repaired["date"] = repaired["date"].fillna(repaired["date_key"]); repaired["home"] = repaired["home"].fillna(repaired["home_key"]); repaired["away"] = repaired["away"].fillna(repaired["away_key"])
+            schedule = repaired.drop(columns=[c for c in ["date_key","home_key","away_key"] if c in repaired.columns])
+    return schedule.drop_duplicates(["date","home","away"]).reset_index(drop=True)
 
 def _local_score_index(data_dir: str | Path, years: Iterable[int]) -> pd.DataFrame:
     root = Path(data_dir); frames = []
