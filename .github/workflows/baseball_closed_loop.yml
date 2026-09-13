@@ -152,8 +152,10 @@ jobs:
           import pandas as pd
           from data.npb_pbp_adapter import normalize_pbp_frame
 
-          # Adapter-aware validation: the public release schema is allowed to
-          # evolve, while the normalized research contract stays fixed.
+          # Adapter-aware validation: validate the source schema and the
+          # normalized contract without assuming that the first rows contain
+          # final scores. NPB releases commonly begin each game with pre-game
+          # announcement rows whose score fields are intentionally empty.
           files = sorted(Path('data').glob('*_pbp.csv'))
           expected = {str(y) for y in range(2020, 2027)}
           years = {p.name[:4] for p in files}
@@ -161,7 +163,7 @@ jobs:
               raise SystemExit(f'missing NPB years: {sorted(expected-years)}')
 
           normalized_files = 0
-          total_rows = 0
+          sampled_rows = 0
           for p in files:
               if p.stat().st_size == 0:
                   raise SystemExit(f'empty PBP file: {p}')
@@ -178,17 +180,31 @@ jobs:
               for col in ('game_id', 'date', 'home_score', 'away_score'):
                   if col not in normalized.columns:
                       raise SystemExit(f'normalized NPB schema missing {col}: {p}')
-              if pd.to_numeric(normalized['home_score'], errors='coerce').isna().all():
-                  raise SystemExit(f'no usable home scores in sample: {p}')
-              if pd.to_numeric(normalized['away_score'], errors='coerce').isna().all():
-                  raise SystemExit(f'no usable away scores in sample: {p}')
-              score_values = pd.to_numeric(normalized[['home_score', 'away_score']].stack(), errors='coerce')
-              if (score_values < 0).any():
-                  raise SystemExit(f'negative NPB scores in sample: {p}')
-              normalized_files += 1
-              total_rows += len(normalized)
 
-          print(f'NPB staged integrity OK: {normalized_files} files, {total_rows} sampled normalized rows')
+              # Do not require scores in the first 100 rows: those rows can be
+              # pre-game announcements. Check the actual release in chunks and
+              # require at least one usable score pair somewhere in the file.
+              raw_score_cols = (
+                  ('home_total_runs', 'away_total_runs')
+                  if required_raw.issubset(sample.columns)
+                  else ('H_R', 'V_R')
+              )
+              usable_score_pair = False
+              for chunk in pd.read_csv(p, usecols=list(raw_score_cols), chunksize=50000, low_memory=False):
+                  hs = pd.to_numeric(chunk[raw_score_cols[0]], errors='coerce')
+                  aws = pd.to_numeric(chunk[raw_score_cols[1]], errors='coerce')
+                  if ((hs.notna()) & (aws.notna())).any():
+                      usable_score_pair = True
+                      if (hs[hs.notna()] < 0).any() or (aws[aws.notna()] < 0).any():
+                          raise SystemExit(f'negative NPB scores in {p}')
+                      break
+              if not usable_score_pair:
+                  raise SystemExit(f'no usable final-score pair anywhere in file: {p}')
+
+              normalized_files += 1
+              sampled_rows += len(normalized)
+
+          print(f'NPB staged integrity OK: {normalized_files} files, {sampled_rows} sampled normalized rows')
           PY
 
       - name: Save immutable historical NPB PBP cache
