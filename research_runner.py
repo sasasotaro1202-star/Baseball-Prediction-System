@@ -28,21 +28,34 @@ def preflight() -> None:
 
 
 def _repair_npb_targets(pbp: pd.DataFrame, games: pd.DataFrame) -> pd.DataFrame:
-    """Repair only observed NPB target columns from monotone PBP scores."""
+    """Fill missing NPB targets from PBP without overwriting trusted game aggregates."""
     required = {"game_id", "home_score", "away_score"}
     if not required.issubset(pbp.columns):
         raise RuntimeError("NPB PBP adapter did not expose explicit score columns")
+
+    out = games.copy()
+    out["game_id"] = out["game_id"].astype(str)
+    out["home_score"] = pd.to_numeric(out["home_score"], errors="coerce")
+    out["away_score"] = pd.to_numeric(out["away_score"], errors="coerce")
+
     score = (
         pbp.assign(game_id=pbp["game_id"].astype(str))
+        .assign(
+            home_score=pd.to_numeric(pbp["home_score"], errors="coerce"),
+            away_score=pd.to_numeric(pbp["away_score"], errors="coerce"),
+        )
         .groupby("game_id", as_index=False)
         .agg(home_score=("home_score", "max"), away_score=("away_score", "max"))
     )
-    out = games.copy()
-    out["game_id"] = out["game_id"].astype(str)
-    out = out.drop(columns=[c for c in ("home_score", "away_score") if c in out.columns])
-    out = out.merge(score, on="game_id", how="left", validate="one_to_one")
+
+    out = out.merge(score, on="game_id", how="left", suffixes=("", "_pbp"), validate="one_to_one")
+    out["home_score"] = out["home_score"].fillna(out["home_score_pbp"])
+    out["away_score"] = out["away_score"].fillna(out["away_score_pbp"])
+    out = out.drop(columns=["home_score_pbp", "away_score_pbp"])
+
     if out[["home_score", "away_score"]].isna().any().any():
-        raise RuntimeError("NPB target repair left missing final scores")
+        missing = int(out[["home_score", "away_score"]].isna().any(axis=1).sum())
+        raise RuntimeError(f"NPB target repair left missing final scores: {missing} games")
     if (out[["home_score", "away_score"]] < 0).any().any():
         raise RuntimeError("NPB target repair produced negative scores")
     return out
