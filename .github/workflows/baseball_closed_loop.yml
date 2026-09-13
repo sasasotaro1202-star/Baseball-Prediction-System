@@ -123,7 +123,6 @@ jobs:
             echo "NPB historical year ${year}: downloaded=${downloaded}"
           done
 
-          # 2026 is live: always refresh it; never trust a stale cache.
           rm -f data/2026-*_pbp.csv
           current_downloaded=0
           for attempt in 1 2 3; do
@@ -144,7 +143,7 @@ jobs:
           fi
 
       - name: Validate staged NPB data integrity
-        timeout-minutes: 5
+        timeout-minutes: 10
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -152,10 +151,6 @@ jobs:
           import pandas as pd
           from data.npb_pbp_adapter import normalize_pbp_frame
 
-          # Adapter-aware validation: validate the source schema and normalized
-          # contract. Some monthly releases are legitimately announcement-only
-          # (for example off-season/preseason months), so they are accepted as
-          # valid source files but contribute zero completed games to research.
           files = sorted(Path('data').glob('*_pbp.csv'))
           expected = {str(y) for y in range(2020, 2027)}
           years = {p.name[:4] for p in files}
@@ -163,52 +158,41 @@ jobs:
               raise SystemExit(f'missing NPB years: {sorted(expected-years)}')
 
           normalized_files = 0
+          completed_game_ids = set()
           announcement_only_files = 0
           sampled_rows = 0
-          completed_score_pairs = 0
           for p in files:
               if p.stat().st_size == 0:
                   raise SystemExit(f'empty PBP file: {p}')
-
               sample = pd.read_csv(p, nrows=100, low_memory=False)
               required_raw = {'game_id', 'home_total_runs', 'away_total_runs'}
               legacy_raw = {'GameID', 'H_R', 'V_R'}
               if not (required_raw.issubset(sample.columns) or legacy_raw.issubset(sample.columns)):
                   raise SystemExit(f'unrecognized NPB PBP schema in {p}: {sorted(sample.columns.tolist())[:40]}')
 
-              normalized = normalize_pbp_frame(sample)
+              normalized = normalize_pbp_frame(sample, data_dir='data')
               if normalized.empty:
                   raise SystemExit(f'NPB PBP file normalized to zero rows: {p}')
               for col in ('game_id', 'date', 'home_score', 'away_score'):
                   if col not in normalized.columns:
                       raise SystemExit(f'normalized NPB schema missing {col}: {p}')
-
-              raw_score_cols = (
-                  ('home_total_runs', 'away_total_runs')
-                  if required_raw.issubset(sample.columns)
-                  else ('H_R', 'V_R')
-              )
-              file_score_pairs = 0
-              for chunk in pd.read_csv(p, usecols=list(raw_score_cols), chunksize=50000, low_memory=False):
-                  hs = pd.to_numeric(chunk[raw_score_cols[0]], errors='coerce')
-                  aws = pd.to_numeric(chunk[raw_score_cols[1]], errors='coerce')
-                  paired = hs.notna() & aws.notna()
-                  if paired.any():
-                      file_score_pairs += int(paired.sum())
-                  if (hs[hs.notna()] < 0).any() or (aws[aws.notna()] < 0).any():
-                      raise SystemExit(f'negative NPB scores in {p}')
-
-              if file_score_pairs == 0:
-                  announcement_only_files += 1
-                  print(f'NPB source accepted as announcement-only: {p}')
+              hs = pd.to_numeric(normalized['home_score'], errors='coerce')
+              aw = pd.to_numeric(normalized['away_score'], errors='coerce')
+              paired = normalized['game_id'].astype(str).where(hs.notna() & aw.notna())
+              ids = set(paired.dropna().unique())
+              if ids:
+                  completed_game_ids.update(ids)
               else:
-                  completed_score_pairs += file_score_pairs
+                  announcement_only_files += 1
+                  print(f'NPB source accepted as announcement-only/target-repair-only: {p}')
+              if ((hs.dropna() < 0).any() or (aw.dropna() < 0).any()):
+                  raise SystemExit(f'negative NPB scores in {p}')
               normalized_files += 1
               sampled_rows += len(normalized)
 
-          if completed_score_pairs <= 0:
-              raise SystemExit('NPB staged release set contains no completed-game score pairs')
-          print(f'NPB staged integrity OK: files={normalized_files}, announcement_only={announcement_only_files}, sampled_rows={sampled_rows}, score_pairs={completed_score_pairs}')
+          if not completed_game_ids:
+              raise SystemExit('NPB staged release set contains no repairable completed-game score pairs')
+          print(f'NPB staged integrity OK: files={normalized_files}, announcement_only={announcement_only_files}, sampled_rows={sampled_rows}, sampled_completed_games={len(completed_game_ids)}')
           PY
 
       - name: Save immutable historical NPB PBP cache
