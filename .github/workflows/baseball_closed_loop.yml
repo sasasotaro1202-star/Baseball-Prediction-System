@@ -17,6 +17,9 @@ concurrency:
   group: baseball-closed-loop
   cancel-in-progress: true
 
+env:
+  PYTHONPATH: .
+
 jobs:
   lifecycle:
     runs-on: ubuntu-latest
@@ -62,16 +65,19 @@ jobs:
           set -euo pipefail
           mkdir -p data
           for year in $(seq 2020 2026); do
+            downloaded=0
             for attempt in 1 2 3; do
               if gh release download pbp \
                 --repo armstjc/Nippon-Baseball-Data-Repository \
                 --pattern "${year}-*_pbp.csv" \
                 --dir data \
                 --clobber; then
+                downloaded=1
                 break
               fi
               if [ "$attempt" -lt 3 ]; then sleep $((attempt * 5)); fi
             done
+            echo "NPB release year ${year}: downloaded=${downloaded}"
           done
           total_files=$(find data -maxdepth 1 -name '*_pbp.csv' | wc -l | tr -d ' ')
           echo "NPB PBP files staged: $total_files"
@@ -86,27 +92,39 @@ jobs:
           BASEBALL_TIME_BUDGET_SEC: '1500'
           NPB_RETRAIN_EVERY: '150'
           MLB_ENRICH_STARTERS: '0'
-        run: python research_runner.py --league BOTH --mlb-start 2020 --mlb-end 2026 --retries 2
+        run: python -u research_runner.py --league BOTH --mlb-start 2020 --mlb-end 2026 --retries 2
+
+      - name: Verify research manifest
+        if: always()
+        run: |
+          set -euo pipefail
+          test -s results/research_execution_manifest.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('results/research_execution_manifest.json')
+          obj = json.loads(p.read_text(encoding='utf-8'))
+          print(json.dumps(obj, ensure_ascii=False, indent=2))
+          if obj.get('overall_status') != 'SUCCESS':
+              raise SystemExit('research manifest is not SUCCESS')
+          for row in obj.get('results', []):
+              if row.get('status') != 'SUCCESS' or int(row.get('predictions', 0)) <= 0:
+                  raise SystemExit('invalid research result: ' + repr(row))
+          PY
 
       - name: Execute evidence-based closed-loop lifecycle
-        run: python research/closed_loop_execute.py
+        run: python -m research.closed_loop_execute
 
       - name: Generate lifecycle governance report
         if: always()
-        run: |
-          mkdir -p results
-          python research/closed_loop_governance.py
+        run: python -m research.closed_loop_governance
 
       - name: Enforce lifecycle completion
         if: always()
         run: |
           set -euo pipefail
-          if [ -s results/lifecycle_execution.json ]; then
-            cat results/lifecycle_execution.json
-          else
-            echo 'lifecycle_execution.json missing' >&2
-            exit 1
-          fi
+          test -s results/lifecycle_execution.json
+          cat results/lifecycle_execution.json
           python - <<'PY'
           import json
           from pathlib import Path
@@ -131,7 +149,7 @@ jobs:
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -f data/pit/*.jsonl || true
+          git add -f data/pit/*.jsonl 2>/dev/null || true
           git add results/*.json results/*.csv 2>/dev/null || true
           if git diff --cached --quiet; then
             echo 'No lifecycle artifacts changed.'
