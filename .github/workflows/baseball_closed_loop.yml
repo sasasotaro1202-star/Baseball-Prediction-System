@@ -15,7 +15,9 @@ permissions:
 
 concurrency:
   group: baseball-closed-loop
-  cancel-in-progress: true
+  # Never cancel a long-running research job because a new commit arrived.
+  # Queue the newer run instead; this avoids losing an otherwise healthy OOS run.
+  cancel-in-progress: false
 
 env:
   PYTHONPATH: .
@@ -36,6 +38,7 @@ jobs:
           cache-dependency-path: requirements.txt
 
       - name: Install research dependencies
+        timeout-minutes: 10
         run: python -m pip install --disable-pip-version-check --retries 5 --timeout 60 -r requirements.txt
 
       - name: Compile and preflight
@@ -61,6 +64,7 @@ jobs:
       - name: Stage historical NPB PBP release data
         env:
           GH_TOKEN: ${{ github.token }}
+        timeout-minutes: 15
         run: |
           set -euo pipefail
           mkdir -p data
@@ -81,15 +85,19 @@ jobs:
             done
             echo "NPB release year ${year}: downloaded=${downloaded}"
           done
-          echo "NPB PBP release files successfully staged for ${success} years"
+          echo "NPB PBP release years successfully staged: $success/7"
           total_files=$(find data -maxdepth 1 -name '*_pbp.csv' | wc -l | tr -d ' ')
           echo "NPB PBP files staged: $total_files"
-          if [ "$total_files" -lt 1 ]; then
-            echo "NPB release download produced no PBP CSV files" >&2
+          # The research horizon is 2020-2026. Do not silently continue with a
+          # partial historical source set; fail closed and let the next scheduled
+          # run retry the acquisition instead of producing a biased backtest.
+          if [ "$success" -lt 7 ] || [ "$total_files" -lt 7 ]; then
+            echo "NPB historical release set is incomplete; refusing partial backtest" >&2
             exit 1
           fi
 
       - name: Run chronological Baseball OOS research
+        timeout-minutes: 40
         env:
           BASEBALL_TIME_BUDGET_SEC: '1500'
           NPB_RETRAIN_EVERY: '150'
