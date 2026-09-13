@@ -39,7 +39,7 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
 
-      - name: Restore immutable historical NPB PBP cache
+      - name: Restore immutable historical NPB PBP and official-result cache
         id: npb-cache
         continue-on-error: true
         uses: actions/cache@v4
@@ -51,10 +51,12 @@ jobs:
             data/2023-*_pbp.csv
             data/2024-*_pbp.csv
             data/2025-*_pbp.csv
-          key: baseball-npb-historical-v2-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+            data/.npb_official_schedule_cache/**
+          key: baseball-npb-historical-v3-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
           restore-keys: |
-            baseball-npb-historical-v2-${{ runner.os }}-${{ hashFiles('requirements.txt') }}-
+            baseball-npb-historical-v3-${{ runner.os }}-
             baseball-npb-historical-v2-${{ runner.os }}-
+            baseball-npb-historical-v2-${{ runner.os }}-${{ hashFiles('requirements.txt') }}-
 
       - name: Install research dependencies
         timeout-minutes: 10
@@ -99,7 +101,7 @@ jobs:
       - name: Stage historical NPB PBP release data
         env:
           GH_TOKEN: ${{ github.token }}
-        timeout-minutes: 15
+        timeout-minutes: 20
         run: |
           set -euo pipefail
           mkdir -p data
@@ -143,6 +145,7 @@ jobs:
           fi
 
       - name: Validate staged NPB data integrity
+        id: npb-validate
         timeout-minutes: 10
         run: |
           set -euo pipefail
@@ -164,17 +167,12 @@ jobs:
           for p in files:
               if p.stat().st_size == 0:
                   raise SystemExit(f'empty PBP file: {p}')
-
               sample = pd.read_csv(p, nrows=100, low_memory=False)
               required_raw = {'game_id', 'home_total_runs', 'away_total_runs'}
               legacy_raw = {'GameID', 'H_R', 'V_R'}
               if not (required_raw.issubset(sample.columns) or legacy_raw.issubset(sample.columns)):
                   raise SystemExit(f'unrecognized NPB PBP schema in {p}: {sorted(sample.columns.tolist())[:40]}')
 
-              # Raw score columns are not a validity requirement: upstream releases
-              # may carry structurally present but null target columns. The adapter
-              # repairs realized targets from official NPB result pages, while this
-              # stage validates only the immutable source contract and usable game rows.
               normalized = normalize_pbp_frame(sample, data_dir=None)
               if normalized.empty:
                   announcement_only_files += 1
@@ -184,7 +182,6 @@ jobs:
               for col in ('game_id', 'date', 'home', 'away', 'home_score', 'away_score'):
                   if col not in normalized.columns:
                       raise SystemExit(f'normalized NPB schema missing {col}: {p}')
-
               valid_ids = normalized['game_id'].astype(str).str.strip().ne('')
               valid_dates = pd.to_datetime(normalized['date'], errors='coerce', utc=True).notna()
               valid_teams = normalized['home'].astype(str).str.strip().ne('') & normalized['away'].astype(str).str.strip().ne('')
@@ -194,18 +191,19 @@ jobs:
                   print(f'NPB source accepted as announcement-only/target-repair-only: {p}')
               else:
                   usable_game_rows += usable
-
               normalized_files += 1
               sampled_rows += len(normalized)
 
           if normalized_files <= 0 or usable_game_rows <= 0:
               raise SystemExit('NPB staged release set contains no usable game rows')
           print(f'NPB staged source integrity OK: files={normalized_files}, announcement_only={announcement_only_files}, sampled_rows={sampled_rows}, usable_game_rows={usable_game_rows}')
-          print('Final score integrity is deferred to the NPB adapter, which repairs realized labels from official NPB result pages before research.')
+          print('Final score integrity is deferred to the research adapter, which repairs realized labels from official NPB result pages before OOS research.')
           PY
+          mkdir -p data/.npb_official_schedule_cache
+          printf '%s\n' 'NPB_SOURCE_STAGE_READY' > data/.npb_stage_ready
 
-      - name: Save immutable historical NPB PBP cache
-        if: success()
+      - name: Save immutable historical NPB PBP and official-result cache
+        if: always() && steps.npb-validate.outcome == 'success'
         continue-on-error: true
         uses: actions/cache/save@v4
         with:
@@ -216,10 +214,11 @@ jobs:
             data/2023-*_pbp.csv
             data/2024-*_pbp.csv
             data/2025-*_pbp.csv
-          key: baseball-npb-historical-v2-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+            data/.npb_official_schedule_cache/**
+          key: baseball-npb-historical-v3-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
 
       - name: Run chronological Baseball OOS research
-        timeout-minutes: 40
+        timeout-minutes: 60
         env:
           BASEBALL_TIME_BUDGET_SEC: '1500'
           NPB_RETRAIN_EVERY: '150'
@@ -246,7 +245,7 @@ jobs:
           PY
 
       - name: Execute evidence-based closed-loop lifecycle
-        timeout-minutes: 15
+        timeout-minutes: 20
         run: python -m research.closed_loop_execute
 
       - name: Generate lifecycle governance report
@@ -286,5 +285,6 @@ jobs:
           path: |
             results/**
             data/pit/**
+            data/.npb_stage_ready
           if-no-files-found: error
           retention-days: 30
