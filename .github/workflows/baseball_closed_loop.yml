@@ -51,10 +51,10 @@ jobs:
             data/2023-*_pbp.csv
             data/2024-*_pbp.csv
             data/2025-*_pbp.csv
-          key: baseball-npb-historical-v1-${{ runner.os }}-${{ hashFiles('requirements.txt') }}-${{ github.run_id }}
+          key: baseball-npb-historical-v2-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
           restore-keys: |
-            baseball-npb-historical-v1-${{ runner.os }}-${{ hashFiles('requirements.txt') }}-
-            baseball-npb-historical-v1-${{ runner.os }}-
+            baseball-npb-historical-v2-${{ runner.os }}-${{ hashFiles('requirements.txt') }}-
+            baseball-npb-historical-v2-${{ runner.os }}-
 
       - name: Install research dependencies
         timeout-minutes: 10
@@ -150,19 +150,45 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           import pandas as pd
+          from data.npb_pbp_adapter import normalize_pbp_frame
+
           files = sorted(Path('data').glob('*_pbp.csv'))
           expected = {str(y) for y in range(2020, 2027)}
           years = {p.name[:4] for p in files}
           if not expected.issubset(years):
               raise SystemExit(f'missing NPB years: {sorted(expected-years)}')
+
+          normalized_files = 0
+          total_rows = 0
           for p in files:
               if p.stat().st_size == 0:
                   raise SystemExit(f'empty PBP file: {p}')
-              sample = pd.read_csv(p, nrows=5)
-              required = {'game_id', 'home_score', 'away_score'}
-              if not required.issubset(sample.columns):
-                  raise SystemExit(f'missing score columns in {p}')
-          print(f'NPB staged integrity OK: {len(files)} files')
+
+              # The public release schema uses home_total_runs/away_total_runs
+              # (mapped by the adapter to home_score/away_score). Do not require
+              # the adapter's internal names in the raw release asset.
+              sample = pd.read_csv(p, nrows=100, low_memory=False)
+              required_raw = {'game_id', 'home_total_runs', 'away_total_runs'}
+              legacy_raw = {'GameID', 'H_R', 'V_R'}
+              if not (required_raw.issubset(sample.columns) or legacy_raw.issubset(sample.columns)):
+                  raise SystemExit(f'unrecognized NPB PBP schema in {p}: {sorted(sample.columns.tolist())[:40]}')
+
+              normalized = normalize_pbp_frame(sample)
+              if normalized.empty:
+                  raise SystemExit(f'NPB PBP file normalized to zero rows: {p}')
+              for col in ('game_id', 'date', 'home_score', 'away_score'):
+                  if col not in normalized.columns:
+                      raise SystemExit(f'normalized NPB schema missing {col}: {p}')
+              if pd.to_numeric(normalized['home_score'], errors='coerce').isna().all():
+                  raise SystemExit(f'no usable home scores in sample: {p}')
+              if pd.to_numeric(normalized['away_score'], errors='coerce').isna().all():
+                  raise SystemExit(f'no usable away scores in sample: {p}')
+              if (pd.to_numeric(normalized[['home_score', 'away_score']].stack(), errors='coerce') < 0).any():
+                  raise SystemExit(f'negative NPB scores in sample: {p}')
+              normalized_files += 1
+              total_rows += len(normalized)
+
+          print(f'NPB staged integrity OK: {normalized_files} files, {total_rows} sampled normalized rows')
           PY
 
       - name: Save immutable historical NPB PBP cache
@@ -177,7 +203,7 @@ jobs:
             data/2023-*_pbp.csv
             data/2024-*_pbp.csv
             data/2025-*_pbp.csv
-          key: baseball-npb-historical-v1-${{ runner.os }}-${{ hashFiles('requirements.txt') }}-${{ github.run_id }}
+          key: baseball-npb-historical-v2-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
 
       - name: Run chronological Baseball OOS research
         timeout-minutes: 40
