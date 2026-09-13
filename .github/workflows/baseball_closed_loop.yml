@@ -25,7 +25,9 @@ env:
 jobs:
   lifecycle:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # Leave enough headroom for OOS research plus governance/artifact steps.
+    # Individual expensive steps remain bounded below.
+    timeout-minutes: 120
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -121,14 +123,17 @@ jobs:
           PY
 
       - name: Execute evidence-based closed-loop lifecycle
+        timeout-minutes: 15
         run: python -m research.closed_loop_execute
 
       - name: Generate lifecycle governance report
         if: always()
+        timeout-minutes: 5
         run: python -m research.closed_loop_governance
 
       - name: Enforce lifecycle completion
         if: always()
+        timeout-minutes: 5
         run: |
           set -euo pipefail
           test -s results/lifecycle_execution.json
@@ -143,6 +148,7 @@ jobs:
 
       - name: Preserve research diagnostics
         if: always()
+        timeout-minutes: 5
         run: |
           for f in results/research_execution_manifest.json results/lifecycle_execution.json results/lifecycle_governance.json results/candidate_validation.json; do
             if [ -s "$f" ]; then echo "===== $f ====="; cat "$f"; fi
@@ -150,6 +156,7 @@ jobs:
 
       - name: Upload lifecycle artifacts
         if: always()
+        timeout-minutes: 10
         uses: actions/upload-artifact@v4
         with:
           name: baseball-closed-loop-${{ github.run_id }}
