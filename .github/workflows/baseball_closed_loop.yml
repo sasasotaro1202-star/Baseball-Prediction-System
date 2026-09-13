@@ -19,6 +19,7 @@ concurrency:
 
 env:
   PYTHONPATH: .
+  PIP_DISABLE_PIP_VERSION_CHECK: '1'
 
 jobs:
   lifecycle:
@@ -27,9 +28,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        timeout-minutes: 5
 
       - name: Set up Python
         uses: actions/setup-python@v5
+        timeout-minutes: 5
         with:
           python-version: '3.12'
           cache: pip
@@ -56,15 +59,33 @@ jobs:
         run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
 
       - name: Compile and preflight
+        timeout-minutes: 5
         run: |
           set -euo pipefail
           python -m compileall -q .
           python research/action_preflight.py
 
       - name: Acquire current PIT observations
-        run: python -m data.pit_acquisition
+        timeout-minutes: 8
+        run: |
+          set -euo pipefail
+          last_error=''
+          for attempt in 1 2 3; do
+            echo "PIT acquisition attempt ${attempt}/3"
+            if python -m data.pit_acquisition; then
+              echo 'PIT acquisition succeeded'
+              exit 0
+            fi
+            last_error="PIT acquisition attempt ${attempt} failed"
+            if [ "$attempt" -lt 3 ]; then
+              sleep $((attempt * 5))
+            fi
+          done
+          echo "$last_error" >&2
+          exit 1
 
       - name: Validate PIT before research
+        timeout-minutes: 5
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -149,9 +170,10 @@ jobs:
           BASEBALL_TIME_BUDGET_SEC: '1500'
           NPB_RETRAIN_EVERY: '150'
           MLB_ENRICH_STARTERS: '0'
-        run: python -u research_runner.py --league BOTH --mlb-start 2020 --mlb-end 2026 --retries 2
+        run: python -u research_runner.py --league BOTH --mlb-start 2020 --mlb-end 2026 --retries 3
 
       - name: Verify research manifest
+        timeout-minutes: 5
         run: |
           set -euo pipefail
           test -s results/research_execution_manifest.json
