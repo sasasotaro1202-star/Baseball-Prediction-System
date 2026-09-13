@@ -1,162 +1,341 @@
 #!/usr/bin/env python3
-"""Evidence-based closed-loop evaluation for production-strength baseball models."""
+"""Leakage-safe closed-loop evaluation for production baseball models."""
 from __future__ import annotations
-import json, math, hashlib
+
+import hashlib
+import json
+import math
 from pathlib import Path
 from typing import Any
+
 import numpy as np
 import pandas as pd
+
 from research.adoption_gate import candidate_lock, evaluate_locked_holdout
 
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
 RESULTS.mkdir(parents=True, exist_ok=True)
-PRIMARY_FILES = {"NPB": RESULTS / "checkpoints" / "npb_walkforward.csv", "MLB": RESULTS / "checkpoints" / "mlb_walkforward.csv"}
+PRIMARY_FILES = {
+    "NPB": RESULTS / "checkpoints" / "npb_walkforward.csv",
+    "MLB": RESULTS / "checkpoints" / "mlb_walkforward.csv",
+}
+
 
 def write_json(name: str, obj: Any) -> None:
-    (RESULTS / name).write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding="utf-8")
+    (RESULTS / name).write_text(
+        json.dumps(obj, ensure_ascii=False, indent=2, allow_nan=False),
+        encoding="utf-8",
+    )
+
 
 def clip_probs(p: np.ndarray) -> np.ndarray:
     p = np.asarray(p, dtype=float)
-    if p.ndim == 1: p = p.reshape(-1, 1)
-    p = np.nan_to_num(p, nan=0.0, posinf=0.0, neginf=0.0)
+    if p.ndim == 1:
+        p = p.reshape(-1, 1)
+    if not np.isfinite(p).all():
+        raise RuntimeError("probability matrix contains non-finite values")
     p = np.maximum(p, 1e-9)
-    return p / p.sum(axis=1, keepdims=True)
+    sums = p.sum(axis=1, keepdims=True)
+    if np.any(sums <= 0):
+        raise RuntimeError("probability row has non-positive sum")
+    return p / sums
+
 
 def poisson_result_probs(lh: float, la: float, league: str) -> np.ndarray:
-    lh, la = max(float(lh), 1e-6), max(float(la), 1e-6)
+    lh = max(float(lh), 1e-6)
+    la = max(float(la), 1e-6)
     ks = np.arange(16)
-    ph = np.exp(-lh) * np.array([lh**int(k) / math.factorial(int(k)) for k in ks])
-    pa = np.exp(-la) * np.array([la**int(k) / math.factorial(int(k)) for k in ks])
-    m = np.outer(ph, pa); m /= max(m.sum(), 1e-12)
-    home = float(sum(m[i,j] for i in range(16) for j in range(16) if i > j))
-    draw = float(sum(m[i,j] for i in range(16) for j in range(16) if i == j))
-    away = float(sum(m[i,j] for i in range(16) for j in range(16) if i < j))
-    return clip_probs(np.array([home, draw, away] if league == "NPB" else [home, away]))[0]
+    ph = np.exp(-lh) * np.array([lh ** int(k) / math.factorial(int(k)) for k in ks])
+    pa = np.exp(-la) * np.array([la ** int(k) / math.factorial(int(k)) for k in ks])
+    matrix = np.outer(ph, pa)
+    matrix /= max(float(matrix.sum()), 1e-12)
+    home = float(sum(matrix[i, j] for i in range(16) for j in range(16) if i > j))
+    draw = float(sum(matrix[i, j] for i in range(16) for j in range(16) if i == j))
+    away = float(sum(matrix[i, j] for i in range(16) for j in range(16) if i < j))
+    values = [home, draw, away] if league == "NPB" else [home, away]
+    return clip_probs(np.asarray(values))[0]
+
 
 def build_probabilities(df: pd.DataFrame, league: str) -> tuple[np.ndarray, str]:
     if league == "NPB":
-        cols = ["pred_home","pred_draw","pred_away"]
-        if all(c in df for c in cols):
-            raw = df[cols].to_numpy(float)
-            usable = np.isfinite(raw).all(axis=1) & (raw >= 0).all(axis=1) & (raw.sum(axis=1) > .999) & (raw.sum(axis=1) < 1.001) & (raw.max(axis=1) < .999999)
-        else:
-            raw = np.zeros((len(df),3)); usable = np.zeros(len(df), dtype=bool)
-        rows=[]
-        for i, r in df.iterrows():
-            rows.append(raw[i] if usable[i] else poisson_result_probs(r["lambda_home"], r["lambda_away"], "NPB"))
-        return clip_probs(np.asarray(rows)), ("raw_classifier_with_poisson_repair" if (~usable).any() else "raw_classifier")
-    if not {"pred_home","pred_away"}.issubset(df.columns): raise RuntimeError("MLB probability columns missing")
-    raw = df[["pred_home","pred_away"]].apply(pd.to_numeric, errors="coerce").to_numpy(float)
-    usable = np.isfinite(raw).all(axis=1) & (raw >= 0).all(axis=1) & (raw.sum(axis=1) > .999) & (raw.sum(axis=1) < 1.001)
-    if usable.all(): return clip_probs(raw), "raw_classifier"
-    rows=[raw[i] if usable[i] else poisson_result_probs(r["lambda_home"], r["lambda_away"], "MLB") for i, r in df.iterrows()]
-    return clip_probs(np.asarray(rows)), "raw_classifier_with_poisson_repair"
+        cols = ["pred_home", "pred_draw", "pred_away"]
+        raw = (
+            df[cols].apply(pd.to_numeric, errors="coerce").to_numpy(float)
+            if all(c in df.columns for c in cols)
+            else np.full((len(df), 3), np.nan)
+        )
+        usable = (
+            np.isfinite(raw).all(axis=1)
+            & (raw >= 0).all(axis=1)
+            & (raw.sum(axis=1) > 0.999)
+            & (raw.sum(axis=1) < 1.001)
+            & (raw.max(axis=1) < 0.999999)
+        )
+        repaired = []
+        for i, row in df.iterrows():
+            if usable[i]:
+                repaired.append(raw[i])
+                continue
+            if not np.isfinite(float(row["lambda_home"])) or not np.isfinite(float(row["lambda_away"])):
+                raise RuntimeError("NPB invalid probabilities and missing Poisson lambdas")
+            repaired.append(poisson_result_probs(row["lambda_home"], row["lambda_away"], "NPB"))
+        return clip_probs(np.asarray(repaired)), (
+            "raw_classifier_with_poisson_repair" if (~usable).any() else "raw_classifier"
+        )
+
+    cols = ["pred_home", "pred_away"]
+    if not set(cols).issubset(df.columns):
+        raise RuntimeError("MLB probability columns missing")
+    raw = df[cols].apply(pd.to_numeric, errors="coerce").to_numpy(float)
+    usable = (
+        np.isfinite(raw).all(axis=1)
+        & (raw >= 0).all(axis=1)
+        & (raw.sum(axis=1) > 0.999)
+        & (raw.sum(axis=1) < 1.001)
+        & (raw.max(axis=1) < 0.999999)
+    )
+    if usable.all():
+        return clip_probs(raw), "raw_classifier"
+    repaired = []
+    for i, row in df.iterrows():
+        if usable[i]:
+            repaired.append(raw[i])
+            continue
+        if not np.isfinite(float(row["lambda_home"])) or not np.isfinite(float(row["lambda_away"])):
+            raise RuntimeError("MLB invalid probabilities and missing Poisson lambdas")
+        repaired.append(poisson_result_probs(row["lambda_home"], row["lambda_away"], "MLB"))
+    return clip_probs(np.asarray(repaired)), "raw_classifier_with_poisson_repair"
+
 
 def actual_labels(df: pd.DataFrame, league: str) -> np.ndarray:
-    hs = pd.to_numeric(df["actual_home_score"], errors="coerce"); aw = pd.to_numeric(df["actual_away_score"], errors="coerce")
-    if hs.isna().any() or aw.isna().any(): raise RuntimeError(f"{league} contains missing realized score targets")
+    hs = pd.to_numeric(df["actual_home_score"], errors="coerce")
+    aw = pd.to_numeric(df["actual_away_score"], errors="coerce")
+    if hs.isna().any() or aw.isna().any():
+        raise RuntimeError(f"{league} contains missing realized score targets")
     if league == "NPB":
-        y=np.where(hs>aw,0,np.where(hs==aw,1,2)).astype(int)
-        if len(np.unique(y))<2: raise RuntimeError("NPB realized target is degenerate")
-        return y
-    return (hs>aw).astype(int).to_numpy()
+        y = np.where(hs > aw, 0, np.where(hs == aw, 1, 2)).astype(int)
+    else:
+        y = (hs > aw).astype(int).to_numpy()
+    if len(np.unique(y)) < 2:
+        raise RuntimeError(f"{league} realized target is degenerate")
+    return y
 
-def logloss(y,p):
-    p=clip_probs(p); return float(-np.mean(np.log(np.maximum(p[np.arange(len(y)),y],1e-15))))
 
-def brier(y,p):
-    p=clip_probs(p); one=np.zeros_like(p); one[np.arange(len(y)),y]=1.0
-    return float(np.mean(np.sum((p-one)**2,axis=1)))
+def logloss(y: np.ndarray, p: np.ndarray) -> float:
+    p = clip_probs(p)
+    return float(-np.mean(np.log(np.maximum(p[np.arange(len(y)), y], 1e-15))))
 
-def accuracy(y,p): return float(np.mean(np.argmax(p,axis=1)==y))
 
-def metrics(y,p): return {"LogLoss":logloss(y,p),"Brier":brier(y,p),"Accuracy":accuracy(y,p),"rows":int(len(y))}
+def brier(y: np.ndarray, p: np.ndarray) -> float:
+    p = clip_probs(p)
+    one = np.zeros_like(p)
+    one[np.arange(len(y)), y] = 1.0
+    return float(np.mean(np.sum((p - one) ** 2, axis=1)))
 
-def fit_temperature_grid(logits,y):
-    best_t,best=1.0,float("inf")
-    for t in np.linspace(.5,3.0,101):
-        z=logits/t; z-=z.max(axis=1,keepdims=True); q=np.exp(z); q/=q.sum(axis=1,keepdims=True)
-        s=logloss(y,q)
-        if s<best-1e-12: best,best_t=s,float(t)
+
+def accuracy(y: np.ndarray, p: np.ndarray) -> float:
+    return float(np.mean(np.argmax(p, axis=1) == y))
+
+
+def metrics(y: np.ndarray, p: np.ndarray) -> dict[str, float]:
+    return {"LogLoss": logloss(y, p), "Brier": brier(y, p), "Accuracy": accuracy(y, p), "rows": int(len(y))}
+
+
+def fit_temperature_grid(logits: np.ndarray, y: np.ndarray) -> float:
+    best_t = 1.0
+    best_score = float("inf")
+    for temperature in np.linspace(0.5, 3.0, 101):
+        z = logits / float(temperature)
+        z -= z.max(axis=1, keepdims=True)
+        q = np.exp(z)
+        q /= q.sum(axis=1, keepdims=True)
+        score = logloss(y, q)
+        if score < best_score - 1e-12:
+            best_score = score
+            best_t = float(temperature)
     return best_t
 
-def apply_temperature(p,t):
-    z=np.log(clip_probs(p)); z-=z.max(axis=1,keepdims=True); return clip_probs(np.exp(z/max(float(t),1e-6)))
 
-def score_metrics(df,y,p,league):
-    out=metrics(y,p)
-    if league=="NPB":
-        out["DrawRecall"]=float(np.sum((y==1)&(np.argmax(p,axis=1)==1))/max(np.sum(y==1),1))
-        out["DrawProbabilityMAE"]=float(np.mean(np.abs(p[:,1]-(y==1).astype(float))))
-    if {"lambda_home","lambda_away"}.issubset(df.columns):
-        lh=pd.to_numeric(df.lambda_home,errors="coerce").to_numpy(float); la=pd.to_numeric(df.lambda_away,errors="coerce").to_numpy(float)
-        hs=pd.to_numeric(df.actual_home_score,errors="coerce").to_numpy(float); aw=pd.to_numeric(df.actual_away_score,errors="coerce").to_numpy(float)
-        v=np.isfinite(lh)&np.isfinite(la)&np.isfinite(hs)&np.isfinite(aw)
-        if v.any(): out["ScoreMAE"]=float(np.mean((np.abs(lh[v]-hs[v])+np.abs(la[v]-aw[v]))/2))
+def apply_temperature(p: np.ndarray, temperature: float) -> np.ndarray:
+    z = np.log(clip_probs(p))
+    z -= z.max(axis=1, keepdims=True)
+    return clip_probs(np.exp(z / max(float(temperature), 1e-6)))
+
+
+def score_metrics(df: pd.DataFrame, y: np.ndarray, p: np.ndarray, league: str) -> dict[str, float]:
+    out = metrics(y, p)
+    if league == "NPB":
+        out["DrawRecall"] = float(np.sum((y == 1) & (np.argmax(p, axis=1) == 1)) / max(np.sum(y == 1), 1))
+        out["DrawProbabilityMAE"] = float(np.mean(np.abs(p[:, 1] - (y == 1).astype(float))) )
+    if {"lambda_home", "lambda_away"}.issubset(df.columns):
+        lh = pd.to_numeric(df["lambda_home"], errors="coerce").to_numpy(float)
+        la = pd.to_numeric(df["lambda_away"], errors="coerce").to_numpy(float)
+        hs = pd.to_numeric(df["actual_home_score"], errors="coerce").to_numpy(float)
+        aw = pd.to_numeric(df["actual_away_score"], errors="coerce").to_numpy(float)
+        valid = np.isfinite(lh) & np.isfinite(la) & np.isfinite(hs) & np.isfinite(aw)
+        if valid.any():
+            out["ScoreMAE"] = float(np.mean((np.abs(lh[valid] - hs[valid]) + np.abs(la[valid] - aw[valid])) / 2.0))
     return out
 
-def hilo_probs(df):
-    if {"low","high"}.issubset(df.columns):
-        p=df[["low","high"]].apply(pd.to_numeric,errors="coerce").to_numpy(float)
-        v=np.isfinite(p).all(axis=1)&(p>=0).all(axis=1)&(p.sum(axis=1)>.999)&(p.sum(axis=1)<1.001)
-        if v.all(): return clip_probs(p)
-    vals=[]
-    for _,r in df.iterrows():
-        lh,la=float(r.lambda_home),float(r.lambda_away)
-        low=(sum(math.exp(-lh)*lh**k/math.factorial(k) for k in range(7))*sum(math.exp(-la)*la**k/math.factorial(k) for k in range(7)))
-        vals.append([np.clip(low,0,1),1-np.clip(low,0,1)])
-    return clip_probs(np.asarray(vals))
 
-def weakness_report(df,y,p,league):
-    w=df.copy(); w["_correct"]=(np.argmax(p,axis=1)==y).astype(int); w["_ll"]=-np.log(np.maximum(p[np.arange(len(y)),y],1e-15)); w["_month"]=pd.to_datetime(w.datetime,errors="coerce",utc=True).dt.strftime("%Y-%m")
-    groups={}
-    for key in ["model","_month","confirmed_starters"]:
-        if key in w:
-            g=w.groupby(key,dropna=False).agg(rows=("_correct","size"),accuracy=("_correct","mean"),logloss=("_ll","mean")).reset_index()
-            groups[key]=g[g.rows>=30].sort_values("logloss",ascending=False).head(10).to_dict(orient="records")
-    return {"league":league,"rows":len(w),"groups":groups}
+def hilo_probs(df: pd.DataFrame) -> np.ndarray:
+    if {"low", "high"}.issubset(df.columns):
+        p = df[["low", "high"]].apply(pd.to_numeric, errors="coerce").to_numpy(float)
+        valid = np.isfinite(p).all(axis=1) & (p >= 0).all(axis=1) & (p.sum(axis=1) > 0.999) & (p.sum(axis=1) < 1.001)
+        if valid.all():
+            return clip_probs(p)
+    values = []
+    for _, row in df.iterrows():
+        lh = float(row["lambda_home"])
+        la = float(row["lambda_away"])
+        low_h = sum(math.exp(-lh) * lh**k / math.factorial(k) for k in range(7))
+        low_a = sum(math.exp(-la) * la**k / math.factorial(k) for k in range(7))
+        low = float(np.clip(low_h * low_a, 0.0, 1.0))
+        values.append([low, 1.0 - low])
+    return clip_probs(np.asarray(values))
 
-def split_three(df):
-    n=len(df)
-    if n<300: raise RuntimeError(f"insufficient OOS rows for production holdout: {n}")
-    a=max(100,int(n*.50)); b=max(a+50,int(n*.65)); b=min(b,n-100)
-    return df.iloc[:a].copy(),df.iloc[a:b].copy(),df.iloc[b:].copy()
 
-def hilo_metrics(df,p):
-    hs=pd.to_numeric(df.actual_home_score,errors="coerce").to_numpy(float); aw=pd.to_numeric(df.actual_away_score,errors="coerce").to_numpy(float)
-    y=((hs>=7)|(aw>=7)).astype(int); return metrics(y,p)
+def hilo_metrics(df: pd.DataFrame, p: np.ndarray) -> dict[str, float]:
+    hs = pd.to_numeric(df["actual_home_score"], errors="coerce").to_numpy(float)
+    aw = pd.to_numeric(df["actual_away_score"], errors="coerce").to_numpy(float)
+    y = ((hs >= 7) | (aw >= 7)).astype(int)
+    return metrics(y, p)
 
-def process_league(league,path):
-    df=pd.read_csv(path)
-    if "datetime" not in df: raise RuntimeError(f"{league}: datetime column missing")
-    df["datetime"]=pd.to_datetime(df.datetime,errors="coerce",utc=True); df=df.dropna(subset=["datetime"]).sort_values(["datetime","game_id"],kind="mergesort").reset_index(drop=True)
-    y=actual_labels(df,league); p,source=build_probabilities(df,league)
-    sel,val1,val2=split_three(df); i1=len(sel); i2=i1+len(val1)
-    p_sel,p1,p2=p[:i1],p[i1:i2],p[i2:]; y_sel,y1,y2=y[:i1],y[i1:i2],y[i2:]
-    t=fit_temperature_grid(np.log(np.maximum(p_sel,1e-12)),y_sel); p1c=apply_temperature(p1,t); p2c=apply_temperature(p2,t)
-    b1,c1=score_metrics(val1,y1,p1,league),score_metrics(val1,y1,p1c,league); b2,c2=score_metrics(val2,y2,p2,league),score_metrics(val2,y2,p2c,league)
-    bh,ch={**b2},{**c2}; bhilo=hilo_metrics(val2,hilo_probs(val2)); chilo=hilo_metrics(val2,apply_temperature(hilo_probs(val2),t))
-    lock=candidate_lock(development_metrics={"rows":len(val1)+len(val2),"validation_window_1_LogLoss":c1["LogLoss"],"validation_window_2_LogLoss":c2["LogLoss"],"temperature":t},candidate_id="temperature_calibration_v1")
-    gate=evaluate_locked_holdout(bh,ch,validation_windows=2,calibration_ok=(c1["LogLoss"]<=b1["LogLoss"] and c2["LogLoss"]<=b2["LogLoss"]),no_future_target_data=True,reproducible=True,baseline_score={"ScoreMAE":b2.get("ScoreMAE",float("nan"))},candidate_score={"ScoreMAE":c2.get("ScoreMAE",float("nan"))},baseline_hilo=bhilo,candidate_hilo=chilo,league=league)
-    pd.DataFrame([b1,c1,b2,c2]).to_csv(RESULTS/f"{league.lower()}_development_oos.csv",index=False)
-    return {"league":league,"rows":len(df),"probability_source":source,"split":{"selection":len(sel),"validation_1":len(val1),"independent_holdout":len(val2)},"calibration":{"method":"chronological_temperature_grid","temperature":t},"development_oos":{"validation_1_baseline":b1,"validation_1_candidate":c1,"validation_2_baseline":b2,"validation_2_candidate":c2},"holdout":{"baseline":bh,"candidate":ch,"hilo_baseline":bhilo,"hilo_candidate":chilo},"candidate_lock":lock,"candidate_gate":gate,"weakness":weakness_report(sel,y_sel,p_sel,league),"result_audit":{"rows":len(df),"actual_class_counts":pd.Series(y).value_counts().sort_index().to_dict(),"score_target_coverage":float(np.isfinite(pd.to_numeric(df.actual_home_score,errors="coerce")).mean())}}
 
-def main():
-    reports={}; blockers=[]
-    for league,path in PRIMARY_FILES.items():
-        try: reports[league]=process_league(league,path)
-        except Exception as exc: blockers.append(f"{league}:{type(exc).__name__}:{exc}")
+def weakness_report(df: pd.DataFrame, y: np.ndarray, p: np.ndarray, league: str) -> dict[str, Any]:
+    work = df.copy()
+    work["_correct"] = (np.argmax(p, axis=1) == y).astype(int)
+    work["_ll"] = -np.log(np.maximum(p[np.arange(len(y)), y], 1e-15))
+    work["_month"] = pd.to_datetime(work["datetime"], errors="coerce", utc=True).dt.strftime("%Y-%m")
+    groups = {}
+    for key in ["model", "_month", "confirmed_starters"]:
+        if key not in work:
+            continue
+        grouped = work.groupby(key, dropna=False).agg(rows=("_correct", "size"), accuracy=("_correct", "mean"), logloss=("_ll", "mean")).reset_index()
+        groups[key] = grouped[grouped["rows"] >= 30].sort_values("logloss", ascending=False).head(10).to_dict(orient="records")
+    return {"league": league, "rows": len(work), "groups": groups}
+
+
+def split_four_windows(df: pd.DataFrame):
+    n = len(df)
+    if n < 500:
+        raise RuntimeError(f"insufficient chronological OOS rows: {n}")
+    selection_end = int(n * 0.45)
+    validation1_end = int(n * 0.65)
+    validation2_end = int(n * 0.80)
+    if selection_end < 150 or validation1_end - selection_end < 75:
+        raise RuntimeError("selection/validation1 window too small")
+    if validation2_end - validation1_end < 75 or n - validation2_end < 100:
+        raise RuntimeError("validation2/holdout window too small")
+    return (
+        df.iloc[:selection_end].copy(),
+        df.iloc[selection_end:validation1_end].copy(),
+        df.iloc[validation1_end:validation2_end].copy(),
+        df.iloc[validation2_end:].copy(),
+    )
+
+
+def process_league(league: str, path: Path) -> dict[str, Any]:
+    if not path.exists():
+        raise RuntimeError(f"{league} walkforward file missing: {path}")
+    df = pd.read_csv(path)
+    if "datetime" not in df.columns or "game_id" not in df.columns:
+        raise RuntimeError(f"{league} walkforward identity columns missing")
+    df["datetime"] = pd.to_datetime(df["datetime"], errors="coerce", utc=True)
+    df = df.dropna(subset=["datetime"]).sort_values(["datetime", "game_id"], kind="mergesort").reset_index(drop=True)
+    y = actual_labels(df, league)
+    p, probability_source = build_probabilities(df, league)
+
+    selection, val1, val2, holdout = split_four_windows(df)
+    n1, n2, n3 = len(selection), len(selection) + len(val1), len(selection) + len(val1) + len(val2)
+    p_selection, p_val1, p_val2, p_holdout = p[:n1], p[n1:n2], p[n2:n3], p[n3:]
+    y_selection, y_val1, y_val2, y_holdout = y[:n1], y[n1:n2], y[n2:n3], y[n3:]
+
+    temperature = fit_temperature_grid(np.log(np.maximum(p_selection, 1e-12)), y_selection)
+    base_v1 = score_metrics(val1, y_val1, p_val1, league)
+    cand_v1 = score_metrics(val1, y_val1, apply_temperature(p_val1, temperature), league)
+    base_v2 = score_metrics(val2, y_val2, p_val2, league)
+    cand_v2 = score_metrics(val2, y_val2, apply_temperature(p_val2, temperature), league)
+    calibration_ok = cand_v1["LogLoss"] <= base_v1["LogLoss"] and cand_v2["LogLoss"] <= base_v2["LogLoss"]
+
+    base_holdout = score_metrics(holdout, y_holdout, p_holdout, league)
+    cand_holdout = score_metrics(holdout, y_holdout, apply_temperature(p_holdout, temperature), league)
+    base_hilo = hilo_metrics(holdout, hilo_probs(holdout))
+    cand_hilo = hilo_metrics(holdout, apply_temperature(hilo_probs(holdout), temperature))
+
+    lock = candidate_lock(
+        development_metrics={"rows": int(len(selection) + len(val1) + len(val2)), "validation_window_1_LogLoss": cand_v1["LogLoss"], "validation_window_2_LogLoss": cand_v2["LogLoss"], "temperature": temperature},
+        candidate_id="temperature_calibration_v2",
+    )
+    gate = evaluate_locked_holdout(
+        base_holdout,
+        cand_holdout,
+        validation_windows=2,
+        calibration_ok=calibration_ok,
+        no_future_target_data=True,
+        reproducible=True,
+        baseline_score={"ScoreMAE": base_holdout.get("ScoreMAE", float("nan"))},
+        candidate_score={"ScoreMAE": cand_holdout.get("ScoreMAE", float("nan"))},
+        baseline_hilo=base_hilo,
+        candidate_hilo=cand_hilo,
+        league=league,
+    )
+    return {
+        "league": league,
+        "rows": int(len(df)),
+        "probability_source": probability_source,
+        "split": {"selection": len(selection), "validation_1": len(val1), "validation_2": len(val2), "independent_holdout": len(holdout)},
+        "calibration": {"method": "chronological_temperature_grid", "temperature": temperature, "fit_window": "selection_only"},
+        "development_oos": {"validation_1_baseline": base_v1, "validation_1_candidate": cand_v1, "validation_2_baseline": base_v2, "validation_2_candidate": cand_v2, "calibration_ok": calibration_ok},
+        "holdout": {"baseline": base_holdout, "candidate": cand_holdout, "hilo_baseline": base_hilo, "hilo_candidate": cand_hilo, "used_for_candidate_selection": False},
+        "candidate_lock": lock,
+        "candidate_gate": gate,
+        "weakness": weakness_report(selection, y_selection, p_selection, league),
+        "result_audit": {"rows": int(len(df)), "actual_class_counts": pd.Series(y).value_counts().sort_index().to_dict(), "score_target_coverage": float(np.isfinite(pd.to_numeric(df["actual_home_score"], errors="coerce")).mean())},
+    }
+
+
+def main() -> int:
+    reports = {}
+    blockers = []
+    for league, path in PRIMARY_FILES.items():
+        try:
+            reports[league] = process_league(league, path)
+        except Exception as exc:
+            blockers.append(f"{league}:{type(exc).__name__}:{exc}")
     if blockers:
-        write_json("lifecycle_execution.json",{"status":"BLOCKED","blockers":blockers,"reports":reports}); raise SystemExit("; ".join(blockers))
-    write_json("calibration.json",{"version":2,"method":"chronological temperature calibration","leagues":{k:v["calibration"] for k,v in reports.items()},"holdout_untouched_during_fit":True})
-    write_json("development_oos.json",{k:v["development_oos"] for k,v in reports.items()})
-    write_json("independent_holdout.json",{k:v["holdout"] for k,v in reports.items()})
-    write_json("result_audit.json",{k:v["result_audit"] for k,v in reports.items()})
-    write_json("weakness_report.json",{k:v["weakness"] for k,v in reports.items()})
-    write_json("candidate_validation.json",{k:v["candidate_gate"] for k,v in reports.items()})
-    decisions={k:v["candidate_gate"]["decision"] for k,v in reports.items()}
-    lifecycle={"status":"READY","blockers":[],"candidate_decisions":decisions,"production_principles":["chronological split","independent final holdout","calibration fitted only before holdout","deterministic candidate","fail-closed target/probability integrity","no promotion without locked-holdout gate"],"source_sha256":hashlib.sha256(json.dumps({"NPB":str(PRIMARY_FILES["NPB"]),"MLB":str(PRIMARY_FILES["MLB"])},sort_keys=True).encode()).hexdigest()}
-    write_json("lifecycle_execution.json",lifecycle); print(json.dumps(lifecycle,ensure_ascii=False,indent=2)); return 0
+        write_json("lifecycle_execution.json", {"status": "BLOCKED", "blockers": blockers, "reports": reports})
+        raise SystemExit("; ".join(blockers))
 
-if __name__ == "__main__": raise SystemExit(main())
+    write_json("calibration.json", {"version": 3, "method": "chronological temperature calibration", "leagues": {k: v["calibration"] for k, v in reports.items()}, "holdout_untouched_during_fit_and_selection": True})
+    write_json("development_oos.json", {k: v["development_oos"] for k, v in reports.items()})
+    write_json("independent_holdout.json", {k: v["holdout"] for k, v in reports.items()})
+    write_json("result_audit.json", {k: v["result_audit"] for k, v in reports.items()})
+    write_json("weakness_report.json", {k: v["weakness"] for k, v in reports.items()})
+    write_json("candidate_validation.json", {k: v["candidate_gate"] for k, v in reports.items()})
+
+    decisions = {k: v["candidate_gate"]["decision"] for k, v in reports.items()}
+    lifecycle = {
+        "status": "READY",
+        "blockers": [],
+        "candidate_decisions": decisions,
+        "production_principles": [
+            "chronological split",
+            "four-window development/validation/holdout separation",
+            "calibration fitted only on selection",
+            "candidate selected only on validation windows",
+            "independent final holdout",
+            "deterministic candidate",
+            "fail-closed target/probability integrity",
+            "no promotion without locked-holdout gate",
+        ],
+        "source_sha256": hashlib.sha256(json.dumps({k: str(v) for k, v in PRIMARY_FILES.items()}, sort_keys=True).encode()).hexdigest(),
+    }
+    write_json("lifecycle_execution.json", lifecycle)
+    print(json.dumps(lifecycle, ensure_ascii=False, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

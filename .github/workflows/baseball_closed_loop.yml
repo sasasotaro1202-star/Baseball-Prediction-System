@@ -11,7 +11,7 @@ on:
     - cron: '17 18 * * *'
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: baseball-closed-loop
@@ -23,7 +23,7 @@ env:
 jobs:
   lifecycle:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -64,6 +64,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p data
+          success=0
           for year in $(seq 2020 2026); do
             downloaded=0
             for attempt in 1 2 3; do
@@ -73,12 +74,14 @@ jobs:
                 --dir data \
                 --clobber; then
                 downloaded=1
+                success=$((success + 1))
                 break
               fi
               if [ "$attempt" -lt 3 ]; then sleep $((attempt * 5)); fi
             done
             echo "NPB release year ${year}: downloaded=${downloaded}"
           done
+          echo "NPB PBP release files successfully staged for ${success} years"
           total_files=$(find data -maxdepth 1 -name '*_pbp.csv' | wc -l | tr -d ' ')
           echo "NPB PBP files staged: $total_files"
           if [ "$total_files" -lt 1 ]; then
@@ -137,82 +140,6 @@ jobs:
             if [ -s "$f" ]; then echo "===== $f ====="; cat "$f"; fi
           done
 
-      - name: Commit research and PIT ledgers
-        if: always()
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-
-          git add -f data/pit/*.jsonl 2>/dev/null || true
-          git add results/*.json results/*.csv 2>/dev/null || true
-          if git diff --cached --quiet; then
-            echo 'No lifecycle artifacts changed.'
-            exit 0
-          fi
-
-          git commit -m 'Update Baseball closed-loop research artifacts'
-
-          # The PIT ledgers are append-only JSONL. If another actor pushes while
-          # the long research job is running, rebase and automatically union
-          # only the four append-only ledger conflicts. Any other conflict
-          # remains fatal rather than silently discarding source/code changes.
-          for attempt in 1 2 3; do
-            if git push origin HEAD:main; then
-              exit 0
-            fi
-
-            git fetch origin main
-            if git rebase origin/main; then
-              continue
-            fi
-
-            conflicts=$(git diff --name-only --diff-filter=U)
-            allowed=1
-            for f in $conflicts; do
-              case "$f" in
-                data/pit/acquisition_runs.jsonl|data/pit/availability_observations.jsonl|data/pit/event_observations.jsonl|data/pit/source_snapshots.jsonl)
-                  ;;
-                *)
-                  allowed=0
-                  ;;
-              esac
-            done
-
-            if [ "$allowed" -ne 1 ] || [ -z "$conflicts" ]; then
-              echo "Unsafe merge conflict detected; refusing automatic resolution."
-              git rebase --abort || true
-              exit 1
-            fi
-
-            python - <<'PY'
-            import subprocess
-            from pathlib import Path
-
-            files = subprocess.check_output(
-                ["git", "diff", "--name-only", "--diff-filter=U"], text=True
-            ).splitlines()
-
-            for name in files:
-                base = subprocess.check_output(["git", "show", f":2:{name}"], text=True, errors="replace")
-                incoming = subprocess.check_output(["git", "show", f":3:{name}"], text=True, errors="replace")
-                seen = set()
-                merged = []
-                for line in (base + incoming).splitlines():
-                    if not line.strip() or line in seen:
-                        continue
-                    seen.add(line)
-                    merged.append(line)
-                Path(name).write_text("\n".join(merged) + "\n", encoding="utf-8")
-            PY
-
-            git add $conflicts
-            GIT_EDITOR=true git rebase --continue
-          done
-
-          echo 'Failed to publish lifecycle artifacts after 3 attempts.' >&2
-          exit 1
-
       - name: Upload lifecycle artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -221,5 +148,5 @@ jobs:
           path: |
             results/**
             data/pit/**
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
