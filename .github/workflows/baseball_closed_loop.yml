@@ -2,6 +2,11 @@ name: Baseball Closed Loop Research
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'results/**'
+      - 'data/pit/**'
   schedule:
     - cron: '17 18 * * *'
 
@@ -76,17 +81,40 @@ jobs:
           fi
 
       - name: Run chronological Baseball OOS research
+        continue-on-error: true
         env:
           BASEBALL_TIME_BUDGET_SEC: '1500'
           NPB_RETRAIN_EVERY: '150'
           MLB_ENRICH_STARTERS: '0'
         run: python research_runner.py --league BOTH --mlb-start 2020 --mlb-end 2026 --retries 2
 
+      - name: Execute evidence-based closed-loop lifecycle
+        run: python research/closed_loop_execute.py
+
       - name: Generate lifecycle governance report
         if: always()
         run: |
           mkdir -p results
           python research/closed_loop_governance.py
+
+      - name: Enforce lifecycle completion
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ -s results/lifecycle_execution.json ]; then
+            cat results/lifecycle_execution.json
+          else
+            echo 'lifecycle_execution.json missing' >&2
+            exit 1
+          fi
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('results/lifecycle_execution.json')
+          obj = json.loads(p.read_text(encoding='utf-8'))
+          if obj.get('status') != 'READY':
+              raise SystemExit('closed-loop lifecycle is BLOCKED: ' + '; '.join(obj.get('blockers', [])))
+          PY
 
       - name: Preserve research diagnostics
         if: always()
@@ -104,7 +132,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -f data/pit/*.jsonl || true
-          git add results/lifecycle_governance.json results/research_execution_manifest.json 2>/dev/null || true
+          git add results/*.json results/*.csv 2>/dev/null || true
           if git diff --cached --quiet; then
             echo 'No lifecycle artifacts changed.'
           else
