@@ -20,6 +20,7 @@ concurrency:
 env:
   PYTHONPATH: .
   PIP_DISABLE_PIP_VERSION_CHECK: '1'
+  PYTHONUNBUFFERED: '1'
 
 jobs:
   lifecycle:
@@ -50,9 +51,10 @@ jobs:
             data/2023-*_pbp.csv
             data/2024-*_pbp.csv
             data/2025-*_pbp.csv
-          key: baseball-npb-historical-v1-${{ github.run_id }}
+          key: baseball-npb-historical-v1-${{ runner.os }}-${{ hashFiles('requirements.txt') }}-${{ github.run_id }}
           restore-keys: |
-            baseball-npb-historical-v1-
+            baseball-npb-historical-v1-${{ runner.os }}-${{ hashFiles('requirements.txt') }}-
+            baseball-npb-historical-v1-${{ runner.os }}-
 
       - name: Install research dependencies
         timeout-minutes: 10
@@ -77,9 +79,7 @@ jobs:
               exit 0
             fi
             last_error="PIT acquisition attempt ${attempt} failed"
-            if [ "$attempt" -lt 3 ]; then
-              sleep $((attempt * 5))
-            fi
+            if [ "$attempt" -lt 3 ]; then sleep $((attempt * 5)); fi
           done
           echo "$last_error" >&2
           exit 1
@@ -113,11 +113,7 @@ jobs:
             fi
             downloaded=0
             for attempt in 1 2 3; do
-              if gh release download pbp \
-                --repo armstjc/Nippon-Baseball-Data-Repository \
-                --pattern "${year}-*_pbp.csv" \
-                --dir data \
-                --clobber; then
+              if gh release download pbp --repo armstjc/Nippon-Baseball-Data-Repository --pattern "${year}-*_pbp.csv" --dir data --clobber; then
                 downloaded=1
                 success=$((success + 1))
                 break
@@ -127,14 +123,11 @@ jobs:
             echo "NPB historical year ${year}: downloaded=${downloaded}"
           done
 
-          # 2026 is a live season: never trust a stale cache for the current year.
+          # 2026 is live: always refresh it; never trust a stale cache.
+          rm -f data/2026-*_pbp.csv
           current_downloaded=0
           for attempt in 1 2 3; do
-            if gh release download pbp \
-              --repo armstjc/Nippon-Baseball-Data-Repository \
-              --pattern "2026-*_pbp.csv" \
-              --dir data \
-              --clobber; then
+            if gh release download pbp --repo armstjc/Nippon-Baseball-Data-Repository --pattern "2026-*_pbp.csv" --dir data --clobber; then
               current_downloaded=1
               break
             fi
@@ -150,6 +143,28 @@ jobs:
             exit 1
           fi
 
+      - name: Validate staged NPB data integrity
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import pandas as pd
+          files = sorted(Path('data').glob('*_pbp.csv'))
+          expected = {str(y) for y in range(2020, 2027)}
+          years = {p.name[:4] for p in files}
+          if not expected.issubset(years):
+              raise SystemExit(f'missing NPB years: {sorted(expected-years)}')
+          for p in files:
+              if p.stat().st_size == 0:
+                  raise SystemExit(f'empty PBP file: {p}')
+              sample = pd.read_csv(p, nrows=5)
+              required = {'game_id', 'home_score', 'away_score'}
+              if not required.issubset(sample.columns):
+                  raise SystemExit(f'missing score columns in {p}')
+          print(f'NPB staged integrity OK: {len(files)} files')
+          PY
+
       - name: Save immutable historical NPB PBP cache
         if: success()
         continue-on-error: true
@@ -162,7 +177,7 @@ jobs:
             data/2023-*_pbp.csv
             data/2024-*_pbp.csv
             data/2025-*_pbp.csv
-          key: baseball-npb-historical-v1-${{ github.run_id }}
+          key: baseball-npb-historical-v1-${{ runner.os }}-${{ hashFiles('requirements.txt') }}-${{ github.run_id }}
 
       - name: Run chronological Baseball OOS research
         timeout-minutes: 40
@@ -184,6 +199,8 @@ jobs:
           print(json.dumps(obj, ensure_ascii=False, indent=2))
           if obj.get('overall_status') != 'SUCCESS':
               raise SystemExit('research manifest is not SUCCESS')
+          if set(obj.get('requested_leagues', [])) != {'NPB', 'MLB'}:
+              raise SystemExit('not all requested leagues were executed')
           for row in obj.get('results', []):
               if row.get('status') != 'SUCCESS' or int(row.get('predictions', 0)) <= 0:
                   raise SystemExit('invalid research result: ' + repr(row))
