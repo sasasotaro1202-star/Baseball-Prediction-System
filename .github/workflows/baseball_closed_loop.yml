@@ -87,7 +87,6 @@ jobs:
           fi
 
       - name: Run chronological Baseball OOS research
-        continue-on-error: true
         env:
           BASEBALL_TIME_BUDGET_SEC: '1500'
           NPB_RETRAIN_EVERY: '150'
@@ -95,15 +94,13 @@ jobs:
         run: python -u research_runner.py --league BOTH --mlb-start 2020 --mlb-end 2026 --retries 2
 
       - name: Verify research manifest
-        if: always()
         run: |
           set -euo pipefail
           test -s results/research_execution_manifest.json
           python - <<'PY'
           import json
           from pathlib import Path
-          p = Path('results/research_execution_manifest.json')
-          obj = json.loads(p.read_text(encoding='utf-8'))
+          obj = json.loads(Path('results/research_execution_manifest.json').read_text(encoding='utf-8'))
           print(json.dumps(obj, ensure_ascii=False, indent=2))
           if obj.get('overall_status') != 'SUCCESS':
               raise SystemExit('research manifest is not SUCCESS')
@@ -128,8 +125,7 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-          p = Path('results/lifecycle_execution.json')
-          obj = json.loads(p.read_text(encoding='utf-8'))
+          obj = json.loads(Path('results/lifecycle_execution.json').read_text(encoding='utf-8'))
           if obj.get('status') != 'READY':
               raise SystemExit('closed-loop lifecycle is BLOCKED: ' + '; '.join(obj.get('blockers', [])))
           PY
@@ -137,11 +133,9 @@ jobs:
       - name: Preserve research diagnostics
         if: always()
         run: |
-          if [ -s results/research_execution_manifest.json ]; then
-            cat results/research_execution_manifest.json
-          else
-            echo 'research_execution_manifest.json not produced'
-          fi
+          for f in results/research_execution_manifest.json results/lifecycle_execution.json results/lifecycle_governance.json results/candidate_validation.json; do
+            if [ -s "$f" ]; then echo "===== $f ====="; cat "$f"; fi
+          done
 
       - name: Commit research and PIT ledgers
         if: always()
@@ -149,22 +143,75 @@ jobs:
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
           git add -f data/pit/*.jsonl 2>/dev/null || true
           git add results/*.json results/*.csv 2>/dev/null || true
           if git diff --cached --quiet; then
             echo 'No lifecycle artifacts changed.'
-          else
-            git commit -m 'Update Baseball closed-loop research artifacts'
-            for attempt in 1 2 3; do
-              if git push; then exit 0; fi
-              if [ "$attempt" -lt 3 ]; then
-                git fetch origin main
-                git rebase origin/main
-                sleep $((attempt * 3))
-              fi
-            done
-            exit 1
+            exit 0
           fi
+
+          git commit -m 'Update Baseball closed-loop research artifacts'
+
+          # The PIT ledgers are append-only JSONL. If another actor pushes while
+          # the long research job is running, rebase and automatically union
+          # only the four append-only ledger conflicts. Any other conflict
+          # remains fatal rather than silently discarding source/code changes.
+          for attempt in 1 2 3; do
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+
+            git fetch origin main
+            if git rebase origin/main; then
+              continue
+            fi
+
+            conflicts=$(git diff --name-only --diff-filter=U)
+            allowed=1
+            for f in $conflicts; do
+              case "$f" in
+                data/pit/acquisition_runs.jsonl|data/pit/availability_observations.jsonl|data/pit/event_observations.jsonl|data/pit/source_snapshots.jsonl)
+                  ;;
+                *)
+                  allowed=0
+                  ;;
+              esac
+            done
+
+            if [ "$allowed" -ne 1 ] || [ -z "$conflicts" ]; then
+              echo "Unsafe merge conflict detected; refusing automatic resolution."
+              git rebase --abort || true
+              exit 1
+            fi
+
+            python - <<'PY'
+            import subprocess
+            from pathlib import Path
+
+            files = subprocess.check_output(
+                ["git", "diff", "--name-only", "--diff-filter=U"], text=True
+            ).splitlines()
+
+            for name in files:
+                base = subprocess.check_output(["git", "show", f":2:{name}"], text=True, errors="replace")
+                incoming = subprocess.check_output(["git", "show", f":3:{name}"], text=True, errors="replace")
+                seen = set()
+                merged = []
+                for line in (base + incoming).splitlines():
+                    if not line.strip() or line in seen:
+                        continue
+                    seen.add(line)
+                    merged.append(line)
+                Path(name).write_text("\n".join(merged) + "\n", encoding="utf-8")
+            PY
+
+            git add $conflicts
+            GIT_EDITOR=true git rebase --continue
+          done
+
+          echo 'Failed to publish lifecycle artifacts after 3 attempts.' >&2
+          exit 1
 
       - name: Upload lifecycle artifacts
         if: always()
