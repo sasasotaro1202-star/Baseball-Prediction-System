@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""Reliable research entry point for the Baseball Prediction System.
-
-The runner is deliberately fail-closed: a league is SUCCESS only when its
-chronological OOS predictions are non-empty, its targets are non-degenerate,
-and the produced target values are internally consistent. NPB final scores are
-recovered from the monotone cumulative PBP score fields using max-over-game,
-which is safer than assuming the last PBP row contains the final scoreboard.
-"""
+"""Reliable research entry point for the Baseball Prediction System."""
 from __future__ import annotations
 
 import argparse
@@ -35,17 +28,10 @@ def preflight() -> None:
 
 
 def _repair_npb_targets(pbp: pd.DataFrame, games: pd.DataFrame) -> pd.DataFrame:
-    """Repair only the observed NPB target columns, never model features.
-
-    The public PBP release stores cumulative home/away runs. Runs cannot
-    decrease during a game, so the maximum observed value is the final score.
-    This repair is performed before walk-forward modeling and is used only as
-    the supervised target; it is never exposed as a feature.
-    """
+    """Repair only observed NPB target columns from monotone PBP scores."""
     required = {"game_id", "home_score", "away_score"}
     if not required.issubset(pbp.columns):
         raise RuntimeError("NPB PBP adapter did not expose explicit score columns")
-
     score = (
         pbp.assign(game_id=pbp["game_id"].astype(str))
         .groupby("game_id", as_index=False)
@@ -62,7 +48,8 @@ def _repair_npb_targets(pbp: pd.DataFrame, games: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def _validate_targets(frame: pd.DataFrame, league: str) -> None:
+def _validate_targets(frame: pd.DataFrame, league: str) -> dict:
+    """Fail closed on corrupted, stale, duplicated, or degenerate score feeds."""
     for col in ("home_score", "away_score"):
         if col not in frame:
             raise RuntimeError(f"{league} missing target column: {col}")
@@ -72,18 +59,45 @@ def _validate_targets(frame: pd.DataFrame, league: str) -> None:
         if (values < 0).any():
             raise RuntimeError(f"{league} has negative target values in {col}")
 
-    if league == "NPB":
-        actual = (frame["home_score"] > frame["away_score"]).astype(int) * 0
-        actual = np.where(
-            frame["home_score"] > frame["away_score"], 0,
-            np.where(frame["home_score"] == frame["away_score"], 1, 2),
+    if "game_id" in frame and frame["game_id"].duplicated().any():
+        dup = int(frame["game_id"].duplicated().sum())
+        raise RuntimeError(f"{league} has duplicate game_id rows: {dup}")
+
+    hs = pd.to_numeric(frame["home_score"], errors="coerce")
+    aw = pd.to_numeric(frame["away_score"], errors="coerce")
+    total = hs + aw
+    unique_total_runs = int(total.nunique(dropna=True))
+    zero_zero_rate = float(((hs == 0) & (aw == 0)).mean())
+    mean_total_runs = float(total.mean())
+
+    if unique_total_runs < 5 or mean_total_runs <= 0.25:
+        raise RuntimeError(
+            f"{league} target integrity failure: score distribution is degenerate "
+            f"(unique_total_runs={unique_total_runs}, mean_total_runs={mean_total_runs:.4f})"
         )
-        counts = pd.Series(actual).value_counts()
-        if len(counts) < 2:
-            raise RuntimeError(
-                "NPB target integrity failure: fewer than two result classes were observed; "
-                "refusing to publish a misleading OOS run"
-            )
+    if zero_zero_rate > 0.10:
+        raise RuntimeError(f"{league} target integrity failure: zero-zero rate is {zero_zero_rate:.2%}")
+
+    if league == "NPB":
+        actual = np.where(hs > aw, 0, np.where(hs == aw, 1, 2))
+    else:
+        actual = (hs > aw).astype(int).to_numpy()
+    counts = pd.Series(actual).value_counts()
+    if len(counts) < 2:
+        raise RuntimeError(
+            f"{league} target integrity failure: fewer than two result classes were observed; "
+            "refusing to publish a misleading OOS run"
+        )
+
+    return {
+        "rows": int(len(frame)),
+        "classes": {str(int(k)): int(v) for k, v in counts.sort_index().items()},
+        "unique_total_runs": unique_total_runs,
+        "mean_total_runs": mean_total_runs,
+        "zero_zero_rate": zero_zero_rate,
+        "home_score_mean": float(hs.mean()),
+        "away_score_mean": float(aw.mean()),
+    }
 
 
 def run_one(league: str, data_dir: Path, *, mlb_start: int, mlb_end: int, retries: int = 2) -> dict:
@@ -102,15 +116,16 @@ def run_one(league: str, data_dir: Path, *, mlb_start: int, mlb_end: int, retrie
                 if games.empty:
                     raise RuntimeError("NPB adapter produced zero games")
                 games = _repair_npb_targets(pbp, games)
-                _validate_targets(games, "NPB")
+                target_quality = _validate_targets(games, "NPB")
                 frame = bt.run_walkforward(games, "NPB")
             else:
                 games = bt.load_mlb(mlb_start, mlb_end)
                 if games.empty:
                     raise RuntimeError("MLB loader produced zero games")
-                _validate_targets(games, "MLB")
+                target_quality = _validate_targets(games, "MLB")
                 frame = bt.run_walkforward(games, "MLB")
             result["games"] = int(len(games))
+            result["target_quality"] = target_quality
             result["starter_coverage"] = float(games["confirmed_starters"].mean()) if "confirmed_starters" in games else 0.0
             result["predictions"] = int(len(frame))
             if result["predictions"] <= 0:
@@ -154,7 +169,7 @@ def main() -> int:
         return 0
     leagues = ["NPB", "MLB"] if args.league == "BOTH" else [args.league]
     results = [run_one(x, Path(args.data_dir), mlb_start=args.mlb_start, mlb_end=args.mlb_end, retries=args.retries) for x in leagues]
-    manifest = {"version": 4, "requested_leagues": leagues, "results": results,
+    manifest = {"version": 5, "requested_leagues": leagues, "results": results,
                 "overall_status": "SUCCESS" if all(r["status"] == "SUCCESS" for r in results) else "PARTIAL_OR_FAILED"}
     path = Path(args.manifest)
     path.parent.mkdir(parents=True, exist_ok=True)
