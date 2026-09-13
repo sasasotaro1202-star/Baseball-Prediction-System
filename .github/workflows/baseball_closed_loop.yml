@@ -42,7 +42,7 @@ jobs:
           python research/action_preflight.py
 
       - name: Acquire current PIT observations
-        run: python data/pit_acquisition.py
+        run: python -m data.pit_acquisition
 
       - name: Validate PIT before research
         run: |
