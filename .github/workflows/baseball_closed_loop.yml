@@ -37,6 +37,7 @@ jobs:
 
       - name: Restore immutable historical NPB PBP cache
         id: npb-cache
+        continue-on-error: true
         uses: actions/cache@v4
         with:
           path: |
@@ -52,7 +53,7 @@ jobs:
 
       - name: Install research dependencies
         timeout-minutes: 10
-        run: python -m pip install --disable-pip-version-check --retries 5 --timeout 60 -r requirements.txt
+        run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
 
       - name: Compile and preflight
         run: |
@@ -130,6 +131,7 @@ jobs:
 
       - name: Save immutable historical NPB PBP cache
         if: success()
+        continue-on-error: true
         uses: actions/cache/save@v4
         with:
           path: |
