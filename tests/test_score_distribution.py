@@ -48,7 +48,7 @@ def test_game_specific_lambdas_change_the_top_four():
 def test_low_high_uses_full_distribution_independent_of_top_four():
     output = build_score_outputs(5.0, 4.5)
     assert len(output["score_candidates"]) == 4
-    assert output["low_definition"] == "total_runs <= 6"
+    assert output["low_definition"] == "total runs <= 6"
     assert output["high_definition"] == "total runs >= 7"
     assert output["low_high_boundary"] == 6.5
     assert math.isclose(output["low_probability"] + output["high_probability"], 1.0, abs_tol=1e-12)
