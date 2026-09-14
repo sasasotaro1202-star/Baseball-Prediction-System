@@ -71,8 +71,8 @@ def test_prediction_rejects_non_finite_probability():
 
 
 def test_prediction_rejects_low_high_mismatch():
-    with pytest.raises(ValueError, match="sum to 1"):
-        validate_prediction(record(low_probability=0.7, high_probability=0.4))
+    with pytest.raises(ValueError, match="production score contract"):
+        validate_prediction(record(low_probability=0.7, high_probability=0.4, score_candidates=[]))
 
 
 def test_prediction_ledger_is_idempotent(tmp_path):
