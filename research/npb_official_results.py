@@ -32,7 +32,6 @@ TEAM = {
     "オリックス": "オリックス・バファローズ", "オリックス・バファローズ": "オリックス・バファローズ",
 }
 TEAM_VALUES = frozenset(TEAM.values())
-# Prefer long aliases first so substring matches such as 横浜 do not shadow DeNA.
 ALIASES = sorted(TEAM, key=len, reverse=True)
 
 
@@ -92,8 +91,6 @@ def _request_rows(url: str, retries: int = 4) -> list[list[str]]:
             if r.status_code == 404:
                 return []
             r.raise_for_status()
-            # NPB is Japanese HTML; apparent_encoding is preferable to an ASCII
-            # default when the server omits a useful charset declaration.
             if not r.encoding or r.encoding.lower() == "iso-8859-1":
                 r.encoding = r.apparent_encoding or "utf-8"
             parser = _Rows()
@@ -107,7 +104,6 @@ def _request_rows(url: str, retries: int = 4) -> list[list[str]]:
 
 
 def _teams_around_score(line: str, score_start: int, score_end: int) -> tuple[str | None, str | None]:
-    """Find the nearest recognized NPB team before/after the score token."""
     before = line[:score_start]
     after = line[score_end:]
     candidates_before: list[tuple[int, str]] = []
@@ -131,28 +127,38 @@ def _teams_around_score(line: str, score_start: int, score_end: int) -> tuple[st
 
 
 def _parse_score_lines(cells: list[str], current_date: str, url: str) -> list[dict]:
+    """Parse a completed matchup from an entire HTML table row.
+
+    Some NPB layouts put home team, score, and away team in separate cells.
+    Therefore parsing each cell independently is unsafe; the logical row is
+    flattened first while preserving cell boundaries with a separator.
+    """
     out: list[dict] = []
-    # Do not assume spaces around the score or a fixed matchup column. The live
-    # NPB pages have historically varied in nested tags and whitespace.
-    score_re = re.compile(r"(?<!\d)(\d{1,2})\s*[-−–]\s*(\d{1,2})(?!\d)")
+    score_re = re.compile(r"(?<!\d)(\d{1,2})\s*[-−–－]\s*(\d{1,2})(?!\d)")
+    normalized = []
     for cell in cells:
-        for raw_line in cell.splitlines():
-            line = re.sub(r"\s+", " ", raw_line.replace("\u00a0", " ").replace("\u3000", " ")).strip()
-            if not line:
-                continue
-            for match in score_re.finditer(line):
-                home, away = _teams_around_score(line, match.start(), match.end())
-                if home is None or away is None:
-                    continue
-                out.append({
-                    "date": current_date,
-                    "home": home,
-                    "away": away,
-                    "home_score": int(match.group(1)),
-                    "away_score": int(match.group(2)),
-                    "source_url": url,
-                })
-                break
+        text = str(cell).replace("\u00a0", " ").replace("\u3000", " ")
+        text = re.sub(r"\s+", " ", text).strip()
+        if text:
+            normalized.append(text)
+    # Keep enough whitespace for team-token detection, but make parsing
+    # independent of whether the source used one cell or several cells.
+    line = " | ".join(normalized)
+    if not line:
+        return out
+    for match in score_re.finditer(line):
+        home, away = _teams_around_score(line, match.start(), match.end())
+        if home is None or away is None:
+            continue
+        out.append({
+            "date": current_date,
+            "home": home,
+            "away": away,
+            "home_score": int(match.group(1)),
+            "away_score": int(match.group(2)),
+            "source_url": url,
+        })
+        break
     return out
 
 
@@ -165,7 +171,6 @@ def _fetch_month(year: int, month: int) -> list[dict]:
     for row in rows:
         if not row:
             continue
-        # Date can be in the first or second cell depending on NPB markup.
         for cell in row[:3]:
             dm = date_re.search(cell.strip())
             if dm:
@@ -242,12 +247,10 @@ def repair_scores(frame: pd.DataFrame, data_dir: str | Path) -> pd.DataFrame:
     out["away_score"] = pd.to_numeric(out["away_score"], errors="coerce")
     if out[["home_score", "away_score"]].notna().all(axis=1).all():
         return out
-
     games = out[["game_id", "date", "home", "away", "home_score", "away_score"]].drop_duplicates("game_id").copy()
     games["date_key"] = pd.to_datetime(games["date"], errors="coerce", utc=True).dt.strftime("%Y-%m-%d")
     games["home_key"] = games["home"].map(canon_team)
     games["away_key"] = games["away"].map(canon_team)
-
     local = _game_score_from_frame(out)
     if not local.empty:
         by_id = local[["game_id", "home_score", "away_score"]].rename(columns={"home_score": "local_h", "away_score": "local_a"})
@@ -255,7 +258,6 @@ def repair_scores(frame: pd.DataFrame, data_dir: str | Path) -> pd.DataFrame:
         games["home_score"] = games["home_score"].fillna(games["local_h"])
         games["away_score"] = games["away_score"].fillna(games["local_a"])
         games = games.drop(columns=["local_h", "local_a"])
-
     unresolved = games[["home_score", "away_score"]].isna().any(axis=1)
     if unresolved.any():
         years = pd.to_datetime(games.loc[unresolved, "date"], errors="coerce", utc=True).dt.year.dropna().astype(int).unique().tolist()
@@ -271,12 +273,10 @@ def repair_scores(frame: pd.DataFrame, data_dir: str | Path) -> pd.DataFrame:
         games["home_score"] = games["home_score"].fillna(games["official_h"])
         games["away_score"] = games["away_score"].fillna(games["official_a"])
         games = games.drop(columns=["official_h", "official_a"])
-
     unresolved = games[["home_score", "away_score"]].isna().any(axis=1)
     if unresolved.any():
         sample = games.loc[unresolved, ["game_id", "date_key", "home_key", "away_key"]].head(10).to_dict("records")
         raise RuntimeError(f"NPB score repair left {int(unresolved.sum())} unresolved games; sample={sample}")
-
     score_map = games.set_index("game_id")[["home_score", "away_score"]]
     out = out.drop(columns=["home_score", "away_score"]).merge(score_map, left_on="game_id", right_index=True, how="left", validate="many_to_one")
     if out[["home_score", "away_score"]].isna().any().any():
@@ -286,7 +286,6 @@ def repair_scores(frame: pd.DataFrame, data_dir: str | Path) -> pd.DataFrame:
 
 def load_repaired_pbp(data_dir: str | Path) -> pd.DataFrame:
     from data.npb_pbp_adapter import normalize_pbp_frame
-
     root = Path(data_dir)
     files = sorted(root.glob("*_pbp.csv"))
     if not files:
