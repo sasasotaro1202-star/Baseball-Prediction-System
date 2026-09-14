@@ -8,6 +8,7 @@ from typing import Any, Callable, Mapping
 from core.pit import _ts
 from data.availability import AvailabilityRecord, prediction_eligible
 from prediction.prediction_log import PredictionRecord, append_prediction, make_prediction_id
+from prediction.score_distribution import build_score_outputs
 
 
 def eligibility_gate(*, availability: AvailabilityRecord, required_data_ok: bool,
@@ -69,7 +70,25 @@ def _validate_score_candidates(candidates: Any) -> list[dict[str, Any]]:
         if not math.isfinite(p) or p < 0 or p > 1:
             raise ValueError("score candidate probability must be finite and in [0,1]")
         out.append(dict(item))
+    if out and len(out) != 4:
+        raise ValueError("production score contract requires exactly four candidates")
+    if len({str(x["score"]) for x in out}) != len(out):
+        raise ValueError("score candidates must be unique")
     return out
+
+
+def _derive_score_outputs(row: Mapping[str, Any]) -> dict[str, Any]:
+    """Derive score/Low-High from game-specific run means when available.
+
+    The run means must already be PIT-safe model outputs. We intentionally do
+    not infer them from final win probabilities because that would fabricate a
+    score distribution from insufficient information.
+    """
+    home_lambda = row.get("home_run_lambda")
+    away_lambda = row.get("away_run_lambda")
+    if home_lambda is None or away_lambda is None:
+        return {}
+    return build_score_outputs(float(home_lambda), float(away_lambda))
 
 
 def run_prediction(*, row: Mapping[str, Any], availability: AvailabilityRecord,
@@ -95,18 +114,26 @@ def run_prediction(*, row: Mapping[str, Any], availability: AvailabilityRecord,
     if now < _ts(availability.prediction_cutoff):
         raise ValueError("prediction cannot be created before its declared cutoff")
 
+    derived = _derive_score_outputs(row)
+    supplied_scores = row.get("score_candidates")
+    score_candidates = _validate_score_candidates(supplied_scores if supplied_scores is not None else derived.get("score_candidates", []))
+
     total_line = row.get("total_runs_line")
     if total_line is not None:
         total_line = float(total_line)
         if not math.isfinite(total_line) or total_line < 0 or abs(total_line * 2 - round(total_line * 2)) > 1e-9:
             raise ValueError("total_runs_line must be finite, non-negative, integer or half-point")
 
-    low = _optional_probability(row.get("low_probability"), "low_probability")
-    high = _optional_probability(row.get("high_probability"), "high_probability")
+    supplied_low = row.get("low_probability")
+    supplied_high = row.get("high_probability")
+    low = _optional_probability(supplied_low if supplied_low is not None else derived.get("low_probability"), "low_probability")
+    high = _optional_probability(supplied_high if supplied_high is not None else derived.get("high_probability"), "high_probability")
     if (low is None) != (high is None):
         raise ValueError("low_probability and high_probability must be supplied together")
     if low is not None and abs(low + high - 1.0) > 1e-8:
         raise ValueError("low/high probabilities must sum to 1")
+    if row.get("home_run_lambda") is not None and row.get("away_run_lambda") is not None and (not score_candidates or low is None):
+        raise ValueError("run-distribution inputs require complete score and Low/High outputs")
 
     pid = make_prediction_id(availability.event_id, availability.prediction_cutoff, model_version, git_commit)
     record = PredictionRecord(
@@ -114,7 +141,7 @@ def run_prediction(*, row: Mapping[str, Any], availability: AvailabilityRecord,
         prediction_cutoff=availability.prediction_cutoff, prediction_created_at=now.isoformat(),
         home_team=availability.home_team, away_team=availability.away_team,
         home_starter=availability.home_starter, away_starter=availability.away_starter,
-        probabilities=probabilities, score_candidates=_validate_score_candidates(row.get("score_candidates", [])),
+        probabilities=probabilities, score_candidates=score_candidates,
         low_probability=low, high_probability=high, total_runs_line=total_line,
         confidence=_optional_probability(row.get("confidence"), "confidence"),
         volatility=_optional_probability(row.get("volatility"), "volatility"),
