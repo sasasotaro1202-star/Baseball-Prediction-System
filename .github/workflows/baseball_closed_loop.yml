@@ -52,12 +52,9 @@ jobs:
             data/2024-*_pbp.csv
             data/2025-*_pbp.csv
             data/.npb_official_schedule_cache/**
-          key: baseball-npb-historical-v4-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          key: baseball-npb-historical-v5-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
           restore-keys: |
-            baseball-npb-historical-v4-${{ runner.os }}-
-            baseball-npb-historical-v3-${{ runner.os }}-
-            baseball-npb-historical-v2-${{ runner.os }}-
-            baseball-npb-historical-v3-${{ runner.os }}-${{ hashFiles('requirements.txt') }}-
+            baseball-npb-historical-v5-${{ runner.os }}-
 
       - name: Install research dependencies
         timeout-minutes: 10
@@ -238,7 +235,7 @@ jobs:
             data/2024-*_pbp.csv
             data/2025-*_pbp.csv
             data/.npb_official_schedule_cache/**
-          key: baseball-npb-historical-v4-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          key: baseball-npb-historical-v5-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
 
       - name: Run chronological Baseball OOS research
         timeout-minutes: 60
