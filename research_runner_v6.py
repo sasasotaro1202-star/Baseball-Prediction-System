@@ -104,6 +104,36 @@ def _validate_targets(frame: pd.DataFrame, league: str) -> dict:
     }
 
 
+def _filter_confirmed_starters(games: pd.DataFrame, league: str) -> tuple[pd.DataFrame, dict]:
+    """Keep only games whose both starting pitchers are known before prediction.
+
+    The production objective is not to manufacture predictions for games whose
+    critical starter information is unavailable.  Historical games with missing
+    starter identity remain valid raw data, but are excluded from the prediction
+    sample rather than silently receiving neutral/default starter features.
+    """
+    if league not in {"NPB", "MLB"}:
+        return games, {"before": int(len(games)), "after": int(len(games)), "excluded": 0}
+    required = {"home_starter", "away_starter"}
+    if not required.issubset(games.columns):
+        raise RuntimeError(f"{league} starter availability columns are missing: {sorted(required - set(games.columns))}")
+    home = games["home_starter"].fillna("").astype(str).str.strip()
+    away = games["away_starter"].fillna("").astype(str).str.strip()
+    mask = home.ne("") & away.ne("") & home.str.lower().ne("nan") & away.str.lower().ne("nan")
+    before = int(len(games))
+    filtered = games.loc[mask].copy().reset_index(drop=True)
+    excluded = before - int(len(filtered))
+    audit = {
+        "before": before,
+        "after": int(len(filtered)),
+        "excluded": excluded,
+        "coverage": float(len(filtered) / max(before, 1)),
+    }
+    if len(filtered) <= 0:
+        raise RuntimeError(f"{league} has no games with both announced starters")
+    return filtered, audit
+
+
 def run_one(league: str, data_dir: Path, *, mlb_start: int, mlb_end: int, retries: int = 2) -> dict:
     started = time.time()
     from baseball_backtest import BaseballBacktest
@@ -119,17 +149,27 @@ def run_one(league: str, data_dir: Path, *, mlb_start: int, mlb_end: int, retrie
                 if games.empty:
                     raise RuntimeError("NPB adapter produced zero games")
                 games = _repair_npb_targets(pbp, games)
+                starter_before = int(len(games))
+                games, starter_audit = _filter_confirmed_starters(games, league)
+                result["starter_filter"] = starter_audit
                 target_quality = _validate_targets(games, "NPB")
                 frame = bt.run_walkforward(games, "NPB")
+                if len(games) >= 200 and len(frame) < max(100, int(len(games) * 0.15)):
+                    raise RuntimeError(
+                        f"NPB OOS coverage unexpectedly low after starter filter: "
+                        f"games={len(games)}, predictions={len(frame)}, raw_games={starter_before}"
+                    )
             else:
                 games = bt.load_mlb(mlb_start, mlb_end)
                 if games.empty:
                     raise RuntimeError("MLB loader produced zero games")
+                games, starter_audit = _filter_confirmed_starters(games, league)
+                result["starter_filter"] = starter_audit
                 target_quality = _validate_targets(games, "MLB")
                 frame = bt.run_walkforward(games, "MLB")
             result["games"] = int(len(games))
             result["target_quality"] = target_quality
-            result["starter_coverage"] = float(games["confirmed_starters"].mean()) if "confirmed_starters" in games else 0.0
+            result["starter_coverage"] = float(games["confirmed_starters"].mean()) if "confirmed_starters" in games else float(result["starter_filter"]["coverage"])
             result["predictions"] = int(len(frame))
             if result["predictions"] <= 0:
                 raise RuntimeError(f"{league} produced zero predictions")
@@ -178,7 +218,7 @@ def main() -> int:
         futures = [ex.submit(run_one, league, Path(args.data_dir), mlb_start=args.mlb_start, mlb_end=args.mlb_end, retries=args.retries) for league in leagues]
         results = [f.result() for f in futures]
     manifest = {
-        "version": 6,
+        "version": 7,
         "requested_leagues": leagues,
         "results": results,
         "overall_status": "SUCCESS" if all(r["status"] == "SUCCESS" for r in results) else "PARTIAL_OR_FAILED",
