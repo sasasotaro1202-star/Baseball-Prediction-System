@@ -41,7 +41,7 @@ def test_npb_prediction_contract_requires_three_probabilities():
             {"score": "2-0", "probability": .08},
             {"score": "1-0", "probability": .07},
         ],
-        low_probability=None, high_probability=None, total_runs_line=None,
+        low_probability=.6, high_probability=.4, total_runs_line=None,
         confidence=None, volatility=None, model_version="m1", feature_version="f1",
         calibration_version="c1", git_commit="abc", data_snapshot_id="s1",
     )
