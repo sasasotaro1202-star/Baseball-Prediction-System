@@ -235,9 +235,12 @@ jobs:
           key: baseball-npb-historical-v6-${{ runner.os }}-${{ hashFiles('requirements.txt', 'research/npb_official_results.py') }}
 
       - name: Run chronological Baseball OOS research
-        timeout-minutes: 60
+        timeout-minutes: 90
         env:
-          BASEBALL_TIME_BUDGET_SEC: '1500'
+          # The previous 1500-second budget yielded only a partial OOS sample.
+          # Keep the job comfortably inside the 120-minute lifecycle timeout while
+          # allowing substantially more chronological evaluation before stopping.
+          BASEBALL_TIME_BUDGET_SEC: '2400'
           NPB_RETRAIN_EVERY: '150'
           MLB_ENRICH_STARTERS: '0'
         run: python -u research_runner_v6.py --league BOTH --mlb-start 2020 --mlb-end 2026 --retries 3
