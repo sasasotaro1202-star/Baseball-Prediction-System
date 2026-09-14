@@ -10,6 +10,7 @@ from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 import hashlib
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -59,13 +60,34 @@ def pit_stage() -> Stage:
 
 
 def calibration_stage(calibration_artifact: str | Path = "results/calibration.json") -> Stage:
+    """Validate the current calibration schema without assuming a global scalar.
+
+    Production calibration is stored per league because NPB and MLB have
+    different class structures and probability sharpness.  Older artifacts may
+    contain a single top-level ``temperature``; those remain accepted for
+    backward compatibility, but the current per-league schema is preferred.
+    """
     if not _nonempty(calibration_artifact):
         return Stage("Calibration", "BLOCKED", ("calibration_artifact_missing",))
     try:
         obj = json.loads(Path(calibration_artifact).read_text(encoding="utf-8"))
-        temperature = float(obj["temperature"])
-        if not temperature > 0:
-            raise ValueError("temperature must be positive")
+        if not isinstance(obj, dict):
+            raise ValueError("calibration artifact must be an object")
+        if "temperature" in obj:
+            temperatures = {"global": obj["temperature"]}
+        else:
+            leagues = obj.get("leagues")
+            if not isinstance(leagues, dict) or not leagues:
+                raise ValueError("calibration artifact has no per-league calibrations")
+            temperatures = {}
+            for league, payload in leagues.items():
+                if not isinstance(payload, dict) or "temperature" not in payload:
+                    raise ValueError(f"missing temperature for league {league}")
+                temperatures[str(league)] = payload["temperature"]
+        for league, value in temperatures.items():
+            temperature = float(value)
+            if not math.isfinite(temperature) or temperature <= 0:
+                raise ValueError(f"temperature must be positive and finite for {league}")
     except Exception as exc:
         return Stage("Calibration", "BLOCKED", (f"invalid_calibration:{type(exc).__name__}",))
     return Stage("Calibration", "READY")
