@@ -52,9 +52,9 @@ jobs:
             data/2024-*_pbp.csv
             data/2025-*_pbp.csv
             data/.npb_official_schedule_cache/**
-          key: baseball-npb-historical-v5-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          key: baseball-npb-historical-v6-${{ runner.os }}-${{ hashFiles('requirements.txt', 'research/npb_official_results.py') }}
           restore-keys: |
-            baseball-npb-historical-v5-${{ runner.os }}-
+            baseball-npb-historical-v6-${{ runner.os }}-
 
       - name: Install research dependencies
         timeout-minutes: 10
@@ -67,13 +67,16 @@ jobs:
           python -m compileall -q .
           python research/action_preflight.py
 
+      - name: Run lightweight regression tests
+        timeout-minutes: 5
+        run: python -m pytest -q tests
+
       - name: Smoke-test NPB official score parser
         timeout-minutes: 3
         run: |
           set -euo pipefail
           python - <<'PY'
           from research.npb_official_results import _parse_score_lines
-
           cases = [
               (['巨人 6 - 5 ヤクルト'], 6, 5),
               (['阪神 10-2 中日'], 10, 2),
@@ -173,13 +176,11 @@ jobs:
           from pathlib import Path
           import pandas as pd
           from data.npb_pbp_adapter import normalize_pbp_frame
-
           files = sorted(Path('data').glob('*_pbp.csv'))
           expected = {str(y) for y in range(2020, 2027)}
           years = {p.name[:4] for p in files}
           if not expected.issubset(years):
               raise SystemExit(f'missing NPB years: {sorted(expected-years)}')
-
           normalized_files = 0
           announcement_only_files = 0
           sampled_rows = 0
@@ -192,13 +193,11 @@ jobs:
               legacy_raw = {'GameID', 'H_R', 'V_R'}
               if not (required_raw.issubset(sample.columns) or legacy_raw.issubset(sample.columns)):
                   raise SystemExit(f'unrecognized NPB PBP schema in {p}: {sorted(sample.columns.tolist())[:40]}')
-
               normalized = normalize_pbp_frame(sample, data_dir=None)
               if normalized.empty:
                   announcement_only_files += 1
                   print(f'NPB source accepted as empty/announcement-only sample: {p}')
                   continue
-
               for col in ('game_id', 'date', 'home', 'away', 'home_score', 'away_score'):
                   if col not in normalized.columns:
                       raise SystemExit(f'normalized NPB schema missing {col}: {p}')
@@ -208,12 +207,10 @@ jobs:
               usable = int((valid_ids & valid_dates & valid_teams).sum())
               if usable <= 0:
                   announcement_only_files += 1
-                  print(f'NPB source accepted as announcement-only/target-repair-only: {p}')
               else:
                   usable_game_rows += usable
               normalized_files += 1
               sampled_rows += len(normalized)
-
           if normalized_files <= 0 or usable_game_rows <= 0:
               raise SystemExit('NPB staged release set contains no usable game rows')
           print(f'NPB staged source integrity OK: files={normalized_files}, announcement_only={announcement_only_files}, sampled_rows={sampled_rows}, usable_game_rows={usable_game_rows}')
@@ -235,7 +232,7 @@ jobs:
             data/2024-*_pbp.csv
             data/2025-*_pbp.csv
             data/.npb_official_schedule_cache/**
-          key: baseball-npb-historical-v5-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          key: baseball-npb-historical-v6-${{ runner.os }}-${{ hashFiles('requirements.txt', 'research/npb_official_results.py') }}
 
       - name: Run chronological Baseball OOS research
         timeout-minutes: 60
