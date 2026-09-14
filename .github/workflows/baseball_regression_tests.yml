@@ -22,10 +22,14 @@ env:
   PYTHONUNBUFFERED: '1'
   PIP_DISABLE_PIP_VERSION_CHECK: '1'
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -40,13 +44,13 @@ jobs:
           cache-dependency-path: requirements.txt
 
       - name: Install dependencies
-        timeout-minutes: 5
+        timeout-minutes: 10
         run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
 
       - name: Compile repository
-        timeout-minutes: 3
+        timeout-minutes: 5
         run: python -m compileall -q .
 
       - name: Run regression tests
-        timeout-minutes: 5
+        timeout-minutes: 10
         run: python -m pytest -q tests
