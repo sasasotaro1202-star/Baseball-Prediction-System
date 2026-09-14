@@ -78,17 +78,39 @@ def _validate_score_candidates(candidates: Any) -> list[dict[str, Any]]:
 
 
 def _derive_score_outputs(row: Mapping[str, Any]) -> dict[str, Any]:
-    """Derive score/Low-High from game-specific run means when available.
+    """Derive score/Low-High from game-specific PIT-safe run means.
 
-    The run means must already be PIT-safe model outputs. We intentionally do
-    not infer them from final win probabilities because that would fabricate a
-    score distribution from insufficient information.
+    Run means are the only accepted upstream contract for exact-score outputs.
+    We deliberately do not reconstruct a score distribution from win
+    probabilities, because that would invent information and can produce
+    internally inconsistent production outputs.
     """
     home_lambda = row.get("home_run_lambda")
     away_lambda = row.get("away_run_lambda")
     if home_lambda is None or away_lambda is None:
         return {}
     return build_score_outputs(float(home_lambda), float(away_lambda))
+
+
+def _assert_generated_outputs_are_authoritative(
+    row: Mapping[str, Any], derived: Mapping[str, Any]
+) -> None:
+    """Prevent caller-supplied score/Low-High fields from overriding model output."""
+    if not derived:
+        return
+    supplied_scores = row.get("score_candidates")
+    if supplied_scores is not None:
+        supplied = _validate_score_candidates(supplied_scores)
+        generated = list(derived["score_candidates"])
+        if supplied != generated:
+            raise ValueError("supplied score_candidates do not match generated score distribution")
+    for name in ("low_probability", "high_probability"):
+        supplied = row.get(name)
+        if supplied is not None:
+            supplied_value = _optional_probability(supplied, name)
+            generated_value = float(derived[name])
+            if not math.isclose(supplied_value, generated_value, rel_tol=0.0, abs_tol=1e-12):
+                raise ValueError(f"supplied {name} does not match generated score distribution")
 
 
 def run_prediction(*, row: Mapping[str, Any], availability: AvailabilityRecord,
@@ -115,8 +137,8 @@ def run_prediction(*, row: Mapping[str, Any], availability: AvailabilityRecord,
         raise ValueError("prediction cannot be created before its declared cutoff")
 
     derived = _derive_score_outputs(row)
-    supplied_scores = row.get("score_candidates")
-    score_candidates = _validate_score_candidates(supplied_scores if supplied_scores is not None else derived.get("score_candidates", []))
+    _assert_generated_outputs_are_authoritative(row, derived)
+    score_candidates = _validate_score_candidates(derived.get("score_candidates", row.get("score_candidates")))
 
     total_line = row.get("total_runs_line")
     if total_line is not None:
@@ -126,8 +148,8 @@ def run_prediction(*, row: Mapping[str, Any], availability: AvailabilityRecord,
 
     supplied_low = row.get("low_probability")
     supplied_high = row.get("high_probability")
-    low = _optional_probability(supplied_low if supplied_low is not None else derived.get("low_probability"), "low_probability")
-    high = _optional_probability(supplied_high if supplied_high is not None else derived.get("high_probability"), "high_probability")
+    low = _optional_probability(derived.get("low_probability", supplied_low), "low_probability")
+    high = _optional_probability(derived.get("high_probability", supplied_high), "high_probability")
     if (low is None) != (high is None):
         raise ValueError("low_probability and high_probability must be supplied together")
     if low is not None and abs(low + high - 1.0) > 1e-8:
