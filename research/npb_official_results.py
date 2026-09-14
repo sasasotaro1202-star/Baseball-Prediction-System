@@ -1,9 +1,8 @@
 """Fail-closed NPB realized-score repair.
 
-The PBP release may contain structurally present but null final-score columns.
-Realized labels are repaired from NPB.jp's year-specific official schedule/result
-pages. The repair is performed at game level and then mapped back to PBP rows.
-No realized-label source is used as a predictive feature.
+Realized labels are repaired from NPB.jp year-specific official schedule pages.
+Parsing is deliberately resilient to table/cell markup changes while remaining
+strict about team identity, date, and final score integrity.
 """
 from __future__ import annotations
 
@@ -33,6 +32,8 @@ TEAM = {
     "オリックス": "オリックス・バファローズ", "オリックス・バファローズ": "オリックス・バファローズ",
 }
 TEAM_VALUES = frozenset(TEAM.values())
+# Prefer long aliases first so substring matches such as 横浜 do not shadow DeNA.
+ALIASES = sorted(TEAM, key=len, reverse=True)
 
 
 def canon_team(value: object) -> str:
@@ -49,6 +50,7 @@ class _Rows(HTMLParser):
         self.cell: list[str] | None = None
 
     def handle_starttag(self, tag: str, attrs) -> None:
+        tag = tag.lower()
         if tag == "tr":
             self.row = []
         elif tag in {"td", "th"} and self.row is not None:
@@ -61,6 +63,7 @@ class _Rows(HTMLParser):
             self.cell.append(data)
 
     def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
         if tag in {"td", "th"} and self.row is not None and self.cell is not None:
             text = "".join(self.cell).replace("\u00a0", " ").replace("\u3000", " ")
             text = re.sub(r"[ \t\r\f\v]+", " ", text)
@@ -71,12 +74,10 @@ class _Rows(HTMLParser):
             if self.row:
                 self.rows.append(self.row)
             self.row = None
+            self.cell = None
 
 
 def months_for_year(year: int) -> tuple[int, ...]:
-    # 2020 regular season extended into November; later seasons' regular season
-    # is covered by March-October. Postseason rows are harmless because matching
-    # is against the PBP game's exact date/home/away key.
     return tuple(range(6, 12)) if year == 2020 else tuple(range(3, 11))
 
 
@@ -84,14 +85,17 @@ def _request_rows(url: str, retries: int = 4) -> list[list[str]]:
     last: Exception | None = None
     for attempt in range(retries):
         try:
-            r = requests.get(
-                url,
-                timeout=30,
-                headers={"User-Agent": "Baseball-Prediction-System/5.0", "Accept": "text/html,*/*;q=0.8"},
-            )
+            r = requests.get(url, timeout=30, headers={
+                "User-Agent": "Baseball-Prediction-System/6.0",
+                "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
+            })
             if r.status_code == 404:
                 return []
             r.raise_for_status()
+            # NPB is Japanese HTML; apparent_encoding is preferable to an ASCII
+            # default when the server omits a useful charset declaration.
+            if not r.encoding or r.encoding.lower() == "iso-8859-1":
+                r.encoding = r.apparent_encoding or "utf-8"
             parser = _Rows()
             parser.feed(r.text)
             return parser.rows
@@ -102,44 +106,67 @@ def _request_rows(url: str, retries: int = 4) -> list[list[str]]:
     raise RuntimeError(f"official NPB source failed: {url}: {last}")
 
 
+def _teams_around_score(line: str, score_start: int, score_end: int) -> tuple[str | None, str | None]:
+    """Find the nearest recognized NPB team before/after the score token."""
+    before = line[:score_start]
+    after = line[score_end:]
+    candidates_before: list[tuple[int, str]] = []
+    candidates_after: list[tuple[int, str]] = []
+    for alias in ALIASES:
+        pos = before.rfind(alias)
+        if pos >= 0:
+            candidates_before.append((pos, alias))
+        pos = after.find(alias)
+        if pos >= 0:
+            candidates_after.append((pos, alias))
+    if not candidates_before or not candidates_after:
+        return None, None
+    _, home_alias = max(candidates_before, key=lambda x: (x[0], len(x[1])))
+    _, away_alias = min(candidates_after, key=lambda x: (x[0], -len(x[1])))
+    home = canon_team(home_alias)
+    away = canon_team(away_alias)
+    if home not in TEAM_VALUES or away not in TEAM_VALUES or home == away:
+        return None, None
+    return home, away
+
+
 def _parse_score_lines(cells: list[str], current_date: str, url: str) -> list[dict]:
     out: list[dict] = []
-    # Parse every cell rather than assuming the matchup is always cell[1].
-    # NPB has changed table markup over time, and this makes the parser resilient
-    # to extra venue/time/annotation columns.
-    score_re = re.compile(r"^(.+?)\s+(\d+)\s*[-−–]\s*(\d+)\s+(.+?)$")
+    # Do not assume spaces around the score or a fixed matchup column. The live
+    # NPB pages have historically varied in nested tags and whitespace.
+    score_re = re.compile(r"(?<!\d)(\d{1,2})\s*[-−–]\s*(\d{1,2})(?!\d)")
     for cell in cells:
-        for line in cell.splitlines():
-            line = re.sub(r"\s+", " ", line.replace("\u00a0", " ").replace("\u3000", " ")).strip()
-            m = score_re.match(line)
-            if not m:
+        for raw_line in cell.splitlines():
+            line = re.sub(r"\s+", " ", raw_line.replace("\u00a0", " ").replace("\u3000", " ")).strip()
+            if not line:
                 continue
-            home, hs, aws, away = m.groups()
-            home = canon_team(home)
-            away = canon_team(away)
-            if home not in TEAM_VALUES or away not in TEAM_VALUES:
-                continue
-            out.append({
-                "date": current_date,
-                "home": home,
-                "away": away,
-                "home_score": int(hs),
-                "away_score": int(aws),
-                "source_url": url,
-            })
+            for match in score_re.finditer(line):
+                home, away = _teams_around_score(line, match.start(), match.end())
+                if home is None or away is None:
+                    continue
+                out.append({
+                    "date": current_date,
+                    "home": home,
+                    "away": away,
+                    "home_score": int(match.group(1)),
+                    "away_score": int(match.group(2)),
+                    "source_url": url,
+                })
+                break
     return out
 
 
 def _fetch_month(year: int, month: int) -> list[dict]:
     url = DETAIL_URL.format(year=year, month=month)
     rows = _request_rows(url)
-    date_re = re.compile(r"^(\d{1,2})/(\d{1,2})")
+    date_re = re.compile(r"(?:^|\s)(\d{1,2})/(\d{1,2})(?:\s|$|[（(])")
     current_date: str | None = None
     out: list[dict] = []
     for row in rows:
         if not row:
             continue
-        for cell in row[:2]:
+        # Date can be in the first or second cell depending on NPB markup.
+        for cell in row[:3]:
             dm = date_re.search(cell.strip())
             if dm:
                 current_date = f"{year:04d}-{int(dm.group(1)):02d}-{int(dm.group(2)):02d}"
@@ -150,7 +177,6 @@ def _fetch_month(year: int, month: int) -> list[dict]:
 
 
 def official_schedule(years: Iterable[int], cache_dir: str | Path) -> pd.DataFrame:
-    """Return completed NPB game scores keyed by exact date/home/away."""
     cache = Path(cache_dir)
     cache.mkdir(parents=True, exist_ok=True)
     years = sorted(set(int(y) for y in years))
@@ -159,9 +185,7 @@ def official_schedule(years: Iterable[int], cache_dir: str | Path) -> pd.DataFra
     with ThreadPoolExecutor(max_workers=min(12, max(1, len(jobs)))) as ex:
         pending = {}
         for year, month in jobs:
-            # v5 intentionally invalidates the previous parser's cache. The old
-            # cache could contain incomplete/misparsed rows and must never be reused.
-            path = cache / f"{year}-{month:02d}_official_v5.csv"
+            path = cache / f"{year}-{month:02d}_official_v6.csv"
             if path.exists() and path.stat().st_size > 0:
                 try:
                     rows.extend(pd.read_csv(path).to_dict("records"))
@@ -203,7 +227,6 @@ def _game_score_from_frame(frame: pd.DataFrame) -> pd.DataFrame:
     scored = x.dropna(subset=["home_score", "away_score"])
     if scored.empty:
         return pd.DataFrame(columns=["game_id", "date_key", "home_key", "away_key", "home_score", "away_score"])
-    # A game must not have conflicting realized scores across PBP rows.
     conflicts = scored.groupby("game_id").agg(hn=("home_score", "nunique"), an=("away_score", "nunique"))
     if ((conflicts["hn"] > 1) | (conflicts["an"] > 1)).any():
         bad = int(((conflicts["hn"] > 1) | (conflicts["an"] > 1)).sum())
@@ -220,8 +243,6 @@ def repair_scores(frame: pd.DataFrame, data_dir: str | Path) -> pd.DataFrame:
     if out[["home_score", "away_score"]].notna().all(axis=1).all():
         return out
 
-    # Work at unique-game grain first. The previous implementation counted every
-    # pitch/PBP row as an unresolved "game", obscuring the true key coverage.
     games = out[["game_id", "date", "home", "away", "home_score", "away_score"]].drop_duplicates("game_id").copy()
     games["date_key"] = pd.to_datetime(games["date"], errors="coerce", utc=True).dt.strftime("%Y-%m-%d")
     games["home_key"] = games["home"].map(canon_team)
