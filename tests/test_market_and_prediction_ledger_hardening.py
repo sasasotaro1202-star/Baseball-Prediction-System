@@ -23,7 +23,12 @@ def record(**overrides):
         home_team="読売ジャイアンツ", away_team="阪神タイガース",
         home_starter="P1", away_starter="P2",
         probabilities={"home": 0.5, "draw": 0.2, "away": 0.3},
-        score_candidates=[{"score": "3-2", "probability": 0.1}],
+        score_candidates=[
+            {"score": "3-2", "probability": 0.10},
+            {"score": "2-2", "probability": 0.09},
+            {"score": "3-1", "probability": 0.08},
+            {"score": "2-1", "probability": 0.07},
+        ],
         low_probability=0.6, high_probability=0.4, total_runs_line=7.5,
         confidence=0.8, volatility=0.2,
         model_version="m1", feature_version="f1", calibration_version="c1",
