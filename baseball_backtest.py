@@ -200,8 +200,6 @@ class TeamState:
     bullpen_ip_3: float = 0.0
     bullpen_ip_7: float = 0.0
     starter_history: Dict[str, deque] = field(default_factory=lambda: defaultdict(lambda: deque(maxlen=12)))
-    # Batting process history (game-level, shifted automatically because
-    # match_features() is called before update_after_game()).
     pa: deque = field(default_factory=lambda: deque(maxlen=30))
     ab: deque = field(default_factory=lambda: deque(maxlen=30))
     h: deque = field(default_factory=lambda: deque(maxlen=30))
@@ -225,7 +223,10 @@ class BaseballBacktest:
         self.results: List[Dict[str, Any]] = []
         self.model_scores: List[Dict[str, Any]] = []
         self.started_at = time.time()
-        self.time_budget_sec = min(float(os.getenv("BASEBALL_TIME_BUDGET_SEC", "1500")), 1500.0)  # hard cap: 29:00
+        # Honor the workflow-configured budget, while keeping a hard safety cap
+        # equal to the 90-minute OOS job timeout. The previous 1500-second clamp
+        # silently ignored larger configured budgets and reduced OOS coverage.
+        self.time_budget_sec = min(float(os.getenv("BASEBALL_TIME_BUDGET_SEC", "1500")), 5400.0)
         self.audit: List[Dict[str, Any]] = []
         self.checkpoint_dir = RESULTS / "checkpoints"
         self.checkpoint_version = "npb-massive-resume-v4-100target"
@@ -310,7 +311,6 @@ class BaseballBacktest:
             g = g.sort_values("row_order")
             home, away = g["home"].iloc[0], g["away"].iloc[0]
             dt = g["date"].iloc[0]
-            # Prefer explicit final score columns, otherwise reconstruct from last valid value.
             hs = g["home_score"].dropna()
             aas = g["away_score"].dropna()
             if len(hs) and len(aas):
@@ -319,13 +319,10 @@ class BaseballBacktest:
                 hscore, ascore = self._reconstruct_npb_score(g)
             if np.isnan(hscore) or np.isnan(ascore):
                 continue
-            # Official-game filter: exclude exhibition/farm/all-star.
             gt = " ".join(g["game_type"].dropna().astype(str).tolist())
             if any(k in gt for k in NPB_EXCLUDE_KEYWORDS):
                 continue
-            # If game type exists and contains neither official keyword nor is empty, keep only likely official.
             if gt and not any(k in gt for k in NPB_OFFICIAL_KEYWORDS):
-                # Known PBP exports sometimes omit a clean type label; don't reject unless it is clearly non-official.
                 if any(k in gt.lower() for k in ("open", "spring", "farm", "allstar")):
                     continue
             hp = self._first_pitcher(g, "home")
@@ -348,11 +345,9 @@ class BaseballBacktest:
             vals = [str(x).strip() for x in g[col].tolist() if str(x).strip() not in ("", "nan", "None")]
             if vals:
                 return vals[0]
-        # Fallback: common event text patterns are intentionally conservative.
         return ""
 
     def _reconstruct_npb_score(self, g: pd.DataFrame) -> Tuple[float, float]:
-        # Supports PBP files where each half-inning has addedRuns / run fields.
         cols = {str(c).lower(): c for c in g.columns}
         added = cols.get("added_runs")
         if added is None:
@@ -374,7 +369,6 @@ class BaseballBacktest:
                 elif any(t in text for t in ("bottom", "裏", "home", "後攻")):
                     h += max(0, x)
             return h, a
-        # Last-resort event parser. Only recognizes explicit run totals, not arbitrary text.
         h = a = 0.0
         for _, r in g.iterrows():
             ev = str(r.get("event", ""))
@@ -418,7 +412,6 @@ class BaseballBacktest:
                     away = teams.get("away", {})
                     hp = (home.get("probablePitcher") or {}).get("fullName", "")
                     ap = (away.get("probablePitcher") or {}).get("fullName", "")
-                    # Historical schedule probablePitcher can be missing/wrong; feed will be used below.
                     rows.append({
                         "league": "MLB", "game_id": str(game.get("gamePk")),
                         "datetime": game.get("gameDate"),
@@ -440,7 +433,6 @@ class BaseballBacktest:
         return df
 
     def enrich_mlb_starters(self, games: pd.DataFrame) -> pd.DataFrame:
-        """Use game feed to identify actual starting pitchers for completed games."""
         games = games.copy()
         for i in range(len(games)):
             gid = games.iloc[i]["game_id"]
@@ -457,7 +449,6 @@ class BaseballBacktest:
                         pit = p.get("stats", {}).get("pitching", {})
                         if pit.get("gamesStarted", 0) == 1:
                             return p.get("person", {}).get("fullName", "")
-                    # More reliable for game feed: first pitcher listed in pitchers array.
                     arr = []
                     for p in players.values():
                         pid = p.get("person", {}).get("id")
@@ -530,11 +521,8 @@ class BaseballBacktest:
         f["elo"] = self.elo(league, team)
         f["rest_days"] = float(max(0.0, (dt - s.last_dt).total_seconds() / 86400.0)) if s.last_dt is not None else 30.0
         f["matches"] = float(s.total_matches)
-        # Bullpen workload is updated from completed games only; never from target game.
         f["bp3"] = float(s.bullpen_ip_3)
         f["bp7"] = float(s.bullpen_ip_7)
-        # Rich rolling batting/process features. These are strictly prior-game
-        # state because update_after_game() runs after match_features().
         for w in (3, 5, 10, 20, 30):
             def meanq(q, default=0.0):
                 z=list(q)[-w:]
@@ -552,8 +540,6 @@ class BaseballBacktest:
         f["bp_er_10"] = float(np.mean(list(s.bullpen_er)[-10:])) if s.bullpen_er else 0.0
         f["bp_runs_10"] = float(np.mean(list(s.bullpen_runs)[-10:])) if s.bullpen_runs else 0.0
         f["bp_app_10"] = float(np.sum(list(s.bullpen_appearances)[-10:])) if s.bullpen_appearances else 0.0
-        # Volatility/trend signals: useful for separating stable teams from
-        # high-variance teams without peeking at the target game.
         for name,q in (("gf",s.gf),("ga",s.ga),("hr",s.hr),("so",s.so),("bb",s.bb)):
             vals=np.asarray(list(q)[-20:],dtype=float)
             f[f"{name}_sd_20"] = float(np.std(vals)) if len(vals) >= 2 else 0.0
@@ -615,14 +601,12 @@ class BaseballBacktest:
             prof.append(p); orders.append(num(item.get('batting_order')))
         out={}
         metrics=('avg','obp','slg','iso','bb_rate','so_rate','sb_rate','bunt_rate','power_rate','contact_rate','gidp_rate','groundout_rate','flyout_rate','lineout_rate','errors_rate','recent_iso','recent_so_rate','recent_bb_rate','recent_sb_rate')
-        # PA-weighted lineup skill plus order-weighted top-of-lineup emphasis.
         weights=np.asarray([max(1.0,p['pa']) for p in prof],dtype=float) if prof else np.array([])
         if len(weights): weights=weights/weights.sum()
         for m in metrics:
             vals=np.asarray([p[m] for p in prof],dtype=float) if prof else np.array([])
             out[f'lineup_{m}']=float(np.average(vals,weights=weights)) if len(vals) else {'avg':0.25,'obp':0.32,'slg':0.38,'iso':0.13,'bb_rate':0.08,'so_rate':0.20,'sb_rate':0.02,'bunt_rate':0.02,'power_rate':0.05,'contact_rate':0.70,'gidp_rate':0.03,'groundout_rate':0.20,'flyout_rate':0.20,'lineout_rate':0.08,'errors_rate':0.0,'recent_iso':0.13,'recent_so_rate':0.20,'recent_bb_rate':0.08,'recent_sb_rate':0.02}[m]
         out['lineup_n']=float(len(prof)); out['lineup_known_n']=float(sum(p['games']>0 for p in prof)); out['lineup_history_coverage']=out['lineup_known_n']/max(out['lineup_n'],1.0)
-        # Sum of complementary skills across the whole lineup.
         out['lineup_power_sum']=float(sum(p['power_rate'] for p in prof)); out['lineup_speed_sum']=float(sum(p['sb_rate'] for p in prof)); out['lineup_bunt_sum']=float(sum(p['bunt_rate'] for p in prof))
         out['lineup_contact_sum']=float(sum(p['contact_rate'] for p in prof)); out['lineup_gdp_sum']=float(sum(p['gidp_rate'] for p in prof))
         return out
@@ -645,33 +629,19 @@ class BaseballBacktest:
         for k, v in hf.items(): out[f"h_{k}"] = v
         for k, v in af.items(): out[f"a_{k}"] = v
         for k in set(hf) & set(af): out[f"d_{k}"] = hf[k] - af[k]
-        # Starter pregame information comes only from historical starter profiles.
         hs = str(row.get("home_starter", "") or "")
         ass = str(row.get("away_starter", "") or "")
         out.update(self.starter_features(league, hs, dt, prefix="hs_"))
         out.update(self.starter_features(league, ass, dt, prefix="as_"))
-        # Player-by-player lineup micro-features. These are built from each
-        # hitter's own prior games and are therefore available before the target.
         hpf=self._lineup_features(row,"home",league); apf=self._lineup_features(row,"away",league)
         for k,v in hpf.items(): out[f"h_{k}"]=v
         for k,v in apf.items(): out[f"a_{k}"]=v
         for k in set(hpf)&set(apf): out[f"d_{k}"]=hpf[k]-apf[k]
-        # IMPORTANT: never use the target game's own pitching line as a
-        # pregame feature. The data-prep layer may carry *_starter_* columns
-        # for audit, but those values are consumed only AFTER this feature row
-        # is created by _update_pitcher_history().
-        # Weather is a feature only when a historical observation was available.
-        # Missing weather stays neutral rather than being imputed from future data.
         for c in ("weather_temp_c", "weather_humidity_pct", "weather_wind_kmh", "weather_precip_mm"):
             if c in row:
-                try:
-                    out[c] = float(row.get(c)) if pd.notna(row.get(c)) else 0.0
-                except Exception:
-                    out[c] = 0.0
-        # Market-neutral run environment from historical team scoring.
+                try: out[c] = float(row.get(c)) if pd.notna(row.get(c)) else 0.0
+                except Exception: out[c] = 0.0
         out["expected_env"] = max(0.5, min(12.0, 0.5 * (hf["gf_10"] + af["gf_10"] + hf["ga_10"] + af["ga_10"])))
-        # Nonlinear matchup signals: offense vs opposing starter skill, bullpen
-        # fatigue asymmetry, and weather/run-environment interactions.
         out["matchup_home_bat_vs_away_fip"] = hf.get("bat_avg_10",0.0) - out.get("as_fip",4.0)/20.0
         out["matchup_away_bat_vs_home_fip"] = af.get("bat_avg_10",0.0) - out.get("hs_fip",4.0)/20.0
         out["bullpen_fatigue_diff"] = hf.get("bp_app_10",0.0) - af.get("bp_app_10",0.0)
@@ -691,11 +661,8 @@ class BaseballBacktest:
         return out
 
     def starter_features(self, league: str, pitcher: str, dt: pd.Timestamp, prefix: str) -> Dict[str, float]:
-        # Historical pitcher metrics stored in TeamState-like global dictionaries.
         hist = self.pitcher_history.get((league, pitcher), []) if pitcher else []
         if not hist:
-            # Conservative league-neutral priors. Unknown pitchers are not
-            # treated as elite or terrible merely because history is missing.
             return {
                 prefix + "era": 4.00, prefix + "whip": 1.30,
                 prefix + "k9": 7.5, prefix + "bb9": 3.0,
@@ -708,9 +675,6 @@ class BaseballBacktest:
             }
         df = pd.DataFrame(hist).copy()
         df["_age_idx"] = np.arange(len(df), dtype=float)
-        # Exponentially decay old starts instead of giving a 2012 start the same
-        # weight as yesterday's start. The large historical corpus remains useful
-        # while recent form dominates.
         decay = np.exp(-(len(df)-1-df["_age_idx"])/18.0)
         def wavg(col, default=0.0):
             if col not in df: return default
@@ -754,14 +718,11 @@ class BaseballBacktest:
             for (gid,pid,side),g in self.player_game.groupby(['game_id','player_id','side'],sort=False):
                 self.player_index[(str(gid),str(pid),str(side))] = g.iloc[-1].to_dict()
         Xrows, y, meta = [], [], []
-        # Deterministic chronological order: datetime then game_id. This handles doubleheaders better than date-only logic.
         games = games.sort_values(["datetime", "game_id"]).reset_index(drop=True)
         last_season=None
         for _, row in games.iterrows():
             cur_season=int(pd.Timestamp(row["datetime"]).year)
             if last_season is not None and cur_season != last_season:
-                # Regress Elo at each season boundary; rolling team form naturally
-                # retains only recent games through bounded deques.
                 for key,val in list(self.elo_ratings.items()):
                     self.elo_ratings[key] = ELO_START + ELO_REGRESSION*(val-ELO_START)
             last_season=cur_season
@@ -801,8 +762,6 @@ class BaseballBacktest:
             s.home_matches += 1; s.home_points += pts; s.home_results.append(result); s.home_gf.append(gf); s.home_ga.append(ga)
         else:
             s.away_matches += 1; s.away_points += pts; s.away_results.append(result); s.away_gf.append(gf); s.away_ga.append(ga)
-        # Batting process fields may be supplied by the multi-source collector.
-        # Missing values remain missing/neutral; no target-game information is synthesized.
         def fv(name, default=0.0):
             v=row.get(name, default)
             try: return float(v) if pd.notna(v) else default
@@ -818,9 +777,6 @@ class BaseballBacktest:
         s.triples.append(fv(f"{prefix}_bat_3b",0.0))
         s.sb.append(fv(f"{prefix}_bat_sb",0.0))
         s.cs.append(fv(f"{prefix}_bat_cs",0.0))
-        # A conservative bullpen proxy remains available when detailed bullpen
-        # lines are absent. Use the team's own allowed runs, never the opponent
-        # team's batting fields, and keep it strictly post-game.
         bp_er=fv(f"{prefix}_bullpen_er", max(0.0,ga-3.0))
         bp_runs=fv(f"{prefix}_bullpen_runs", bp_er)
         bp_app=fv(f"{prefix}_bullpen_apps", 0.0)
@@ -838,13 +794,8 @@ class BaseballBacktest:
         k = ELO_K * (1.0 + 0.35 * margin)
         self.elo_ratings[(league, home)] = eh + k * (actual_h - expected_h)
         self.elo_ratings[(league, away)] = ea - k * (actual_h - expected_h)
-        # Gentle seasonal/competition regression is handled when a team first appears in a new dataset;
-        # no future information is injected here.
 
     def _update_pitcher_history(self, row: pd.Series):
-        # Consume per-game starter lines supplied by the multi-source data layer.
-        # Crucially, this is called AFTER match_features() for the target game, so
-        # the target game's own pitching line cannot leak into its prediction.
         for side in ("home", "away"):
             p = str(row.get(f"{side}_starter", "") or "")
             if not p:
@@ -863,11 +814,7 @@ class BaseballBacktest:
                 cols["starts"] = 1.0
                 self.pitcher_history[(row["league"], p)].append(cols)
 
-    # ------------------------------------------------------------------
-    # Models
-    # ------------------------------------------------------------------
     def models(self, league: str) -> Dict[str, Any]:
-        """High-diversity model pool. Every candidate is trained only on past data."""
         k = 3 if league == "NPB" else 2
         m: Dict[str, Any] = {
             "Logistic": Pipeline([("scale", StandardScaler()), ("m", LogisticRegression(C=0.5, max_iter=2500, class_weight="balanced", random_state=RANDOM_STATE))]),
@@ -884,7 +831,6 @@ class BaseballBacktest:
         return m
 
     def _validation_splits(self, n: int) -> List[Tuple[int,int]]:
-        """Several chronological validation windows; no random CV and no future leakage."""
         if n < 120: return []
         windows=[]
         for frac in (0.70, 0.86):
@@ -895,7 +841,6 @@ class BaseballBacktest:
         return list(dict.fromkeys(windows))
 
     def _sample_weights(self, n: int) -> np.ndarray:
-        """Recency weighting: old games remain useful but recent league/team context dominates."""
         if n <= 1: return np.ones(n, dtype=float)
         half_life = float(os.getenv("NPB_RECENCY_HALF_LIFE_GAMES", "1800"))
         age = np.arange(n-1, -1, -1, dtype=float)
@@ -913,7 +858,6 @@ class BaseballBacktest:
             return model.fit(X, y)
 
     def _temperature_from_probs(self, p: np.ndarray, y: np.ndarray) -> float:
-        """Fit a single temperature on a chronological holdout; T>1 softens overconfidence."""
         if len(p) < 25: return 1.0
         labels=np.asarray(y,dtype=int)
         best_t=1.0; best_ll=float("inf")
@@ -947,15 +891,12 @@ class BaseballBacktest:
                 scores.append((float(np.mean(losses)),name))
         if not scores: raise RuntimeError("All models failed")
         scores.sort()
-        # Fit the best single model for fallback/reporting.
         best_name=scores[0][1]
         best=models[best_name]
         self._fit_model(best,X,y,self._sample_weights(len(X)),league)
-        # Store a compact validation leaderboard for the caller.
         return best_name,best,{name:float(sc) for sc,name in scores}
 
     def fit_ensemble(self, X: pd.DataFrame, y: np.ndarray, league: str):
-        """Fit all robust candidates and weight them by inverse chronological validation loss."""
         models=self.models(league); k=3 if league=="NPB" else 2
         splits=self._validation_splits(len(X))
         scored=[]
@@ -978,7 +919,6 @@ class BaseballBacktest:
             model=models[name]
             self._fit_model(model,X,y,self._sample_weights(len(X)),league)
             fitted.append((model,float(w),name))
-        # Calibrate the ensemble temperature on the latest chronological validation window.
         temperature=1.0
         if splits and fitted:
             cut,val=splits[-1]
@@ -992,9 +932,6 @@ class BaseballBacktest:
                 temperature=self._temperature_from_probs(raw,y[cut:cut+val])
             except Exception as e:
                 self.audit.append({"type":"calibration_error","error":str(e)})
-        # Refit the final ensemble on ALL available past data after calibration.
-        # The validation models above are temporary calibration models and must not
-        # replace the final full-history estimators.
         for model,w,name in fitted:
             self._fit_model(model,X,y,self._sample_weights(len(X)),league)
         self._last_temperature = temperature
@@ -1019,11 +956,7 @@ class BaseballBacktest:
         out = np.apply_along_axis(clip_prob, 1, out)
         return out
 
-    # ------------------------------------------------------------------
-    # Walk-forward
-    # ------------------------------------------------------------------
     def fit_score_ensemble(self, X: pd.DataFrame, y_home: np.ndarray, y_away: np.ndarray, league: str):
-        """Chronological OOS ensemble for run scoring. Uses only pregame X/y history."""
         if len(X) < max(80, MIN_TRAIN // 2):
             return None
         splits = self._validation_splits(len(X))
@@ -1044,7 +977,6 @@ class BaseballBacktest:
                     self._fit_model(mh, X.iloc[tr], y_home[tr], self._sample_weights(tr), league); self._fit_model(ma, X.iloc[tr], y_away[tr], self._sample_weights(tr), league)
                     ph=np.clip(mh.predict(X.iloc[va]), 0.05, 15)
                     pa=np.clip(ma.predict(X.iloc[va]), 0.05, 15)
-                    # Poisson deviance-like NLL; robustly defined for integer/float observed runs.
                     nll_h=np.mean(ph - y_home[va]*np.log(ph) + np.array([math.lgamma(v+1) for v in y_home[va]]))
                     nll_a=np.mean(pa - y_away[va]*np.log(pa) + np.array([math.lgamma(v+1) for v in y_away[va]]))
                     losses.append(float((nll_h+nll_a)/2))
@@ -1079,28 +1011,17 @@ class BaseballBacktest:
         if len(games) <= MIN_TRAIN + 1:
             print(f"[{league}] insufficient games: {len(games)}")
             return pd.DataFrame()
-        # Data-quality gates: the backtest must not silently run on a tiny
-        # or starter-free sample.
         if league == "NPB":
             starter_rate = float(
                 ((games["home_starter"].fillna("").astype(str).str.len() > 0) &
                  (games["away_starter"].fillna("").astype(str).str.len() > 0)).mean()
             )
-            self.audit.append({
-                "type": "npb_starter_coverage",
-                "games": int(len(games)),
-                "both_starter_rate": starter_rate,
-            })
+            self.audit.append({"type": "npb_starter_coverage", "games": int(len(games)), "both_starter_rate": starter_rate})
             print(f"[NPB AUDIT] both-starter coverage={starter_rate:.1%}")
             if starter_rate < 0.70:
-                raise RuntimeError(
-                    f"NPB starter coverage too low: {starter_rate:.1%}; "
-                    "refusing to run a misleading backtest."
-                )
+                raise RuntimeError(f"NPB starter coverage too low: {starter_rate:.1%}; refusing to run a misleading backtest.")
 
         X, y, meta = self.build_features(games)
-        # Resume support: completed OOS predictions are persisted after every
-        # retraining block. On a later run, completed game IDs are skipped.
         ck = self.checkpoint_dir / f"{league.lower()}_walkforward.csv"
         existing = pd.DataFrame()
         version_file = ck.with_suffix(".version")
@@ -1143,10 +1064,8 @@ class BaseballBacktest:
                 target = np.zeros(len(prob)); target[actual] = 1
                 ll = float(-math.log(max(prob[actual], 1e-12)))
                 br = float(np.sum((prob-target)**2))
-                # Dedicated chronological run model.
                 fx = X.iloc[idx]
                 lam_h, lam_a = self.predict_scores(score_fit, X.iloc[[idx]], league)
-                # Small, bounded win-probability consistency adjustment.
                 if league == "NPB":
                     split = float(np.clip(prob[0] - prob[2], -0.35, 0.35))
                 else:
@@ -1182,9 +1101,6 @@ class BaseballBacktest:
                     self.audit.append({"type":"checkpoint_write_error","league":league,"error":str(e)})
         return pd.DataFrame(all_rows)
 
-    # ------------------------------------------------------------------
-    # Evaluation / reports
-    # ------------------------------------------------------------------
     def evaluate(self, df: pd.DataFrame, league: str) -> Dict[str, Any]:
         if df.empty: return {}
         out = {
@@ -1196,8 +1112,7 @@ class BaseballBacktest:
             "Top4ScoreHitRate": float(df.apply(lambda r: (("その他" in {str(r.score1),str(r.score2),str(r.score3),str(r.score4)}) if (r.actual_home_score >= 7 or r.actual_away_score >= 7) else (f"{int(r.actual_home_score)}-{int(r.actual_away_score)}" in {str(r.score1),str(r.score2),str(r.score3),str(r.score4)})), axis=1).mean()),
         }
         if league == "MLB":
-            try:
-                out["AUC"] = float(roc_auc_score(df.actual, df.pred_home))
+            try: out["AUC"] = float(roc_auc_score(df.actual, df.pred_home))
             except Exception: out["AUC"] = np.nan
         return out
 
@@ -1209,15 +1124,11 @@ class BaseballBacktest:
         summary.to_csv(RESULTS / f"{league.lower()}_backtest_summary.csv", index=False)
         model = df.groupby("model").agg(Predictions=("correct", "size"), Accuracy=("correct", "mean"), LogLoss=("logloss", "mean"), Brier=("brier", "mean")).reset_index()
         model.to_csv(RESULTS / f"{league.lower()}_model_comparison.csv", index=False)
-        # Calibration bins are useful for diagnosing overconfidence.
         if league == "MLB":
             tmp = df.copy(); tmp["bin"] = pd.cut(tmp.pred_home, np.linspace(0,1,11), include_lowest=True)
             cal = tmp.groupby("bin", observed=False).agg(n=("actual","size"), predicted=("pred_home","mean"), actual=("actual","mean")).reset_index()
             cal.to_csv(RESULTS / "mlb_calibration.csv", index=False)
 
-    # ------------------------------------------------------------------
-    # Current/future prediction helpers
-    # ------------------------------------------------------------------
     def current_mlb_schedule(self, date: str) -> pd.DataFrame:
         data = self._get_json(f"{MLB_API}/schedule", params={"sportId":1, "date":date, "hydrate":"probablePitcher"})
         rows=[]
@@ -1225,13 +1136,11 @@ class BaseballBacktest:
             for g in d.get("games", []):
                 t=g.get("teams",{}); h=t.get("home",{}); a=t.get("away",{})
                 hp=(h.get("probablePitcher") or {}).get("fullName",""); ap=(a.get("probablePitcher") or {}).get("fullName","")
-                # "probable" is not equivalent to officially confirmed. Only mark confirmed when status/game data says it.
                 confirmed=bool(hp and ap)
                 rows.append({"game_id":g.get("gamePk"),"datetime":g.get("gameDate"),"home":h.get("team",{}).get("name",""),"away":a.get("team",{}).get("name",""),"home_starter":hp,"away_starter":ap,"confirmed_starters":confirmed})
         return pd.DataFrame(rows)
 
     def build_future_mlb_predictions(self, schedule: pd.DataFrame) -> pd.DataFrame:
-        # This method deliberately does NOT guess missing starters.
         if schedule.empty: return schedule
         out=[]
         for _,r in schedule.iterrows():
@@ -1245,7 +1154,7 @@ class BaseballBacktest:
         RESULTS.mkdir(exist_ok=True)
         print("="*72); print("BASEBALL BACKTEST SYSTEM / NPB + MLB"); print("="*72)
         if time.time() - self.started_at >= self.time_budget_sec:
-            print("[HARD STOP] 30-minute limit reached before processing")
+            print("[HARD STOP] computation budget reached before processing")
             return
         if npb:
             try:
@@ -1260,12 +1169,10 @@ class BaseballBacktest:
             except Exception as e:
                 print(f"[NPB ERROR] {type(e).__name__}: {e}")
         if time.time() - self.started_at >= self.time_budget_sec:
-            print("[HARD STOP] 30-minute limit reached; skipping remaining leagues")
+            print("[HARD STOP] computation budget reached; skipping remaining leagues")
         elif mlb:
             try:
                 mlb_games = self.load_mlb(mlb_start, mlb_end)
-                # Actual starters are obtained from completed game feeds where possible.
-                # This can be slow for many seasons, so only refresh when explicitly requested.
                 if os.getenv("MLB_ENRICH_STARTERS", "0") == "1":
                     mlb_games = self.enrich_mlb_starters(mlb_games)
                     mlb_games.to_csv(self.data_dir / "mlb_games.csv", index=False)
