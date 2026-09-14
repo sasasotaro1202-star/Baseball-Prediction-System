@@ -141,8 +141,6 @@ def _parse_score_lines(cells: list[str], current_date: str, url: str) -> list[di
         text = re.sub(r"\s+", " ", text).strip()
         if text:
             normalized.append(text)
-    # Keep enough whitespace for team-token detection, but make parsing
-    # independent of whether the source used one cell or several cells.
     line = " | ".join(normalized)
     if not line:
         return out
@@ -245,12 +243,30 @@ def repair_scores(frame: pd.DataFrame, data_dir: str | Path) -> pd.DataFrame:
     out = frame.copy()
     out["home_score"] = pd.to_numeric(out["home_score"], errors="coerce")
     out["away_score"] = pd.to_numeric(out["away_score"], errors="coerce")
-    if out[["home_score", "away_score"]].notna().all(axis=1).all():
-        return out
     games = out[["game_id", "date", "home", "away", "home_score", "away_score"]].drop_duplicates("game_id").copy()
     games["date_key"] = pd.to_datetime(games["date"], errors="coerce", utc=True).dt.strftime("%Y-%m-%d")
     games["home_key"] = games["home"].map(canon_team)
     games["away_key"] = games["away"].map(canon_team)
+
+    # The PBP release contains exhibition/spring-training games in addition to
+    # regular-season games.  NPB.jp's completed official schedule is the
+    # authoritative membership set for the production backtest.  Filter by
+    # exact date/home/away before repairing missing labels so exhibition rows
+    # cannot masquerade as unresolved regular-season games.
+    years = pd.to_datetime(games["date"], errors="coerce", utc=True).dt.year.dropna().astype(int).unique().tolist()
+    schedule = official_schedule(years, Path(data_dir) / ".npb_official_schedule_cache")
+    if schedule.empty:
+        raise RuntimeError("NPB official result source returned no completed score rows")
+    schedule["date_key"] = schedule["date"].astype(str)
+    schedule["home_key"] = schedule["home"].map(canon_team)
+    schedule["away_key"] = schedule["away"].map(canon_team)
+    schedule = schedule.drop_duplicates(["date_key", "home_key", "away_key"], keep="last")
+    official_keys = schedule[["date_key", "home_key", "away_key"]].drop_duplicates()
+    games = games.merge(official_keys.assign(_official_game=True), on=["date_key", "home_key", "away_key"], how="inner", validate="many_to_one")
+    games = games.drop(columns=["_official_game"])
+    if games.empty:
+        raise RuntimeError("NPB PBP data contains no games present on the completed official schedule")
+
     local = _game_score_from_frame(out)
     if not local.empty:
         by_id = local[["game_id", "home_score", "away_score"]].rename(columns={"home_score": "local_h", "away_score": "local_a"})
@@ -258,16 +274,9 @@ def repair_scores(frame: pd.DataFrame, data_dir: str | Path) -> pd.DataFrame:
         games["home_score"] = games["home_score"].fillna(games["local_h"])
         games["away_score"] = games["away_score"].fillna(games["local_a"])
         games = games.drop(columns=["local_h", "local_a"])
+
     unresolved = games[["home_score", "away_score"]].isna().any(axis=1)
     if unresolved.any():
-        years = pd.to_datetime(games.loc[unresolved, "date"], errors="coerce", utc=True).dt.year.dropna().astype(int).unique().tolist()
-        schedule = official_schedule(years, Path(data_dir) / ".npb_official_schedule_cache")
-        if schedule.empty:
-            raise RuntimeError("NPB official result source returned no completed score rows")
-        schedule["date_key"] = schedule["date"].astype(str)
-        schedule["home_key"] = schedule["home"].map(canon_team)
-        schedule["away_key"] = schedule["away"].map(canon_team)
-        schedule = schedule.drop_duplicates(["date_key", "home_key", "away_key"], keep="last")
         repair = schedule[["date_key", "home_key", "away_key", "home_score", "away_score"]].rename(columns={"home_score": "official_h", "away_score": "official_a"})
         games = games.merge(repair, on=["date_key", "home_key", "away_key"], how="left", validate="one_to_one")
         games["home_score"] = games["home_score"].fillna(games["official_h"])
@@ -276,7 +285,13 @@ def repair_scores(frame: pd.DataFrame, data_dir: str | Path) -> pd.DataFrame:
     unresolved = games[["home_score", "away_score"]].isna().any(axis=1)
     if unresolved.any():
         sample = games.loc[unresolved, ["game_id", "date_key", "home_key", "away_key"]].head(10).to_dict("records")
-        raise RuntimeError(f"NPB score repair left {int(unresolved.sum())} unresolved games; sample={sample}")
+        raise RuntimeError(f"NPB score repair left {int(unresolved.sum())} unresolved official-schedule games; sample={sample}")
+
+    # Rebuild the PBP frame from the official membership set.  This removes
+    # exhibition rows consistently, including rows that happened to contain
+    # locally recorded scores.
+    official_ids = set(games["game_id"].astype(str))
+    out = out.loc[out["game_id"].astype(str).isin(official_ids)].copy()
     score_map = games.set_index("game_id")[["home_score", "away_score"]]
     out = out.drop(columns=["home_score", "away_score"]).merge(score_map, left_on="game_id", right_index=True, how="left", validate="many_to_one")
     if out[["home_score", "away_score"]].isna().any().any():
