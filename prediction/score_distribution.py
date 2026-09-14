@@ -100,6 +100,6 @@ def build_score_outputs(
         "low_probability": low,
         "high_probability": high,
         "low_high_boundary": 6.5,
-        "low_definition": "total runs <= 6",
-        "high_definition": "total runs >= 7",
+        "low_definition": "total_runs <= 6",
+        "high_definition": "total_runs >= 7",
     }
