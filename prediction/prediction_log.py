@@ -24,6 +24,21 @@ def _finite_probability(value: Any) -> float:
     return v
 
 
+def _validate_score_candidates(candidates: Any) -> None:
+    """Enforce the immutable production contract for displayed exact scores."""
+    if not isinstance(candidates, list) or len(candidates) != 4:
+        raise ValueError("production score contract requires exactly four candidates")
+    seen: set[str] = set()
+    for item in candidates:
+        if not isinstance(item, Mapping) or "score" not in item or "probability" not in item:
+            raise ValueError("each score candidate requires score and probability")
+        score = str(item["score"])
+        if score in seen:
+            raise ValueError("score candidates must be unique")
+        seen.add(score)
+        _finite_probability(item["probability"])
+
+
 @dataclass(frozen=True)
 class PredictionRecord:
     prediction_id: str
@@ -75,6 +90,8 @@ def validate_prediction(record: PredictionRecord) -> None:
     probabilities = {k: _finite_probability(v) for k, v in record.probabilities.items()}
     if abs(sum(probabilities.values()) - 1.0) > 1e-8:
         raise ValueError("prediction probabilities must sum to 1")
+
+    _validate_score_candidates(record.score_candidates)
 
     for name, value in (("low_probability", record.low_probability),
                         ("high_probability", record.high_probability),
