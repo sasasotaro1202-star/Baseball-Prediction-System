@@ -1,0 +1,52 @@
+name: Baseball Regression Tests
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '**.py'
+      - 'requirements.txt'
+      - 'tests/**'
+      - '.github/workflows/baseball_regression_tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baseball-regression-tests
+  cancel-in-progress: true
+
+env:
+  PYTHONPATH: .
+  PYTHONUNBUFFERED: '1'
+  PIP_DISABLE_PIP_VERSION_CHECK: '1'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        timeout-minutes: 5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        timeout-minutes: 5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        timeout-minutes: 5
+        run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
+
+      - name: Compile repository
+        timeout-minutes: 3
+        run: python -m compileall -q .
+
+      - name: Run regression tests
+        timeout-minutes: 5
+        run: python -m pytest -q tests
