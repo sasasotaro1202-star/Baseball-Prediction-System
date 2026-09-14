@@ -56,6 +56,16 @@ jobs:
           restore-keys: |
             baseball-npb-historical-v6-${{ runner.os }}-
 
+      - name: Restore chronological OOS checkpoints
+        id: oos-checkpoint-restore
+        continue-on-error: true
+        uses: actions/cache/restore@v4
+        with:
+          path: results/checkpoints
+          key: baseball-oos-checkpoints-v2-${{ runner.os }}-${{ hashFiles('requirements.txt', 'baseball_backtest.py', 'research_runner_v6.py', 'data/npb_pbp_adapter.py') }}-${{ github.run_number }}
+          restore-keys: |
+            baseball-oos-checkpoints-v2-${{ runner.os }}-${{ hashFiles('requirements.txt', 'baseball_backtest.py', 'research_runner_v6.py', 'data/npb_pbp_adapter.py') }}-
+
       - name: Install research dependencies
         timeout-minutes: 10
         run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
@@ -237,13 +247,18 @@ jobs:
       - name: Run chronological Baseball OOS research
         timeout-minutes: 90
         env:
-          # The previous 1500-second budget yielded only a partial OOS sample.
-          # The 2400-second setting is now honored by the backtest engine; use a
-          # larger but still bounded budget to increase chronological OOS coverage.
           BASEBALL_TIME_BUDGET_SEC: '3600'
           NPB_RETRAIN_EVERY: '150'
           MLB_ENRICH_STARTERS: '0'
         run: python -u research_runner_v6.py --league BOTH --mlb-start 2020 --mlb-end 2026 --retries 3
+
+      - name: Save chronological OOS checkpoints
+        if: always() && !cancelled()
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: results/checkpoints
+          key: baseball-oos-checkpoints-v2-${{ runner.os }}-${{ hashFiles('requirements.txt', 'baseball_backtest.py', 'research_runner_v6.py', 'data/npb_pbp_adapter.py') }}-${{ github.run_number }}
 
       - name: Verify research manifest
         timeout-minutes: 5
