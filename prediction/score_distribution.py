@@ -57,7 +57,6 @@ def top_score_candidates(
         raise ValueError("production score contract requires exactly four candidates")
     matrix = score_distribution(home_lambda, away_lambda, max_runs=max_runs)
     flat = matrix.ravel()
-    # Stable deterministic ordering: probability first, then home/away score.
     indices = sorted(
         range(flat.size),
         key=lambda i: (-float(flat[i]), int(i // matrix.shape[1]), int(i % matrix.shape[1])),
@@ -83,7 +82,6 @@ def low_high_probabilities(
         for away in range(matrix.shape[1]):
             if home + away <= 6:
                 low += float(matrix[home, away])
-    # The matrix is normalized, so this is exactly the complement of LOW.
     low = float(np.clip(low, 0.0, 1.0))
     return low, 1.0 - low
 
@@ -102,6 +100,6 @@ def build_score_outputs(
         "low_probability": low,
         "high_probability": high,
         "low_high_boundary": 6.5,
-        "low_definition": "total_runs <= 6",
-        "high_definition": "total_runs >= 7",
+        "low_definition": "total runs <= 6",
+        "high_definition": "total runs >= 7",
     }
