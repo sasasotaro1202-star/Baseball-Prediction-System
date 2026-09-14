@@ -70,6 +70,26 @@ jobs:
           python -m compileall -q .
           python research/action_preflight.py
 
+      - name: Smoke-test NPB official score parser
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from research.npb_official_results import _parse_score_lines
+
+          cases = [
+              (['巨人 6 - 5 ヤクルト'], 6, 5),
+              (['阪神 10-2 中日'], 10, 2),
+              (['福岡ソフトバンクホークス 3−1 埼玉西武ライオンズ'], 3, 1),
+              (['横浜DeNAベイスターズ 4–0 広島東洋カープ'], 4, 0),
+          ]
+          for cells, expected_home, expected_away in cases:
+              got = _parse_score_lines(cells, '2025-05-01', 'smoke://npb')
+              if len(got) != 1 or got[0]['home_score'] != expected_home or got[0]['away_score'] != expected_away:
+                  raise SystemExit(f'NPB parser smoke failure: cells={cells!r}, got={got!r}')
+          print('NPB official score parser smoke test: PASS')
+          PY
+
       - name: Acquire current PIT observations
         timeout-minutes: 8
         run: |
