@@ -12,6 +12,10 @@ concurrency:
   group: baseball-pit-acquisition
   cancel-in-progress: true
 
+env:
+  PYTHONPATH: .
+  PYTHONUNBUFFERED: 1
+
 jobs:
   acquire:
     runs-on: ubuntu-latest
@@ -34,7 +38,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m py_compile data/pit_acquisition.py core/pit_snapshot.py core/pit_replay.py
-          python data/pit_acquisition.py
+          python -m data.pit_acquisition
 
       - name: Validate PIT ledger
         run: |
