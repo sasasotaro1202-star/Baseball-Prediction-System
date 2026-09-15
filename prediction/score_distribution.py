@@ -45,6 +45,26 @@ def score_distribution(
     return matrix / total
 
 
+def _outputs_from_matrix(matrix: np.ndarray, *, n: int = 4) -> tuple[list[dict[str, Any]], float, float]:
+    """Derive all canonical outputs from one already-normalized score matrix."""
+    if int(n) != 4:
+        raise ValueError("production score contract requires exactly four candidates")
+    flat = matrix.ravel()
+    indices = sorted(
+        range(flat.size),
+        key=lambda i: (-float(flat[i]), int(i // matrix.shape[1]), int(i % matrix.shape[1])),
+    )[:n]
+    candidates: list[dict[str, Any]] = []
+    for i in indices:
+        home = i // matrix.shape[1]
+        away = i % matrix.shape[1]
+        candidates.append({"score": f"{home}-{away}", "probability": float(flat[i])})
+
+    low = float(matrix[np.indices(matrix.shape).sum(axis=0) <= 6].sum())
+    low = float(np.clip(low, 0.0, 1.0))
+    return candidates, low, 1.0 - low
+
+
 def top_score_candidates(
     home_lambda: float,
     away_lambda: float,
@@ -56,17 +76,8 @@ def top_score_candidates(
     if int(n) != 4:
         raise ValueError("production score contract requires exactly four candidates")
     matrix = score_distribution(home_lambda, away_lambda, max_runs=max_runs)
-    flat = matrix.ravel()
-    indices = sorted(
-        range(flat.size),
-        key=lambda i: (-float(flat[i]), int(i // matrix.shape[1]), int(i % matrix.shape[1])),
-    )[:n]
-    out = []
-    for i in indices:
-        home = i // matrix.shape[1]
-        away = i % matrix.shape[1]
-        out.append({"score": f"{home}-{away}", "probability": float(flat[i])})
-    return out
+    candidates, _, _ = _outputs_from_matrix(matrix, n=n)
+    return candidates
 
 
 def low_high_probabilities(
@@ -77,13 +88,8 @@ def low_high_probabilities(
 ) -> tuple[float, float]:
     """Return P(total<=6), P(total>=7) from the full score distribution."""
     matrix = score_distribution(home_lambda, away_lambda, max_runs=max_runs)
-    low = 0.0
-    for home in range(matrix.shape[0]):
-        for away in range(matrix.shape[1]):
-            if home + away <= 6:
-                low += float(matrix[home, away])
-    low = float(np.clip(low, 0.0, 1.0))
-    return low, 1.0 - low
+    _, low, high = _outputs_from_matrix(matrix)
+    return low, high
 
 
 def build_score_outputs(
@@ -93,8 +99,8 @@ def build_score_outputs(
     max_runs: int = 20,
 ) -> dict[str, Any]:
     """Build the canonical score + Low/High output contract."""
-    candidates = top_score_candidates(home_lambda, away_lambda, max_runs=max_runs)
-    low, high = low_high_probabilities(home_lambda, away_lambda, max_runs=max_runs)
+    matrix = score_distribution(home_lambda, away_lambda, max_runs=max_runs)
+    candidates, low, high = _outputs_from_matrix(matrix)
     return {
         "score_candidates": candidates,
         "low_probability": low,
