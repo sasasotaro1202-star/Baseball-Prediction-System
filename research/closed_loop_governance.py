@@ -2,7 +2,9 @@
 
 This module does not manufacture evidence. It verifies that each stage has the
 artifacts needed to move to the next stage and records explicit blockers when
-those artifacts are absent.
+those artifacts are absent. PIT revision/backfill findings are treated as a
+research blocker when a source claims historical availability earlier than an
+already observed availability timestamp.
 """
 from __future__ import annotations
 
@@ -13,6 +15,8 @@ import json
 import math
 from pathlib import Path
 from typing import Any
+
+from core.pit_revision import detect_revisions
 
 
 @dataclass(frozen=True)
@@ -50,12 +54,53 @@ def _jsonl_valid(path: str | Path) -> tuple[bool, int, str | None]:
     return rows > 0, rows, None if rows else "no_rows"
 
 
+def _read_jsonl(path: str | Path) -> list[dict[str, Any]]:
+    p = Path(path)
+    if not _nonempty(p):
+        return []
+    rows: list[dict[str, Any]] = []
+    for line in p.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        obj = json.loads(line)
+        if not isinstance(obj, dict):
+            raise ValueError(f"PIT JSONL row must be an object: {p}")
+        rows.append(obj)
+    return rows
+
+
+def pit_revision_stage(snapshot_artifact: str | Path = "data/pit/source_snapshots.jsonl") -> Stage:
+    """Block research when historical availability has been backfilled.
+
+    Ordinary payload revisions are recorded evidence but do not automatically
+    block a run. A BACKFILL changes what was knowable at an earlier cutoff and
+    therefore requires replay/recomputation before any OOS result can be used.
+    """
+    if not _nonempty(snapshot_artifact):
+        return Stage("PIT Revision/Backfill", "BLOCKED", ("pit_snapshot_artifact_missing",))
+    try:
+        findings = detect_revisions(_read_jsonl(snapshot_artifact))
+    except Exception as exc:
+        return Stage("PIT Revision/Backfill", "BLOCKED", (f"pit_revision_audit_error:{type(exc).__name__}",))
+    backfills = [f for f in findings if f.kind == "BACKFILL"]
+    if backfills:
+        return Stage(
+            "PIT Revision/Backfill",
+            "BLOCKED",
+            (f"pit_backfill_detected:{len(backfills)}",),
+        )
+    return Stage("PIT Revision/Backfill", "READY")
+
+
 def pit_stage() -> Stage:
     blockers: list[str] = []
     for path in REQUIRED_PIT:
         ok, rows, err = _jsonl_valid(path)
         if not ok:
             blockers.append(f"{path}:{err or 'invalid'}")
+    if not blockers:
+        revision = pit_revision_stage()
+        blockers.extend(revision.blockers)
     return Stage("PIT", "READY" if not blockers else "BLOCKED", tuple(blockers))
 
 
@@ -63,7 +108,7 @@ def calibration_stage(calibration_artifact: str | Path = "results/calibration.js
     """Validate the current calibration schema without assuming a global scalar.
 
     Production calibration is stored per league because NPB and MLB have
-    different class structures and probability sharpness.  Older artifacts may
+    different class structures and probability sharpness. Older artifacts may
     contain a single top-level ``temperature``; those remain accepted for
     backward compatibility, but the current per-league schema is preferred.
     """
@@ -135,7 +180,7 @@ def lifecycle_report() -> dict[str, Any]:
     ]
     ready = not any(s.status == "BLOCKED" for s in stages)
     report = {
-        "schema_version": 1,
+        "schema_version": 2,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "overall_status": "READY" if ready else "BLOCKED",
         "stages": [asdict(s) for s in stages],
