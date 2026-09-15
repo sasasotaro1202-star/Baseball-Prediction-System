@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from data.availability import AvailabilityRecord, prediction_eligible
+from data.availability import AvailabilityRecord, prediction_eligible, production_prediction_eligible
+from data.competition_registry import production_eligible
 
 
 BASE = dict(
@@ -22,12 +23,20 @@ BASE = dict(
 )
 
 
-def test_registered_research_competition_can_be_validated_without_becoming_production_eligible():
+def test_registered_research_competition_can_pass_pit_without_production_eligibility():
     record = AvailabilityRecord(**BASE)
     record.validate()
     ok, reasons = prediction_eligible(record)
     assert ok is True
     assert reasons == []
+    assert production_eligible("WBC") is False
+
+
+def test_production_gate_blocks_research_only_competition():
+    record = AvailabilityRecord(**BASE)
+    ok, reasons = production_prediction_eligible(record)
+    assert ok is False
+    assert reasons == ["competition_not_production_eligible"]
 
 
 def test_unknown_competition_still_fails_closed():
