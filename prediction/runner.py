@@ -183,3 +183,9 @@ def run_prediction(*, row: Mapping[str, Any], availability: AvailabilityRecord,
     )
     append_prediction(record, log_path)
     return {"eligible": True, "prediction": record}
+
+
+def run_production_prediction(**kwargs: Any) -> dict[str, Any]:
+    """Explicit production entry point that can never fall back to research mode."""
+    kwargs["production"] = True
+    return run_prediction(**kwargs)
