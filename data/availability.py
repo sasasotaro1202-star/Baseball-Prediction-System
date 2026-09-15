@@ -106,5 +106,20 @@ def prediction_eligible(record: AvailabilityRecord) -> tuple[bool, list[str]]:
     return (not reasons, reasons)
 
 
+def production_prediction_eligible(record: AvailabilityRecord) -> tuple[bool, list[str]]:
+    """Apply both PIT starter eligibility and the canonical production gate.
+
+    Registry membership is intentionally insufficient: research-only
+    competitions may pass the PIT starter checks while remaining blocked from
+    production until their competition-specific evidence and OOS/holdout gates
+    have been promoted.
+    """
+    ok, reasons = prediction_eligible(record)
+    spec = get_competition(record.league)
+    if not spec.status == "PRODUCTION_ELIGIBLE":
+        reasons.append("competition_not_production_eligible")
+    return (not reasons, reasons)
+
+
 def as_dict(record: AvailabilityRecord) -> dict[str, Any]:
     return asdict(record)
