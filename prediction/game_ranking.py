@@ -6,7 +6,12 @@ from typing import Any, Iterable, Mapping
 
 
 def _prob(value: Any, name: str) -> float:
-    p = float(value)
+    if value is None:
+        raise ValueError(f"{name} is required")
+    try:
+        p = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be a finite number") from exc
     if not math.isfinite(p) or p < 0.0 or p > 1.0:
         raise ValueError(f"{name} must be finite and in [0,1]")
     return p
