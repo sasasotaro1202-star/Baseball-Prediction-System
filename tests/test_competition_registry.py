@@ -41,6 +41,16 @@ def test_registry_never_promotes_by_listing_alone() -> None:
         assert production_eligible(competition_id) is False
 
 
+def test_league_and_non_league_phases_are_explicit() -> None:
+    npb = get("NPB")
+    assert npb.phase_type == "league"
+    assert npb.rules_profile == "npb"
+    assert get("ASIAN_GAMES_BASEBALL").phase_type == "tournament"
+    assert get("WBC").phase_type == "tournament"
+    assert get("KOSHIEN_QUALIFIERS").phase_type == "qualifier"
+    assert get("JAPAN_UNIVERSITY_BASEBALL").phase_type == "league_and_tournament"
+
+
 def test_unknown_competition_fails_closed() -> None:
     with pytest.raises(KeyError):
         get("UNKNOWN_COMPETITION")
