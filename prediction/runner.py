@@ -6,16 +6,24 @@ import math
 from typing import Any, Callable, Mapping
 
 from core.pit import _ts
-from data.availability import AvailabilityRecord, prediction_eligible
+from data.availability import AvailabilityRecord, prediction_eligible, production_prediction_eligible
 from prediction.prediction_log import PredictionRecord, append_prediction, make_prediction_id
 from prediction.score_distribution import build_score_outputs
 
 
 def eligibility_gate(*, availability: AvailabilityRecord, required_data_ok: bool,
                      feature_complete: bool, model_available: bool,
-                     calibration_available: bool) -> tuple[bool, list[str]]:
-    """Fail closed unless every required production condition is satisfied."""
-    ok, reasons = prediction_eligible(availability)
+                     calibration_available: bool, production: bool = False) -> tuple[bool, list[str]]:
+    """Fail closed unless every required condition is satisfied.
+
+    ``production=False`` preserves the research/replay runner contract. The
+    production path must pass ``production=True`` so competition-level
+    promotion status is enforced in the actual prediction entry point.
+    """
+    if production:
+        ok, reasons = production_prediction_eligible(availability)
+    else:
+        ok, reasons = prediction_eligible(availability)
     if not required_data_ok:
         reasons.append("required_data_unavailable")
     if not feature_complete:
@@ -117,13 +125,15 @@ def run_prediction(*, row: Mapping[str, Any], availability: AvailabilityRecord,
                    probability_fn: Callable[[Mapping[str, Any]], Mapping[str, float]],
                    model_version: str, feature_version: str, calibration_version: str,
                    git_commit: str, data_snapshot_id: str, log_path: str,
-                   calibrate_fn: Callable[[Mapping[str, float]], Mapping[str, float]] | None = None) -> dict[str, Any]:
+                   calibrate_fn: Callable[[Mapping[str, float]], Mapping[str, float]] | None = None,
+                   production: bool = False) -> dict[str, Any]:
     eligible, reasons = eligibility_gate(
         availability=availability,
         required_data_ok=bool(row.get("required_data_ok", True)),
         feature_complete=bool(row.get("feature_complete", True)),
         model_available=bool(row.get("model_available", True)),
         calibration_available=bool(row.get("calibration_available", True)),
+        production=production,
     )
     if not eligible:
         return {"eligible": False, "reasons": reasons, "event_id": availability.event_id}
