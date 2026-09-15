@@ -2,8 +2,9 @@
 """Production research entry point with robust NPB target repair and parallel leagues.
 
 The modeling code remains the repository's existing BaseballBacktest. This wrapper
-only hardens data acquisition/target integrity and removes a major source of CI
-waste: repeated NPB 404 retries and per-file official-result reparsing.
+hardens data acquisition/target integrity, canonicalizes walk-forward outputs, and
+removes a major source of CI waste: repeated NPB 404 retries and per-file
+official-result reparsing.
 """
 from __future__ import annotations
 
@@ -22,6 +23,7 @@ REQUIRED_MODULES = (
     "data.npb_pbp_adapter",
     "research.validation_pipeline",
     "research.adoption_gate",
+    "research.backtest_output_contract",
     "prediction.runner",
     "prediction.prediction_log",
     "evaluation.calibration",
@@ -105,13 +107,7 @@ def _validate_targets(frame: pd.DataFrame, league: str) -> dict:
 
 
 def _filter_confirmed_starters(games: pd.DataFrame, league: str) -> tuple[pd.DataFrame, dict]:
-    """Keep only games whose both starting pitchers are known before prediction.
-
-    The production objective is not to manufacture predictions for games whose
-    critical starter information is unavailable.  Historical games with missing
-    starter identity remain valid raw data, but are excluded from the prediction
-    sample rather than silently receiving neutral/default starter features.
-    """
+    """Keep only games whose both starting pitchers are known before prediction."""
     if league not in {"NPB", "MLB"}:
         return games, {"before": int(len(games)), "after": int(len(games)), "excluded": 0}
     required = {"home_starter", "away_starter"}
@@ -123,15 +119,47 @@ def _filter_confirmed_starters(games: pd.DataFrame, league: str) -> tuple[pd.Dat
     before = int(len(games))
     filtered = games.loc[mask].copy().reset_index(drop=True)
     excluded = before - int(len(filtered))
-    audit = {
-        "before": before,
-        "after": int(len(filtered)),
-        "excluded": excluded,
-        "coverage": float(len(filtered) / max(before, 1)),
-    }
+    audit = {"before": before, "after": int(len(filtered)), "excluded": excluded, "coverage": float(len(filtered) / max(before, 1))}
     if len(filtered) <= 0:
         raise RuntimeError(f"{league} has no games with both announced starters")
     return filtered, audit
+
+
+def _canonicalize_walkforward(bt, league: str, frame: pd.DataFrame) -> pd.DataFrame:
+    """Persist and reload the canonical score/Low-High/Top-Draw contract.
+
+    This is intentionally downstream of model inference. It repairs legacy
+    reporting fields without changing win/draw/away probabilities.
+    """
+    if frame.empty:
+        return frame
+    path = bt.checkpoint_dir / f"{league.lower()}_walkforward.csv"
+    if not path.exists():
+        raise RuntimeError(f"{league} walk-forward checkpoint missing after successful run: {path}")
+    from research.backtest_output_contract import normalize_walkforward
+    normalize_walkforward(path, npb=(league == "NPB"))
+    canonical = pd.read_csv(path)
+    required = {"score1", "score2", "score3", "score4", "score1_prob", "score2_prob", "score3_prob", "score4_prob", "low", "high"}
+    if league == "NPB":
+        required |= {"top_draw_selection", "top_draw_probability", "top_draw_status", "date_jst"}
+    missing = required - set(canonical.columns)
+    if missing:
+        raise RuntimeError(f"{league} canonical output missing columns: {sorted(missing)}")
+    for _, row in canonical.iterrows():
+        scores = [str(row[f"score{i}"]) for i in range(1, 5)]
+        if len(set(scores)) != 4 or any(s == "その他" for s in scores):
+            raise RuntimeError(f"{league} canonical output contains invalid exact-score candidates")
+        probs = [float(row[f"score{i}_prob"]) for i in range(1, 5)]
+        if probs != sorted(probs, reverse=True):
+            raise RuntimeError(f"{league} canonical score probabilities are not descending")
+        low, high = float(row["low"]), float(row["high"])
+        if not np.isfinite(low + high) or abs(low + high - 1.0) > 1e-8:
+            raise RuntimeError(f"{league} canonical Low/High probabilities do not sum to 1")
+    if league == "NPB":
+        counts = canonical.groupby("date_jst")["top_draw_selection"].sum()
+        if not counts.empty and not bool((counts == 1).all()):
+            raise RuntimeError("NPB canonical Top Draw must select exactly one game per JST date")
+    return canonical
 
 
 def run_one(league: str, data_dir: Path, *, mlb_start: int, mlb_end: int, retries: int = 2) -> dict:
@@ -155,10 +183,7 @@ def run_one(league: str, data_dir: Path, *, mlb_start: int, mlb_end: int, retrie
                 target_quality = _validate_targets(games, "NPB")
                 frame = bt.run_walkforward(games, "NPB")
                 if len(games) >= 200 and len(frame) < max(100, int(len(games) * 0.15)):
-                    raise RuntimeError(
-                        f"NPB OOS coverage unexpectedly low after starter filter: "
-                        f"games={len(games)}, predictions={len(frame)}, raw_games={starter_before}"
-                    )
+                    raise RuntimeError(f"NPB OOS coverage unexpectedly low after starter filter: games={len(games)}, predictions={len(frame)}, raw_games={starter_before}")
             else:
                 games = bt.load_mlb(mlb_start, mlb_end)
                 if games.empty:
@@ -167,6 +192,7 @@ def run_one(league: str, data_dir: Path, *, mlb_start: int, mlb_end: int, retrie
                 result["starter_filter"] = starter_audit
                 target_quality = _validate_targets(games, "MLB")
                 frame = bt.run_walkforward(games, "MLB")
+            frame = _canonicalize_walkforward(bt, league, frame)
             result["games"] = int(len(games))
             result["target_quality"] = target_quality
             result["starter_coverage"] = float(games["confirmed_starters"].mean()) if "confirmed_starters" in games else float(result["starter_filter"]["coverage"])
@@ -212,13 +238,11 @@ def main() -> int:
         print(json.dumps({"status": "PREFLIGHT_OK", "modules": REQUIRED_MODULES}, ensure_ascii=False))
         return 0
     leagues = ["NPB", "MLB"] if args.league == "BOTH" else [args.league]
-    # The leagues are independent. Parallel execution cuts wall-clock time while
-    # preserving each league's own chronological walk-forward evaluation.
     with ThreadPoolExecutor(max_workers=len(leagues)) as ex:
         futures = [ex.submit(run_one, league, Path(args.data_dir), mlb_start=args.mlb_start, mlb_end=args.mlb_end, retries=args.retries) for league in leagues]
         results = [f.result() for f in futures]
     manifest = {
-        "version": 7,
+        "version": 8,
         "requested_leagues": leagues,
         "results": results,
         "overall_status": "SUCCESS" if all(r["status"] == "SUCCESS" for r in results) else "PARTIAL_OR_FAILED",
