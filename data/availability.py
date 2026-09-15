@@ -5,6 +5,8 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any, Mapping
 
+from data.competition_registry import get as get_competition
+
 _ALLOWED_LINEUP_STATUS = {"CONFIRMED", "UNCONFIRMED", "UNAVAILABLE", "UNVERIFIABLE"}
 
 
@@ -32,8 +34,17 @@ class AvailabilityRecord:
     prediction_cutoff: str
 
     def validate(self) -> None:
-        if not self.event_id or self.league not in {"NPB", "MLB"}:
-            raise ValueError("event_id and league (NPB/MLB) are required")
+        if not self.event_id:
+            raise ValueError("event_id is required")
+        # Keep the legacy field name for compatibility, but validate it against
+        # the canonical registry so newly registered competitions are not
+        # rejected by an obsolete NPB/MLB-only hardcode. Registry membership
+        # alone never grants production eligibility.
+        try:
+            get_competition(self.league)
+        except KeyError as exc:
+            raise ValueError(f"unknown competition_id/league: {self.league}") from exc
+
         if not self.home_team or not self.away_team:
             raise ValueError("home_team and away_team are required")
         if self.lineup_status.upper() not in _ALLOWED_LINEUP_STATUS:
