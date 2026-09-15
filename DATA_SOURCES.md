@@ -1,37 +1,73 @@
-# Baseball data source hierarchy
+# Baseball data-source hierarchy
 
-The system does not force every feature through one provider. Each feature uses the strongest practical source and records missing data instead of guessing.
+The system does not force every feature through one provider. Each feature uses the strongest practical source and records missing data instead of guessing. Multiple independent sources are preferred for discovery and cross-validation, but source agreement never replaces PIT evidence.
 
-| Feature | Primary source | Fallback / validation | Rule |
+## Source hierarchy
+
+| Competition / feature | Primary / strongest source | Secondary / validation | Production rule |
 |---|---|---|---|
-| NPB schedule, game date/time, teams, final result | NPB.jp official | SPAIA schedule API | Official NPB is canonical where available |
-| NPB starting pitchers | SPAIA game PBP | NPB.jp official game page | Never substitute an arbitrary pitcher |
-| NPB pitcher game line | SPAIA pitcher-game API | none | Missing line keeps starter coverage below completion gate |
-| NPB player game stats / lineup / play style | SPAIA game APIs | public NPB data repository for future bulk recovery | Target-game stats are only committed after prediction |
-| NPB PBP | SPAIA game PBP | armstjc/Nippon-Baseball-Data-Repository bulk PBP | Chronological, game-level data only |
-| Historical NPB season/player reference stats | NPB.jp official statistics where available | public NPB data repository | Used only according to publication date / backtest cutoff |
+| NPB schedule, game date/time, teams, final result | NPB.jp official | SPAIA schedule API | NPB.jp is canonical where available |
+| NPB starting pitchers | NPB.jp official / official game information | SPAIA game PBP | Never substitute an arbitrary pitcher |
+| NPB pitcher game line | SPAIA pitcher-game API | official NPB statistics where available | Missing line keeps coverage below the completion gate |
+| NPB player game stats / lineup / play style | SPAIA game APIs | public NPB data repositories | Target-game stats are only committed after prediction |
+| NPB PBP | SPAIA game PBP | Nippon-Baseball-Data-Repository bulk PBP | Chronological, game-level data only |
+| Historical NPB reference stats | NPB.jp official statistics | public NPB data repository | Respect publication/availability date in backtests |
 | Historical weather | Open-Meteo archive | none | Venue/date cache; no synthetic weather |
-| MLB schedule/results | MLB Stats API | Yahoo! Sports Navi MLB schedule/game pages; cached verified data | MLB Stats API remains canonical for IDs/results; Yahoo is a secondary Japanese-language discovery/validation source |
-| MLB probable starters | Yahoo! Sports Navi MLB schedule/game pages + MLB Stats API | cross-source agreement | Probable starter observation is useful for discovery, but is not by itself proof of historical official announcement time |
-| MLB Japanese-language game detail / starter display | Yahoo! Sports Navi MLB | MLB Stats API | Useful operational cross-check; preserve retrieved_at and source URL |
+| MLB schedule/results/game IDs | MLB Stats API / MLB.com | Yahoo! Sports Navi MLB | MLB remains canonical for IDs/results; Yahoo is a secondary operational source |
+| MLB probable starters | MLB.com / MLB Stats API | Yahoo! Sports Navi MLB, FanGraphs RosterResource, ESPN | Cross-source agreement is useful, but does not prove historical official announcement time |
+| MLB pitch/batted-ball features | Baseball Savant / Statcast | MLB data | Apply explicit PIT availability policy |
+| International senior baseball | Official competition/WBSC/Olympic/Asian Games sources | reputable sports sources | Separate competition OOS/holdout and rule contract required |
+| U18/U23 and other age-group | WBSC / official competition sources | reputable sports sources | Research-only until PIT/OOS/promotion gates pass |
+| Koshien / Japanese high school | Japan High School Baseball Federation / official tournament sources | reputable Japanese sports sources | Competition-specific metadata; do not mix blindly with NPB |
+| University/intercollegiate | JABA / official university competition sources | reputable sports sources | Separate competition contract and validation required |
 
-## Yahoo! Sports Navi MLB policy
+## MLB operational source set
 
-`https://baseball.yahoo.co.jp/mlb/` and its `/schedule/` and `/game/<game_id>/` pages are supported as a **secondary operational source**. The source currently exposes MLB schedule/result pages and displays probable starters; game pages also expose starting lineups and starting pitchers. It is therefore useful for current-game discovery, cross-validation, and Japanese-language output. citeturn0search1turn0search4
+### MLB.com / MLB Stats API
+Use for canonical game identity, schedule/results and MLB-native probable-pitcher information. MLB's probable-pitcher pages expose the current matchup and listed pitchers. citeturn0search2turn0search7
 
-The system must **not** infer `announcement_at` from page retrieval time, crawl time, first observation time, or the mere presence of a probable starter. A prediction is production-eligible only when the starter announcement timestamp is independently PIT-verifiable and is at or before `prediction_cutoff`. This preserves the existing fail-closed rule.
+### Baseball Savant / Statcast
+Use for high-resolution MLB pitching, batted-ball and tracking features. Baseball Savant provides per-pitch, per-game, player, team and season Statcast queries and CSV documentation. It is a feature source, not automatically a PIT announcement source.
 
-## Completion rules
+### Yahoo! Sports Navi MLB
+`https://baseball.yahoo.co.jp/mlb/` and its schedule/game pages are supported as a secondary operational source. Current pages expose schedules, probable starters and game information in Japanese. citeturn0search8turn0search12
 
-- A season is not complete merely because schedule rows were written.
-- Both starting pitchers must be identified and both starter game lines must be available for at least the configured coverage threshold (currently 70%).
-- Existing checkpoints are re-enriched when prediction-critical fields are missing.
-- A missing upstream source never causes the collector to invent a value.
-- Partial seasons remain resumable across GitHub Actions runs.
-- Secondary sources may improve coverage and cross-validation, but cannot override a stronger canonical source without an explicit conflict-resolution rule.
+### FanGraphs RosterResource
+Use the probable-pitcher grid as an independent cross-check and for roster context. It is not treated as proof of official announcement time.
 
-## Current implementation
+## PIT / announcement-time policy
 
-`npb_runtime_patch.py` applies the source hierarchy and stale-checkpoint repair immediately before `npb_multi_source.py` runs. The GitHub Actions workflow performs this automatically, so the user only needs to dispatch the workflow (or wait for the scheduled run).
+The following are distinct and must be stored separately:
 
-For MLB, Yahoo! Sports Navi is treated as a secondary operational feed; the dedicated PIT announcement gate remains authoritative. Unsupported historical announcement evidence must stay `RESEARCH_ONLY`/ineligible rather than being silently promoted.
+- `retrieved_at`: when our collector obtained the source observation
+- `available_at`: when the source/data was demonstrably available to the collector or public
+- `announcement_at`: when the starter was actually announced, if explicitly evidenced
+- `prediction_cutoff`: the information boundary for the prediction
+
+A displayed probable pitcher is **not automatically an officially announced starter**. Do not infer `announcement_at` from retrieval time, crawl time, first observation time, page modification time, or source agreement. If historical announcement timing cannot be defended, the game remains ineligible and the pipeline fails closed for that critical field.
+
+## Source conflict policy
+
+1. Prefer an authoritative competition source for official event identity and results.
+2. Prefer the strongest field-specific source for technical statistics.
+3. Use independent sources to detect conflicts and missingness.
+4. Never silently overwrite a stronger source with a weaker source.
+5. Preserve all source observations needed for auditability.
+6. If a conflict affects a critical prediction field and cannot be resolved PIT-safely, mark the record invalid/research-only rather than guessing.
+
+## Reliability and fallback
+
+Fallback order is:
+1. authoritative competition/API source
+2. independent authoritative/near-authoritative source
+3. reputable secondary source
+4. cached historical observation whose PIT timestamp is already verified
+5. safe stop
+
+Retries, exponential backoff, cache, checkpoints and source redundancy are reliability mechanisms. They must never be used to bypass a PIT gate.
+
+## Competition expansion
+
+The target scope includes NPB, MLB, other reliable professional leagues, Olympics, Asian Games, WBC, WBSC Premier12, U18/U23 and other age-group competitions, Koshien and prefectural high-school competitions, university/intercollegiate baseball, and other material competitions when reliable PIT data exists.
+
+Expanded competitions are not automatically production-eligible. Each competition requires provenance, PIT-safe availability/announcement evidence, rule/outcome-contract isolation, sufficient chronological OOS and protected holdout evidence, calibration, robustness, and promotion-gate approval. Unsupported or insufficiently historical competitions remain `RESEARCH_ONLY` or `UNAVAILABLE` and are never silently mixed into production training/evaluation.
