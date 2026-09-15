@@ -43,8 +43,6 @@ def test_retrieval_after_cutoff_is_rejected():
 
 def test_starter_without_announcement_time_fails_closed():
     record = availability(home_starter_announced_at=None)
-    # Validation accepts an unknown starter name only as an invalid PIT record;
-    # production must never silently treat it as confirmed.
     with pytest.raises(ValueError, match="unknown announcement timestamp"):
         record.validate()
 
@@ -65,4 +63,31 @@ def test_mlb_requires_only_home_and_away_probability_contract():
         calibration_available=True,
     )
     assert ok
+    assert reasons == []
+
+
+def test_production_gate_blocks_research_only_mlb():
+    record = availability(league="MLB")
+    ok, reasons = eligibility_gate(
+        availability=record,
+        required_data_ok=True,
+        feature_complete=True,
+        model_available=True,
+        calibration_available=True,
+        production=True,
+    )
+    assert ok is False
+    assert reasons == ["competition_not_production_eligible"]
+
+
+def test_production_gate_preserves_npb():
+    ok, reasons = eligibility_gate(
+        availability=availability(),
+        required_data_ok=True,
+        feature_complete=True,
+        model_available=True,
+        calibration_available=True,
+        production=True,
+    )
+    assert ok is True
     assert reasons == []
