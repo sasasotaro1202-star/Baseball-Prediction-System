@@ -61,7 +61,7 @@ def test_production_gate_accepts_pit_safe_npb():
 
 
 def test_production_gate_fails_closed_for_unknown_competition():
-    with pytest.raises(KeyError):
+    with pytest.raises(ValueError, match="unknown competition_id/league"):
         eligibility_gate(
             availability=availability("UNKNOWN"),
             required_data_ok=True,
