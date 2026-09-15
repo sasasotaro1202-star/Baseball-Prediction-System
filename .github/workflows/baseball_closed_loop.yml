@@ -15,6 +15,7 @@ permissions:
 
 concurrency:
   group: baseball-closed-loop
+  queue: max
   cancel-in-progress: false
 
 env:
