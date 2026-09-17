@@ -65,7 +65,6 @@ def test_replay_order_is_independent_of_append_order_for_tied_availability(tmp_p
         append_snapshot(row, p)
 
     got = replay(p, cutoff="2026-09-12T10:00:00+00:00")
-    assert [(r["source"], r["payload"]["value"]) for r in got] == [
-        ("SOURCE_A", "a"),
-        ("SOURCE_B", "b"),
-    ]
+    assert [r["source"] for r in got] == ["SOURCE_A", "SOURCE_B"]
+    assert got[0]["retrieved_at"] == "2026-09-12T09:05:00+00:00"
+    assert got[1]["retrieved_at"] == "2026-09-12T09:06:00+00:00"
