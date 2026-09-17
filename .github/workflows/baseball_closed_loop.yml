@@ -8,9 +8,9 @@ on:
       - 'results/**'
       - 'data/pit/**'
   schedule:
-    # Four bounded runs/day keeps the unattended loop moving without
-    # creating an hourly thundering-herd against external data providers.
-    - cron: '17 0,6,12,18 * * *'
+    # Six bounded runs/day: enough unattended throughput to advance OOS,
+    # while the 120-minute lifecycle timeout leaves a two-hour safety buffer.
+    - cron: '17 0,4,8,12,16,20 * * *'
 
 permissions:
   contents: read
