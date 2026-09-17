@@ -31,6 +31,14 @@ def test_closed_loop_keeps_safe_sequential_execution_and_quality_gates():
 def test_recovery_is_bounded_and_only_retries_transient_steps():
     text = RECOVERY.read_text(encoding="utf-8")
 
+    # The recovery job itself needs a repository context because gh run view
+    # resolves the parent run through the current checkout. Keep that setup
+    # immutable and credential-free after checkout.
+    assert "- name: Checkout recovery repository context" in text
+    assert "actions/checkout@11d5960a326750d5838078e36cf38b85af677262" in text
+    assert "persist-credentials: false" in text
+    assert "fetch-depth: 1" in text
+
     assert 'if [ "${RUN_ATTEMPT}" -ge 3 ]; then' in text
     assert 'gh run rerun "${RUN_ID}" --failed' in text
     assert "for recovery_attempt in 1 2 3; do" in text
@@ -38,6 +46,13 @@ def test_recovery_is_bounded_and_only_retries_transient_steps():
     assert "Mixed transient and deterministic failures detected; refusing automatic rerun." in text
     assert "non_retryable=$((non_retryable + 1))" in text
     assert 'if [ "${non_retryable}" -ne 0 ]; then' in text
+
+    # Inspection/API failures must not create a second false-red. The parent
+    # workflow failure remains authoritative and is preserved for diagnosis.
+    assert "failed_steps=''" in text
+    assert "for inspect_attempt in 1 2 3; do" in text
+    assert "Recovery could not inspect the parent run after 3 attempts; preserving the original failure signal." in text
+    assert 'exit 0' in text
 
     # Keep data/model quality failures out of automatic reruns.
     assert "Install research dependencies" in text
