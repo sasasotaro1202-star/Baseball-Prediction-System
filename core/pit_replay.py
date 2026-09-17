@@ -53,7 +53,16 @@ def replay(path: str | Path, *, cutoff: str, event_id: str | None = None,
             # A source cannot have been observed after the prediction cutoff.
             continue
         rows.append(row)
-    rows.sort(key=lambda r: (_dt(str(r.get("available_at") or r.get("retrieved_at"))), str(r.get("entity_id"))))
+    # Deterministic ordering matters because latest_known_by_entity() uses
+    # the replay order when multiple observations share the same source/entity.
+    # Include retrieval time and source as tie-breakers so file append order
+    # cannot silently change the reconstructed historical state.
+    rows.sort(key=lambda r: (
+        _dt(str(r.get("available_at") or r.get("retrieved_at"))),
+        _dt(str(r.get("retrieved_at") or r.get("available_at"))),
+        str(r.get("entity_id")),
+        str(r.get("source")),
+    ))
     return rows
 
 
