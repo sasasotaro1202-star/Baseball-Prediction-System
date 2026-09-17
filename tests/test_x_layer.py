@@ -20,8 +20,8 @@ def test_x_window_rejects_historical_backfill_beyond_recent_search():
 def test_x_offline_eval_drops_pit_unsafe_rows(tmp_path: Path):
     cutoff = datetime(2026, 9, 17, tzinfo=timezone.utc)
     rows = []
-    for i in range(200):
-        available = cutoff - timedelta(minutes=10) if i < 199 else cutoff + timedelta(minutes=10)
+    for i in range(201):
+        available = cutoff - timedelta(minutes=10) if i < 200 else cutoff + timedelta(minutes=10)
         rows.append({
             "y_true": i % 2,
             "baseline_prob": 0.55 if i % 2 else 0.45,
@@ -33,8 +33,8 @@ def test_x_offline_eval_drops_pit_unsafe_rows(tmp_path: Path):
     path = tmp_path / "x_eval.csv"
     pd.DataFrame(rows).to_csv(path, index=False)
     result = evaluate(path)
-    assert result["rows_input"] == 200
-    assert result["rows_pit_safe"] == 199
+    assert result["rows_input"] == 201
+    assert result["rows_pit_safe"] == 200
     assert result["rows_dropped_pit"] == 1
     assert result["promotion"] == "NOT_APPLICABLE"
 
