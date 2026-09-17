@@ -8,7 +8,9 @@ on:
       - 'results/**'
       - 'data/pit/**'
   schedule:
-    - cron: '17 18 * * *'
+    # Four bounded runs/day keeps the unattended loop moving without
+    # creating an hourly thundering-herd against external data providers.
+    - cron: '17 0,6,12,18 * * *'
 
 permissions:
   contents: read
