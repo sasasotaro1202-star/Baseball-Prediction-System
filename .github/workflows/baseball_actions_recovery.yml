@@ -66,5 +66,18 @@ jobs:
             exit 0
           fi
 
-          gh run rerun "${RUN_ID}" --failed
-          echo 'Automatic failed-job recovery requested.'
+          # The recovery API call itself can fail transiently. Retry the
+          # recovery request, but never bypass the parent workflow's gates.
+          for recovery_attempt in 1 2 3; do
+            if gh run rerun "${RUN_ID}" --failed; then
+              echo "Automatic failed-job recovery requested on recovery attempt ${recovery_attempt}."
+              exit 0
+            fi
+            if [ "${recovery_attempt}" -eq 3 ]; then
+              echo 'Recovery request failed after 3 attempts; preserving the original failure signal.' >&2
+              exit 1
+            fi
+            sleep_seconds=$((recovery_attempt * 10))
+            echo "Recovery API request failed; retrying in ${sleep_seconds}s..." >&2
+            sleep "${sleep_seconds}"
+          done
