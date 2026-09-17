@@ -7,6 +7,9 @@ import pytest
 from data.x_acquisition import MAX_LOOKBACK_DAYS, validate_window
 from research.x_offline_eval import evaluate
 
+ROOT = Path(__file__).resolve().parents[1]
+X_WORKFLOW = ROOT / ".github" / "workflows" / "baseball_x_research.yml"
+
 
 def test_x_window_rejects_historical_backfill_beyond_recent_search():
     now = datetime.now(timezone.utc)
@@ -34,3 +37,10 @@ def test_x_offline_eval_drops_pit_unsafe_rows(tmp_path: Path):
     assert result["rows_pit_safe"] == 199
     assert result["rows_dropped_pit"] == 1
     assert result["promotion"] == "NOT_APPLICABLE"
+
+
+def test_x_workflow_isolated_from_production_path():
+    text = X_WORKFLOW.read_text(encoding="utf-8")
+    assert "workflow_dispatch:" in text
+    assert "X_BEARER_TOKEN" in text
+    assert "baseball_closed_loop.yml" not in text
