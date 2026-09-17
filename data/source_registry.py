@@ -1,4 +1,4 @@
-"""Canonical source registry and provenance metadata for NPB/MLB."""
+"""Canonical source registry and provenance metadata for NPB/MLB and research sources."""
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
@@ -25,6 +25,7 @@ SOURCES = (
     SourceSpec("statcast", "MLB", "pitch_level_and_pitcher_detail", "Baseball Savant / Statcast", 1, False, "publication/event information must be <= cutoff"),
     SourceSpec("fangraphs", "MLB", "advanced_batting_pitching_reference", "FanGraphs", 2, False, "historical metric must be cutoff-safe"),
     SourceSpec("weather", "NPB+MLB", "weather", "Open-Meteo", 2, False, "archived observation/forecast snapshot only"),
+    SourceSpec("x_api_recent_search", "NPB+MLB", "public_social_context_research", "https://api.x.com/2/tweets/search/recent", 3, False, "observed_available_at is the earliest safe availability boundary; historical availability is unproven"),
 )
 
 
