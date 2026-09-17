@@ -1,10 +1,19 @@
 from pathlib import Path
+import re
 
 
 ROOT = Path(__file__).resolve().parents[1]
 CLOSED_LOOP = ROOT / ".github" / "workflows" / "baseball_closed_loop.yml"
 RECOVERY = ROOT / ".github" / "workflows" / "baseball_actions_recovery.yml"
 X_RESEARCH = ROOT / ".github" / "workflows" / "baseball_x_research.yml"
+
+
+def _assert_official_actions_are_immutable(text: str) -> None:
+    """Every actions/* reference must be pinned to a full commit SHA."""
+    refs = re.findall(r"uses:\s*(actions/[^@\s]+)@([^\s#]+)", text)
+    assert refs, "expected at least one official GitHub Action reference"
+    for action, ref in refs:
+        assert re.fullmatch(r"[0-9a-f]{40}", ref), f"{action} is not pinned to an immutable SHA: {ref}"
 
 
 def test_closed_loop_keeps_safe_sequential_execution_and_quality_gates():
@@ -15,6 +24,7 @@ def test_closed_loop_keeps_safe_sequential_execution_and_quality_gates():
     assert "cancel-in-progress: false" in text
     assert "- cron: '17 0,4,8,12,16,20 * * *'" in text
     assert "120-minute lifecycle timeout" in text
+    _assert_official_actions_are_immutable(text)
 
     # PIT must be acquired and validated before any OOS research is allowed.
     pit_pos = text.index("- name: Acquire current PIT observations")
@@ -30,6 +40,7 @@ def test_closed_loop_keeps_safe_sequential_execution_and_quality_gates():
 
 def test_recovery_is_bounded_and_only_retries_transient_steps():
     text = RECOVERY.read_text(encoding="utf-8")
+    _assert_official_actions_are_immutable(text)
 
     # The recovery job itself needs a repository context because gh run view
     # resolves the parent run through the current checkout. Keep that setup
@@ -64,6 +75,7 @@ def test_recovery_is_bounded_and_only_retries_transient_steps():
 
 def test_x_research_isolated_and_artifact_fail_closed():
     text = X_RESEARCH.read_text(encoding="utf-8")
+    _assert_official_actions_are_immutable(text)
 
     # X must stay outside the production closed loop and remain optional/research-only.
     assert "permissions:\n  contents: read" in text
