@@ -13,6 +13,8 @@ def test_closed_loop_keeps_safe_sequential_execution_and_quality_gates():
     assert "group: baseball-closed-loop" in text
     assert "queue: max" in text
     assert "cancel-in-progress: false" in text
+    assert "- cron: '17 0,4,8,12,16,20 * * *'" in text
+    assert "120-minute lifecycle timeout" in text
 
     # PIT must be acquired and validated before any OOS research is allowed.
     pit_pos = text.index("- name: Acquire current PIT observations")
