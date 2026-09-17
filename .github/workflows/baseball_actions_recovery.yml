@@ -30,6 +30,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Checkout recovery repository context
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 5
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
       - name: Re-run failed jobs with bounded recovery
         env:
           GH_TOKEN: ${{ github.token }}
@@ -45,7 +52,28 @@ jobs:
             exit 0
           fi
 
-          failed_steps="$(gh run view "${RUN_ID}" --json jobs --jq '[.jobs[].steps[]? | select(.conclusion == "failure") | .name] | join("\n")')"
+          failed_steps=''
+          inspect_ok=0
+          for inspect_attempt in 1 2 3; do
+            if failed_steps="$(gh run view "${RUN_ID}" --json jobs --jq '[.jobs[].steps[]? | select(.conclusion == "failure") | .name] | join("\n")')"; then
+              inspect_ok=1
+              break
+            fi
+            if [ "${inspect_attempt}" -lt 3 ]; then
+              sleep_seconds=$((inspect_attempt * 5))
+              echo "Unable to inspect failed steps; retrying in ${sleep_seconds}s..." >&2
+              sleep "${sleep_seconds}"
+            fi
+          done
+
+          # Recovery must never become a second false-red caused by an
+          # inspection/API problem. The parent workflow's failure remains
+          # authoritative; if inspection is unavailable, preserve it and stop.
+          if [ "${inspect_ok}" -ne 1 ]; then
+            echo 'Recovery could not inspect the parent run after 3 attempts; preserving the original failure signal.' >&2
+            exit 0
+          fi
+
           echo 'Failed steps:'
           printf '%s\n' "${failed_steps:-<none>}"
 
@@ -86,7 +114,7 @@ jobs:
             fi
             if [ "${recovery_attempt}" -eq 3 ]; then
               echo 'Recovery request failed after 3 attempts; preserving the original failure signal.' >&2
-              exit 1
+              exit 0
             fi
             sleep_seconds=$((recovery_attempt * 10))
             echo "Recovery API request failed; retrying in ${sleep_seconds}s..." >&2
