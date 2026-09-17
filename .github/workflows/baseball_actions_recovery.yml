@@ -49,20 +49,31 @@ jobs:
           echo 'Failed steps:'
           printf '%s\n' "${failed_steps:-<none>}"
 
-          # Retry only failures that are plausibly transient. These include
-          # network/dependency/data-source stages. Model/test/gate failures are
-          # intentionally not retried automatically.
+          # Retry only when every failed step is explicitly classified as
+          # transient. A mixed transient + deterministic failure is preserved
+          # for diagnosis instead of being accidentally masked by rerunning
+          # the whole failed job.
           retryable=0
+          non_retryable=0
           while IFS= read -r step; do
+            [ -n "${step}" ] || continue
             case "${step}" in
               'Install research dependencies'|'Acquire current PIT observations'|'Install acquisition dependencies'|'Run PIT acquisition'|'Stage historical NPB PBP release data'|'Restore immutable historical NPB PBP and official-result cache'|'Restore chronological OOS checkpoints')
-                retryable=1
+                retryable=$((retryable + 1))
+                ;;
+              *)
+                non_retryable=$((non_retryable + 1))
                 ;;
             esac
           done <<< "${failed_steps}"
 
-          if [ "${retryable}" -ne 1 ]; then
+          if [ "${retryable}" -eq 0 ]; then
             echo 'No retryable transient failure detected; preserving the failure for diagnosis.'
+            exit 0
+          fi
+
+          if [ "${non_retryable}" -ne 0 ]; then
+            echo 'Mixed transient and deterministic failures detected; refusing automatic rerun.' >&2
             exit 0
           fi
 
