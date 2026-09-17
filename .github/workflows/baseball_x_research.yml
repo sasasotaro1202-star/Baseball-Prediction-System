@@ -54,6 +54,7 @@ jobs:
           cache-dependency-path: requirements.txt
 
       - name: Install dependencies
+        timeout-minutes: 10
         run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
 
       - name: Collect X observations
@@ -72,8 +73,30 @@ jobs:
           start = end - timedelta(hours=hours)
           result = collect([os.environ['QUERY']], start, end)
           if result['errors']:
-              raise SystemExit('X collection returned source errors; no prediction artifact is produced.')
+              raise SystemExit('X collection returned source errors; no research artifact is considered valid.')
+          if result['posts_collected'] < 0:
+              raise SystemExit('X collection returned an invalid negative row count.')
           print(result)
+          PY
+
+      - name: Validate X research artifacts
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          test -s data/x/acquisition_runs.jsonl
+          test -s data/pit/x_source_snapshots.jsonl
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          runs = [json.loads(x) for x in Path('data/x/acquisition_runs.jsonl').read_text(encoding='utf-8').splitlines() if x.strip()]
+          if not runs:
+              raise SystemExit('X acquisition produced no run manifest')
+          latest = runs[-1]
+          if latest.get('errors'):
+              raise SystemExit('X acquisition manifest contains source errors')
+          if latest.get('historical_backtest_eligible') is not False:
+              raise SystemExit('X source must remain research-only until historical PIT availability is proven')
+          print('X research artifact integrity: PASS')
           PY
 
       - name: Upload X research artifacts
@@ -84,5 +107,5 @@ jobs:
           path: |
             data/x/**
             data/pit/x_source_snapshots.jsonl
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 30
