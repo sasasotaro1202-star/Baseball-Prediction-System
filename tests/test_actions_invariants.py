@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CLOSED_LOOP = ROOT / ".github" / "workflows" / "baseball_closed_loop.yml"
 RECOVERY = ROOT / ".github" / "workflows" / "baseball_actions_recovery.yml"
+X_RESEARCH = ROOT / ".github" / "workflows" / "baseball_x_research.yml"
 
 
 def test_closed_loop_keeps_safe_sequential_execution_and_quality_gates():
@@ -39,3 +40,20 @@ def test_recovery_is_bounded_and_only_retries_transient_steps():
     assert "Run PIT acquisition" in text
     assert "Run chronological Baseball OOS research" not in text
     assert "Enforce lifecycle completion" not in text
+
+
+def test_x_research_isolated_and_artifact_fail_closed():
+    text = X_RESEARCH.read_text(encoding="utf-8")
+
+    # X must stay outside the production closed loop and remain optional/research-only.
+    assert "permissions:\n  contents: read" in text
+    assert "historical_backtest_eligible') is not False" in text
+    assert "X source must remain research-only until historical PIT availability is proven" in text
+
+    # A successful collection must prove that its research manifest and PIT snapshot exist.
+    assert "test -s data/x/acquisition_runs.jsonl" in text
+    assert "test -s data/pit/x_source_snapshots.jsonl" in text
+    assert "if-no-files-found: error" in text
+
+    # The immutable action pin must remain in place.
+    assert "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02" in text
