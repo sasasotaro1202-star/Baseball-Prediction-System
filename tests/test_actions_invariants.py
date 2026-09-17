@@ -33,6 +33,9 @@ def test_recovery_is_bounded_and_only_retries_transient_steps():
     assert 'gh run rerun "${RUN_ID}" --failed' in text
     assert "for recovery_attempt in 1 2 3; do" in text
     assert "No retryable transient failure detected; preserving the failure for diagnosis." in text
+    assert "Mixed transient and deterministic failures detected; refusing automatic rerun." in text
+    assert "non_retryable=$((non_retryable + 1))" in text
+    assert 'if [ "${non_retryable}" -ne 0 ]; then' in text
 
     # Keep data/model quality failures out of automatic reruns.
     assert "Install research dependencies" in text
