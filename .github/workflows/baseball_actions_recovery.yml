@@ -18,8 +18,9 @@ permissions:
 
 jobs:
   recover:
-    # Recover transient infrastructure/startup/time-limit failures, but never
-    # blindly rerun cancelled runs (which can be intentional supersession).
+    # Recover only transient infrastructure/data-acquisition failures.
+    # Deterministic code/test/lifecycle failures must remain visible instead
+    # of being masked by automatic retries.
     if: >-
       ${{
         github.event.workflow_run.conclusion == 'failure' ||
@@ -38,9 +39,32 @@ jobs:
           set -euo pipefail
           echo "Workflow=${{ github.event.workflow_run.name }}"
           echo "Run=${RUN_ID} attempt=${RUN_ATTEMPT} conclusion=${{ github.event.workflow_run.conclusion }}"
+
           if [ "${RUN_ATTEMPT}" -ge 3 ]; then
             echo 'Recovery limit reached; refusing another automatic rerun.'
             exit 0
           fi
+
+          failed_steps="$(gh run view "${RUN_ID}" --json jobs --jq '[.jobs[].steps[]? | select(.conclusion == "failure") | .name] | join("\n")')"
+          echo 'Failed steps:'
+          printf '%s\n' "${failed_steps:-<none>}"
+
+          # Retry only failures that are plausibly transient. These include
+          # network/dependency/data-source stages. Model/test/gate failures are
+          # intentionally not retried automatically.
+          retryable=0
+          while IFS= read -r step; do
+            case "${step}" in
+              'Install research dependencies'|'Acquire current PIT observations'|'Install acquisition dependencies'|'Run PIT acquisition'|'Stage historical NPB PBP release data'|'Restore immutable historical NPB PBP and official-result cache'|'Restore chronological OOS checkpoints')
+                retryable=1
+                ;;
+            esac
+          done <<< "${failed_steps}"
+
+          if [ "${retryable}" -ne 1 ]; then
+            echo 'No retryable transient failure detected; preserving the failure for diagnosis.'
+            exit 0
+          fi
+
           gh run rerun "${RUN_ID}" --failed
           echo 'Automatic failed-job recovery requested.'
