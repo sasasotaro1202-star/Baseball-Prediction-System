@@ -68,6 +68,28 @@ def fit_temperature(probabilities: Any, y_true: Any, *, grid: np.ndarray | None 
     return TemperatureCalibration(best_t)
 
 
+
+def fit_temperature_on_prefix(
+    probabilities: Any,
+    y_true: Any,
+    train_rows: int,
+    *,
+    grid: np.ndarray | None = None,
+) -> TemperatureCalibration:
+    """Fit only on a strict chronological prefix.
+
+    Rows after train_rows are never inspected during fitting. Production
+    callers should apply the returned calibrator only to later rows.
+    """
+    p = np.asarray(probabilities, dtype=float)
+    y = np.asarray(y_true, dtype=int)
+    if p.ndim != 2 or len(p) != len(y):
+        raise ValueError("probabilities and y_true are incompatible")
+    if train_rows <= 0 or train_rows >= len(y):
+        raise ValueError("train_rows must leave a non-empty unseen suffix")
+    return fit_temperature(p[:train_rows], y[:train_rows], grid=grid)
+
+
 def calibration_report(y_true: Any, raw: Any, calibrated: Any) -> dict[str, float]:
     y = np.asarray(y_true, dtype=int)
     r = np.asarray(raw, dtype=float)
