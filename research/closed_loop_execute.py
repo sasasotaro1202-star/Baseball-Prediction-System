@@ -11,6 +11,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from evaluation.calibration import fit_temperature
 from research.adoption_gate import candidate_lock, evaluate_locked_holdout
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -143,18 +144,20 @@ def metrics(y: np.ndarray, p: np.ndarray) -> dict[str, float]:
 
 
 def fit_temperature_grid(logits: np.ndarray, y: np.ndarray) -> float:
-    best_t = 1.0
-    best_score = float("inf")
-    for temperature in np.linspace(0.5, 3.0, 101):
-        z = logits / float(temperature)
-        z -= z.max(axis=1, keepdims=True)
-        q = np.exp(z)
-        q /= q.sum(axis=1, keepdims=True)
-        score = logloss(y, q)
-        if score < best_score - 1e-12:
-            best_score = score
-            best_t = float(temperature)
-    return best_t
+    """Use the shared calibration implementation with the legacy grid."""
+    z = np.asarray(logits, dtype=float)
+    if z.ndim != 2 or len(z) != len(y) or len(z) == 0:
+        raise ValueError("logits and y are incompatible or empty")
+    z = z - z.max(axis=1, keepdims=True)
+    p = np.exp(z)
+    p /= p.sum(axis=1, keepdims=True)
+    return float(
+        fit_temperature(
+            p,
+            y,
+            grid=np.linspace(0.5, 3.0, 101),
+        ).temperature
+    )
 
 
 def apply_temperature(p: np.ndarray, temperature: float) -> np.ndarray:
