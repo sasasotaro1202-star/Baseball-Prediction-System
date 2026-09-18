@@ -8,9 +8,9 @@ on:
       - 'results/**'
       - 'data/pit/**'
   schedule:
-    # Six bounded runs/day: enough unattended throughput to advance OOS,
-    # while the 120-minute lifecycle timeout leaves a two-hour safety buffer.
-    - cron: '17 0,4,8,12,16,20 * * *'
+    # Eight bounded runs/day: keep the research loop advancing continuously
+    # while the 120-minute lifecycle timeout still leaves a one-hour buffer.
+    - cron: '17 0,3,6,9,12,15,18,21 * * *'
 
 permissions:
   contents: read
