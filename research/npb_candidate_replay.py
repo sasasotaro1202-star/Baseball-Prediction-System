@@ -17,6 +17,7 @@ import pandas as pd
 from sklearn.metrics import accuracy_score, log_loss
 
 from baseball_backtest import BaseballBacktest, low_high_probs, score_candidates
+from core.atomic_io import atomic_write_json
 from evaluation.metrics import expected_calibration_error, multiclass_brier
 from research.candidates import CandidateSpec, lock_candidate
 
@@ -265,15 +266,11 @@ def run_npb_candidate_cycle(
         "selection_locked_before_holdout": True,
     }
     RESULTS.mkdir(parents=True, exist_ok=True)
-    (RESULTS / "npb_candidate_development.json").write_text(
-        json.dumps({
-            "development": development,
-            "candidate": asdict(spec),
-            "baseline": baseline,
-            "validation_windows": validation_windows,
-        }, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    (RESULTS / "npb_locked_holdout.json").write_text(
-        json.dumps(holdout, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    atomic_write_json(RESULTS / "npb_candidate_development.json", {
+        "development": development,
+        "candidate": asdict(spec),
+        "baseline": baseline,
+        "validation_windows": validation_windows,
+    })
+    atomic_write_json(RESULTS / "npb_locked_holdout.json", holdout)
     return {"stage": "locked_holdout_ready", "decision": "HOLDOUT_READY", "candidate": locked, "holdout": holdout}
