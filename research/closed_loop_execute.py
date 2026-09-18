@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +14,7 @@ import numpy as np
 import pandas as pd
 
 from evaluation.calibration import fit_temperature
+from core.atomic_io import atomic_write_json, file_sha256
 from research.adoption_gate import candidate_lock, evaluate_locked_holdout
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,10 +27,8 @@ PRIMARY_FILES = {
 
 
 def write_json(name: str, obj: Any) -> None:
-    (RESULTS / name).write_text(
-        json.dumps(obj, ensure_ascii=False, indent=2, allow_nan=False),
-        encoding="utf-8",
-    )
+    # Never expose a partially-written manifest/report as a valid artifact.
+    atomic_write_json(RESULTS / name, obj)
 
 
 def clip_probs(p: np.ndarray) -> np.ndarray:
@@ -299,6 +300,13 @@ def process_league(league: str, path: Path) -> dict[str, Any]:
     }
 
 
+def _git_commit() -> str:
+    try:
+        return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, stderr=subprocess.DEVNULL).strip()
+    except Exception:
+        return os.environ.get("GITHUB_SHA", "UNKNOWN")
+
+
 def main() -> int:
     reports = {}
     blockers = []
@@ -333,7 +341,8 @@ def main() -> int:
             "fail-closed target/probability integrity",
             "no promotion without locked-holdout gate",
         ],
-        "source_sha256": hashlib.sha256(json.dumps({k: str(v) for k, v in PRIMARY_FILES.items()}, sort_keys=True).encode()).hexdigest(),
+        "source_fingerprints": {k: file_sha256(v) for k, v in PRIMARY_FILES.items()},
+        "git_commit": _git_commit(),
     }
     write_json("lifecycle_execution.json", lifecycle)
     print(json.dumps(lifecycle, ensure_ascii=False, indent=2))
