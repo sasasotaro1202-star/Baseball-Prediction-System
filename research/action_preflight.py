@@ -28,6 +28,7 @@ REQUIRED_MODULES = (
     "prediction.runner",
     "prediction.prediction_log",
     "prediction.score_distribution",
+    "core.atomic_io",
     "evaluation.calibration",
 )
 
@@ -46,6 +47,7 @@ REQUIRED_FILES = (
     Path("prediction/prediction_log.py"),
     Path("prediction/score_distribution.py"),
     Path("evaluation/calibration.py"),
+    Path("core/atomic_io.py"),
     Path("research/closed_loop_governance.py"),
 )
 

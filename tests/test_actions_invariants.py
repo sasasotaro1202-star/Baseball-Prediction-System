@@ -22,7 +22,7 @@ def test_closed_loop_keeps_safe_sequential_execution_and_quality_gates():
     assert "group: baseball-closed-loop" in text
     assert "queue: max" in text
     assert "cancel-in-progress: false" in text
-    assert "- cron: '17 0,4,8,12,16,20 * * *'" in text
+    assert "- cron: '17 0,3,6,9,12,15,18,21 * * *'" in text
     assert "120-minute lifecycle timeout" in text
     _assert_official_actions_are_immutable(text)
 
@@ -96,3 +96,5 @@ def test_closed_loop_uses_shared_temporal_calibration_contract():
     assert "from evaluation.calibration import fit_temperature" in text
     assert "grid=np.linspace(0.5, 3.0, 101)" in text
     assert "fit_temperature(" in text
+    assert "atomic_write_json" in text
+    assert "source_fingerprints" in text

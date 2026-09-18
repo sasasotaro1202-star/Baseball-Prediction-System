@@ -6,8 +6,15 @@ from datetime import datetime
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 from typing import Any, Mapping
+from contextlib import contextmanager
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows/local fallback
+    fcntl = None
 
 
 def _dt(value: str) -> datetime:
@@ -115,14 +122,28 @@ def validate_prediction(record: PredictionRecord) -> None:
         raise ValueError("git_commit and data_snapshot_id are required for auditability")
 
 
+def _ledger_lock(fh):
+    @contextmanager
+    def _ctx():
+        if fcntl is not None:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            if fcntl is not None:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+    return _ctx()
+
+
 def append_prediction(record: PredictionRecord, path: str | Path) -> None:
-    """Append exactly once by prediction_id; conflicting duplicate IDs fail closed."""
+    """Append exactly once by prediction_id; serialize concurrent writers."""
     validate_prediction(record)
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     serialized = json.dumps(asdict(record), ensure_ascii=False, sort_keys=True)
-    if p.exists():
-        with p.open("r", encoding="utf-8") as fh:
+    with p.open("a+", encoding="utf-8") as fh:
+        with _ledger_lock(fh):
+            fh.seek(0)
             for line in fh:
                 if not line.strip():
                     continue
@@ -131,8 +152,10 @@ def append_prediction(record: PredictionRecord, path: str | Path) -> None:
                     if line.rstrip("\n") != serialized:
                         raise ValueError("prediction_id collision with different record")
                     return
-    with p.open("a", encoding="utf-8") as fh:
-        fh.write(serialized + "\n")
+            fh.seek(0, 2)
+            fh.write(serialized + "\n")
+            fh.flush()
+            os.fsync(fh.fileno())
 
 
 def record_from_mapping(row: Mapping[str, Any]) -> PredictionRecord:
