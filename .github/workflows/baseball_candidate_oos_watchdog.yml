@@ -1,0 +1,61 @@
+name: Baseball Candidate OOS Watchdog
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 */6 * * *'
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: baseball-candidate-oos-watchdog
+  cancel-in-progress: true
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_REPO: sasasotaro1202-star/Baseball-Prediction-System
+      CANDIDATE_WORKFLOW: baseball_candidate_oos.yml
+    steps:
+      - name: Inspect latest candidate OOS run
+        id: inspect
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          runs="$(gh run list --repo "$GH_REPO" --workflow "$CANDIDATE_WORKFLOW" --limit 1 --json status,conclusion,createdAt,databaseId)"
+          echo "$runs"
+          if [[ "$runs" == "[]" ]]; then
+            echo "action=dispatch" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          status="$(jq -r '.[0].status' <<<"$runs")"
+          conclusion="$(jq -r '.[0].conclusion // empty' <<<"$runs")"
+          created_at="$(jq -r '.[0].createdAt' <<<"$runs")"
+
+          if [[ "$status" == "in_progress" || "$status" == "queued" || "$status" == "requested" || "$status" == "waiting" || "$status" == "pending" ]]; then
+            echo "action=none" >> "$GITHUB_OUTPUT"
+            echo "Candidate OOS is already active."
+            exit 0
+          fi
+
+          age_seconds=$(( $(date +%s) - $(date -d "$created_at" +%s) ))
+          if [[ "$conclusion" != "success" || "$age_seconds" -ge 604800 ]]; then
+            echo "action=dispatch" >> "$GITHUB_OUTPUT"
+          else
+            echo "action=none" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Dispatch candidate OOS when stale or unhealthy
+        if: steps.inspect.outputs.action == 'dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run "$CANDIDATE_WORKFLOW" --repo "$GH_REPO" --ref main
