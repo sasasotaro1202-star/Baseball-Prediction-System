@@ -1,4 +1,5 @@
 name: Baseball Candidate OOS Validation
+# Trusted-main workflow: candidate selection is OOS-only; holdout is locked before evaluation.
 
 on:
   workflow_dispatch:
