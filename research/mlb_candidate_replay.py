@@ -16,6 +16,7 @@ from typing import Any
 import numpy as np
 
 from baseball_backtest import BaseballBacktest
+from core.atomic_io import atomic_write_json
 from evaluation.metrics import classification_metrics
 from research.candidates import CandidateSpec, lock_candidate
 from research.validation_pipeline import run_validation_pipeline
@@ -93,7 +94,7 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
     if baseline["LogLoss"] - selected_metrics["LogLoss"] <= 0:
         result = {"stage": "development_evaluated", "decision": "NO_CHANGE", "baseline": baseline,
                   "candidate": selected_metrics, "candidate_model": selected_name, "validation_windows": windows}
-        (RESULTS / "mlb_candidate_development.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+        atomic_write_json(RESULTS / "mlb_candidate_development.json", result)
         return result
 
     dataset_hash = hashlib.sha256(str(len(games)).encode() + str(games.index.tolist()).encode()).hexdigest()
@@ -140,6 +141,6 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
            "validation": asdict(lifecycle), "decision": lifecycle.decision,
            "score_hilo_status": "REQUIRED_EVIDENCE_NOT_CONNECTED"}
     RESULTS.mkdir(parents=True, exist_ok=True)
-    (RESULTS / "mlb_candidate_development.json").write_text(json.dumps(development, indent=2), encoding="utf-8")
-    (RESULTS / "mlb_locked_holdout.json").write_text(json.dumps(out, indent=2), encoding="utf-8")
+    atomic_write_json(RESULTS / "mlb_candidate_development.json", development)
+    atomic_write_json(RESULTS / "mlb_locked_holdout.json", out)
     return out
