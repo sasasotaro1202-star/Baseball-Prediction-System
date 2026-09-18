@@ -29,6 +29,8 @@ TASKS: tuple[ResearchTask, ...] = (
     ResearchTask("schedule_fatigue", 60, ("point_in_time_replay", "walk_forward_oos", "ablation"), "Reject if future schedule/results leak into the feature."),
     ResearchTask("model_family", 55, ("two_validation_windows", "locked_holdout", "calibration"), "Reject if gains disappear outside the development window."),
     ResearchTask("market_baseline", 50, ("closing_line_timestamp_audit", "walk_forward_oos"), "Never use closing information as a pregame model feature unless it was available at cutoff."),
+    ResearchTask("target_permutation", 95, ("target_shuffle_oos", "fixed_features", "deterministic_seed"), "Reject or investigate if the real target advantage is not clearly separated from shuffled-target performance."),
+    ResearchTask("feature_influence", 70, ("walk_forward_oos", "permutation_importance", "stability_across_windows"), "Do not add or retain a feature solely because its in-sample importance is high."),
 )
 
 
@@ -54,6 +56,7 @@ def create_plan(analysis: dict | str, *, completed: set[str] | None = None) -> d
             "point_in_time_features",
             "temporal_calibration",
             "locked_holdout",
+            "target_permutation_check",
             "reproducible_candidate",
             "fail_closed_on_missing_evidence",
         ],
