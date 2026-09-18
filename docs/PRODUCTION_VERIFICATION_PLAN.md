@@ -16,10 +16,11 @@ This document records verification work that should improve real-world robustnes
 1. Permutation leakage test.
 2. Slow-vs-vectorized PIT equivalence.
 3. Live/historical feature parity.
-4. Chronological calibration stability.
+4. Chronological calibration stability and shared calibration implementation.
 5. Baseline and challenger gates.
 6. Feature-block ablation.
 7. Reproducibility and deterministic replay.
+8. Synthetic/contract fixtures for calibration and target integrity.
 
 ## Acceptance principle
 
