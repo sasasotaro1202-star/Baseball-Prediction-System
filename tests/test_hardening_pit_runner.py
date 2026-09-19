@@ -80,7 +80,7 @@ def test_production_gate_blocks_research_only_mlb():
     assert reasons == ["competition_not_production_eligible"]
 
 
-def test_production_gate_preserves_npb():
+def test_production_gate_fails_closed_for_npb_until_adoption():
     ok, reasons = eligibility_gate(
         availability=availability(),
         required_data_ok=True,
@@ -89,5 +89,5 @@ def test_production_gate_preserves_npb():
         calibration_available=True,
         production=True,
     )
-    assert ok is True
-    assert reasons == []
+    assert ok is False
+    assert reasons == ["competition_not_production_eligible"]
