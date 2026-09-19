@@ -20,6 +20,7 @@ from baseball_backtest import BaseballBacktest, low_high_probs, score_candidates
 from core.atomic_io import atomic_write_json
 from evaluation.metrics import expected_calibration_error, multiclass_brier
 from research.candidates import CandidateSpec, lock_candidate
+from research.validation_pipeline import run_validation_pipeline
 
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
@@ -260,6 +261,23 @@ def run_npb_candidate_cycle(
     calibration_ok = cand_metrics["ECE"] <= base_metrics["ECE"] + config.calibration_tolerance
     reproducible = True  # fixed model seeds + deterministic chronological ordering are encoded by the core
 
+    lifecycle = run_validation_pipeline(
+        candidate_id=spec.candidate_id,
+        development_metrics=selected_metrics,
+        holdout_baseline=base_metrics,
+        holdout_candidate=cand_metrics,
+        validation_windows=validation_windows,
+        calibration_ok=bool(calibration_ok),
+        no_future_target_data=True,
+        reproducible=reproducible,
+        pit_starter_evidence_ok=False,
+        holdout_score_baseline=base_score,
+        holdout_score_candidate=cand_score,
+        holdout_hilo_baseline=base_hilo,
+        holdout_hilo_candidate=cand_hilo,
+        league="NPB",
+    )
+
     holdout = {
         "stage": "locked_holdout_ready",
         "candidate_id": spec.candidate_id,
@@ -279,6 +297,9 @@ def run_npb_candidate_cycle(
         "candidate_model": selected_name,
         "dataset_hash": dataset_hash,
         "selection_locked_before_holdout": True,
+        "starter_pit_evidence_ok": False,
+        "validation_decision": lifecycle.decision,
+        "validation_reasons": list((lifecycle.locked_holdout or {}).get("reasons", ())),
     }
     RESULTS.mkdir(parents=True, exist_ok=True)
     atomic_write_json(RESULTS / "npb_candidate_development.json", {
@@ -288,4 +309,4 @@ def run_npb_candidate_cycle(
         "validation_windows": validation_windows,
     })
     atomic_write_json(RESULTS / "npb_locked_holdout.json", holdout)
-    return {"stage": "locked_holdout_ready", "decision": "HOLDOUT_READY", "candidate": locked, "holdout": holdout}
+    return {"stage": "locked_holdout_evaluated", "decision": lifecycle.decision, "candidate": locked, "holdout": holdout}
