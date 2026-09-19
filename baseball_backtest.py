@@ -896,9 +896,18 @@ class BaseballBacktest:
         self._fit_model(best,X,y,self._sample_weights(len(X)),league)
         return best_name,best,{name:float(sc) for sc,name in scores}
 
-    def fit_ensemble(self, X: pd.DataFrame, y: np.ndarray, league: str):
+    def fit_ensemble(self, X: pd.DataFrame, y: np.ndarray, league: str, *, fast_oos: bool = False):
+        """Fit the production ensemble; fast_oos only reduces research screening cost.
+
+        Production/default behavior is unchanged. Candidate Development-OOS may
+        set fast_oos=True to use the latest chronological validation window and
+        three finalists instead of the full nested screening path. The locked
+        holdout and production inference continue to use the default path.
+        """
         models=self.models(league); k=3 if league=="NPB" else 2
         splits=self._validation_splits(len(X))
+        if fast_oos and splits:
+            splits=splits[-1:]
         scored=[]
         for name,model in models.items():
             losses=[]
@@ -909,10 +918,10 @@ class BaseballBacktest:
                     losses.append(log_loss(y[cut:cut+val],p,labels=list(range(k))))
                 except Exception:
                     losses=[]; break
-            if losses: scored.append((name,float(np.mean(losses))))
+            if losses: scored.append((float(np.mean(losses)),name))
         if not scored: return None,{},None
         scored.sort(key=lambda z:z[1])
-        top=scored[:5]
+        top=scored[:3 if fast_oos else 5]
         inv=np.array([1/max(x[1],1e-6) for x in top]); inv/=inv.sum()
         fitted=[]
         for (name,loss),w in zip(top,inv):
@@ -920,7 +929,9 @@ class BaseballBacktest:
             self._fit_model(model,X,y,self._sample_weights(len(X)),league)
             fitted.append((model,float(w),name))
         temperature=1.0
-        if splits and fitted:
+        # Calibration is deliberately retained for the full production path.
+        # Research screening does not spend another validation fit per finalist.
+        if not fast_oos and splits and fitted:
             cut,val=splits[-1]
             try:
                 raw=np.zeros((val,k))
@@ -932,8 +943,6 @@ class BaseballBacktest:
                 temperature=self._temperature_from_probs(raw,y[cut:cut+val])
             except Exception as e:
                 self.audit.append({"type":"calibration_error","error":str(e)})
-        for model,w,name in fitted:
-            self._fit_model(model,X,y,self._sample_weights(len(X)),league)
         self._last_temperature = temperature
         return fitted,{n:float(l) for n,l in scored},top[0][0]
 
