@@ -187,6 +187,30 @@ def _fetch_official_month(year: int, month: int) -> list[dict]:
     return rows
 
 
+def _spaia_schedule_scores(year: int) -> pd.DataFrame:
+    """Secondary realized-label source for NPB final scores, keyed by game_id.
+    
+    This endpoint is used only to repair historical labels when the public PBP
+    score columns or the NPB HTML schedule parser are incomplete. It is never
+    used for target-time predictive features.
+    """
+    url=f"https://spaia.jp/baseball/npb/api/schedules?Year={int(year)}"
+    r=requests.get(url,timeout=20,headers={"User-Agent":"Baseball-Prediction-System/1.0"})
+    r.raise_for_status()
+    data=r.json()
+    if not data:
+        return pd.DataFrame(columns=["game_id","home_score","away_score"])
+    df=pd.DataFrame(data)
+    ren={"GameID":"game_id","HScore":"home_score","VScore":"away_score"}
+    df=df.rename(columns=ren)
+    for col in ("game_id","home_score","away_score"):
+        if col not in df.columns:
+            return pd.DataFrame(columns=["game_id","home_score","away_score"])
+    df["game_id"]=df["game_id"].astype(str)
+    df["home_score"]=pd.to_numeric(df["home_score"],errors="coerce")
+    df["away_score"]=pd.to_numeric(df["away_score"],errors="coerce")
+    return df[["game_id","home_score","away_score"]].dropna().drop_duplicates("game_id")
+
 def _official_schedule(years: Iterable[int], cache_dir: Path) -> pd.DataFrame:
     cache_dir.mkdir(parents=True, exist_ok=True)
     rows = []
@@ -235,7 +259,18 @@ def _repair_scores_from_official(out: pd.DataFrame, data_dir: Path) -> pd.DataFr
         return out
     years = pd.to_datetime(out["date"], errors="coerce", utc=True).dt.year.dropna().astype(int).unique().tolist()
     schedule = _official_schedule(years, data_dir / ".npb_official_schedule_cache")
-    if schedule.empty:
+    # If the NPB HTML schedule cannot be parsed on a runner, use the
+    # repository's secondary schedule endpoint keyed by the exact game_id.
+    # This is a realized-score repair only and therefore does not create PIT
+    # leakage.
+    spaia_frames=[]
+    for year in years:
+        try:
+            spaia_frames.append(_spaia_schedule_scores(int(year)))
+        except Exception as exc:
+            print(f"[NPB SECONDARY SCORE] SPAIA schedule unavailable for {year}: {exc}")
+    spaia=pd.concat(spaia_frames,ignore_index=True) if spaia_frames else pd.DataFrame(columns=["game_id","home_score","away_score"])
+    if schedule.empty and spaia.empty:
         return out
     left = out.copy()
     left["date_key"] = pd.to_datetime(left["date"], errors="coerce", utc=True).dt.strftime("%Y-%m-%d")
@@ -245,9 +280,21 @@ def _repair_scores_from_official(out: pd.DataFrame, data_dir: Path) -> pd.DataFr
     schedule["home_key"] = schedule["home"].map(_canon_team)
     schedule["away_key"] = schedule["away"].map(_canon_team)
     schedule = schedule.drop_duplicates(["date_key", "home_key", "away_key"])
-    merged = left.merge(schedule[["date_key", "home_key", "away_key", "home_score", "away_score"]], on=["date_key", "home_key", "away_key"], how="left", suffixes=("", "_official"))
+    if schedule.empty:
+        merged = left.copy()
+        merged["home_score_official"] = np.nan
+        merged["away_score_official"] = np.nan
+    else:
+        merged = left.merge(schedule[["date_key", "home_key", "away_key", "home_score", "away_score"]], on=["date_key", "home_key", "away_key"], how="left", suffixes=("", "_official"))
+    if not spaia.empty:
+        merged=merged.merge(spaia.rename(columns={"home_score":"home_score_spaia","away_score":"away_score_spaia"}),on="game_id",how="left")
+    else:
+        merged["home_score_spaia"]=np.nan
+        merged["away_score_spaia"]=np.nan
     official_h = pd.to_numeric(merged["home_score_official"], errors="coerce")
     official_a = pd.to_numeric(merged["away_score_official"], errors="coerce")
+    spaia_h = pd.to_numeric(merged["home_score_spaia"], errors="coerce")
+    spaia_a = pd.to_numeric(merged["away_score_spaia"], errors="coerce")
     current_h = pd.to_numeric(merged["home_score"], errors="coerce")
     current_a = pd.to_numeric(merged["away_score"], errors="coerce")
     needs_official = current_h.isna() | current_a.isna() | merged["game_id"].astype(str).isin(zero_games)
@@ -255,12 +302,15 @@ def _repair_scores_from_official(out: pd.DataFrame, data_dir: Path) -> pd.DataFr
     # date/team key resolves, prefer them even if the upstream PBP exposes a
     # non-null but structurally unreliable score column.
     resolved_official = official_h.notna() & official_a.notna()
-    merged["home_score"] = current_h.where(~(needs_official | resolved_official), official_h).fillna(official_h)
-    merged["away_score"] = current_a.where(~(needs_official | resolved_official), official_a).fillna(official_a)
+    chosen_h = official_h.fillna(spaia_h)
+    chosen_a = official_a.fillna(spaia_a)
+    resolved_any = chosen_h.notna() & chosen_a.notna()
+    merged["home_score"] = current_h.where(~(needs_official | resolved_official), chosen_h).fillna(chosen_h)
+    merged["away_score"] = current_a.where(~(needs_official | resolved_official), chosen_a).fillna(chosen_a)
     unresolved = int(merged[["home_score", "away_score"]].isna().any(axis=1).sum())
     if unresolved:
         print(f"[NPB OFFICIAL] unresolved score rows after official repair: {unresolved}")
-    return merged.drop(columns=["date_key", "home_key", "away_key", "home_score_official", "away_score_official", "_score_sum"], errors="ignore")
+    return merged.drop(columns=["date_key", "home_key", "away_key", "home_score_official", "away_score_official", "home_score_spaia", "away_score_spaia", "_score_sum"], errors="ignore")
 
 
 def normalize_pbp_frame(raw: pd.DataFrame, *, data_dir: str | Path | None = None) -> pd.DataFrame:
