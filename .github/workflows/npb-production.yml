@@ -1,6 +1,14 @@
 name: NPB Production Prediction
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "production_npb.py"
+      - "baseball_backtest.py"
+      - "requirements.txt"
+      - "data/**"
+      - ".github/workflows/npb-production.yml"
   workflow_dispatch:
     inputs:
       date:
@@ -22,6 +30,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
+      - name: Resolve target date
+        id: target
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.date }}" ]; then
+            echo "date=${{ inputs.date }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "date=$(TZ=Asia/Tokyo date -d 'tomorrow' +%F)" >> "$GITHUB_OUTPUT"
+          fi
+          echo "data_dir=${{ inputs.data_dir || 'data' }}" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
@@ -37,7 +55,7 @@ jobs:
           GITHUB_SHA: ${{ github.sha }}
           PIT_SAFE_STARTER_DATA: "1"
           BASEBALL_TIME_BUDGET_SEC: "4800"
-        run: python production_npb.py --date "${{ inputs.date }}" --data-dir "${{ inputs.data_dir }}"
+        run: python production_npb.py --date "${{ steps.target.outputs.date }}" --data-dir "${{ steps.target.outputs.data_dir }}"
       - name: Validate output
         run: |
           python - <<'PY'
@@ -58,5 +76,5 @@ jobs:
       - name: Upload production output
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: npb-production-output-${{ inputs.date }}
+          name: npb-production-output-${{ steps.target.outputs.date }}
           path: results/npb_production_*.json
