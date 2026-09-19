@@ -87,10 +87,7 @@ def _target_metrics(
         expected_home.append(lam_h)
         expected_away.append(lam_a)
         choices = score_candidates(lam_h, lam_a, 4)
-        score_choices.append([
-            [int(x.split("-")[0]), int(x.split("-")[1])] if x != "その他" else [-1, -1]
-            for x, _ in choices
-        ])
+        score_choices.append(choices)
         low, high = low_high_probs(lam_h, lam_a)
         low_high_prob.append(high)
         low_high_actual.append(int(home_true[i] + away_true[i] >= 7))
