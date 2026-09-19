@@ -171,6 +171,18 @@ def _record_snapshot(*, event_id: str, league: str, entity_type: str,
     append_snapshot(snap, SNAPSHOT_LOG)
 
 
+def acquire_mlb_game_timestamps(game_id: str) -> tuple[Any, str] | None:
+    """Fetch MLB's public game-feed timestamp index as supporting PIT evidence.
+
+    Timestamps are recorded for audit/replay diagnostics only. They do not, by
+    themselves, prove when a probable starter was officially announced.
+    """
+    try:
+        return get_json(f"{MLB_API}/game/{game_id}/feed/live/timestamps")
+    except Exception:
+        return None
+
+
 def acquire_mlb() -> int:
     start = (datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)).date()
     end = (datetime.now(timezone.utc) + timedelta(days=LOOKAHEAD_DAYS)).date()
@@ -209,6 +221,14 @@ def acquire_mlb() -> int:
         _record_snapshot(event_id=f"MLB:{gid}", league="MLB", entity_type="game",
                          entity_id=gid, source="MLB_STATS_API", payload=g,
                          retrieved_at=retrieved, available_at=retrieved)
+        timestamp_probe = acquire_mlb_game_timestamps(gid)
+        if timestamp_probe is not None:
+            ts_payload, ts_retrieved = timestamp_probe
+            _record_snapshot(
+                event_id=f"MLB:{gid}", league="MLB", entity_type="game_feed_timestamps",
+                entity_id=gid, source="MLB_STATS_API_GAME_TIMESTAMPS",
+                payload=ts_payload, retrieved_at=ts_retrieved, available_at=ts_retrieved,
+            )
         count += 1
     return count
 
