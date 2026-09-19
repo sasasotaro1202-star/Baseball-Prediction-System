@@ -136,6 +136,7 @@ def _development_compare(
     end: int,
     candidate_names: list[str],
     block_size: int,
+    retrain_every: int,
 ) -> tuple[dict[str, dict[str, float]], int]:
     if block_size <= 0 or retrain_every <= 0:
         raise ValueError("block_size and retrain_every must be > 0")
@@ -195,7 +196,7 @@ def run_npb_candidate_cycle(
 
     candidate_names = list(bt.models("NPB").keys())
     development, validation_windows = _development_compare(
-        bt, X, y, dev_start, holdout_start, candidate_names, config.block_size
+        bt, X, y, dev_start, holdout_start, candidate_names, config.block_size, config.retrain_every
     )
     if "ProductionEnsemble" not in development:
         raise RuntimeError("production ensemble has no valid Development OOS result")
