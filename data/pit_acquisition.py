@@ -181,6 +181,17 @@ def acquire_mlb_game_timestamps(game_id: str) -> tuple[Any, str] | None:
         return get_json(f"{MLB_API}/game/{game_id}/feed/live/timestamps")
     except Exception:
         return None
+def acquire_mlb_game_content(game_id: str) -> tuple[Any, str] | None:
+    """Fetch MLB game editorial/content metadata as supporting PIT evidence.
+
+    Content publication timestamps can help reconstruct an information timeline,
+    but an article/content timestamp is not treated as a starter announcement
+    timestamp unless the payload explicitly identifies the starter announcement.
+    """
+    try:
+        return get_json(f"{MLB_API}/game/{game_id}/content")
+    except Exception:
+        return None
 
 
 def acquire_mlb() -> int:
@@ -228,6 +239,14 @@ def acquire_mlb() -> int:
                 event_id=f"MLB:{gid}", league="MLB", entity_type="game_feed_timestamps",
                 entity_id=gid, source="MLB_STATS_API_GAME_TIMESTAMPS",
                 payload=ts_payload, retrieved_at=ts_retrieved, available_at=ts_retrieved,
+            )
+        content_probe = acquire_mlb_game_content(gid)
+        if content_probe is not None:
+            content_payload, content_retrieved = content_probe
+            _record_snapshot(
+                event_id=f"MLB:{gid}", league="MLB", entity_type="game_content",
+                entity_id=gid, source="MLB_STATS_API_GAME_CONTENT",
+                payload=content_payload, retrieved_at=content_retrieved, available_at=content_retrieved,
             )
         count += 1
     return count
