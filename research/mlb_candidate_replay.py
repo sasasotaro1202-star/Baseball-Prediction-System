@@ -20,6 +20,7 @@ from core.atomic_io import atomic_write_json
 from evaluation.metrics import classification_metrics
 from research.candidates import CandidateSpec, lock_candidate
 from research.validation_pipeline import run_validation_pipeline
+from research.adoption_gate import GatePolicy
 
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
@@ -115,6 +116,12 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
                             config: MLBReplayConfig = MLBReplayConfig()) -> dict[str, Any]:
     bt = BaseballBacktest(Path(data_dir))
     games = bt.load_mlb(mlb_start, mlb_end)
+    if __import__("os").getenv("PIT_SAFE_STARTER_DATA", "0") != "1":
+        games = games.copy()
+        games["home_starter"] = ""
+        games["away_starter"] = ""
+        games["confirmed_starters"] = False
+        games["starter_evidence_status"] = "not_pit_safe"
     X, y, _meta = bt.build_features(games)
     n = len(X)
     holdout_start = int(n * (1.0 - config.holdout_fraction))
@@ -172,11 +179,13 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
         calibration_ok=cand["ECE"] <= base["ECE"] + 0.005,
         no_future_target_data=True,
         reproducible=True,
+        pit_starter_evidence_ok=False,
         holdout_score_baseline=base_score,
         holdout_score_candidate=cand_score,
         holdout_hilo_baseline=base_hilo,
         holdout_hilo_candidate=cand_hilo,
         league="MLB",
+        policy=GatePolicy(require_pit_starter_evidence=True),
     )
     out = {"stage": "locked_holdout_evaluated", "candidate": locked,
            "holdout": {"baseline": base, "candidate": cand,

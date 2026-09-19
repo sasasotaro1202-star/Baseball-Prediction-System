@@ -72,6 +72,7 @@ REQUEST_TIMEOUT = 30
 # Backtest controls
 MIN_TRAIN = 100
 RETRAIN_EVERY = int(os.getenv("NPB_RETRAIN_EVERY", "150"))
+PIT_SAFE_STARTER_DATA = os.getenv("PIT_SAFE_STARTER_DATA", "0") == "1"
 VALIDATION_RATIO = 0.20
 MIN_VALIDATION = 45
 MAX_FORM = 60
@@ -1030,6 +1031,12 @@ class BaseballBacktest:
             if starter_rate < 0.70:
                 raise RuntimeError(f"NPB starter coverage too low: {starter_rate:.1%}; refusing to run a misleading backtest.")
 
+        if not PIT_SAFE_STARTER_DATA:
+            games = games.copy()
+            games["home_starter"] = ""
+            games["away_starter"] = ""
+            games["confirmed_starters"] = False
+            games["starter_evidence_status"] = "not_pit_safe"
         X, y, meta = self.build_features(games)
         ck = self.checkpoint_dir / f"{league.lower()}_walkforward.csv"
         existing = pd.DataFrame()
@@ -1145,16 +1152,18 @@ class BaseballBacktest:
             for g in d.get("games", []):
                 t=g.get("teams",{}); h=t.get("home",{}); a=t.get("away",{})
                 hp=(h.get("probablePitcher") or {}).get("fullName",""); ap=(a.get("probablePitcher") or {}).get("fullName","")
-                confirmed=bool(hp and ap)
-                rows.append({"game_id":g.get("gamePk"),"datetime":g.get("gameDate"),"home":h.get("team",{}).get("name",""),"away":a.get("team",{}).get("name",""),"home_starter":hp,"away_starter":ap,"confirmed_starters":confirmed})
+                confirmed=False
+                rows.append({"game_id":g.get("gamePk"),"datetime":g.get("gameDate"),"home":h.get("team",{}).get("name",""),"away":a.get("team",{}).get("name",""),"home_starter":hp,"away_starter":ap,"confirmed_starters":False,
+                         "starter_evidence_status":"official_probable_only" if (hp and ap) else "missing",
+                         "starter_source":"MLB Stats API schedule"})
         return pd.DataFrame(rows)
 
     def build_future_mlb_predictions(self, schedule: pd.DataFrame) -> pd.DataFrame:
         if schedule.empty: return schedule
         out=[]
         for _,r in schedule.iterrows():
-            if not bool(r.get("confirmed_starters")):
-                out.append({**r.to_dict(), "status":"保留", "reason":"両先発の公式確認が揃っていない"})
+            if not bool(r.get("confirmed_starters")) or str(r.get("starter_evidence_status","")) != "official_announced":
+                out.append({**r.to_dict(), "status":"保留", "reason":"公式発表済み先発のPIT証拠が揃っていない"})
             else:
                 out.append({**r.to_dict(), "status":"予測対象"})
         return pd.DataFrame(out)
