@@ -143,31 +143,25 @@ def poisson_grid(lam_h: float, lam_a: float, max_runs: int = 14) -> np.ndarray:
 
 
 def score_candidates(lam_h: float, lam_a: float, n: int = 4) -> List[Tuple[str, float]]:
-    """Top score candidates with every 7+ outcome aggregated as その他."""
+    """Return the n highest-probability exact score cells."""
     lam_h = max(float(lam_h), 1e-6)
     lam_a = max(float(lam_a), 1e-6)
-    cells = []
-    p_low_h = sum(poisson_pmf(k, lam_h) for k in range(7))
-    p_low_a = sum(poisson_pmf(k, lam_a) for k in range(7))
-    low_mass = p_low_h * p_low_a
-    for h in range(7):
-        for a in range(7):
-            cells.append((f"{h}-{a}", poisson_pmf(h, lam_h) * poisson_pmf(a, lam_a)))
+    cells = [
+        (f"{h}-{a}", poisson_pmf(h, lam_h) * poisson_pmf(a, lam_a))
+        for h in range(15) for a in range(15)
+    ]
     cells.sort(key=lambda z: z[1], reverse=True)
-    tail = max(0.0, 1.0 - low_mass)
-    # The display contract requires exactly four candidates. If その他 is
-    # not naturally in the top four, it is still included and the weakest
-    # ordinary candidate is removed.
-    out = cells[:max(0, n-1)]
-    out.append(("その他", tail))
-    out.sort(key=lambda z: z[1], reverse=True)
-    return out[:n]
+    return cells[:n]
 
 
 def low_high_probs(lam_h: float, lam_a: float) -> Tuple[float, float]:
-    # Low = both teams 0..6. High = complement.
-    low = (sum(poisson_pmf(k, lam_h) for k in range(7)) *
-           sum(poisson_pmf(k, lam_a) for k in range(7)))
+    """Canonical 6.5 contract: LOW=total runs <=6, HIGH=total runs >=7."""
+    lam_h = max(float(lam_h), 1e-6)
+    lam_a = max(float(lam_a), 1e-6)
+    low = sum(
+        poisson_pmf(h, lam_h) * poisson_pmf(a, lam_a)
+        for h in range(7) for a in range(7 - h)
+    )
     low = float(np.clip(low, 0, 1))
     return low, 1.0 - low
 
@@ -1245,8 +1239,8 @@ class BaseballBacktest:
             "League": league, "Predictions": len(df), "Accuracy": float(df.correct.mean()),
             "LogLoss": float(df.logloss.mean()), "Brier": float(df.brier.mean()),
             "MeanAbsoluteScoreError": float((abs(df.actual_home_score-df.lambda_home)+abs(df.actual_away_score-df.lambda_away)).mean()/2),
-            "HighActualRate": float(((df.actual_home_score >= 7) | (df.actual_away_score >= 7)).mean()),
-            "LowHighAccuracy": float((((df.high >= 0.5).astype(int)) == (((df.actual_home_score >= 7) | (df.actual_away_score >= 7)).astype(int))).mean()),
+            "HighActualRate": float(((df.actual_home_score + df.actual_away_score) >= 7).mean()),
+            "LowHighAccuracy": float((((df.high >= 0.5).astype(int)) == (((df.actual_home_score + df.actual_away_score) >= 7).astype(int))).mean()),
             "Top4ScoreHitRate": float(df.apply(lambda r: ((r.actual_home_score < 7 and r.actual_away_score < 7) and (f"{int(r.actual_home_score)}-{int(r.actual_away_score)}" in {str(r.score1), str(r.score2), str(r.score3), str(r.score4)})), axis=1).mean()),
         }
         if league == "MLB":
