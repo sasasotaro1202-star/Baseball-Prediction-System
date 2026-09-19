@@ -191,3 +191,5 @@ def main():
 
 if __name__=="__main__":
     main()
+
+# Production execution trigger: use current JST date for manual verification.
