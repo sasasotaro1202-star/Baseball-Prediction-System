@@ -12,6 +12,7 @@ import time
 import argparse, json, re, html as html_lib
 from datetime import datetime, timezone
 from pathlib import Path
+import numpy as np
 import pandas as pd
 import requests
 
