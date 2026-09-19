@@ -43,7 +43,7 @@ Important:
 | WBSC U-12 Baseball World Cup | U12 | Mixed/men's pathway | Global | International | Groups + Super Round/placement | ~2-year cycle | Medium | A/B | C | C | CANDIDATE |
 | WBSC Women's Baseball World Cup | Senior | Women | Global | International | Groups + finals | Multi-year cycle | Medium | B | B/C | C | CANDIDATE |
 
-WBSC's published calendars and event pages confirm the U12/U15/U18/U23 World Cups, Women's Baseball World Cup, Premier12 and other global events. citeturn0search0turn0search17
+WBSC's published calendars and event pages confirm the U12/U15/U18/U23 World Cups, Women's Baseball World Cup, Premier12 and other global events.
 
 ## 2. Asia / Baseball Federation of Asia
 
@@ -57,7 +57,7 @@ WBSC's published calendars and event pages confirm the U12/U15/U18/U23 World Cup
 | Asian Games baseball | Senior | Men | Asia | International / multi-sport | National teams, tournament | 4-year cycle | Medium/High | B | B/C | C | CANDIDATE |
 | Asian Games youth/age-category baseball where sanctioned | Various | Various | Asia | International | Tournament | Event-dependent | Low | C | C | D | RESEARCH_ONLY |
 
-BFA regulations explicitly reference U12, U15, U18, U23 and senior championships, and WBSC/BFA event reports expose game schedules, teams and scores. citeturn0search19turn0search20
+BFA regulations explicitly reference U12, U15, U18, U23 and senior championships, and WBSC/BFA event reports expose game schedules, teams and scores.
 
 ## 3. Europe
 
@@ -73,7 +73,7 @@ BFA regulations explicitly reference U12, U15, U18, U23 and senior championships
 | European club championships / Champions Cup | Senior | Men | Europe | International club | Club tournament | Annual | Medium | B | B/C | C | CANDIDATE |
 | European Cup / Federations Cup families | Senior | Men | Europe | International club | Club tournament | Annual | Medium | B/C | C | C | RESEARCH_ONLY |
 
-WBSC Europe competition regulations explicitly cover senior, U23, U18, U15 and U12 championships and B-pools; recent competition planning also lists these categories. citeturn1search24turn1search26turn1search28
+WBSC Europe competition regulations explicitly cover senior, U23, U18, U15 and U12 championships and B-pools; recent competition planning also lists these categories.
 
 ## 4. Americas
 
@@ -86,7 +86,7 @@ WBSC Europe competition regulations explicitly cover senior, U23, U18, U15 and U
 | Pan American Games baseball | Senior | Men | Americas | International / multi-sport | National teams | 4-year cycle | Medium/High | B | B/C | C | CANDIDATE |
 | Caribbean / Central American / regional baseball events | Various | Various | Americas | International | National teams | Event-dependent | Low/Medium | C | C | D | RESEARCH_ONLY |
 
-WBSC's current competition reporting shows Americas qualifiers feeding U12 and U18 World Cups, while the 2026 U12 Americas qualifier is scheduled as a 12-team event. citeturn1search0turn1search4
+WBSC's current competition reporting shows Americas qualifiers feeding U12 and U18 World Cups, while the 2026 U12 Americas qualifier is scheduled as a 12-team event.
 
 ## 5. Oceania
 
@@ -98,7 +98,7 @@ WBSC's current competition reporting shows Americas qualifiers feeding U12 and U
 | Oceania U23 qualifier | U23 | Men | Oceania | International | Regional qualifier | Cycle-linked | Low | C | C | D | RESEARCH_ONLY |
 | Oceania senior/open events | Senior | Various | Oceania | International | Regional | Event-dependent | Low | C | C | D | RESEARCH_ONLY |
 
-WBSC Oceania's 2026-2029 planning explicitly lists U12/U18 qualifiers and later U23/U15 qualifiers. citeturn1search25
+WBSC Oceania's 2026-2029 planning explicitly lists U12/U18 qualifiers and later U23/U15 qualifiers.
 
 ## 6. Major professional / senior domestic leagues
 
@@ -136,7 +136,7 @@ Priority candidates:
 3. Women's European Baseball Championship
 4. Women's regional/national leagues where game-level and pregame data are sufficient
 
-The 2026 WBSC calendar confirms the Women's Baseball World Cup as a current official baseball event. citeturn0search0
+The 2026 WBSC calendar confirms the Women's Baseball World Cup as a current official baseball event.
 
 ## 8. Competition families intentionally excluded from the ordinary baseball model
 
@@ -147,7 +147,7 @@ The 2026 WBSC calendar confirms the Women's Baseball World Cup as a current offi
 - Local youth tournaments without stable game-level historical records
 - Exhibition/friendly games unless a reproducible PIT-safe data source exists
 
-WBSC's calendar separates Baseball, Softball and Baseball5 events; they should not be mixed into the same baseball probability model. citeturn0search0turn0search1
+WBSC's calendar separates Baseball, Softball and Baseball5 events; they should not be mixed into the same baseball probability model.
 
 ## 9. Production promotion gate
 
@@ -183,3 +183,12 @@ As of this registry:
 - KBO/CPBL/LMB and other domestic leagues: not yet implemented.
 
 This document is therefore a **candidate inventory**, not a claim of current system coverage.
+
+
+## Official source anchors
+
+- WBSC baseball calendar: https://www.wbsc.org/en/calendar/2026/baseball
+- WBSC U-12 Baseball World Cup: https://www.wbsc.org/en/events/2025-viii-u-12-baseball-world-cup
+- WBSC U-18 Baseball World Cup: https://www.wbsc.org/en/events/2025-u18-baseball-world-cup
+- WBSC U-23 Baseball World Cup: https://www.wbsc.org/en/events/2026-vi-wbsc-u-23-baseball-world-cup
+- WBSC Europe baseball documents: https://www.wbsceurope.org/en/organisation/baseball/documents
