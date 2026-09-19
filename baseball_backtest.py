@@ -1032,6 +1032,7 @@ class BaseballBacktest:
         scored=[]
         regime_losses={}
         regime_counts={}
+        first_model_name=next(iter(models))
         for name,model in models.items():
             losses=[]
             for cut,val in splits:
@@ -1046,7 +1047,8 @@ class BaseballBacktest:
                     for regime in np.unique(labels):
                         mask=labels==regime
                         n=int(mask.sum())
-                        regime_counts[regime]=regime_counts.get(regime,0)+n
+                        if name == first_model_name:
+                            regime_counts[regime]=regime_counts.get(regime,0)+n
                         regime_losses.setdefault(regime,{}).setdefault(name,[]).extend(
                             (-np.log(np.clip(p[mask, yv[mask]], 1e-12, 1.0))).tolist()
                         )
