@@ -15,7 +15,7 @@ from typing import Any
 
 import numpy as np
 
-from baseball_backtest import BaseballBacktest
+from baseball_backtest import BaseballBacktest, low_high_probs, score_candidates
 from core.atomic_io import atomic_write_json
 from evaluation.metrics import classification_metrics
 from research.candidates import CandidateSpec, lock_candidate
@@ -86,6 +86,29 @@ def _development(bt, X, y, start, end, names, block, retrain_every):
     return metrics, windows
 
 
+def _target_metrics(bt: BaseballBacktest, X_train, games_train, games_holdout, X_holdout, p: np.ndarray, score_fit=None) -> tuple[dict[str, float], dict[str, float]]:
+    if score_fit is None:
+        score_fit = bt.fit_score_ensemble(X_train, games_train["home_score"].astype(float).to_numpy(), games_train["away_score"].astype(float).to_numpy(), "MLB")
+    home_true = games_holdout["home_score"].astype(float).to_numpy()
+    away_true = games_holdout["away_score"].astype(float).to_numpy()
+    expected_home, expected_away, score_hits, hilo_actual, hilo_prob = [], [], [], [], []
+    for i in range(len(games_holdout)):
+        lam_h, lam_a = bt.predict_scores(score_fit, X_holdout.iloc[[i]], "MLB")
+        split = float(np.clip(p[i, 0] - 0.5, -0.35, 0.35))
+        lam_h *= 1.0 + 0.08 * split
+        lam_a *= 1.0 - 0.08 * split
+        expected_home.append(lam_h); expected_away.append(lam_a)
+        choices = {x for x, _ in score_candidates(lam_h, lam_a, 4)}
+        high = (home_true[i] + away_true[i]) >= 7
+        score_hits.append(("その他" in choices) if high else (f"{int(home_true[i])}-{int(away_true[i])}" in choices))
+        _, high_p = low_high_probs(lam_h, lam_a)
+        hilo_prob.append(high_p); hilo_actual.append(int(high))
+    score_mae = float((np.mean(np.abs(np.asarray(expected_home)-home_true)) + np.mean(np.abs(np.asarray(expected_away)-away_true))) / 2.0)
+    ya = np.asarray(hilo_actual, dtype=int); hp = np.clip(np.asarray(hilo_prob), 1e-9, 1-1e-9)
+    hilo = {"Accuracy": float(np.mean((hp >= 0.5).astype(int) == ya)), "LogLoss": float(-np.mean(ya*np.log(hp)+(1-ya)*np.log(1-hp))), "Brier": float(np.mean((hp-ya)**2)), "ScoreMAE": score_mae, "Top4HitRate": float(np.mean(score_hits)), "rows": int(len(ya))}
+    return {"ScoreMAE": score_mae, "Top4HitRate": float(np.mean(score_hits)), "rows": int(len(ya))}, hilo
+
+
 def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
                             mlb_start: int = 2020, mlb_end: int = 2026,
                             feature_version: str = "baseball-features-v1",
@@ -131,8 +154,15 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
     base = classification_metrics(y_holdout, base_p, classes=[0, 1])
     cand = classification_metrics(y_holdout, cand_p, classes=[0, 1])
 
-    # Score and market-line checks are intentionally fail-closed until the
-    # production OOS artifact contains PIT historical line evidence.
+    games_train = games.iloc[:holdout_start].reset_index(drop=True)
+    games_holdout = games.iloc[holdout_start:].reset_index(drop=True)
+    X_train = X.iloc[:holdout_start]
+    X_holdout = X.iloc[holdout_start:]
+    score_fit = bt.fit_score_ensemble(X_train, games_train["home_score"].astype(float).to_numpy(), games_train["away_score"].astype(float).to_numpy(), "MLB")
+    if score_fit is None:
+        raise RuntimeError("MLB score model could not be fitted for locked holdout")
+    base_score, base_hilo = _target_metrics(bt, X_train, games_train, games_holdout, X_holdout, base_p, score_fit)
+    cand_score, cand_hilo = _target_metrics(bt, X_train, games_train, games_holdout, X_holdout, cand_p, score_fit)
     lifecycle = run_validation_pipeline(
         candidate_id=spec.candidate_id,
         development_metrics=selected_metrics,
@@ -142,18 +172,18 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
         calibration_ok=cand["ECE"] <= base["ECE"] + 0.005,
         no_future_target_data=True,
         reproducible=True,
-        holdout_score_baseline=None,
-        holdout_score_candidate=None,
-        holdout_hilo_baseline=None,
-        holdout_hilo_candidate=None,
+        holdout_score_baseline=base_score,
+        holdout_score_candidate=cand_score,
+        holdout_hilo_baseline=base_hilo,
+        holdout_hilo_candidate=cand_hilo,
         league="MLB",
     )
-    # The common policy requires score/Low-High evidence, so this remains
-    # non-promotable until those datasets are actually wired in.
     out = {"stage": "locked_holdout_evaluated", "candidate": locked,
-           "holdout": {"baseline": base, "candidate": cand},
+           "holdout": {"baseline": base, "candidate": cand,
+                       "baseline_score": base_score, "candidate_score": cand_score,
+                       "baseline_hilo": base_hilo, "candidate_hilo": cand_hilo},
            "validation": asdict(lifecycle), "decision": lifecycle.decision,
-           "score_hilo_status": "REQUIRED_EVIDENCE_NOT_CONNECTED"}
+           "score_hilo_status": "CONNECTED_PIT_SAFE_TRAINING_ONLY"}
     RESULTS.mkdir(parents=True, exist_ok=True)
     atomic_write_json(RESULTS / "mlb_candidate_development.json", development)
     atomic_write_json(RESULTS / "mlb_locked_holdout.json", out)
