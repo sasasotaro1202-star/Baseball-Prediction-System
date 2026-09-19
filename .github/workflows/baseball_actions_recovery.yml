@@ -10,6 +10,7 @@ on:
       - Baseball Research Preflight
       - Baseball Research Readiness
       - Baseball v4.4 Compatibility
+      - Baseball Candidate OOS Validation
     types: [completed]
 
 permissions:
