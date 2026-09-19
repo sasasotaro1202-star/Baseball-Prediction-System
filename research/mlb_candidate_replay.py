@@ -20,6 +20,7 @@ from core.atomic_io import atomic_write_json
 from evaluation.metrics import classification_metrics
 from research.candidates import CandidateSpec, lock_candidate
 from research.validation_pipeline import run_validation_pipeline
+from research.adoption_gate import GatePolicy
 
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
@@ -178,6 +179,7 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
         holdout_hilo_baseline=base_hilo,
         holdout_hilo_candidate=cand_hilo,
         league="MLB",
+        policy=GatePolicy(require_pit_starter_evidence=True),
     )
     out = {"stage": "locked_holdout_evaluated", "candidate": locked,
            "holdout": {"baseline": base, "candidate": cand,
