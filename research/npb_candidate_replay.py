@@ -96,9 +96,11 @@ def _target_metrics(
         (np.mean(np.abs(np.asarray(expected_home) - home_true))
          + np.mean(np.abs(np.asarray(expected_away) - away_true))) / 2.0
     )
+    # "その他" is a 7+ tail bucket, not an exact-score prediction.
+    # Do not count it as an exact Top-4 score hit.
     score_top4 = float(np.mean([
-        ((h + a >= 7) and any(pair == [-1, -1] for pair in choices))
-        or ((h + a < 7) and [int(h), int(a)] in choices)
+        (h + a < 7)
+        and (f"{int(h)}-{int(a)}" in {label for label, _ in choices})
         for h, a, choices in zip(home_true, away_true, score_choices)
     ]))
     hp = np.clip(np.asarray(low_high_prob), 1e-9, 1 - 1e-9)
