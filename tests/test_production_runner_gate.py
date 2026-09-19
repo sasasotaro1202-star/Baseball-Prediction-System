@@ -47,7 +47,7 @@ def test_production_gate_rejects_research_only_wbc():
     assert "competition_not_production_eligible" in reasons
 
 
-def test_production_gate_accepts_pit_safe_npb():
+def test_production_gate_rejects_pit_safe_npb_until_adoption():
     ok, reasons = eligibility_gate(
         availability=availability("NPB"),
         required_data_ok=True,
@@ -56,8 +56,8 @@ def test_production_gate_accepts_pit_safe_npb():
         calibration_available=True,
         production=True,
     )
-    assert ok
-    assert reasons == []
+    assert not ok
+    assert reasons == ["competition_not_production_eligible"]
 
 
 def test_production_gate_fails_closed_for_unknown_competition():
@@ -75,9 +75,9 @@ def test_production_gate_fails_closed_for_unknown_competition():
 def test_explicit_production_entry_point_cannot_fall_back_to_research_mode():
     future = "2999-01-01T00:00:00+00:00"
     # The wrapper must force production=True even if a caller tries to pass
-    # production=False. The future cutoff also prevents actual prediction
-    # creation, so no filesystem side effect is needed for this contract test.
-    with pytest.raises(ValueError, match="prediction cannot be created before its declared cutoff"):
+    # production=False. NPB is currently fail-closed, so the forced production
+    # gate must reject the prediction before any filesystem side effect occurs.
+    result =
         run_production_prediction(
             row={
                 "required_data_ok": True,
@@ -109,3 +109,5 @@ def test_explicit_production_entry_point_cannot_fall_back_to_research_mode():
             log_path="/tmp/unused.jsonl",
             production=False,
         )
+    assert result["eligible"] is False
+    assert result["reasons"] == ["competition_not_production_eligible"]
