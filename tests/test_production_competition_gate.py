@@ -31,7 +31,9 @@ def test_research_only_competition_can_pass_pit_but_not_production():
     assert production_eligible("WBC") is False
 
 
-def test_npb_remains_production_eligible_when_pit_safe():
+def test_npb_is_fail_closed_until_explicit_adoption():
     record = _record("NPB")
-    assert production_eligible("NPB") is True
-    assert production_prediction_eligible(record) == (True, [])
+    assert production_eligible("NPB") is False
+    ok, reasons = production_prediction_eligible(record)
+    assert not ok
+    assert reasons == ["competition_not_production_eligible"]
