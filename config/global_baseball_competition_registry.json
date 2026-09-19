@@ -29,7 +29,8 @@
       "starter_required": true,
       "score_status": "IN_PROGRESS",
       "totals_status": "IN_PROGRESS",
-      "production_eligible": false
+      "production_eligible": false,
+      "execution_scope": "ACTIVE"
     },
     {
       "competition_id": "npb",
@@ -44,7 +45,8 @@
       "starter_required": true,
       "score_status": "CONNECTED",
       "totals_status": "CONNECTED",
-      "production_eligible": false
+      "production_eligible": false,
+      "execution_scope": "ACTIVE"
     },
     {
       "competition_id": "kbo",
@@ -59,7 +61,8 @@
       "starter_required": true,
       "score_status": "NOT_ASSESSED",
       "totals_status": "NOT_ASSESSED",
-      "production_eligible": false
+      "production_eligible": false,
+      "execution_scope": "DEFERRED"
     },
     {
       "competition_id": "cpbl",
@@ -74,7 +77,8 @@
       "starter_required": true,
       "score_status": "NOT_ASSESSED",
       "totals_status": "NOT_ASSESSED",
-      "production_eligible": false
+      "production_eligible": false,
+      "execution_scope": "DEFERRED"
     },
     {
       "competition_id": "lmb",
@@ -89,7 +93,8 @@
       "starter_required": true,
       "score_status": "NOT_ASSESSED",
       "totals_status": "NOT_ASSESSED",
-      "production_eligible": false
+      "production_eligible": false,
+      "execution_scope": "DEFERRED"
     },
     {
       "competition_id": "wbc",
@@ -104,7 +109,8 @@
       "starter_required": true,
       "score_status": "NOT_ASSESSED",
       "totals_status": "NOT_ASSESSED",
-      "production_eligible": false
+      "production_eligible": false,
+      "execution_scope": "DEFERRED"
     },
     {
       "competition_id": "premier12",
@@ -119,7 +125,8 @@
       "starter_required": true,
       "score_status": "NOT_ASSESSED",
       "totals_status": "NOT_ASSESSED",
-      "production_eligible": false
+      "production_eligible": false,
+      "execution_scope": "DEFERRED"
     },
     {
       "competition_id": "olympic_baseball",
@@ -134,7 +141,8 @@
       "starter_required": true,
       "score_status": "NOT_ASSESSED",
       "totals_status": "NOT_ASSESSED",
-      "production_eligible": false
+      "production_eligible": false,
+      "execution_scope": "DEFERRED"
     },
     {
       "competition_id": "wbsc_u23",
@@ -149,7 +157,8 @@
       "starter_required": true,
       "score_status": "NOT_ASSESSED",
       "totals_status": "NOT_ASSESSED",
-      "production_eligible": false
+      "production_eligible": false,
+      "execution_scope": "DEFERRED"
     },
     {
       "competition_id": "wbsc_u18",
@@ -164,7 +173,8 @@
       "starter_required": true,
       "score_status": "NOT_ASSESSED",
       "totals_status": "NOT_ASSESSED",
-      "production_eligible": false
+      "production_eligible": false,
+      "execution_scope": "DEFERRED"
     },
     {
       "competition_id": "wbsc_u15",
@@ -179,7 +189,8 @@
       "starter_required": true,
       "score_status": "NOT_ASSESSED",
       "totals_status": "NOT_ASSESSED",
-      "production_eligible": false
+      "production_eligible": false,
+      "execution_scope": "DEFERRED"
     },
     {
       "competition_id": "wbsc_u12",
@@ -194,7 +205,8 @@
       "starter_required": true,
       "score_status": "NOT_ASSESSED",
       "totals_status": "NOT_ASSESSED",
-      "production_eligible": false
+      "production_eligible": false,
+      "execution_scope": "DEFERRED"
     },
     {
       "competition_id": "wbsc_womens_wc",
@@ -209,7 +221,8 @@
       "starter_required": true,
       "score_status": "NOT_ASSESSED",
       "totals_status": "NOT_ASSESSED",
-      "production_eligible": false
+      "production_eligible": false,
+      "execution_scope": "DEFERRED"
     },
     {
       "competition_id": "asian_baseball_championship",
@@ -224,7 +237,8 @@
       "starter_required": true,
       "score_status": "NOT_ASSESSED",
       "totals_status": "NOT_ASSESSED",
-      "production_eligible": false
+      "production_eligible": false,
+      "execution_scope": "DEFERRED"
     },
     {
       "competition_id": "asian_games_baseball",
@@ -239,7 +253,8 @@
       "starter_required": true,
       "score_status": "NOT_ASSESSED",
       "totals_status": "NOT_ASSESSED",
-      "production_eligible": false
+      "production_eligible": false,
+      "execution_scope": "ACTIVE"
     },
     {
       "competition_id": "bfa_u23",
@@ -254,7 +269,8 @@
       "starter_required": true,
       "score_status": "NOT_ASSESSED",
       "totals_status": "NOT_ASSESSED",
-      "production_eligible": false
+      "production_eligible": false,
+      "execution_scope": "DEFERRED"
     },
     {
       "competition_id": "bfa_u18",
@@ -269,7 +285,8 @@
       "starter_required": true,
       "score_status": "NOT_ASSESSED",
       "totals_status": "NOT_ASSESSED",
-      "production_eligible": false
+      "production_eligible": false,
+      "execution_scope": "DEFERRED"
     },
     {
       "competition_id": "bfa_u15",
@@ -284,7 +301,8 @@
       "starter_required": true,
       "score_status": "NOT_ASSESSED",
       "totals_status": "NOT_ASSESSED",
-      "production_eligible": false
+      "production_eligible": false,
+      "execution_scope": "DEFERRED"
     },
     {
       "competition_id": "bfa_u12",
@@ -299,7 +317,8 @@
       "starter_required": true,
       "score_status": "NOT_ASSESSED",
       "totals_status": "NOT_ASSESSED",
-      "production_eligible": false
+      "production_eligible": false,
+      "execution_scope": "DEFERRED"
     },
     {
       "competition_id": "european_senior",
@@ -314,7 +333,8 @@
       "starter_required": true,
       "score_status": "NOT_ASSESSED",
       "totals_status": "NOT_ASSESSED",
-      "production_eligible": false
+      "production_eligible": false,
+      "execution_scope": "DEFERRED"
     },
     {
       "competition_id": "european_u23",
@@ -329,7 +349,8 @@
       "starter_required": true,
       "score_status": "NOT_ASSESSED",
       "totals_status": "NOT_ASSESSED",
-      "production_eligible": false
+      "production_eligible": false,
+      "execution_scope": "DEFERRED"
     },
     {
       "competition_id": "european_u18",
@@ -344,7 +365,8 @@
       "starter_required": true,
       "score_status": "NOT_ASSESSED",
       "totals_status": "NOT_ASSESSED",
-      "production_eligible": false
+      "production_eligible": false,
+      "execution_scope": "DEFERRED"
     },
     {
       "competition_id": "european_u15",
@@ -359,7 +381,8 @@
       "starter_required": true,
       "score_status": "NOT_ASSESSED",
       "totals_status": "NOT_ASSESSED",
-      "production_eligible": false
+      "production_eligible": false,
+      "execution_scope": "DEFERRED"
     },
     {
       "competition_id": "european_u12",
@@ -374,7 +397,8 @@
       "starter_required": true,
       "score_status": "NOT_ASSESSED",
       "totals_status": "NOT_ASSESSED",
-      "production_eligible": false
+      "production_eligible": false,
+      "execution_scope": "DEFERRED"
     },
     {
       "competition_id": "womens_european",
@@ -389,7 +413,8 @@
       "starter_required": true,
       "score_status": "NOT_ASSESSED",
       "totals_status": "NOT_ASSESSED",
-      "production_eligible": false
+      "production_eligible": false,
+      "execution_scope": "DEFERRED"
     },
     {
       "competition_id": "pan_american_baseball",
@@ -404,7 +429,8 @@
       "starter_required": true,
       "score_status": "NOT_ASSESSED",
       "totals_status": "NOT_ASSESSED",
-      "production_eligible": false
+      "production_eligible": false,
+      "execution_scope": "DEFERRED"
     },
     {
       "competition_id": "oceania_u23",
@@ -419,7 +445,8 @@
       "starter_required": true,
       "score_status": "NOT_ASSESSED",
       "totals_status": "NOT_ASSESSED",
-      "production_eligible": false
+      "production_eligible": false,
+      "execution_scope": "DEFERRED"
     },
     {
       "competition_id": "oceania_u18",
@@ -434,7 +461,8 @@
       "starter_required": true,
       "score_status": "NOT_ASSESSED",
       "totals_status": "NOT_ASSESSED",
-      "production_eligible": false
+      "production_eligible": false,
+      "execution_scope": "DEFERRED"
     },
     {
       "competition_id": "baseball_champions_league_americas",
@@ -449,7 +477,8 @@
       "starter_required": true,
       "score_status": "NOT_ASSESSED",
       "totals_status": "NOT_ASSESSED",
-      "production_eligible": false
+      "production_eligible": false,
+      "execution_scope": "DEFERRED"
     }
   ],
   "excluded_families": [
@@ -459,5 +488,14 @@
     "esports",
     "local_youth_without_stable_game_data",
     "exhibition_without_pit_safe_evidence"
-  ]
+  ],
+  "execution_scope": {
+    "phase": "PHASE_1",
+    "active_competitions": [
+      "asian_games_baseball",
+      "npb",
+      "mlb"
+    ],
+    "rule": "Only these three competitions may enter active implementation, data acquisition, OOS validation, or production-promotion work until all three independently pass the production gate. All other inventory entries remain deferred."
+  }
 }
