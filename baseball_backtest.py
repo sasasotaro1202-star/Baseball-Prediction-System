@@ -1094,16 +1094,15 @@ class BaseballBacktest:
         k=3 if league=="NPB" else 2
         p=np.zeros((len(X),k))
         labels=self._regime_router.labels(X) if self._regime_router is not None else np.array(["global"]*len(X))
-        for i,label in enumerate(labels):
+        for label in np.unique(labels):
+            idx=np.flatnonzero(labels==label)
+            sub=X.iloc[idx]
             weights=self._regime_weights.get(str(label))
-            if not weights:
-                for model,w,_ in fitted:
-                    p[i] += float(w)*self.align_proba(model.predict_proba(X.iloc[[i]]),model.classes_,league)[0]
-            else:
-                for model,global_w,name in fitted:
-                    w=float(weights.get(name,global_w))
-                    p[i] += w*self.align_proba(model.predict_proba(X.iloc[[i]]),model.classes_,league)[0]
-                p[i]=clip_prob(p[i])
+            for model,global_w,name in fitted:
+                w=float(weights.get(name,global_w)) if weights else float(global_w)
+                raw=self.align_proba(model.predict_proba(sub),model.classes_,league)
+                p[idx] += w*raw
+            p[idx]=np.apply_along_axis(clip_prob,1,p[idx])
         t=float(getattr(self,"_last_temperature",1.0))
         if abs(t-1.0)>1e-9:
             p=np.clip(p,1e-7,1.0) ** (1.0/t)
