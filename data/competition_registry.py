@@ -31,7 +31,10 @@ class CompetitionSpec:
 
 COMPETITIONS: tuple[CompetitionSpec, ...] = (
     # League / regular-season competitions: keep these isolated and highest priority.
-    CompetitionSpec("NPB", "Nippon Professional Baseball", "professional", "top", "mixed", "Japan", "HOME_DRAW_AWAY", "PRODUCTION_ELIGIBLE", True, phase_type="league", rules_profile="npb"),
+    # NPB remains fail-closed until the real-data candidate lifecycle has produced
+    # an independent holdout-backed ADOPT decision. This prevents a metadata-only
+    # registry entry from becoming a production promotion by accident.
+    CompetitionSpec("NPB", "Nippon Professional Baseball", "professional", "top", "mixed", "Japan", "HOME_DRAW_AWAY", "RESEARCH_ONLY", True, phase_type="league", rules_profile="npb", notes="Production promotion requires candidate lock, independent holdout, PIT starter evidence, calibration, score/Low-High checks, and explicit ADOPT evidence."),
     CompetitionSpec("MLB", "Major League Baseball", "professional", "top", "mixed", "United States/Canada", "HOME_AWAY", "RESEARCH_ONLY", True, phase_type="league", rules_profile="mlb", notes="Historical starter announcement timestamp evidence remains a production gate."),
 
     # Senior national-team tournaments / non-league competition.

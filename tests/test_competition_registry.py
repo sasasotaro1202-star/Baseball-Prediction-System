@@ -24,7 +24,8 @@ def test_registry_contains_required_competitions() -> None:
 
 
 def test_registry_never_promotes_by_listing_alone() -> None:
-    assert production_eligible("NPB") is True
+    # NPB is fail-closed until explicit candidate/holdout adoption evidence.
+    assert production_eligible("NPB") is False
     for competition_id in (
         "MLB",
         "WBC",
