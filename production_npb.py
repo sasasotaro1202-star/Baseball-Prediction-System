@@ -66,7 +66,7 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
         pos = m.start()
         occurrences.append((pos, team, _clean_name(m.group(1))))
     occurrences.sort()
-    times=[m.group(1) for m in re.finditer(r">\s*(\d{1,2}:\d{2})\s*<", section)]
+    times=[m.group(1) for m in re.finditer(r"(?<!\d)(\d{1,2}:\d{2})(?!\d)", section)]
     if len(occurrences) != 12 or len(times) < 6:
         raise RuntimeError(f"PIT starter gate failed: expected 12 team/starter pairs and 6 times, got {len(occurrences)} and {len(times)}.")
     out=[]
