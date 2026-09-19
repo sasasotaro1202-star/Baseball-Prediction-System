@@ -944,7 +944,7 @@ class BaseballBacktest:
             except Exception as e:
                 self.audit.append({"type":"calibration_error","error":str(e)})
         self._last_temperature = temperature
-        return fitted,{n:float(l) for n,l in scored},top[0][0]
+        return fitted,{name:float(loss) for loss,name in scored},top[0][0]
 
     def ensemble_proba(self, fitted, X: pd.DataFrame, league: str) -> np.ndarray:
         k=3 if league=="NPB" else 2
