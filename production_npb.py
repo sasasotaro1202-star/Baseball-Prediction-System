@@ -120,7 +120,7 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
     return out
 
 def official_starters(target_date: str) -> list[dict]:
-    return parse_official_starters_html(fetch_text(NPB_STARTER_URL), target_date)
+    return parse_official_starters_html(fetch_text(NPB_STARTER_URL + "?_ts=" + str(int(time.time()))), target_date)
 
 def build_target_rows(target_date: str) -> pd.DataFrame:
     rows=official_starters(target_date)
