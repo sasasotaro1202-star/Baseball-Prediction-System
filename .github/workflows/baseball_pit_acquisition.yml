@@ -37,7 +37,7 @@ jobs:
       - name: Run PIT acquisition
         run: |
           set -euo pipefail
-          python -m py_compile data/pit_acquisition.py core/pit_snapshot.py core/pit_replay.py
+          python -m py_compile data/pit_acquisition.py core/pit_snapshot.py core/pit_replay.py tools_pit_ledger_validator.py
           python -m data.pit_acquisition
 
       - name: Validate PIT ledger
@@ -74,6 +74,11 @@ jobs:
           set -euo pipefail
           python -m research.pit_readiness_audit | tee pit_readiness_audit.json
           test -s pit_readiness_audit.json
+
+      - name: Validate PIT evidence consistency
+        run: |
+          set -euo pipefail
+          python tools_pit_ledger_validator.py
 
       - name: Commit PIT observations
         run: |
