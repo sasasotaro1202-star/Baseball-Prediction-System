@@ -65,6 +65,7 @@ jobs:
           BASEBALL_TIME_BUDGET_SEC: '3600'
           NPB_RETRAIN_EVERY: '150'
           MLB_ENRICH_STARTERS: '0'
+          PIT_SAFE_STARTER_DATA: '0'
         run: |
           set -euo pipefail
           python -m research.real_data_validation --league "${{ matrix.league }}" --mlb-start 2020 --mlb-end 2026
