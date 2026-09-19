@@ -283,6 +283,17 @@ def predict(target_date: str, data_dir: str) -> dict:
         raise RuntimeError("PIT history contamination: target game appears in training history.")
     if len(hist) < 100:
         raise RuntimeError(f"Insufficient PIT-safe NPB history: {len(hist)} games.")
+    hist_total = pd.to_numeric(hist["home_score"], errors="coerce") + pd.to_numeric(hist["away_score"], errors="coerce")
+    hist_total = hist_total.replace([np.inf, -np.inf], np.nan).dropna()
+    if len(hist_total) < 100:
+        raise RuntimeError("Historical score labels are insufficient for production.")
+    hist_score_mean = float(hist_total.mean())
+    hist_score_zero_rate = float((hist_total <= 0).mean())
+    if hist_score_mean < 3.0 or hist_score_zero_rate > 0.08 or hist_total.nunique() < 5:
+        raise RuntimeError(
+            f"Historical score data quality failed: mean_total={hist_score_mean:.3f}, "
+            f"zero_rate={hist_score_zero_rate:.3f}, unique_totals={hist_total.nunique()}."
+        )
 
     # Build chronological state from historical games only.
     # Production training must replay chronology; never build target rows into history.
@@ -331,7 +342,11 @@ def predict(target_date: str, data_dir: str) -> dict:
         })
     result={"schema_version":"npb-production-v1","target_date":target_date,"execution_status":"EXECUTED",
             "pit_status":"PASS","starter_gate":"PASS","model_status":"FITTED_ON_PIT_SAFE_HISTORY",
-            "git_commit":__import__("os").environ.get("GITHUB_SHA","unknown"),"predictions":outputs}
+            "git_commit":__import__("os").environ.get("GITHUB_SHA","unknown"),
+            "data_quality_status":"PASS",
+            "historical_score_mean_total":round(hist_score_mean,6),
+            "historical_score_zero_rate":round(hist_score_zero_rate,6),
+            "predictions":outputs}
     # Recover from silent cross-target model collapse instead of emitting a
     # misleadingly uniform forecast. The recovery remains PIT-safe because it
     # recomputes every target from historical games strictly before the target set.
