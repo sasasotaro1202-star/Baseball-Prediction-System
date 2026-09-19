@@ -32,6 +32,7 @@ class GatePolicy:
     require_calibration_check: bool = True
     require_no_future_target_data: bool = True
     require_reproducible_candidate: bool = True
+    require_pit_starter_evidence: bool = True
 
 
 def _finite_metric(mapping: Mapping[str, float], key: str) -> float | None:
@@ -75,6 +76,7 @@ def evaluate_locked_holdout(
     calibration_ok: bool = False,
     no_future_target_data: bool = False,
     reproducible: bool = False,
+    pit_starter_evidence_ok: bool = False,
     baseline_score: Mapping[str, float] | None = None,
     candidate_score: Mapping[str, float] | None = None,
     baseline_hilo: Mapping[str, float] | None = None,
@@ -98,6 +100,8 @@ def evaluate_locked_holdout(
         reasons.append("future_target_data_not_excluded")
     if policy.require_reproducible_candidate and not reproducible:
         reasons.append("candidate_not_reproducible")
+    if policy.require_pit_starter_evidence and not pit_starter_evidence_ok:
+        reasons.append("starter_pit_evidence_not_verified")
 
     required_primary = ("LogLoss", "Brier", "Accuracy")
     missing_primary = [k for k in required_primary if _finite_metric(baseline, k) is None or _finite_metric(candidate, k) is None]
