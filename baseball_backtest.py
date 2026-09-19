@@ -692,7 +692,11 @@ class BaseballBacktest:
         out["matchup_home_bat_vs_away_fip"] = hf.get("bat_avg_10",0.0) - out.get("as_fip",4.0)/20.0
         out["matchup_away_bat_vs_home_fip"] = af.get("bat_avg_10",0.0) - out.get("hs_fip",4.0)/20.0
         out["bullpen_fatigue_diff"] = hf.get("bp_app_10",0.0) - af.get("bp_app_10",0.0)
-        out["weather_run_signal"] = (out.get("weather_temp_c",0.0)-20.0)/10.0 + out.get("weather_wind_kmh",0.0)/30.0 - out.get("weather_precip_mm",0.0)/5.0
+        out["weather_run_signal"] = (
+            (out.get("weather_temp_c",0.0)-20.0)/10.0
+            + out.get("weather_wind_kmh",0.0)/30.0
+            - out.get("weather_precip_mm",0.0)/5.0
+        ) if context_pit_safe else 0.0
         out["starter_x_quality_proxy"] = (out.get("hs_k9",7.5)-out.get("hs_bb9",3.0)-out.get("hs_hr9",1.0)) - (out.get("as_k9",7.5)-out.get("as_bb9",3.0)-out.get("as_hr9",1.0))
         out["starter_recency_gap"] = out.get("hs_recent_era",4.0)-out.get("as_recent_era",4.0)
         out["starter_experience_gap"] = out.get("hs_starts",0.0)-out.get("as_starts",0.0)
