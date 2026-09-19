@@ -15,7 +15,7 @@ from typing import Any
 
 import numpy as np
 
-from baseball_backtest import BaseballBacktest
+from baseball_backtest import BaseballBacktest, low_high_probs, score_candidates
 from core.atomic_io import atomic_write_json
 from evaluation.metrics import classification_metrics
 from research.candidates import CandidateSpec, lock_candidate
@@ -45,6 +45,46 @@ def _fit(bt: BaseballBacktest, name: str, X, y):
     model = models[name]
     bt._fit_model(model, X, y, bt._sample_weights(len(X)), "MLB")
     return model
+
+
+def _target_metrics(bt, X_train, games_train, games_eval, X_eval, p):
+    score_fit = bt.fit_score_ensemble(
+        X_train,
+        games_train["home_score"].astype(float).to_numpy(),
+        games_train["away_score"].astype(float).to_numpy(),
+        "MLB",
+    )
+    home_true = games_eval["home_score"].astype(float).to_numpy()
+    away_true = games_eval["away_score"].astype(float).to_numpy()
+    expected_home, expected_away, score_choices = [], [], []
+    hilo_actual, hilo_prob = [], []
+    for i in range(len(games_eval)):
+        lam_h, lam_a = bt.predict_scores(score_fit, X_eval.iloc[[i]], "MLB")
+        split = float(np.clip(p[i, 0] - 0.5, -0.35, 0.35))
+        lam_h *= 1.0 + 0.08 * split
+        lam_a *= 1.0 - 0.08 * split
+        expected_home.append(lam_h)
+        expected_away.append(lam_a)
+        choices = score_candidates(lam_h, lam_a, 4)
+        score_choices.append(choices)
+        _, high = low_high_probs(lam_h, lam_a)
+        hilo_prob.append(high)
+        hilo_actual.append(int(home_true[i] + away_true[i] >= 7))
+    eh, ea = np.asarray(expected_home), np.asarray(expected_away)
+    score_mae = float((np.mean(np.abs(eh-home_true)) + np.mean(np.abs(ea-away_true))) / 2.0)
+    score_top4 = float(np.mean([
+        (h + a >= 7 and any(x == "その他" for x, _ in choices))
+        or (h + a < 7 and any(x == f"{int(h)}-{int(a)}" for x, _ in choices))
+        for h, a, choices in zip(home_true, away_true, score_choices)
+    ]))
+    hp = np.clip(np.asarray(hilo_prob), 1e-9, 1-1e-9)
+    ya = np.asarray(hilo_actual)
+    return {"ScoreMAE": score_mae, "Top4HitRate": score_top4, "rows": int(len(home_true))}, {
+        "Accuracy": float(np.mean((hp >= 0.5).astype(int) == ya)),
+        "LogLoss": float(-np.mean(ya*np.log(hp) + (1-ya)*np.log(1-hp))),
+        "Brier": float(np.mean((hp-ya)**2)),
+        "rows": int(len(home_true)),
+    }
 
 
 def _development(bt, X, y, start, end, names, block, retrain_every):
