@@ -1149,6 +1149,8 @@ class BaseballBacktest:
         if not scored: return None
         scored.sort(key=lambda z:z[0])
         top=scored[:3]
+        top_names={name for _,name,_ in top}
+        global_losses={name:float(loss) for loss,name,_ in top}
         fitted=[]
         weights=[]
         for loss,name,factory in top:
@@ -1157,15 +1159,51 @@ class BaseballBacktest:
             w=1.0/max(loss,1e-6)
             fitted.append((name,mh,ma)); weights.append(w)
         weights=np.asarray(weights,float); weights/=weights.sum()
-        return {"models":fitted,"weights":weights,"scores":{n:float(l) for l,n,_ in scored}}
+
+        router=RegimeRouter().fit(X)
+        regime_losses={}
+        regime_counts={}
+        for tr, va in splits:
+            if time.time() - self.started_at >= self.time_budget_sec:
+                break
+            labels=router.labels(X.iloc[va])
+            for regime in np.unique(labels):
+                idx=np.flatnonzero(labels==regime)
+                if len(idx) == 0:
+                    continue
+                regime_counts[str(regime)]=regime_counts.get(str(regime),0)+len(idx)
+            for loss,name,factory in top:
+                try:
+                    mh=factory(); ma=factory()
+                    self._fit_model(mh,X.iloc[tr],y_home[tr],self._sample_weights(len(tr)),league)
+                    self._fit_model(ma,X.iloc[tr],y_away[tr],self._sample_weights(len(tr)),league)
+                    ph=np.clip(mh.predict(X.iloc[va]),0.05,15)
+                    pa=np.clip(ma.predict(X.iloc[va]),0.05,15)
+                    nll=(ph-y_home[va]*np.log(ph)+np.array([math.lgamma(v+1) for v in y_home[va]]))
+                    nll+=(pa-y_away[va]*np.log(pa)+np.array([math.lgamma(v+1) for v in y_away[va]]))
+                    for regime in np.unique(labels):
+                        idx=np.flatnonzero(labels==regime)
+                        if len(idx):
+                            regime_losses.setdefault(str(regime),{}).setdefault(name,[]).append(float(np.mean(nll[idx])/2))
+                except Exception:
+                    continue
+        filtered={r:{n:float(np.mean(v)) for n,v in by.items() if n in top_names and v} for r,by in regime_losses.items()}
+        regime_weights=router.weights(global_losses,filtered,regime_counts) if filtered else {}
+        return {"models":fitted,"weights":weights,"scores":global_losses,
+                "regime_router":router,"regime_weights":regime_weights}
 
     def predict_scores(self, fitted, xrow: pd.DataFrame, league: str) -> Tuple[float,float]:
         if fitted is None:
             return 2.35 if league=="NPB" else 4.55, 2.35 if league=="NPB" else 4.55
+        router=fitted.get("regime_router")
+        labels=router.labels(xrow) if router is not None else np.array(["global"])
+        label=str(labels[0]) if len(labels) else "global"
+        regime_weights=fitted.get("regime_weights",{}).get(label)
         lh=la=0.0
-        for w,(name,mh,ma) in zip(fitted["weights"], fitted["models"]):
-            lh += float(w)*float(np.clip(mh.predict(xrow)[0],0.05,15.0))
-            la += float(w)*float(np.clip(ma.predict(xrow)[0],0.05,15.0))
+        for i,(name,mh,ma) in enumerate(fitted["models"]):
+            w=float(regime_weights.get(name,fitted["weights"][i])) if regime_weights else float(fitted["weights"][i])
+            lh += w*float(np.clip(mh.predict(xrow)[0],0.05,15.0))
+            la += w*float(np.clip(ma.predict(xrow)[0],0.05,15.0))
         return lh,la
 
     def run_walkforward(self, games: pd.DataFrame, league: str) -> pd.DataFrame:
