@@ -120,8 +120,39 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
         })
     return out
 
+def _load_official_starter_snapshot(target_date: str) -> list[dict] | None:
+    path = ROOT / "data" / "official_starters" / f"{target_date}.json"
+    if not path.exists():
+        return None
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if payload.get("schema_version") != "npb-official-starter-snapshot-v1":
+        raise RuntimeError("Official starter snapshot schema mismatch; refusing prediction.")
+    if payload.get("target_date") != target_date or payload.get("source_type") != "NPB_OFFICIAL":
+        raise RuntimeError("Official starter snapshot provenance mismatch; refusing prediction.")
+    retrieved = pd.Timestamp(payload.get("retrieved_at_utc"))
+    if retrieved.tzinfo is None:
+        retrieved = retrieved.tz_localize("UTC")
+    games = payload.get("games", [])
+    if len(games) != 6:
+        raise RuntimeError("Official starter snapshot must contain exactly 6 games.")
+    for g in games:
+        g["confirmed_starters"] = True
+        g["starter_evidence_status"] = "official_announced_snapshot"
+        g["starter_source"] = payload["source_url"]
+    return games
+
 def official_starters(target_date: str) -> list[dict]:
-    return parse_official_starters_html(fetch_text(NPB_STARTER_URL + "?_ts=" + str(int(time.time()))), target_date)
+    try:
+        return parse_official_starters_html(
+            fetch_text(NPB_STARTER_URL + "?_ts=" + str(int(time.time()))), target_date
+        )
+    except RuntimeError as exc:
+        if "does not contain" not in str(exc):
+            raise
+        snapshot = _load_official_starter_snapshot(target_date)
+        if snapshot is not None:
+            return snapshot
+        raise
 
 def build_target_rows(target_date: str) -> pd.DataFrame:
     rows=official_starters(target_date)
