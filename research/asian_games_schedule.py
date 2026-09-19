@@ -70,23 +70,25 @@ def parse_matchup_rows(html: str) -> list[AsianGamesGame]:
     parser.feed(html)
     games: list[AsianGamesGame] = []
     for row in parser.rows:
-        text = " | ".join(_clean(x) for x in row if _clean(x))
-        if not text or "Visitor" not in text and "vs." not in text:
+        cells = [_clean(x) for x in row]
+        if len(cells) < 5:
             continue
-        m = re.search(r"(9/2[1-7])\s+.*?(\d{1,2}:\d{2}).*?(BBL\d{2}).*?([A-Z]{3})\s+.*?([A-Z]{3})", text)
-        if not m:
+        if not re.fullmatch(r"9/2[1-7]", cells[0]) or not re.fullmatch(r"\d{1,2}:\d{2}", cells[1]):
             continue
-        date, time_jst, code, visitor, home = m.groups()
-        month, day = date.split("/")
-        venue = "Aichi-Nagoya 2026 organizer venue"
-        game_hash = hashlib.sha256(f"{code}|{date}|{visitor}|{home}".encode()).hexdigest()[:16]
+        if not re.fullmatch(r"BBL\d{2}", cells[2]):
+            continue
+        visitor, home = cells[3], cells[4]
+        if not (re.fullmatch(r"[A-Z]{3}", visitor) and re.fullmatch(r"[A-Z]{3}", home)):
+            continue
+        month, day = cells[0].split("/")
+        game_hash = hashlib.sha256(f"{cells[2]}|{cells[0]}|{visitor}|{home}".encode()).hexdigest()[:16]
         games.append(AsianGamesGame(
-            game_id=f"asian-games-2026-{code.lower()}-{game_hash}",
+            game_id=f"asian-games-2026-{cells[2].lower()}-{game_hash}",
             date_jst=f"2026-{int(month):02d}-{int(day):02d}",
-            time_jst=time_jst,
+            time_jst=cells[1],
             visitor=visitor,
             home=home,
-            venue=venue,
+            venue="Aichi-Nagoya 2026 organizer venue",
             source_url=OFFICIAL_URL,
             retrieved_at=datetime.now(timezone.utc).isoformat(),
         ))
