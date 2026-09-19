@@ -48,6 +48,12 @@ class _VisibleTextParser(__import__("html.parser", fromlist=["HTMLParser"]).HTML
     def __init__(self):
         super().__init__()
         self.parts = []
+    def handle_starttag(self, tag, attrs):
+        if tag.lower() == "img":
+            alt = dict(attrs).get("alt", "")
+            value = _clean_name(alt)
+            if value:
+                self.parts.append(value)
     def handle_data(self, data):
         value = _clean_name(data)
         if value:
