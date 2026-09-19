@@ -99,5 +99,6 @@ jobs:
             results/npb_locked_holdout.json
             results/mlb_candidate_development.json
             results/mlb_locked_holdout.json
+            pit_readiness_audit.json
           if-no-files-found: warn
           retention-days: 30

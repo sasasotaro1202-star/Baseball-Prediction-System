@@ -68,6 +68,13 @@ jobs:
           print("PIT ledger validation OK")
           PY
 
+      - name: Audit PIT readiness evidence
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          python -m research.pit_readiness_audit | tee pit_readiness_audit.json
+          test -s pit_readiness_audit.json
+
       - name: Commit PIT observations
         run: |
           set -euo pipefail

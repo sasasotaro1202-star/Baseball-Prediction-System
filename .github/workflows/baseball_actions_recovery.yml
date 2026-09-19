@@ -10,6 +10,7 @@ on:
       - Baseball Research Preflight
       - Baseball Research Readiness
       - Baseball v4.4 Compatibility
+      - Baseball Candidate OOS Validation
     types: [completed]
 
 permissions:
@@ -86,7 +87,7 @@ jobs:
           while IFS= read -r step; do
             [ -n "${step}" ] || continue
             case "${step}" in
-              'Install research dependencies'|'Acquire current PIT observations'|'Install acquisition dependencies'|'Run PIT acquisition'|'Stage historical NPB PBP release data'|'Restore immutable historical NPB PBP and official-result cache'|'Restore chronological OOS checkpoints')
+              'Install research dependencies'|'Install dependencies'|'Acquire current PIT observations'|'Install acquisition dependencies'|'Run PIT acquisition'|'Stage historical NPB PBP release data'|'Restore immutable historical NPB PBP and official-result cache'|'Restore chronological OOS checkpoints')
                 retryable=$((retryable + 1))
                 ;;
               *)
