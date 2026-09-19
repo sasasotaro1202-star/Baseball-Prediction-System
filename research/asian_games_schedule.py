@@ -77,11 +77,12 @@ def parse_matchup_rows(html: str) -> list[AsianGamesGame]:
         if not m:
             continue
         date, time_jst, code, visitor, home = m.groups()
+        month, day = date.split("/")
         venue = "Aichi-Nagoya 2026 organizer venue"
         game_hash = hashlib.sha256(f"{code}|{date}|{visitor}|{home}".encode()).hexdigest()[:16]
         games.append(AsianGamesGame(
             game_id=f"asian-games-2026-{code.lower()}-{game_hash}",
-            date_jst=f"2026-{date[2:4]}-{date[4:6]}",
+            date_jst=f"2026-{int(month):02d}-{int(day):02d}",
             time_jst=time_jst,
             visitor=visitor,
             home=home,
