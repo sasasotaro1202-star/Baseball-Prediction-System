@@ -101,7 +101,12 @@ def _target_metrics(bt: BaseballBacktest, X_train, games_train, games_holdout, X
         expected_home.append(lam_h); expected_away.append(lam_a)
         choices = {x for x, _ in score_candidates(lam_h, lam_a, 4)}
         high = (home_true[i] + away_true[i]) >= 7
-        score_hits.append(("その他" in choices) if high else (f"{int(home_true[i])}-{int(away_true[i])}" in choices))
+        # "その他" is a tail bucket, not an exact score. Keep Top4HitRate
+        # conservative and exact-score based.
+        score_hits.append(
+            (not high)
+            and (f"{int(home_true[i])}-{int(away_true[i])}" in choices)
+        )
         _, high_p = low_high_probs(lam_h, lam_a)
         hilo_prob.append(high_p); hilo_actual.append(int(high))
     score_mae = float((np.mean(np.abs(np.asarray(expected_home)-home_true)) + np.mean(np.abs(np.asarray(expected_away)-away_true))) / 2.0)
