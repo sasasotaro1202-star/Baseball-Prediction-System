@@ -48,7 +48,7 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
     """Parse NPB's announced-starter section with semantic fail-closed validation."""
     month_day = f"{int(target_date[5:7])}月{int(target_date[8:10])}日"
     heading = re.search(
-        rf"<h4[^>]*>\\s*{re.escape(month_day)}の予告先発投手\\s*</h4>",
+        rf"<h4[^>]*>\s*{re.escape(month_day)}の予告先発投手\s*</h4>",
         page_html, re.I,
     )
     if not heading:
@@ -56,7 +56,7 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
             f"Official NPB starter page does not contain {month_day}; refusing prediction."
         )
     tail = page_html[heading.end():]
-    next_heading = re.search(r"<h4\\b", tail, re.I)
+    next_heading = re.search(r"<h4\b", tail, re.I)
     section = tail[:next_heading.start()] if next_heading else tail
 
     teams = [
@@ -75,7 +75,7 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
             rf'<div[^>]+class=["\'][^"\']*unit[^"\']*["\'][^>]*>.*?'
             rf'<img[^>]+alt=["\']{team_pat}["\'][^>]*>.*?'
             rf'<(?:div|p)[^>]+class=["\'][^"\']*team_left[^"\']*["\'][^>]*>.*?'
-            rf'<span[^>]*>\\s*([^<]+?)\\s*</span>',
+            rf'<span[^>]*>\s*([^<]+?)\\s*</span>',
             section, re.I | re.S,
         )
         if not m:
@@ -84,9 +84,9 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
             tm = re.search(rf'alt=["\']{team_pat}["\']', section, re.I)
             if tm:
                 window = section[tm.end():tm.end()+1200]
-                sm = re.search(r'<span[^>]*>\\s*([^<]+?)\\s*</span>', window, re.I | re.S)
+                sm = re.search(r'<span[^>]*>\s*([^<]+?)\\s*</span>', window, re.I | re.S)
                 if not sm:
-                    sm = re.search(r'<a[^>]*>\\s*([^<]+?)\\s*</a>', window, re.I | re.S)
+                    sm = re.search(r'<a[^>]*>\s*([^<]+?)\\s*</a>', window, re.I | re.S)
                 if sm:
                     m = sm
                     name = _clean_name(sm.group(1))
@@ -97,7 +97,7 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
         occurrences.append((m.start(), team, name))
 
     occurrences.sort()
-    times = [m.group(1) for m in re.finditer(r"(?<!\\d)(\\d{1,2}:\\d{2})(?!\\d)", section)]
+    times = [m.group(1) for m in re.finditer(r"(?<!\d)(\d{1,2}:\d{2})(?!\d)", section)]
     if len(occurrences) != 12 or len(times) < 6:
         raise RuntimeError(
             f"PIT starter gate failed: expected 12 team/starter pairs and 6 times, "
