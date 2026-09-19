@@ -215,7 +215,18 @@ def _repair_scores_from_official(out: pd.DataFrame, data_dir: Path) -> pd.DataFr
         return out
     hs = pd.to_numeric(out["home_score"], errors="coerce")
     aws = pd.to_numeric(out["away_score"], errors="coerce")
-    if hs.notna().all() and aws.notna().all():
+    # Some public PBP releases expose structurally present score columns filled
+    # with zeros rather than NaN. Treat a game whose entire observed score path
+    # is 0-0 as missing and repair it from the official schedule/result page.
+    tmp = out.copy()
+    tmp["_score_sum"] = hs.fillna(0.0) + aws.fillna(0.0)
+    zero_games = set(
+        tmp.groupby("game_id", dropna=False)["_score_sum"].max()
+        .loc[lambda s: s <= 0]
+        .index.astype(str)
+    )
+    missing_any = hs.isna() | aws.isna()
+    if not missing_any.any() and not zero_games:
         return out
     years = pd.to_datetime(out["date"], errors="coerce", utc=True).dt.year.dropna().astype(int).unique().tolist()
     schedule = _official_schedule(years, data_dir / ".npb_official_schedule_cache")
@@ -230,12 +241,17 @@ def _repair_scores_from_official(out: pd.DataFrame, data_dir: Path) -> pd.DataFr
     schedule["away_key"] = schedule["away"].map(_canon_team)
     schedule = schedule.drop_duplicates(["date_key", "home_key", "away_key"])
     merged = left.merge(schedule[["date_key", "home_key", "away_key", "home_score", "away_score"]], on=["date_key", "home_key", "away_key"], how="left", suffixes=("", "_official"))
-    merged["home_score"] = pd.to_numeric(merged["home_score"], errors="coerce").fillna(pd.to_numeric(merged["home_score_official"], errors="coerce"))
-    merged["away_score"] = pd.to_numeric(merged["away_score"], errors="coerce").fillna(pd.to_numeric(merged["away_score_official"], errors="coerce"))
+    official_h = pd.to_numeric(merged["home_score_official"], errors="coerce")
+    official_a = pd.to_numeric(merged["away_score_official"], errors="coerce")
+    current_h = pd.to_numeric(merged["home_score"], errors="coerce")
+    current_a = pd.to_numeric(merged["away_score"], errors="coerce")
+    needs_official = current_h.isna() | current_a.isna() | merged["game_id"].astype(str).isin(zero_games)
+    merged["home_score"] = current_h.where(~needs_official, official_h).fillna(official_h)
+    merged["away_score"] = current_a.where(~needs_official, official_a).fillna(official_a)
     unresolved = int(merged[["home_score", "away_score"]].isna().any(axis=1).sum())
     if unresolved:
         print(f"[NPB OFFICIAL] unresolved score rows after official repair: {unresolved}")
-    return merged.drop(columns=["date_key", "home_key", "away_key", "home_score_official", "away_score_official"])
+    return merged.drop(columns=["date_key", "home_key", "away_key", "home_score_official", "away_score_official", "_score_sum"], errors="ignore")
 
 
 def normalize_pbp_frame(raw: pd.DataFrame, *, data_dir: str | Path | None = None) -> pd.DataFrame:
