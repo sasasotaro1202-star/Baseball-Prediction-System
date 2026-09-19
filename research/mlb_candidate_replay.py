@@ -31,6 +31,7 @@ class MLBReplayConfig:
     min_train_rows: int = 180
     min_holdout_rows: int = 200
     block_size: int = 40
+    retrain_every: int = 150
 
 
 def _proba(bt: BaseballBacktest, model: Any, X):
@@ -50,17 +51,30 @@ def _development(bt, X, y, start, end, names, block):
     actual, outputs = [], {"ProductionEnsemble": []}
     for name in names:
         outputs[name] = []
+    if block <= 0 or retrain_every <= 0:
+        raise ValueError("block and retrain_every must be > 0")
     windows = 0
+    fitted = None
+    candidate_fitted = {}
+    last_fit_cut = -10**9
     for cut in range(start, end, block):
         stop = min(end, cut + block)
-        fitted, _, _ = bt.fit_ensemble(X.iloc[:cut], y[:cut], "MLB")
-        if not fitted:
-            continue
+        # Periodic retraining remains strictly chronological: every reused
+        # model was trained only on observations before its first OOS block.
+        if fitted is None or cut - last_fit_cut >= retrain_every:
+            fitted, _, _ = bt.fit_ensemble(X.iloc[:cut], y[:cut], "MLB")
+            if not fitted:
+                continue
+            candidate_fitted = {
+                name: _fit(bt, name, X.iloc[:cut], y[:cut])
+                for name in names
+            }
+            last_fit_cut = cut
         windows += 1
         actual.append(y[cut:stop])
         outputs["ProductionEnsemble"].append(bt.ensemble_proba(fitted, X.iloc[cut:stop], "MLB"))
         for name in names:
-            outputs[name].append(_proba(bt, _fit(bt, name, X.iloc[:cut], y[:cut]), X.iloc[cut:stop]))
+            outputs[name].append(_proba(bt, candidate_fitted[name], X.iloc[cut:stop]))
     if not actual:
         raise RuntimeError("MLB Development OOS produced no valid windows")
     yy = np.concatenate(actual)
