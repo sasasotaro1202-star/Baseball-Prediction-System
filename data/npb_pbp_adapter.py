@@ -246,8 +246,12 @@ def _repair_scores_from_official(out: pd.DataFrame, data_dir: Path) -> pd.DataFr
     current_h = pd.to_numeric(merged["home_score"], errors="coerce")
     current_a = pd.to_numeric(merged["away_score"], errors="coerce")
     needs_official = current_h.isna() | current_a.isna() | merged["game_id"].astype(str).isin(zero_games)
-    merged["home_score"] = current_h.where(~needs_official, official_h).fillna(official_h)
-    merged["away_score"] = current_a.where(~needs_official, official_a).fillna(official_a)
+    # Official NPB final scores are the authoritative realized labels. When the
+    # date/team key resolves, prefer them even if the upstream PBP exposes a
+    # non-null but structurally unreliable score column.
+    resolved_official = official_h.notna() & official_a.notna()
+    merged["home_score"] = current_h.where(~(needs_official | resolved_official), official_h).fillna(official_h)
+    merged["away_score"] = current_a.where(~(needs_official | resolved_official), official_a).fillna(official_a)
     unresolved = int(merged[["home_score", "away_score"]].isna().any(axis=1).sum())
     if unresolved:
         print(f"[NPB OFFICIAL] unresolved score rows after official repair: {unresolved}")
