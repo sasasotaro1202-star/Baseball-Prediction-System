@@ -75,7 +75,7 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
             rf'<div[^>]+class=["\'][^"\']*unit[^"\']*["\'][^>]*>.*?'
             rf'<img[^>]+alt=["\']{team_pat}["\'][^>]*>.*?'
             rf'<(?:div|p)[^>]+class=["\'][^"\']*team_left[^"\']*["\'][^>]*>.*?'
-            rf'<span[^>]*>\s*([^<]+?)\\s*</span>',
+            rf'<span[^>]*>\s*([^<]+?)\s*</span>',
             section, re.I | re.S,
         )
         if not m:
@@ -86,7 +86,7 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
                 window = section[tm.end():tm.end()+1200]
                 sm = re.search(r'<span[^>]*>\s*([^<]+?)\\s*</span>', window, re.I | re.S)
                 if not sm:
-                    sm = re.search(r'<a[^>]*>\s*([^<]+?)\\s*</a>', window, re.I | re.S)
+                    sm = re.search(r'<a[^>]*>\s*([^<]+?)\s*</a>', window, re.I | re.S)
                 if sm:
                     m = sm
                     name = _clean_name(sm.group(1))
