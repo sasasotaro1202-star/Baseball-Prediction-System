@@ -103,6 +103,10 @@ def predict(target_date: str, data_dir: str) -> dict:
     raw=bt.load_npb_pbp()
     hist=bt.aggregate_npb_games(raw)
     hist=hist[hist["datetime"] < games["datetime"].min()].copy()
+    if hist["datetime"].max() >= games["datetime"].min():
+        raise RuntimeError("PIT history contamination: historical data reaches target cutoff.")
+    if hist["game_id"].isin(games["game_id"]).any():
+        raise RuntimeError("PIT history contamination: target game appears in training history.")
     if len(hist) < 100:
         raise RuntimeError(f"Insufficient PIT-safe NPB history: {len(hist)} games.")
 
