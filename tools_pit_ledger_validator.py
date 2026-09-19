@@ -54,7 +54,7 @@ def validate():
     counts = {}
     for path in pit_files():
         rows = load(path)
-        counts[str(path.relative_to(ROOT))] = len(rows)
+        counts[str(path.relative_to(PIT))] = len(rows)
         for n, row in rows:
             for key in ("observed_at", "retrieved_at", "prediction_cutoff"):
                 if key in row and row[key] not in (None, ""):
