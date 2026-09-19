@@ -166,6 +166,28 @@ def build_target_rows(target_date: str) -> pd.DataFrame:
         r["starter_evidence_status"]="official_announced"
     return pd.DataFrame(rows)
 
+def robust_target_lambdas(bt: BaseballBacktest, hist: pd.DataFrame, row: pd.Series) -> tuple[float,float,float]:
+    """Fail-safe target-specific run model used only when the fitted score ensemble degenerates."""
+    league="NPB"; dt=pd.Timestamp(row["datetime"])
+    hteam,a_team=norm_team(row["home"],league),norm_team(row["away"],league)
+    hf=bt._team_features(league,hteam,"home",dt); af=bt._team_features(league,a_team,"away",dt)
+    if hf.get("matches",0.0)<5 or af.get("matches",0.0)<5:
+        raise RuntimeError("Target-specific state coverage too low; refusing fallback prediction.")
+    gh=float(hist["home_score"].mean()); ga=float(hist["away_score"].mean())
+    h_attack=0.65*hf.get("gf_10",gh)+0.35*gh
+    a_attack=0.65*af.get("gf_10",ga)+0.35*ga
+    h_def=0.65*af.get("ga_10",gh)+0.35*gh
+    a_def=0.65*hf.get("ga_10",ga)+0.35*ga
+    lh=0.52*h_attack+0.48*h_def
+    la=0.52*a_attack+0.48*a_def
+    hs=bt.starter_features(league,str(row.get("home_starter","") or ""),dt,"hs_")
+    aas=bt.starter_features(league,str(row.get("away_starter","") or ""),dt,"as_")
+    lh*=float(__import__("math").exp(0.07*(float(aas.get("as_fip",4.0))-4.0)))
+    la*=float(__import__("math").exp(0.07*(float(hs.get("hs_fip",4.0))-4.0)))
+    lh*=1.035
+    lh=max(0.8,min(6.0,lh)); la=max(0.8,min(6.0,la))
+    return lh,la,0.0
+
 def predict(target_date: str, data_dir: str) -> dict:
     try:
         games=build_target_rows(target_date)
@@ -216,8 +238,14 @@ def predict(target_date: str, data_dir: str) -> dict:
         xrow=pd.DataFrame([bt.match_features(r)]).replace([float("inf"),float("-inf")],float("nan")).fillna(0.0).astype(float)
         p=bt.ensemble_proba(fitted,xrow,"NPB")[0]
         lh,la,shared=bt.predict_scores(score_fit,xrow,"NPB")
-        split=float(max(-0.35,min(0.35,float(p[0]-p[2]))))
-        lh*=1.0+0.08*split; la*=1.0-0.08*split
+        fallback_used = score_fit is None or (abs(lh-la)<1e-12 and abs(lh-2.35)<1e-12)
+        if fallback_used:
+            lh,la,shared=robust_target_lambdas(bt,hist,r)
+            model_label="Production ensemble + PIT-safe target-specific degeneracy fallback"
+        else:
+            split=float(max(-0.35,min(0.35,float(p[0]-p[2]))))
+            lh*=1.0+0.08*split; la*=1.0-0.08*split
+            model_label="BaseballBacktest.fit_ensemble + fit_score_ensemble + NPB extra-inning result calibration"
         scores=score_candidates(lh,la,shared,4)
         low,high=low_high_probs(lh,la,shared)
         # NPB final-result probabilities must distinguish a 9-inning tie from
@@ -234,7 +262,7 @@ def predict(target_date: str, data_dir: str) -> dict:
           "low_pct":round(float(low)*100,4),"high_pct":round(float(high)*100,4),
           "top4_exact_scores":[{"score":s,"prob_pct":round(float(v)*100,4)} for s,v in scores],
           "lambda_home":float(lh),"lambda_away":float(la),"shared_lambda":float(shared),
-          "model":"BaseballBacktest.fit_ensemble + fit_score_ensemble + NPB extra-inning result calibration",
+          "model":model_label,
           "validation_scores":validation_scores,
           "historical_games_used":int(len(hist)),
           "pit_status":"PASS",
@@ -243,6 +271,11 @@ def predict(target_date: str, data_dir: str) -> dict:
     result={"schema_version":"npb-production-v1","target_date":target_date,"execution_status":"EXECUTED",
             "pit_status":"PASS","starter_gate":"PASS","model_status":"FITTED_ON_PIT_SAFE_HISTORY",
             "git_commit":__import__("os").environ.get("GITHUB_SHA","unknown"),"predictions":outputs}
+    # Fail closed on the most dangerous silent failure: every target receiving the same forecast.
+    if len(outputs) == 6:
+        sig={(round(o["lambda_home"],6),round(o["lambda_away"],6),round(o["home_win_pct"],4),round(o["away_win_pct"],4)) for o in outputs}
+        if len(sig) < 3:
+            raise RuntimeError("Production degeneracy guard: target forecasts are insufficiently differentiated.")
     # Output validation: probabilities are finite, win probabilities sum to 100,
     # Low/High sum to 100, and exactly four score candidates exist.
     for o in outputs:
