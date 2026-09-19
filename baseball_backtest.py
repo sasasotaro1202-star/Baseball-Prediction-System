@@ -1125,7 +1125,7 @@ class BaseballBacktest:
             "MeanAbsoluteScoreError": float((abs(df.actual_home_score-df.lambda_home)+abs(df.actual_away_score-df.lambda_away)).mean()/2),
             "HighActualRate": float(((df.actual_home_score >= 7) | (df.actual_away_score >= 7)).mean()),
             "LowHighAccuracy": float((((df.high >= 0.5).astype(int)) == (((df.actual_home_score >= 7) | (df.actual_away_score >= 7)).astype(int))).mean()),
-            "Top4ScoreHitRate": float(df.apply(lambda r: (("その他" in {str(r.score1),str(r.score2),str(r.score3),str(r.score4)}) if (r.actual_home_score >= 7 or r.actual_away_score >= 7) else (f"{int(r.actual_home_score)}-{int(r.actual_away_score)}" in {str(r.score1),str(r.score2),str(r.score3),str(r.score4)})), axis=1).mean()),
+            "Top4ScoreHitRate": float(df.apply(lambda r: ((r.actual_home_score < 7 and r.actual_away_score < 7) and (f"{int(r.actual_home_score)}-{int(r.actual_away_score)}" in {str(r.score1), str(r.score2), str(r.score3), str(r.score4)})), axis=1).mean()),
         }
         if league == "MLB":
             try: out["AUC"] = float(roc_auc_score(df.actual, df.pred_home))
