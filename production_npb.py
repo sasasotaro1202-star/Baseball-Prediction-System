@@ -15,6 +15,7 @@ import pandas as pd
 import requests
 
 from baseball_backtest import BaseballBacktest, norm_team, score_candidates, low_high_probs
+from research.correlated_score import npb_final_outcomes
 
 ROOT = Path(__file__).resolve().parent
 TIMEOUT = 30
@@ -148,15 +149,21 @@ def predict(target_date: str, data_dir: str) -> dict:
         lh*=1.0+0.08*split; la*=1.0-0.08*split
         scores=score_candidates(lh,la,shared,4)
         low,high=low_high_probs(lh,la,shared)
+        # NPB final-result probabilities must distinguish a 9-inning tie from
+        # a final draw. A tied regulation score can still be decided in innings
+        # 10-12, so replace the raw 3-class classifier draw probability with the
+        # coherent score/extra-inning result model while retaining the ensemble
+        # probability difference as a small run-expectation adjustment above.
+        home_final, draw_final, away_final = npb_final_outcomes(lh,la,shared)
         outputs.append({
           "game_id":r.game_id,"datetime_jst":pd.Timestamp(r.datetime).tz_convert("Asia/Tokyo").isoformat(),
           "home":r.home,"away":r.away,"home_starter":r.home_starter,"away_starter":r.away_starter,
           "starter_evidence_status":r.starter_evidence_status,
-          "home_win_pct":round(float(p[0])*100,4),"draw_pct":round(float(p[1])*100,4),"away_win_pct":round(float(p[2])*100,4),
+          "home_win_pct":round(float(home_final)*100,4),"draw_pct":round(float(draw_final)*100,4),"away_win_pct":round(float(away_final)*100,4),
           "low_pct":round(float(low)*100,4),"high_pct":round(float(high)*100,4),
           "top4_exact_scores":[{"score":s,"prob_pct":round(float(v)*100,4)} for s,v in scores],
           "lambda_home":float(lh),"lambda_away":float(la),"shared_lambda":float(shared),
-          "model":"BaseballBacktest.fit_ensemble + fit_score_ensemble",
+          "model":"BaseballBacktest.fit_ensemble + fit_score_ensemble + NPB extra-inning result calibration",
           "validation_scores":validation_scores,
           "historical_games_used":int(len(hist)),
           "pit_status":"PASS",
