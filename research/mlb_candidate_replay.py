@@ -31,8 +31,8 @@ class MLBReplayConfig:
     holdout_fraction: float = 0.20
     min_train_rows: int = 180
     min_holdout_rows: int = 200
-    block_size: int = 40
-    retrain_every: int = 150
+    block_size: int = 60
+    retrain_every: int = 180
 
 
 def _proba(bt: BaseballBacktest, model: Any, X):
