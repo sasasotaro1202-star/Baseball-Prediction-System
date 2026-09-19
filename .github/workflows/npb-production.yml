@@ -1,0 +1,62 @@
+name: NPB Production Prediction
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Target date in JST (YYYY-MM-DD)"
+        required: true
+        type: string
+      data_dir:
+        description: "Historical NPB data directory"
+        required: false
+        default: "data"
+        type: string
+
+concurrency:
+  group: npb-production-prediction
+  cancel-in-progress: false
+
+jobs:
+  predict:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install production dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+      - name: PIT and syntax gate
+        run: |
+          python -m py_compile baseball_backtest.py production_npb.py
+          python -m pytest -q tests/test_pit_evidence.py tests/test_production_pit_gate.py
+      - name: Run NPB production prediction
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+          PIT_SAFE_STARTER_DATA: "1"
+          BASEBALL_TIME_BUDGET_SEC: "4800"
+        run: python production_npb.py --date "${{ inputs.date }}" --data-dir "${{ inputs.data_dir }}"
+      - name: Validate output
+        run: |
+          python - <<'PY'
+          import json, glob
+          p=glob.glob("results/npb_production_*.json")
+          assert p, "production output missing"
+          d=json.load(open(p[-1],encoding="utf-8"))
+          assert d["execution_status"]=="EXECUTED"
+          assert d["pit_status"]=="PASS"
+          assert d["starter_gate"]=="PASS"
+          assert len(d["predictions"])>0
+          for x in d["predictions"]:
+              assert abs(x["home_win_pct"]+x["draw_pct"]+x["away_win_pct"]-100)<0.05
+              assert abs(x["low_pct"]+x["high_pct"]-100)<0.05
+              assert len(x["top4_exact_scores"])==4
+          print("PRODUCTION OUTPUT VERIFIED")
+          PY
+      - name: Upload production output
+        uses: actions/upload-artifact@v4
+        with:
+          name: npb-production-output-${{ inputs.date }}
+          path: results/npb_production_*.json
