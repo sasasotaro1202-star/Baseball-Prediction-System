@@ -166,6 +166,37 @@ def build_target_rows(target_date: str) -> pd.DataFrame:
         r["starter_evidence_status"]="official_announced"
     return pd.DataFrame(rows)
 
+def direct_pit_safe_lambdas(hist: pd.DataFrame, row: pd.Series, bt: BaseballBacktest) -> tuple[float,float,float]:
+    """Fast independent PIT-safe run-rate model from historical games only.
+
+    It deliberately avoids target-game-derived state and uses exponentially weighted
+    team offense/defense plus announced-starter historical quality. This is the
+    production fallback when the ML score ensemble is numerically degenerate.
+    """
+    league="NPB"; cutoff=pd.Timestamp(row["datetime"])
+    h=norm_team(row["home"],league); a=norm_team(row["away"],league)
+    hh=hist[hist["home"].map(lambda x:norm_team(x,league))==h]
+    ha=hist[hist["away"].map(lambda x:norm_team(x,league))==h]
+    ah=hist[hist["home"].map(lambda x:norm_team(x,league))==a]
+    aa=hist[hist["away"].map(lambda x:norm_team(x,league))==a]
+    def ew(vals, default):
+        v=np.asarray(vals,dtype=float)[-20:]
+        if len(v)==0:return default
+        w=np.exp(np.linspace(-1.8,0,len(v))); return float(np.average(v,weights=w))
+    league_h=float(hist["home_score"].mean()); league_a=float(hist["away_score"].mean())
+    h_for=ew(pd.concat([hh["home_score"],ha["away_score"]],ignore_index=True),league_h)
+    h_against=ew(pd.concat([hh["away_score"],ha["home_score"]],ignore_index=True),league_a)
+    a_for=ew(pd.concat([ah["home_score"],aa["away_score"]],ignore_index=True),league_h)
+    a_against=ew(pd.concat([ah["away_score"],aa["home_score"]],ignore_index=True),league_a)
+    lh=max(.65,min(7.0,0.50*h_for+0.50*a_against+0.18))
+    la=max(.65,min(7.0,0.50*a_for+0.50*h_against))
+    hs=bt.starter_features(league,str(row.get("home_starter","") or ""),cutoff,"hs_")
+    aas=bt.starter_features(league,str(row.get("away_starter","") or ""),cutoff,"as_")
+    # Shrunk starter adjustment: stronger historical FIP suppresses opponent scoring.
+    lh*=float(np.exp(np.clip((float(aas.get("as_fip",4.0))-4.0)*0.055,-0.20,0.20)))
+    la*=float(np.exp(np.clip((float(hs.get("hs_fip",4.0))-4.0)*0.055,-0.20,0.20)))
+    return float(max(.65,min(7.0,lh))),float(max(.65,min(7.0,la))),0.0
+
 def robust_target_lambdas(bt: BaseballBacktest, hist: pd.DataFrame, row: pd.Series) -> tuple[float,float,float]:
     """Fail-safe target-specific run model used only when the fitted score ensemble degenerates."""
     league="NPB"; dt=pd.Timestamp(row["datetime"])
@@ -240,8 +271,8 @@ def predict(target_date: str, data_dir: str) -> dict:
         lh,la,shared=bt.predict_scores(score_fit,xrow,"NPB")
         fallback_used = score_fit is None or (abs(lh-la)<1e-12 and abs(lh-2.35)<1e-12)
         if fallback_used:
-            lh,la,shared=robust_target_lambdas(bt,hist,r)
-            model_label="Production ensemble + PIT-safe target-specific degeneracy fallback"
+            lh,la,shared=direct_pit_safe_lambdas(hist,r,bt)
+            model_label="Production ML ensemble + PIT-safe direct run-rate fallback (degeneracy recovery)"
         else:
             split=float(max(-0.35,min(0.35,float(p[0]-p[2]))))
             lh*=1.0+0.08*split; la*=1.0-0.08*split
