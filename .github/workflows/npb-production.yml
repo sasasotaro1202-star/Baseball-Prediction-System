@@ -61,7 +61,7 @@ jobs:
           for ym in 2026-02 2026-03 2026-04 2026-05 2026-06 2026-07 2026-08 2026-09; do
             f="data/${ym}_pbp.csv"
             if [ ! -s "$f" ]; then
-              curl -fL --retry 3 --retry-delay 2 --connect-timeout 15 --max-time 180 "https://raw.githubusercontent.com/armstjc/Nippon-Baseball-Data-Repository/main/pbp/${ym}_pbp.csv" -o "$f"
+              curl -fL --retry 3 --retry-delay 2 --connect-timeout 15 --max-time 180 "https://github.com/armstjc/Nippon-Baseball-Data-Repository/releases/download/pbp/${ym}_pbp.csv" -o "$f"
             fi
             test -s "$f"
           done
