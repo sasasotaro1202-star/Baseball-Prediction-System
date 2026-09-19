@@ -86,8 +86,9 @@ def _development(bt, X, y, start, end, names, block, retrain_every):
     return metrics, windows
 
 
-def _target_metrics(bt: BaseballBacktest, X_train, games_train, games_holdout, X_holdout, p: np.ndarray) -> tuple[dict[str, float], dict[str, float]]:
-    score_fit = bt.fit_score_ensemble(X_train, games_train["home_score"].astype(float).to_numpy(), games_train["away_score"].astype(float).to_numpy(), "MLB")
+def _target_metrics(bt: BaseballBacktest, X_train, games_train, games_holdout, X_holdout, p: np.ndarray, score_fit=None) -> tuple[dict[str, float], dict[str, float]]:
+    if score_fit is None:
+        score_fit = bt.fit_score_ensemble(X_train, games_train["home_score"].astype(float).to_numpy(), games_train["away_score"].astype(float).to_numpy(), "MLB")
     home_true = games_holdout["home_score"].astype(float).to_numpy()
     away_true = games_holdout["away_score"].astype(float).to_numpy()
     expected_home, expected_away, score_hits, hilo_actual, hilo_prob = [], [], [], [], []
@@ -157,8 +158,11 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
     games_holdout = games.iloc[holdout_start:].reset_index(drop=True)
     X_train = X.iloc[:holdout_start]
     X_holdout = X.iloc[holdout_start:]
-    base_score, base_hilo = _target_metrics(bt, X_train, games_train, games_holdout, X_holdout, base_p)
-    cand_score, cand_hilo = _target_metrics(bt, X_train, games_train, games_holdout, X_holdout, cand_p)
+    score_fit = bt.fit_score_ensemble(X_train, games_train["home_score"].astype(float).to_numpy(), games_train["away_score"].astype(float).to_numpy(), "MLB")
+    if score_fit is None:
+        raise RuntimeError("MLB score model could not be fitted for locked holdout")
+    base_score, base_hilo = _target_metrics(bt, X_train, games_train, games_holdout, X_holdout, base_p, score_fit)
+    cand_score, cand_hilo = _target_metrics(bt, X_train, games_train, games_holdout, X_holdout, cand_p, score_fit)
     lifecycle = run_validation_pipeline(
         candidate_id=spec.candidate_id,
         development_metrics=selected_metrics,
