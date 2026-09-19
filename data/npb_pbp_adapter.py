@@ -148,8 +148,13 @@ def _fetch_official_month(year: int, month: int) -> list[dict]:
         try:
             r = requests.get(url, timeout=20, headers={"User-Agent": "Baseball-Prediction-System/1.0"})
             r.raise_for_status()
+            enc = (r.apparent_encoding or r.encoding or "utf-8").lower().replace("-", "_")
+            if "shift_jis" in enc or "cp932" in enc or "shiftjis" in enc:
+                page_text = r.content.decode("cp932", errors="strict")
+            else:
+                page_text = r.content.decode(r.apparent_encoding or r.encoding or "utf-8", errors="strict")
             parser = _ScheduleParser()
-            parser.feed(r.text)
+            parser.feed(page_text)
             break
         except Exception as exc:
             last = exc
