@@ -198,6 +198,23 @@ def direct_pit_safe_lambdas(hist: pd.DataFrame, row: pd.Series, bt: BaseballBack
     la*=float(np.exp(np.clip((float(hs.get("hs_fip",4.0))-4.0)*0.055,-0.20,0.20)))
     return float(max(.65,min(7.0,lh))),float(max(.65,min(7.0,la))),0.0
 
+def blend_classifier_run_share(lh: float, la: float, p: np.ndarray, weight: float = 0.25) -> tuple[float,float]:
+    """Use the chronological classifier only for home/away run-share direction.
+
+    The coherent score model controls total expected runs; the classifier adds a
+    bounded matchup signal without allowing its NPB draw class to inflate final
+    draws. All inputs are target-time PIT-safe.
+    """
+    total=max(float(lh)+float(la),1e-6)
+    score_share=float(lh)/total
+    hp=float(p[0]); ap=float(p[2])
+    denom=max(hp+ap,1e-9)
+    clf_share=hp/denom
+    share=(1.0-weight)*score_share+weight*clf_share
+    share=max(0.15,min(0.85,share))
+    return total*share,total*(1.0-share)
+
+
 def robust_target_lambdas(bt: BaseballBacktest, hist: pd.DataFrame, row: pd.Series) -> tuple[float,float,float]:
     """Fail-safe target-specific run model used only when the fitted score ensemble degenerates."""
     league="NPB"; dt=pd.Timestamp(row["datetime"])
@@ -275,9 +292,8 @@ def predict(target_date: str, data_dir: str) -> dict:
             lh,la,shared=direct_pit_safe_lambdas(hist,r,bt)
             model_label="Production ML ensemble + PIT-safe direct run-rate fallback (degeneracy recovery)"
         else:
-            split=float(max(-0.35,min(0.35,float(p[0]-p[2]))))
-            lh*=1.0+0.08*split; la*=1.0-0.08*split
             model_label="BaseballBacktest.fit_ensemble + fit_score_ensemble + NPB extra-inning result calibration"
+        lh,la=blend_classifier_run_share(lh,la,p,weight=0.25)
         scores=score_candidates(lh,la,shared,4)
         low,high=low_high_probs(lh,la,shared)
         # NPB final-result probabilities must distinguish a 9-inning tie from
@@ -311,12 +327,15 @@ def predict(target_date: str, data_dir: str) -> dict:
         if len(sig) < 3:
             recovered=[]
             for idx, (_, r) in enumerate(games.iterrows()):
+                xrow=pd.DataFrame([bt.match_features(r)]).replace([float("inf"),float("-inf")],float("nan")).fillna(0.0).astype(float)
+                p=bt.ensemble_proba(fitted,xrow,"NPB")[0]
                 try:
                     lh,la,shared=robust_target_lambdas(bt,hist,r)
                     recovery_model="Production ML ensemble + PIT-safe chronological team-state recovery"
                 except RuntimeError:
                     lh,la,shared=direct_pit_safe_lambdas(hist,r,bt)
                     recovery_model="Production ML ensemble + PIT-safe direct run-rate fallback"
+                lh,la=blend_classifier_run_share(lh,la,p,weight=0.25)
                 scores=score_candidates(lh,la,shared,4)
                 low,high=low_high_probs(lh,la,shared)
                 home_final,draw_final,away_final=npb_final_outcomes(lh,la,shared)
