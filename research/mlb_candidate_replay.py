@@ -62,7 +62,7 @@ def _development(bt, X, y, start, end, names, block, retrain_every):
         # Periodic retraining remains strictly chronological: every reused
         # model was trained only on observations before its first OOS block.
         if fitted is None or cut - last_fit_cut >= retrain_every:
-            fitted, _, _ = bt.fit_ensemble(X.iloc[:cut], y[:cut], "MLB")
+            fitted, _, _ = bt.fit_ensemble(X.iloc[:cut], y[:cut], "MLB", fast_oos=True)
             if not fitted:
                 continue
             candidate_fitted = {
