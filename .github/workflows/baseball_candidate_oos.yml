@@ -16,7 +16,7 @@ on:
       - 'evaluation/**'
       - '.github/workflows/baseball_candidate_oos.yml'
   schedule:
-    - cron: '*/15 * * * *' # temporary verification cadence; restore weekly after evidence capture
+    - cron: '47 2 * * 0'
 
 permissions:
   contents: read
