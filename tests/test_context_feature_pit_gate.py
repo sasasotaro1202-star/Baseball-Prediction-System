@@ -33,7 +33,6 @@ def test_lineup_and_weather_are_disabled_without_explicit_pit_context(monkeypatc
     assert "weather_temp_c" not in features
     assert "h_lineup_avg" not in features
     assert features["weather_run_signal"] == 0.0
-    assert features["weather_run_signal"] == 0.0
 
 
 def test_lineup_and_weather_require_both_explicit_pre_cutoff_timestamps(monkeypatch):
@@ -64,3 +63,4 @@ def test_context_pit_gate_rejects_post_cutoff_data(monkeypatch):
     assert features["context_pit_safe"] == 0.0
     assert "weather_temp_c" not in features
     assert "h_lineup_avg" not in features
+    assert features["weather_run_signal"] == 0.0
