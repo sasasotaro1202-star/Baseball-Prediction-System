@@ -1031,6 +1031,12 @@ class BaseballBacktest:
             if starter_rate < 0.70:
                 raise RuntimeError(f"NPB starter coverage too low: {starter_rate:.1%}; refusing to run a misleading backtest.")
 
+        if not PIT_SAFE_STARTER_DATA:
+            games = games.copy()
+            games["home_starter"] = ""
+            games["away_starter"] = ""
+            games["confirmed_starters"] = False
+            games["starter_evidence_status"] = "not_pit_safe"
         X, y, meta = self.build_features(games)
         ck = self.checkpoint_dir / f"{league.lower()}_walkforward.csv"
         existing = pd.DataFrame()
