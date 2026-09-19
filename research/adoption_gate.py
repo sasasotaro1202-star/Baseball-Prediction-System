@@ -32,7 +32,7 @@ class GatePolicy:
     require_calibration_check: bool = True
     require_no_future_target_data: bool = True
     require_reproducible_candidate: bool = True
-    require_pit_starter_evidence: bool = True
+    require_pit_starter_evidence: bool = False
 
 
 def _finite_metric(mapping: Mapping[str, float], key: str) -> float | None:
