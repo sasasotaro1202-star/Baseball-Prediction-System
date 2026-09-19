@@ -40,7 +40,7 @@ jobs:
           if [ -n "${{ inputs.date }}" ]; then
             echo "date=${{ inputs.date }}" >> "$GITHUB_OUTPUT"
           else
-            echo "date=$(TZ=Asia/Tokyo date -d 'tomorrow' +%F)" >> "$GITHUB_OUTPUT"
+            echo "date=$(TZ=Asia/Tokyo date +%F)" >> "$GITHUB_OUTPUT"
           fi
           echo "data_dir=${{ inputs.data_dir || 'data' }}" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
