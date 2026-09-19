@@ -31,6 +31,7 @@ class ReplayConfig:
     min_train_rows: int = 180
     min_holdout_rows: int = 200
     block_size: int = 40
+    retrain_every: int = 150
     calibration_tolerance: float = 0.005
 
 
@@ -136,20 +137,33 @@ def _development_compare(
     candidate_names: list[str],
     block_size: int,
 ) -> tuple[dict[str, dict[str, float]], int]:
+    if block_size <= 0 or retrain_every <= 0:
+        raise ValueError("block_size and retrain_every must be > 0")
     rows: dict[str, list[np.ndarray]] = {name: [] for name in ["ProductionEnsemble"] + candidate_names}
     actual: list[np.ndarray] = []
     windows = 0
+    fitted = None
+    candidate_fitted: dict[str, Any] = {}
+    last_fit_cut = -10**9
     for cut in range(start, end, block_size):
         stop = min(end, cut + block_size)
-        fitted, _, _ = bt.fit_ensemble(X.iloc[:cut], y[:cut], "NPB")
-        if not fitted:
-            continue
+        # Mirror a realistic periodic-retraining cadence: models are trained
+        # only on rows strictly before the current prediction window, then
+        # safely reused for later OOS blocks until the next retraining point.
+        if fitted is None or cut - last_fit_cut >= retrain_every:
+            fitted, _, _ = bt.fit_ensemble(X.iloc[:cut], y[:cut], "NPB")
+            if not fitted:
+                continue
+            candidate_fitted = {
+                name: _fit_candidate(bt, name, X.iloc[:cut], y[:cut])
+                for name in candidate_names
+            }
+            last_fit_cut = cut
         windows += 1
         actual.append(y[cut:stop])
         rows["ProductionEnsemble"].append(bt.ensemble_proba(fitted, X.iloc[cut:stop], "NPB"))
         for name in candidate_names:
-            model = _fit_candidate(bt, name, X.iloc[:cut], y[:cut])
-            rows[name].append(_candidate_probability(bt, model, X.iloc[cut:stop]))
+            rows[name].append(_candidate_probability(bt, candidate_fitted[name], X.iloc[cut:stop]))
 
     y_dev = np.concatenate(actual) if actual else np.empty(0, dtype=int)
     out: dict[str, dict[str, float]] = {}
