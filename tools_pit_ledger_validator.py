@@ -11,12 +11,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PIT = ROOT / "data" / "pit"
 
-FILES = [
-    PIT / "event_observations.jsonl",
-    PIT / "availability_observations.jsonl",
-    PIT / "source_snapshots.jsonl",
-    PIT / "acquisition_runs.jsonl",
-]
+PIT_FILENAMES = (
+    "event_observations.jsonl",
+    "availability_observations.jsonl",
+    "source_snapshots.jsonl",
+    "acquisition_runs.jsonl",
+)
+
+def pit_files():
+    return [PIT / name for name in PIT_FILENAMES]
 
 LEVELS = {"NONE", "RETRIEVAL_ONLY", "THIRD_PARTY_FIRST_SEEN", "OFFICIAL_PUBLICATION", "OFFICIAL_ANNOUNCEMENT"}
 
@@ -49,7 +52,7 @@ def load(path):
 
 def validate():
     counts = {}
-    for path in FILES:
+    for path in pit_files():
         rows = load(path)
         counts[str(path.relative_to(ROOT))] = len(rows)
         for n, row in rows:
