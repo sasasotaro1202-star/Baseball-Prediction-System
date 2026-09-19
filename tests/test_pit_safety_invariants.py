@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 
 from core.pit import assert_no_future_rows, filter_as_of
-from data.availability import AvailabilityRecord, prediction_eligible
+from data.availability import AvailabilityRecord
 
 
 def test_filter_as_of_requires_explicit_availability_by_default():
@@ -103,4 +103,3 @@ def test_prediction_eligibility_requires_starter_announcement_timestamps():
 
     with pytest.raises(ValueError, match="home starter has unknown announcement timestamp"):
         record.validate()
-
