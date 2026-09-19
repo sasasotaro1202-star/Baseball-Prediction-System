@@ -8,7 +8,7 @@ features -> full-history ensemble -> coherent score distribution -> validated JS
 The target game itself is never appended to historical training data.
 """
 from __future__ import annotations
-import argparse, json, re
+import argparse, json, re, html as html_lib
 from datetime import datetime, timezone
 from pathlib import Path
 import pandas as pd
@@ -33,38 +33,54 @@ TEAM_MAP = {
 def fetch_text(url: str) -> str:
     r = requests.get(url, timeout=TIMEOUT, headers={"User-Agent":"Baseball-Prediction-System/production"})
     r.raise_for_status()
-    return r.text
+    enc = (r.apparent_encoding or r.encoding or "utf-8").lower().replace("-", "_")
+    if "shift_jis" in enc or "cp932" in enc or "shiftjis" in enc:
+        return r.content.decode("cp932", errors="strict")
+    return r.content.decode(r.apparent_encoding or r.encoding or "utf-8", errors="strict")
+
+def _clean_name(value: str) -> str:
+    return re.sub(r"\s+", " ", html_lib.unescape(value)).replace("　", " ").strip()
+
+def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]:
+    """Parse the current NPB official announced-starter page without guessing."""
+    month_day = f"{int(target_date[5:7])}月{int(target_date[8:10])}日"
+    heading = re.search(rf"<h4[^>]*>\s*{re.escape(month_day)}の予告先発投手\s*</h4>", page_html, re.I)
+    if not heading:
+        raise RuntimeError(f"Official NPB starter page does not contain {month_day}; refusing prediction.")
+    tail = page_html[heading.end():]
+    next_heading = re.search(r"<h4\b", tail, re.I)
+    section = tail[:next_heading.start()] if next_heading else tail
+
+    teams = [
+        "読売ジャイアンツ","東京ヤクルトスワローズ","中日ドラゴンズ","広島東洋カープ",
+        "阪神タイガース","横浜DeNAベイスターズ","北海道日本ハムファイターズ",
+        "オリックス・バファローズ","東北楽天ゴールデンイーグルス","福岡ソフトバンクホークス",
+        "千葉ロッテマリーンズ","埼玉西武ライオンズ",
+    ]
+    occurrences=[]
+    for team in teams:
+        pat = rf'alt=["\']{re.escape(team)}["\'][^>]*>.*?<a[^>]*>([^<]+)</a>'
+        m = re.search(pat, section, re.I | re.S)
+        if not m:
+            continue
+        pos = m.start()
+        occurrences.append((pos, team, _clean_name(m.group(1))))
+    occurrences.sort()
+    times=[m.group(1) for m in re.finditer(r">\s*(\d{1,2}:\d{2})\s*<", section)]
+    if len(occurrences) != 12 or len(times) < 6:
+        raise RuntimeError(f"PIT starter gate failed: expected 12 team/starter pairs and 6 times, got {len(occurrences)} and {len(times)}.")
+    out=[]
+    for i in range(0,12,2):
+        out.append({
+            "home":occurrences[i][1],"away":occurrences[i+1][1],
+            "home_starter":occurrences[i][2],"away_starter":occurrences[i+1][2],
+            "confirmed_starters":True,"starter_evidence_status":"official_announced",
+            "starter_source":NPB_STARTER_URL,"official_start_time":times[i//2],
+        })
+    return out
 
 def official_starters(target_date: str) -> list[dict]:
-    html = fetch_text(NPB_STARTER_URL)
-    # NPB's public page is intentionally treated as evidence only. We require
-    # both named starters and the target date before a game can pass the gate.
-    text = re.sub(r"<[^>]+>", " ", html)
-    text = re.sub(r"\s+", " ", text)
-    month_day = f"{int(target_date[5:7])}月{int(target_date[8:10])}日"
-    if month_day not in text:
-        raise RuntimeError(f"Official NPB starter page does not contain {month_day}; refusing prediction.")
-    section = text[text.index(month_day):]
-    names = [
-        ("読売ジャイアンツ","東京ヤクルトスワローズ","小笠原　慎之介","高橋　奎二"),
-        ("中日ドラゴンズ","広島東洋カープ","大野　雄大","森　翔平"),
-        ("阪神タイガース","横浜DeNAベイスターズ","才木　浩人","竹田　祐"),
-        ("北海道日本ハムファイターズ","オリックス・バファローズ","有原　航平","髙島　泰都"),
-        ("東北楽天ゴールデンイーグルス","福岡ソフトバンクホークス","瀧中　瞭太","大津　亮介"),
-        ("千葉ロッテマリーンズ","埼玉西武ライオンズ","Ａ．ジャクソン","武内　夏暉"),
-    ]
-    # For dates other than the current verified NPB page, do not guess.
-    if target_date == "2026-09-20":
-        out=[]
-        for h,a,hs,as_ in names:
-            if h in section and a in section and hs in section and as_ in section:
-                out.append({"home":h,"away":a,"home_starter":hs.replace("　"," "), "away_starter":as_.replace("　"," "),
-                            "confirmed_starters":True,"starter_evidence_status":"official_announced",
-                            "starter_source":NPB_STARTER_URL})
-        if len(out) != 6:
-            raise RuntimeError(f"PIT starter gate failed: expected 6 official games, got {len(out)}.")
-        return out
-    raise RuntimeError("No safe generic NPB starter parser for this date; refusing to guess.")
+    return parse_official_starters_html(fetch_text(NPB_STARTER_URL), target_date)
 
 def build_target_rows(target_date: str) -> pd.DataFrame:
     rows=official_starters(target_date)
