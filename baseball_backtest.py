@@ -283,7 +283,10 @@ class BaseballBacktest:
         raw=pd.concat(chunks,ignore_index=True,sort=False)
         out=self._normalize_npb_pbp(raw)
         if "game_id" in out:
-            out=out.sort_values(["date","game_id","row_order"],na_position="last").drop_duplicates(["game_id"],keep="last").reset_index(drop=True)
+            # Preserve the full play-by-play chronology. Collapsing to one row per
+            # game here destroys score reconstruction and starter evidence because
+            # aggregate_npb_games needs all plays inside each game.
+            out=out.sort_values(["date","game_id","row_order"],na_position="last").drop_duplicates(["game_id","row_order"],keep="last").reset_index(drop=True)
         return out
 
     def load_npb_player_features(self) -> pd.DataFrame:
