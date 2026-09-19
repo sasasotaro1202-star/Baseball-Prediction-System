@@ -10,7 +10,6 @@ on:
       - "data/**"
       - ".github/workflows/npb-production.yml"
   schedule:
-    # Retry after the official NPB announced-starter window opens (JST 17:00-23:00).
     - cron: "0 8-14 * * *"
   workflow_dispatch:
     inputs:
@@ -65,7 +64,6 @@ jobs:
             fi
             test -s "$f"
           done
-
       - name: Run NPB production prediction
         env:
           GITHUB_SHA: ${{ github.sha }}
@@ -75,25 +73,35 @@ jobs:
       - name: Validate output
         run: |
           python - <<'PY'
-          import json, glob
-          p=glob.glob("results/npb_production_*.json")
+          import glob, json, math
+          p = glob.glob("results/npb_production_*.json")
           assert p, "production output missing"
-          d=json.load(open(p[-1],encoding="utf-8"))
-          assert d["execution_status"] in {"EXECUTED","BLOCKED_STARTERS"}
-          if d["execution_status"]=="BLOCKED_STARTERS":
-              assert d["pit_status"]=="NOT_RUN"
-              assert d["starter_gate"]=="BLOCKED"
+          d = json.load(open(p[-1], encoding="utf-8"))
+          assert d["execution_status"] in {"EXECUTED", "BLOCKED_STARTERS"}
+          if d["execution_status"] == "BLOCKED_STARTERS":
+              assert d["pit_status"] == "NOT_RUN"
+              assert d["starter_gate"] == "BLOCKED"
               assert not d["predictions"]
               print("PRODUCTION BLOCKED SAFELY: OFFICIAL STARTERS NOT YET ANNOUNCED")
           else:
-              assert d["pit_status"]=="PASS"
-              assert d["starter_gate"]=="PASS"
-              assert len(d["predictions"])>0
-              for x in d["predictions"]:
-                  assert abs(x["home_win_pct"]+x["draw_pct"]+x["away_win_pct"]-100)<0.05
-                  assert abs(x["low_pct"]+x["high_pct"]-100)<0.05
-                  assert len(x["top4_exact_scores"])==4
-              print("PRODUCTION OUTPUT VERIFIED")
+              assert d["pit_status"] == "PASS"
+              assert d["starter_gate"] == "PASS"
+              preds = d["predictions"]
+              assert len(preds) > 0
+              assert len({x["game_id"] for x in preds}) == len(preds)
+              for x in preds:
+                  assert abs(x["home_win_pct"] + x["draw_pct"] + x["away_win_pct"] - 100) < 0.05
+                  assert abs(x["low_pct"] + x["high_pct"] - 100) < 0.05
+                  assert len(x["top4_exact_scores"]) == 4
+                  assert all(0 <= x[k] <= 100 for k in ("home_win_pct","draw_pct","away_win_pct","low_pct","high_pct"))
+              if len(preds) >= 3:
+                  signatures = {
+                      (round(x["home_win_pct"], 2), round(x["draw_pct"], 2), round(x["away_win_pct"], 2),
+                       round(x["low_pct"], 2), round(x["high_pct"], 2))
+                      for x in preds
+                  }
+                  assert len(signatures) >= 2, "degenerate production output: games received effectively identical forecasts"
+              print("PRODUCTION OUTPUT VERIFIED: PIT + probability integrity + non-degenerate game forecasts")
           PY
       - name: Upload production output
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
