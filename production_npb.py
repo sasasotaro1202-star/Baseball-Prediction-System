@@ -43,13 +43,18 @@ def _clean_name(value: str) -> str:
     return re.sub(r"\s+", " ", html_lib.unescape(value)).replace("　", " ").strip()
 
 def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]:
-    """Parse the current NPB official announced-starter page without guessing."""
+    """Parse NPB's announced-starter section with semantic fail-closed validation."""
     month_day = f"{int(target_date[5:7])}月{int(target_date[8:10])}日"
-    heading = re.search(rf"<h4[^>]*>\s*{re.escape(month_day)}の予告先発投手\s*</h4>", page_html, re.I)
+    heading = re.search(
+        rf"<h4[^>]*>\\s*{re.escape(month_day)}の予告先発投手\\s*</h4>",
+        page_html, re.I,
+    )
     if not heading:
-        raise RuntimeError(f"Official NPB starter page does not contain {month_day}; refusing prediction.")
+        raise RuntimeError(
+            f"Official NPB starter page does not contain {month_day}; refusing prediction."
+        )
     tail = page_html[heading.end():]
-    next_heading = re.search(r"<h4\b", tail, re.I)
+    next_heading = re.search(r"<h4\\b", tail, re.I)
     section = tail[:next_heading.start()] if next_heading else tail
 
     teams = [
@@ -58,25 +63,59 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
         "オリックス・バファローズ","東北楽天ゴールデンイーグルス","福岡ソフトバンクホークス",
         "千葉ロッテマリーンズ","埼玉西武ライオンズ",
     ]
-    occurrences=[]
+    occurrences = []
     for team in teams:
-        pat = rf'alt=["\']{re.escape(team)}["\'][^>]*>.*?<a[^>]*>([^<]+)</a>'
-        m = re.search(pat, section, re.I | re.S)
+        team_pat = re.escape(team)
+        # On the live NPB page each game is a .unit whose team logo is
+        # immediately associated with a player <span>. Bound the search so
+        # footer/navigation links can never become a pitcher.
+        m = re.search(
+            rf'<div[^>]+class=["\'][^"\']*unit[^"\']*["\'][^>]*>.*?'
+            rf'<img[^>]+alt=["\']{team_pat}["\'][^>]*>.*?'
+            rf'<(?:div|p)[^>]+class=["\'][^"\']*team_left[^"\']*["\'][^>]*>.*?'
+            rf'<span[^>]*>\\s*([^<]+?)\\s*</span>',
+            section, re.I | re.S,
+        )
         if not m:
+            # Deterministic fixture/backward-compatible fallback: still bound
+            # extraction to a short window after the team's logo.
+            tm = re.search(rf'alt=["\']{team_pat}["\']', section, re.I)
+            if tm:
+                window = section[tm.end():tm.end()+1200]
+                sm = re.search(r'<span[^>]*>\\s*([^<]+?)\\s*</span>', window, re.I | re.S)
+                if not sm:
+                    sm = re.search(r'<a[^>]*>\\s*([^<]+?)\\s*</a>', window, re.I | re.S)
+                if sm:
+                    m = sm
+                    name = _clean_name(sm.group(1))
+                    occurrences.append((tm.start(), team, name))
+                    continue
             continue
-        pos = m.start()
-        occurrences.append((pos, team, _clean_name(m.group(1))))
+        name = _clean_name(m.group(1))
+        occurrences.append((m.start(), team, name))
+
     occurrences.sort()
-    times=[m.group(1) for m in re.finditer(r"(?<!\d)(\d{1,2}:\d{2})(?!\d)", section)]
+    times = [m.group(1) for m in re.finditer(r"(?<!\\d)(\\d{1,2}:\\d{2})(?!\\d)", section)]
     if len(occurrences) != 12 or len(times) < 6:
-        raise RuntimeError(f"PIT starter gate failed: expected 12 team/starter pairs and 6 times, got {len(occurrences)} and {len(times)}.")
-    out=[]
-    for i in range(0,12,2):
+        raise RuntimeError(
+            f"PIT starter gate failed: expected 12 team/starter pairs and 6 times, "
+            f"got {len(occurrences)} and {len(times)}."
+        )
+
+    invalid = {"一般社団法人日本野球機構について", "採用情報", "プライバシーポリシー"}
+    for _, team, name in occurrences:
+        if not name or name in invalid or name in teams or "日本野球機構" in name:
+            raise RuntimeError(f"PIT starter gate failed: invalid starter extracted for {team}: {name!r}")
+
+    out = []
+    for i in range(0, 12, 2):
+        home_team, home_starter = occurrences[i][1], occurrences[i][2]
+        away_team, away_starter = occurrences[i+1][1], occurrences[i+1][2]
         out.append({
-            "home":occurrences[i][1],"away":occurrences[i+1][1],
-            "home_starter":occurrences[i][2],"away_starter":occurrences[i+1][2],
-            "confirmed_starters":True,"starter_evidence_status":"official_announced",
-            "starter_source":NPB_STARTER_URL,"official_start_time":times[i//2],
+            "home": home_team, "away": away_team,
+            "home_starter": home_starter, "away_starter": away_starter,
+            "confirmed_starters": True, "starter_evidence_status": "official_announced",
+            "starter_source": NPB_STARTER_URL, "official_start_time": times[i//2],
         })
     return out
 
