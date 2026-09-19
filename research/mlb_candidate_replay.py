@@ -47,7 +47,7 @@ def _fit(bt: BaseballBacktest, name: str, X, y):
     return model
 
 
-def _development(bt, X, y, start, end, names, block):
+def _development(bt, X, y, start, end, names, block, retrain_every):
     actual, outputs = [], {"ProductionEnsemble": []}
     for name in names:
         outputs[name] = []
@@ -100,7 +100,7 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
         raise RuntimeError("MLB replay does not have enough rows for an independent holdout")
 
     names = list(bt.models("MLB").keys())
-    development, windows = _development(bt, X, y, dev_start, holdout_start, names, config.block_size)
+    development, windows = _development(bt, X, y, dev_start, holdout_start, names, config.block_size, config.retrain_every)
     baseline = development["ProductionEnsemble"]
     candidates = [(k, v) for k, v in development.items() if k != "ProductionEnsemble"]
     candidates.sort(key=lambda kv: (kv[1]["LogLoss"], kv[1]["Brier"], -kv[1]["Accuracy"], kv[0]))
