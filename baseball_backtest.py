@@ -62,6 +62,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from research.regime_router import RegimeRouter
+from research.correlated_score import estimate_shared_lambda, low_high as correlated_low_high, top_scores as correlated_top_scores
 
 RANDOM_STATE = 42
 ROOT = Path(__file__).resolve().parent
@@ -144,28 +145,14 @@ def poisson_grid(lam_h: float, lam_a: float, max_runs: int = 14) -> np.ndarray:
     return m / m.sum()
 
 
-def score_candidates(lam_h: float, lam_a: float, n: int = 4) -> List[Tuple[str, float]]:
-    """Return the n highest-probability exact score cells."""
-    lam_h = max(float(lam_h), 1e-6)
-    lam_a = max(float(lam_a), 1e-6)
-    cells = [
-        (f"{h}-{a}", poisson_pmf(h, lam_h) * poisson_pmf(a, lam_a))
-        for h in range(15) for a in range(15)
-    ]
-    cells.sort(key=lambda z: z[1], reverse=True)
-    return cells[:n]
+def score_candidates(lam_h: float, lam_a: float, shared: float = 0.0, n: int = 4) -> List[Tuple[str, float]]:
+    """Return exact-score candidates from the coherent score distribution."""
+    return correlated_top_scores(lam_h, lam_a, shared, n)
 
 
-def low_high_probs(lam_h: float, lam_a: float) -> Tuple[float, float]:
+def low_high_probs(lam_h: float, lam_a: float, shared: float = 0.0) -> Tuple[float, float]:
     """Canonical 6.5 contract: LOW=total runs <=6, HIGH=total runs >=7."""
-    lam_h = max(float(lam_h), 1e-6)
-    lam_a = max(float(lam_a), 1e-6)
-    low = sum(
-        poisson_pmf(h, lam_h) * poisson_pmf(a, lam_a)
-        for h in range(7) for a in range(7 - h)
-    )
-    low = float(np.clip(low, 0, 1))
-    return low, 1.0 - low
+    return correlated_low_high(lam_h, lam_a, shared)
 
 
 def result_from_score(h: float, a: float, league: str) -> int:
@@ -1130,6 +1117,7 @@ class BaseballBacktest:
             ("ExtraTreesReg", lambda: ExtraTreesRegressor(n_estimators=180, min_samples_leaf=4, max_features=0.8, random_state=42, n_jobs=-1)),
         ]
         scored=[]
+        residuals_by_model={}
         for name, factory in specs:
             losses=[]
             for tr, va in splits:
@@ -1143,6 +1131,8 @@ class BaseballBacktest:
                     nll_h=np.mean(ph - y_home[va]*np.log(ph) + np.array([math.lgamma(v+1) for v in y_home[va]]))
                     nll_a=np.mean(pa - y_away[va]*np.log(pa) + np.array([math.lgamma(v+1) for v in y_away[va]]))
                     losses.append(float((nll_h+nll_a)/2))
+                    residuals_by_model.setdefault(name,[[],[]])[0].extend((y_home[va]-ph).tolist())
+                    residuals_by_model.setdefault(name,[[],[]])[1].extend((y_away[va]-pa).tolist())
                 except Exception:
                     continue
             if losses: scored.append((float(np.mean(losses)), name, factory))
@@ -1191,14 +1181,18 @@ class BaseballBacktest:
                 except Exception:
                     continue
         router=RegimeRouter().fit(X)
+        best_score_model=top[0][1]
+        residual_h,residual_a=residuals_by_model.get(best_score_model,([],[]))
+        shared_lambda=estimate_shared_lambda(residual_h,residual_a)
         filtered={r:{n:float(np.mean(v)) for n,v in by.items() if n in top_names and v} for r,by in regime_losses.items()}
         regime_weights=router.weights(global_losses,filtered,regime_counts) if filtered else {}
         return {"models":fitted,"weights":weights,"scores":global_losses,
-                "regime_router":router,"regime_weights":regime_weights}
+                "regime_router":router,"regime_weights":regime_weights,"shared_lambda":shared_lambda}
 
-    def predict_scores(self, fitted, xrow: pd.DataFrame, league: str) -> Tuple[float,float]:
+    def predict_scores(self, fitted, xrow: pd.DataFrame, league: str) -> Tuple[float,float,float]:
         if fitted is None:
-            return 2.35 if league=="NPB" else 4.55, 2.35 if league=="NPB" else 4.55
+            base = 2.35 if league=="NPB" else 4.55
+            return base, base, 0.0
         router=fitted.get("regime_router")
         labels=router.labels(xrow) if router is not None else np.array(["global"])
         label=str(labels[0]) if len(labels) else "global"
@@ -1208,7 +1202,7 @@ class BaseballBacktest:
             w=float(regime_weights.get(name,fitted["weights"][i])) if regime_weights else float(fitted["weights"][i])
             lh += w*float(np.clip(mh.predict(xrow)[0],0.05,15.0))
             la += w*float(np.clip(ma.predict(xrow)[0],0.05,15.0))
-        return lh,la
+        return lh,la,float(np.clip(fitted.get("shared_lambda",0.0),0.0,min(lh,la)*0.75 if min(lh,la)>0 else 0.0))
 
     def run_walkforward(self, games: pd.DataFrame, league: str) -> pd.DataFrame:
         games = games.copy()
@@ -1276,17 +1270,17 @@ class BaseballBacktest:
                 ll = float(-math.log(max(prob[actual], 1e-12)))
                 br = float(np.sum((prob-target)**2))
                 fx = X.iloc[idx]
-                lam_h, lam_a = self.predict_scores(score_fit, X.iloc[[idx]], league)
+                lam_h, lam_a, shared = self.predict_scores(score_fit, X.iloc[[idx]], league)
                 if league == "NPB":
                     split = float(np.clip(prob[0] - prob[2], -0.35, 0.35))
                 else:
                     split = float(np.clip(prob[0] - 0.5, -0.35, 0.35))
                 lam_h *= (1.0 + 0.08 * split)
                 lam_a *= (1.0 - 0.08 * split)
-                scores = score_candidates(lam_h, lam_a, 4)
+                scores = score_candidates(lam_h, lam_a, shared, 4)
                 while len(scores) < 4:
                     scores.append(("その他", 0.0))
-                low, high = low_high_probs(lam_h, lam_a)
+                low, high = low_high_probs(lam_h, lam_a, shared)
                 block_rows.append({
                     "league": league, "game_id": r["game_id"], "datetime": r["datetime"],
                     "home": r["home"], "away": r["away"], "home_starter": r.get("home_starter", ""), "away_starter": r.get("away_starter", ""),
@@ -1295,7 +1289,7 @@ class BaseballBacktest:
                     "prediction": pred, "actual": actual, "correct": int(pred == actual),
                     "logloss": ll, "brier": br, "model": name,
                     "validation_logloss": json.dumps(val_scores, ensure_ascii=False),
-                    "lambda_home": lam_h, "lambda_away": lam_a,
+                    "lambda_home": lam_h, "lambda_away": lam_a, "shared_lambda": shared,
                     "score1": scores[0][0], "score1_prob": scores[0][1], "score2": scores[1][0], "score2_prob": scores[1][1],
                     "score3": scores[2][0], "score3_prob": scores[2][1], "score4": scores[3][0], "score4_prob": scores[3][1],
                     "low": low, "high": high,

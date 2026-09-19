@@ -5,6 +5,8 @@ on:
     branches: ["main"]
     paths:
       - "research/regime_router.py"
+      - "research/correlated_score.py"
+      - "tests/test_correlated_score.py"
       - "tests/test_regime_router.py"
       - "baseball_backtest.py"
       - ".github/workflows/baseball_regime_tests.yml"
@@ -32,6 +34,6 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install --disable-pip-version-check numpy pandas pytest
       - name: Compile touched Python
-        run: python -m py_compile research/regime_router.py tests/test_regime_router.py baseball_backtest.py
+        run: python -m py_compile research/regime_router.py research/correlated_score.py tests/test_regime_router.py tests/test_correlated_score.py baseball_backtest.py
       - name: Run regime router tests
-        run: python -m pytest -q tests/test_regime_router.py
+        run: python -m pytest -q tests/test_regime_router.py tests/test_correlated_score.py
