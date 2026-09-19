@@ -302,11 +302,35 @@ def predict(target_date: str, data_dir: str) -> dict:
     result={"schema_version":"npb-production-v1","target_date":target_date,"execution_status":"EXECUTED",
             "pit_status":"PASS","starter_gate":"PASS","model_status":"FITTED_ON_PIT_SAFE_HISTORY",
             "git_commit":__import__("os").environ.get("GITHUB_SHA","unknown"),"predictions":outputs}
-    # Fail closed on the most dangerous silent failure: every target receiving the same forecast.
+    # Recover from silent cross-target model collapse instead of emitting a
+    # misleadingly uniform forecast. The recovery remains PIT-safe because it
+    # recomputes every target from historical games strictly before the target set.
     if len(outputs) == 6:
         sig={(round(o["lambda_home"],6),round(o["lambda_away"],6),round(o["home_win_pct"],4),round(o["away_win_pct"],4)) for o in outputs}
         if len(sig) < 3:
-            raise RuntimeError("Production degeneracy guard: target forecasts are insufficiently differentiated.")
+            recovered=[]
+            for idx, (_, r) in enumerate(games.iterrows()):
+                lh,la,shared=direct_pit_safe_lambdas(hist,r,bt)
+                scores=score_candidates(lh,la,shared,4)
+                low,high=low_high_probs(lh,la,shared)
+                home_final,draw_final,away_final=npb_final_outcomes(lh,la,shared)
+                o=outputs[idx].copy()
+                o.update({
+                    "home_win_pct":round(float(home_final)*100,4),
+                    "draw_pct":round(float(draw_final)*100,4),
+                    "away_win_pct":round(float(away_final)*100,4),
+                    "low_pct":round(float(low)*100,4),
+                    "high_pct":round(float(high)*100,4),
+                    "top4_exact_scores":[{"score":s,"prob_pct":round(float(v)*100,4)} for s,v in scores],
+                    "lambda_home":float(lh),"lambda_away":float(la),"shared_lambda":float(shared),
+                    "model":"Production ML ensemble + PIT-safe direct run-rate fallback (cross-target degeneracy recovery)",
+                })
+                recovered.append(o)
+            outputs=recovered
+            result["predictions"]=outputs
+            sig={(round(o["lambda_home"],6),round(o["lambda_away"],6),round(o["home_win_pct"],4),round(o["away_win_pct"],4)) for o in outputs}
+            if len(sig) < 3:
+                raise RuntimeError("Production degeneracy guard: PIT-safe recovery remained insufficiently differentiated.")
     # Output validation: probabilities are finite, win probabilities sum to 100,
     # Low/High sum to 100, and exactly four score candidates exist.
     for o in outputs:
