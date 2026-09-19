@@ -1160,13 +1160,16 @@ class BaseballBacktest:
             fitted.append((name,mh,ma)); weights.append(w)
         weights=np.asarray(weights,float); weights/=weights.sum()
 
-        router=RegimeRouter().fit(X)
+        # Every validation split gets its own router fit on that split's
+        # training rows. This is the critical anti-leakage contract: validation
+        # regime thresholds may never depend on future validation rows.
         regime_losses={}
         regime_counts={}
         for tr, va in splits:
             if time.time() - self.started_at >= self.time_budget_sec:
                 break
-            labels=router.labels(X.iloc[va])
+            router_split=RegimeRouter().fit(X.iloc[tr])
+            labels=router_split.labels(X.iloc[va])
             for regime in np.unique(labels):
                 idx=np.flatnonzero(labels==regime)
                 if len(idx) == 0:
@@ -1187,6 +1190,7 @@ class BaseballBacktest:
                             regime_losses.setdefault(str(regime),{}).setdefault(name,[]).append(float(np.mean(nll[idx])/2))
                 except Exception:
                     continue
+        router=RegimeRouter().fit(X)
         filtered={r:{n:float(np.mean(v)) for n,v in by.items() if n in top_names and v} for r,by in regime_losses.items()}
         regime_weights=router.weights(global_losses,filtered,regime_counts) if filtered else {}
         return {"models":fitted,"weights":weights,"scores":global_losses,
