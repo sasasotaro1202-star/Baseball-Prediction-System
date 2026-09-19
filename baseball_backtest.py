@@ -1117,8 +1117,7 @@ class BaseballBacktest:
             ("ExtraTreesReg", lambda: ExtraTreesRegressor(n_estimators=180, min_samples_leaf=4, max_features=0.8, random_state=42, n_jobs=-1)),
         ]
         scored=[]
-        residual_h=[]
-        residual_a=[]
+        residuals_by_model={}
         for name, factory in specs:
             losses=[]
             for tr, va in splits:
@@ -1132,8 +1131,8 @@ class BaseballBacktest:
                     nll_h=np.mean(ph - y_home[va]*np.log(ph) + np.array([math.lgamma(v+1) for v in y_home[va]]))
                     nll_a=np.mean(pa - y_away[va]*np.log(pa) + np.array([math.lgamma(v+1) for v in y_away[va]]))
                     losses.append(float((nll_h+nll_a)/2))
-                    residual_h.extend((y_home[va]-ph).tolist())
-                    residual_a.extend((y_away[va]-pa).tolist())
+                    residuals_by_model.setdefault(name,[[],[]])[0].extend((y_home[va]-ph).tolist())
+                    residuals_by_model.setdefault(name,[[],[]])[1].extend((y_away[va]-pa).tolist())
                 except Exception:
                     continue
             if losses: scored.append((float(np.mean(losses)), name, factory))
@@ -1182,6 +1181,8 @@ class BaseballBacktest:
                 except Exception:
                     continue
         router=RegimeRouter().fit(X)
+        best_score_model=top[0][1]
+        residual_h,residual_a=residuals_by_model.get(best_score_model,([],[]))
         shared_lambda=estimate_shared_lambda(residual_h,residual_a)
         filtered={r:{n:float(np.mean(v)) for n,v in by.items() if n in top_names and v} for r,by in regime_losses.items()}
         regime_weights=router.weights(global_losses,filtered,regime_counts) if filtered else {}
