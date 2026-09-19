@@ -1156,8 +1156,8 @@ class BaseballBacktest:
         if schedule.empty: return schedule
         out=[]
         for _,r in schedule.iterrows():
-            if not bool(r.get("confirmed_starters")):
-                out.append({**r.to_dict(), "status":"保留", "reason":"両先発の公式確認が揃っていない"})
+            if not bool(r.get("confirmed_starters")) or str(r.get("starter_evidence_status","")) != "official_announced":
+                out.append({**r.to_dict(), "status":"保留", "reason":"公式発表済み先発のPIT証拠が揃っていない"})
             else:
                 out.append({**r.to_dict(), "status":"予測対象"})
         return pd.DataFrame(out)
