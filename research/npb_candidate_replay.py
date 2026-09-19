@@ -189,6 +189,12 @@ def run_npb_candidate_cycle(
     bt = BaseballBacktest(Path(data_dir))
     raw = bt.load_npb_pbp()
     games = bt.aggregate_npb_games(raw)
+    if __import__("os").getenv("PIT_SAFE_STARTER_DATA", "0") != "1":
+        games = games.copy()
+        games["home_starter"] = ""
+        games["away_starter"] = ""
+        games["confirmed_starters"] = False
+        games["starter_evidence_status"] = "not_pit_safe"
     X, y, _meta = bt.build_features(games)
     n = len(X)
     holdout_start = int(n * (1.0 - config.holdout_fraction))
