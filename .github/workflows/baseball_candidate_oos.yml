@@ -38,10 +38,6 @@ jobs:
       matrix:
         league: [NPB, MLB]
     timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        league: [NPB, MLB]
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -64,10 +60,10 @@ jobs:
         run: python -m compileall -q .
 
       - name: Run candidate lifecycle
-        timeout-minutes: 90
+        timeout-minutes: 45
         env:
-          BASEBALL_TIME_BUDGET_SEC: '3600'
-          NPB_RETRAIN_EVERY: '150'
+          BASEBALL_TIME_BUDGET_SEC: '1800'
+          NPB_RETRAIN_EVERY: '300'
           MLB_ENRICH_STARTERS: '0'
           PIT_SAFE_STARTER_DATA: '0'
         run: |
