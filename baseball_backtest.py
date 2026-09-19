@@ -924,7 +924,7 @@ class BaseballBacktest:
         top=scored[:3 if fast_oos else 5]
         inv=np.array([1/max(x[0],1e-6) for x in top]); inv/=inv.sum()
         fitted=[]
-        for (name,loss),w in zip(top,inv):
+        for (loss,name),w in zip(top,inv):
             model=models[name]
             self._fit_model(model,X,y,self._sample_weights(len(X)),league)
             fitted.append((model,float(w),name))
