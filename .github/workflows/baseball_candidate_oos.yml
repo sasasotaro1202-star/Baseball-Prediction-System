@@ -15,7 +15,6 @@ on:
       - 'baseball_backtest.py'
       - 'core/**'
       - 'evaluation/**'
-      - 'data/pit/**'
       - '.github/workflows/baseball_candidate_oos.yml'
   schedule:
     - cron: '47 2 * * 0'
