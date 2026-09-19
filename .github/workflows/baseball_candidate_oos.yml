@@ -34,6 +34,10 @@ jobs:
   candidate-oos:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        league: [NPB, MLB]
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -63,7 +67,7 @@ jobs:
           MLB_ENRICH_STARTERS: '0'
         run: |
           set -euo pipefail
-          python -m research.real_data_validation --mlb-start 2020 --mlb-end 2026
+          python -m research.real_data_validation --league "${{ matrix.league }}" --mlb-start 2020 --mlb-end 2026
 
       - name: Verify lifecycle decision is explicit
         timeout-minutes: 5
@@ -85,7 +89,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: baseball-candidate-oos-${{ github.run_id }}
+          name: baseball-candidate-oos-${{ matrix.league }}-${{ github.run_id }}
           path: |
             results/real_data_validation.json
             results/npb_candidate_development.json
