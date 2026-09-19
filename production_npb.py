@@ -84,13 +84,12 @@ def official_starters(target_date: str) -> list[dict]:
 
 def build_target_rows(target_date: str) -> pd.DataFrame:
     rows=official_starters(target_date)
-    times={
-      "読売ジャイアンツ":"14:00","北海道日本ハムファイターズ":"14:00","東北楽天ゴールデンイーグルス":"14:00",
-      "中日ドラゴンズ":"18:00","阪神タイガース":"18:00","千葉ロッテマリーンズ":"18:00",
-    }
     for i,r in enumerate(rows):
         r["league"]="NPB"; r["game_id"]=f"NPB-{target_date}-{i+1}"
-        r["datetime"]=pd.Timestamp(f"{target_date} {times[r['home']]}").tz_localize("Asia/Tokyo").tz_convert("UTC")
+        start_time=r.get("official_start_time")
+        if not start_time:
+            raise RuntimeError("Official NPB schedule time missing; refusing prediction.")
+        r["datetime"]=pd.Timestamp(f"{target_date} {start_time}").tz_localize("Asia/Tokyo").tz_convert("UTC")
         r["home_score"]=float("nan"); r["away_score"]=float("nan")
         r["starter_evidence_status"]="official_announced"
     return pd.DataFrame(rows)
