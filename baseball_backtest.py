@@ -936,7 +936,7 @@ class BaseballBacktest:
             cut,val=splits[-1]
             try:
                 raw=np.zeros((val,k))
-                inv=np.array([1/max(loss,1e-6) for _,loss in top]); inv/=inv.sum()
+                inv=np.array([1/max(loss,1e-6) for loss,_ in top]); inv/=inv.sum()
                 for (name,_loss),w in zip(top,inv):
                     mm=models[name]
                     self._fit_model(mm,X.iloc[:cut],y[:cut],self._sample_weights(cut),league)
