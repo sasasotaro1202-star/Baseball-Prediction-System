@@ -53,6 +53,19 @@ jobs:
         run: |
           python -m py_compile baseball_backtest.py production_npb.py
           python -m pytest -q tests/test_pit_evidence.py tests/test_production_pit_gate.py
+      - name: Acquire PIT-safe public NPB PBP data
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p data
+          for ym in 2025-03 2025-04 2025-05 2025-06 2025-07 2025-08 2025-09 2025-10 2026-02 2026-03 2026-04 2026-05 2026-06 2026-07 2026-08 2026-09; do
+            f="data/\${ym}_pbp.csv"
+            if [ ! -s "$f" ]; then
+              curl -fL --retry 3 --retry-delay 2 --connect-timeout 15 --max-time 180 "https://raw.githubusercontent.com/armstjc/Nippon-Baseball-Data-Repository/main/pbp/\${ym}_pbp.csv" -o "$f"
+            fi
+            test -s "$f"
+          done
+
       - name: Run NPB production prediction
         env:
           GITHUB_SHA: ${{ github.sha }}
