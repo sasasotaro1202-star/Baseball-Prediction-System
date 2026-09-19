@@ -152,7 +152,7 @@ def _development_compare(
         # only on rows strictly before the current prediction window, then
         # safely reused for later OOS blocks until the next retraining point.
         if fitted is None or cut - last_fit_cut >= retrain_every:
-            fitted, _, _ = bt.fit_ensemble(X.iloc[:cut], y[:cut], "NPB")
+            fitted, _, _ = bt.fit_ensemble(X.iloc[:cut], y[:cut], "NPB", fast_oos=True)
             if not fitted:
                 continue
             candidate_fitted = {
