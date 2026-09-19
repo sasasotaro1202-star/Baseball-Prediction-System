@@ -12,7 +12,7 @@ def test_planner_prioritizes_production_critical_evidence():
 
 def test_planner_can_remove_completed_tasks_without_reordering_remaining():
     plan = create_plan("x", completed={"starting_pitcher"})
-    assert plan["queue"][0]["area"] == "bullpen_fatigue"
+    assert plan["queue"][0]["area"] == "target_permutation"
     assert all(item["area"] != "starting_pitcher" for item in plan["queue"])
 
 
