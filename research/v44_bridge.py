@@ -36,6 +36,14 @@ class V44BaseballBacktest(BaseballBacktest):
     """
 
     def fit_ensemble(self, X, y, league):
+        # Record delegation before the inherited engine can append any audit entries,
+        # keeping the compatibility contract deterministic.
+        self.audit.insert(0, {
+            "type": "v44_bridge_fit_ensemble",
+            "league": league,
+            "rows": int(len(X)),
+            "delegated_to_existing_engine": True,
+        })
         result = super().fit_ensemble(X, y, league)
         self.audit.append({
             "type": "v44_bridge_fit_ensemble",
@@ -77,3 +85,4 @@ class V44BaseballBacktest(BaseballBacktest):
             rows=int(len(result)),
             pit_checked=True,
         )
+
