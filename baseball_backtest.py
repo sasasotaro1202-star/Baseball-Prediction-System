@@ -1146,8 +1146,10 @@ class BaseballBacktest:
             for g in d.get("games", []):
                 t=g.get("teams",{}); h=t.get("home",{}); a=t.get("away",{})
                 hp=(h.get("probablePitcher") or {}).get("fullName",""); ap=(a.get("probablePitcher") or {}).get("fullName","")
-                confirmed=bool(hp and ap)
-                rows.append({"game_id":g.get("gamePk"),"datetime":g.get("gameDate"),"home":h.get("team",{}).get("name",""),"away":a.get("team",{}).get("name",""),"home_starter":hp,"away_starter":ap,"confirmed_starters":confirmed})
+                confirmed=False
+                rows.append({"game_id":g.get("gamePk"),"datetime":g.get("gameDate"),"home":h.get("team",{}).get("name",""),"away":a.get("team",{}).get("name",""),"home_starter":hp,"away_starter":ap,"confirmed_starters":False,
+                         "starter_evidence_status":"official_probable_only" if (hp and ap) else "missing",
+                         "starter_source":"MLB Stats API schedule"})
         return pd.DataFrame(rows)
 
     def build_future_mlb_predictions(self, schedule: pd.DataFrame) -> pd.DataFrame:
