@@ -77,8 +77,7 @@ def test_explicit_production_entry_point_cannot_fall_back_to_research_mode():
     # The wrapper must force production=True even if a caller tries to pass
     # production=False. NPB is currently fail-closed, so the forced production
     # gate must reject the prediction before any filesystem side effect occurs.
-    result =
-        run_production_prediction(
+    result = run_production_prediction(
             row={
                 "required_data_ok": True,
                 "feature_complete": True,
