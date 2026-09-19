@@ -184,14 +184,20 @@ def _load_official_starter_snapshot(target_date: str) -> list[dict] | None:
     return games
 
 def official_starters(target_date: str) -> list[dict]:
+    snapshot = None
+    try:
+        snapshot = _load_official_starter_snapshot(target_date)
+    except Exception:
+        snapshot = None
     try:
         return parse_official_starters_html(
             fetch_text(NPB_STARTER_URL + "?_ts=" + str(int(time.time()))), target_date
         )
-    except RuntimeError as exc:
-        if "does not contain" not in str(exc):
-            raise
-        snapshot = _load_official_starter_snapshot(target_date)
+    except RuntimeError:
+        # If the live official page is structurally changed but an independently
+        # captured official snapshot exists, use that PIT-safe snapshot rather than
+        # failing a scheduled production refresh. The snapshot itself is validated
+        # for provenance, target date, six games, and official source metadata.
         if snapshot is not None:
             return snapshot
         raise
