@@ -1,16 +1,1 @@
-{
-  "schema_version": "npb-official-starter-snapshot-v1",
-  "target_date": "2026-09-20",
-  "source_url": "https://npb.jp/announcement/starter/",
-  "source_type": "NPB_OFFICIAL",
-  "retrieved_at_utc": "2026-09-19T17:35:35.464Z",
-  "evidence_note": "Retrieved from the official NPB announced-starters page through an independent current web retrieval; 12 team/starter pairs and 6 official start times were present.",
-  "games": [
-    {"home":"読売ジャイアンツ","away":"東京ヤクルトスワローズ","home_starter":"小笠原　慎之介","away_starter":"高橋　奎二","official_start_time":"14:00"},
-    {"home":"中日ドラゴンズ","away":"広島東洋カープ","home_starter":"大野　雄大","away_starter":"森　翔平","official_start_time":"18:00"},
-    {"home":"阪神タイガース","away":"横浜DeNAベイスターズ","home_starter":"才木　浩人","away_starter":"竹田　祐","official_start_time":"18:00"},
-    {"home":"北海道日本ハムファイターズ","away":"オリックス・バファローズ","home_starter":"有原　航平","away_starter":"髙島　泰都","official_start_time":"14:00"},
-    {"home":"東北楽天ゴールデンイーグルス","away":"福岡ソフトバンクホークス","home_starter":"瀧中　瞭太","away_starter":"大津　亮介","official_start_time":"14:00"},
-    {"home":"千葉ロッテマリーンズ","away":"埼玉西武ライオンズ","home_starter":"Ａ．ジャクソン","away_starter":"武内　夏暉","official_start_time":"18:00"}
-  ]
-}
+{"schema_version":"npb-official-starter-snapshot-v1","target_date":"2026-09-20","source_url":"https://npb.jp/announcement/starter/","source_urls":["https://npb.jp/announcement/starter/","https://npb.jp/cl/","https://npb.jp/pl/"],"source_type":"NPB_OFFICIAL","retrieved_at_utc":"2026-09-19T17:35:35.464Z","evidence_note":"Retrieved from the official NPB announced-starters page through an independent current web retrieval; 12 team/starter pairs and 6 official start times were present.","games":[{"home":"読売ジャイアンツ","away":"東京ヤクルトスワローズ","home_starter":"小笠原　慎之介","away_starter":"高橋　奎二","official_start_time":"14:00"},{"home":"中日ドラゴンズ","away":"広島東洋カープ","home_starter":"大野　雄大","away_starter":"森　翔平","official_start_time":"18:00"},{"home":"阪神タイガース","away":"横浜DeNAベイスターズ","home_starter":"才木　浩人","away_starter":"竹田　祐","official_start_time":"18:00"},{"home":"北海道日本ハムファイターズ","away":"オリックス・バファローズ","home_starter":"有原　航平","away_starter":"髙島　泰都","official_start_time":"14:00"},{"home":"東北楽天ゴールデンイーグルス","away":"福岡ソフトバンクホークス","home_starter":"瀧中　瞭太","away_starter":"大津　亮介","official_start_time":"14:00"},{"home":"千葉ロッテマリーンズ","away":"埼玉西武ライオンズ","home_starter":"Ａ．ジャクソン","away_starter":"武内　夏暉","official_start_time":"18:00"}]}
