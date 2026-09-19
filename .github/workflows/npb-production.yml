@@ -86,6 +86,8 @@ jobs:
           else:
               assert d["pit_status"] == "PASS"
               assert d["starter_gate"] == "PASS"
+              assert d.get("data_quality_status") == "PASS"
+              assert d.get("historical_score_mean_total", 0) >= 3.0
               preds = d["predictions"]
               assert len(preds) > 0
               assert len({x["game_id"] for x in preds}) == len(preds)
