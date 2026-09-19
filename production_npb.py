@@ -107,7 +107,11 @@ def predict(target_date: str, data_dir: str) -> dict:
         raise RuntimeError(f"Insufficient PIT-safe NPB history: {len(hist)} games.")
 
     # Build chronological state from historical games only.
+    # Production training must replay chronology; never build target rows into history.
+    # The existing feature builder is the canonical chronological state constructor.
     X,y,meta=bt.build_features(hist)
+    if len(X) != len(hist) or len(y) != len(hist):
+        raise RuntimeError("Chronological feature contract failed: feature/label row count mismatch.")
     fitted, validation_scores, _=bt.fit_ensemble(X,y,"NPB")
     if not fitted:
         raise RuntimeError("Production ensemble fitting failed.")
