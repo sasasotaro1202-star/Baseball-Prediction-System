@@ -163,6 +163,8 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
 
     X_train, X_holdout = X.iloc[:holdout_start], X.iloc[holdout_start:]
     y_train, y_holdout = y[:holdout_start], y[holdout_start:]
+    games_train = games.iloc[:holdout_start].reset_index(drop=True)
+    games_holdout = games.iloc[holdout_start:].reset_index(drop=True)
     base_fit, _, _ = bt.fit_ensemble(X_train, y_train, "MLB")
     if not base_fit:
         raise RuntimeError("MLB production ensemble could not be fitted for holdout")
@@ -171,8 +173,8 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
     base = classification_metrics(y_holdout, base_p, classes=[0, 1])
     cand = classification_metrics(y_holdout, cand_p, classes=[0, 1])
 
-    # Score and market-line checks are intentionally fail-closed until the
-    # production OOS artifact contains PIT historical line evidence.
+    base_score, base_hilo = _target_metrics(bt, X_train, games_train, games_holdout, X_holdout, base_p)
+    cand_score, cand_hilo = _target_metrics(bt, X_train, games_train, games_holdout, X_holdout, cand_p)
     lifecycle = run_validation_pipeline(
         candidate_id=spec.candidate_id,
         development_metrics=selected_metrics,
@@ -182,18 +184,18 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
         calibration_ok=cand["ECE"] <= base["ECE"] + 0.005,
         no_future_target_data=True,
         reproducible=True,
-        holdout_score_baseline=None,
-        holdout_score_candidate=None,
-        holdout_hilo_baseline=None,
-        holdout_hilo_candidate=None,
+        holdout_score_baseline=base_score,
+        holdout_score_candidate=cand_score,
+        holdout_hilo_baseline=base_hilo,
+        holdout_hilo_candidate=cand_hilo,
         league="MLB",
     )
-    # The common policy requires score/Low-High evidence, so this remains
-    # non-promotable until those datasets are actually wired in.
     out = {"stage": "locked_holdout_evaluated", "candidate": locked,
-           "holdout": {"baseline": base, "candidate": cand},
+           "holdout": {"baseline": base, "candidate": cand,
+                       "baseline_score": base_score, "candidate_score": cand_score,
+                       "baseline_hilo": base_hilo, "candidate_hilo": cand_hilo},
            "validation": asdict(lifecycle), "decision": lifecycle.decision,
-           "score_hilo_status": "REQUIRED_EVIDENCE_NOT_CONNECTED"}
+           "score_hilo_status": "CONNECTED"}
     RESULTS.mkdir(parents=True, exist_ok=True)
     atomic_write_json(RESULTS / "mlb_candidate_development.json", development)
     atomic_write_json(RESULTS / "mlb_locked_holdout.json", out)
