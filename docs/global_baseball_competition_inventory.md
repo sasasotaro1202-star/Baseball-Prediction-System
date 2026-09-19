@@ -192,3 +192,10 @@ This document is therefore a **candidate inventory**, not a claim of current sys
 - WBSC U-18 Baseball World Cup: https://www.wbsc.org/en/events/2025-u18-baseball-world-cup
 - WBSC U-23 Baseball World Cup: https://www.wbsc.org/en/events/2026-vi-wbsc-u-23-baseball-world-cup
 - WBSC Europe baseball documents: https://www.wbsceurope.org/en/organisation/baseball/documents
+
+
+## Phase 1 execution scope
+
+Active engineering and production-readiness work is restricted to exactly three targets: **Asian Games Baseball (2026 Aichi-Nagoya), NPB, and MLB**. All other inventory entries are deferred until all three Phase 1 targets independently pass the full production gate.
+
+The official Aichi-Nagoya organizer currently lists the 2026 baseball competition for September 21–27 and has published matchup changes. Schedule, matchup, starter and publication-time evidence must therefore be captured with strict PIT controls. Sources: https://www.aichi-nagoya2026.org/ja/sport/baseball/ and https://www.aichi-nagoya2026.org/ja/news-2050/
