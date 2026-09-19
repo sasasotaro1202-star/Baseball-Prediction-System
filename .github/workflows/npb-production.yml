@@ -95,7 +95,15 @@ jobs:
                   assert abs(x["home_win_pct"] + x["draw_pct"] + x["away_win_pct"] - 100) < 0.05
                   assert abs(x["low_pct"] + x["high_pct"] - 100) < 0.05
                   assert len(x["top4_exact_scores"]) == 4
+                  score_probs = [s["prob_pct"] for s in x["top4_exact_scores"]]
+                  score_names = [s["score"] for s in x["top4_exact_scores"]]
+                  assert len(set(score_names)) == 4
+                  assert all(isinstance(s, str) and "-" in s for s in score_names)
+                  assert all(math.isfinite(float(v)) and 0 <= float(v) <= 100 for v in score_probs)
                   assert all(0 <= x[k] <= 100 for k in ("home_win_pct","draw_pct","away_win_pct","low_pct","high_pct"))
+                  assert math.isfinite(float(x["lambda_home"])) and math.isfinite(float(x["lambda_away"]))
+                  assert 0.0 < float(x["lambda_home"]) <= 7.0
+                  assert 0.0 < float(x["lambda_away"]) <= 7.0
               if len(preds) >= 3:
                   signatures = {
                       (round(x["home_win_pct"], 2), round(x["draw_pct"], 2), round(x["away_win_pct"], 2),
