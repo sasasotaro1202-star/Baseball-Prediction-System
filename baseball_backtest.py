@@ -620,6 +620,43 @@ class BaseballBacktest:
             pid=str(r.get('player_id','')); side=str(r.get('side',''))
             if pid: self.player_history[(row['league'],pid)].append(r.to_dict())
 
+    def _context_pit_safe(self, row: pd.Series) -> bool:
+        """Return True only when lineup/weather context is explicitly PIT-safe.
+
+        A historical dataset can contain final lineups or realized weather even
+        though those values were not available when the prediction was made.
+        Requiring an explicit availability timestamp prevents silent postgame
+        enrichment from entering OOS features.
+        """
+        if os.getenv("PIT_SAFE_CONTEXT_DATA", "0") != "1":
+            return False
+        cutoff_raw = row.get("prediction_cutoff")
+        if cutoff_raw in (None, "", "nan"):
+            return False
+        try:
+            cutoff = pd.Timestamp(cutoff_raw)
+            if cutoff.tzinfo is None:
+                cutoff = cutoff.tz_localize("UTC")
+            else:
+                cutoff = cutoff.tz_convert("UTC")
+        except Exception:
+            return False
+        timestamps = []
+        for key in ("lineup_announced_at", "weather_available_at"):
+            raw = row.get(key)
+            if raw in (None, "", "nan"):
+                return False
+            try:
+                ts = pd.Timestamp(raw)
+                if ts.tzinfo is None:
+                    ts = ts.tz_localize("UTC")
+                else:
+                    ts = ts.tz_convert("UTC")
+                timestamps.append(ts)
+            except Exception:
+                return False
+        return all(ts <= cutoff for ts in timestamps)
+
     def match_features(self, row: pd.Series) -> Dict[str, float]:
         league = row["league"]
         dt = pd.Timestamp(row["datetime"])
@@ -634,14 +671,23 @@ class BaseballBacktest:
         ass = str(row.get("away_starter", "") or "")
         out.update(self.starter_features(league, hs, dt, prefix="hs_"))
         out.update(self.starter_features(league, ass, dt, prefix="as_"))
-        hpf=self._lineup_features(row,"home",league); apf=self._lineup_features(row,"away",league)
-        for k,v in hpf.items(): out[f"h_{k}"]=v
-        for k,v in apf.items(): out[f"a_{k}"]=v
-        for k in set(hpf)&set(apf): out[f"d_{k}"]=hpf[k]-apf[k]
-        for c in ("weather_temp_c", "weather_humidity_pct", "weather_wind_kmh", "weather_precip_mm"):
-            if c in row:
-                try: out[c] = float(row.get(c)) if pd.notna(row.get(c)) else 0.0
-                except Exception: out[c] = 0.0
+        # Historical lineups/weather are high-risk PIT inputs: a completed game's
+        # row may contain information that was only published after first pitch.
+        # Never consume them unless the row carries an explicit pre-cutoff
+        # availability timestamp and the operator explicitly enables PIT-safe
+        # context data. This keeps ordinary backtests fail-closed rather than
+        # silently turning postgame enrichment into predictive signal.
+        context_pit_safe = self._context_pit_safe(row)
+        out["context_pit_safe"] = float(context_pit_safe)
+        if context_pit_safe:
+            hpf=self._lineup_features(row,"home",league); apf=self._lineup_features(row,"away",league)
+            for k,v in hpf.items(): out[f"h_{k}"]=v
+            for k,v in apf.items(): out[f"a_{k}"]=v
+            for k in set(hpf)&set(apf): out[f"d_{k}"]=hpf[k]-apf[k]
+            for c in ("weather_temp_c", "weather_humidity_pct", "weather_wind_kmh", "weather_precip_mm"):
+                if c in row:
+                    try: out[c] = float(row.get(c)) if pd.notna(row.get(c)) else 0.0
+                    except Exception: out[c] = 0.0
         out["expected_env"] = max(0.5, min(12.0, 0.5 * (hf["gf_10"] + af["gf_10"] + hf["ga_10"] + af["ga_10"])))
         out["matchup_home_bat_vs_away_fip"] = hf.get("bat_avg_10",0.0) - out.get("as_fip",4.0)/20.0
         out["matchup_away_bat_vs_home_fip"] = af.get("bat_avg_10",0.0) - out.get("hs_fip",4.0)/20.0
