@@ -239,6 +239,11 @@ class BaseballBacktest:
     # ------------------------------------------------------------------
     # NPB loader
     # ------------------------------------------------------------------
+    def _normalize_npb_pbp(self, raw: pd.DataFrame) -> pd.DataFrame:
+        """Normalize public NPB PBP releases through the canonical PIT-safe adapter."""
+        from data.npb_pbp_adapter import normalize_pbp_frame
+        return normalize_pbp_frame(raw, data_dir=self.data_dir)
+
     def load_npb_pbp(self) -> pd.DataFrame:
         """Load all available NPB seasons from the massive multi-season collector.
 
