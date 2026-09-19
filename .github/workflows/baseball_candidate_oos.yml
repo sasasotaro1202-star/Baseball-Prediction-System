@@ -1,4 +1,5 @@
 name: Baseball Candidate OOS Validation
+# Phase 1 screening: NPB and MLB run concurrently; production defaults remain unchanged.
 # Trusted-main workflow: candidate selection is OOS-only; holdout is locked before evaluation.
 
 on:
