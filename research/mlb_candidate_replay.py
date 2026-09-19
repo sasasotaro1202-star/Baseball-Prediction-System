@@ -141,7 +141,13 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
         atomic_write_json(RESULTS / "mlb_candidate_development.json", result)
         return result
 
-    dataset_hash = hashlib.sha256(str(len(games)).encode() + str(games.index.tolist()).encode()).hexdigest()
+    # Hash the actual ordered dataset content, not only row count/index. This
+    # makes candidate identity sensitive to data changes and strengthens
+    # reproducibility/auditability.
+    dataset_bytes = games.to_json(
+        orient="split", date_format="iso", double_precision=15
+    ).encode("utf-8")
+    dataset_hash = hashlib.sha256(dataset_bytes).hexdigest()
     spec = CandidateSpec(
         candidate_id="cand-" + hashlib.sha256(f"MLB|{selected_name}|{feature_version}|{git_commit}|{dataset_hash}".encode()).hexdigest()[:20],
         league="MLB", objective="win", model_version=selected_name, feature_version=feature_version,
