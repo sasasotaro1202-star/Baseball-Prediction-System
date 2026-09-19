@@ -180,17 +180,30 @@ def direct_pit_safe_lambdas(hist: pd.DataFrame, row: pd.Series, bt: BaseballBack
     ha=hist[hist["away"].map(lambda x:norm_team(x,league))==h]
     ah=hist[hist["home"].map(lambda x:norm_team(x,league))==a]
     aa=hist[hist["away"].map(lambda x:norm_team(x,league))==a]
-    def ew(vals, default):
-        v=np.asarray(vals,dtype=float)[-20:]
-        if len(v)==0:return default
-        w=np.exp(np.linspace(-1.8,0,len(v))); return float(np.average(v,weights=w))
-    league_h=float(hist["home_score"].mean()); league_a=float(hist["away_score"].mean())
-    h_for=ew(pd.concat([hh["home_score"],ha["away_score"]],ignore_index=True),league_h)
-    h_against=ew(pd.concat([hh["away_score"],ha["home_score"]],ignore_index=True),league_a)
-    a_for=ew(pd.concat([ah["home_score"],aa["away_score"]],ignore_index=True),league_h)
-    a_against=ew(pd.concat([ah["away_score"],aa["home_score"]],ignore_index=True),league_a)
-    lh=max(.65,min(7.0,0.50*h_for+0.50*a_against+0.18))
-    la=max(.65,min(7.0,0.50*a_for+0.50*h_against))
+    hist=hist.sort_values(["datetime","game_id"]).copy()
+    def ew_team(team, side, scored, default):
+        rows=[]
+        for _,g in hist.iterrows():
+            if norm_team(g["home"],league)==team:
+                val=g["home_score"] if scored else g["away_score"]
+                rows.append((g["datetime"],float(val)))
+            elif norm_team(g["away"],league)==team:
+                val=g["away_score"] if scored else g["home_score"]
+                rows.append((g["datetime"],float(val)))
+        if not rows:return default
+        vals=np.asarray([v for _,v in rows[-30:]],dtype=float)
+        w=np.exp(np.linspace(-2.2,0,len(vals)))
+        return float(np.average(vals,weights=w))
+    league_h=float(pd.to_numeric(hist["home_score"],errors="coerce").mean())
+    league_a=float(pd.to_numeric(hist["away_score"],errors="coerce").mean())
+    league_mean=max(1.0,0.5*(league_h+league_a))
+    h_for=ew_team(h,"any",True,league_mean); h_against=ew_team(h,"any",False,league_mean)
+    a_for=ew_team(a,"any",True,league_mean); a_against=ew_team(a,"any",False,league_mean)
+    # Matchup run rates are team-specific and chronology-preserving. A small
+    # home-field multiplier is applied after the PIT-safe team interaction.
+    lh=max(.65,min(7.0,0.55*h_for+0.45*a_against))
+    la=max(.65,min(7.0,0.55*a_for+0.45*h_against))
+    lh*=1.035
     hs=bt.starter_features(league,str(row.get("home_starter","") or ""),cutoff,"hs_")
     aas=bt.starter_features(league,str(row.get("away_starter","") or ""),cutoff,"as_")
     # Shrunk starter adjustment: stronger historical FIP suppresses opponent scoring.
@@ -329,12 +342,18 @@ def predict(target_date: str, data_dir: str) -> dict:
             for idx, (_, r) in enumerate(games.iterrows()):
                 xrow=pd.DataFrame([bt.match_features(r)]).replace([float("inf"),float("-inf")],float("nan")).fillna(0.0).astype(float)
                 p=bt.ensemble_proba(fitted,xrow,"NPB")[0]
+                # Prefer the raw historical run-rate recovery here. It is
+                # independent of target state and therefore remains PIT-safe, while
+                # also avoiding the failure mode where a sparse team-state feature
+                # vector collapses every target to the same lower clamp.
                 try:
+                    lh,la,shared=direct_pit_safe_lambdas(hist,r,bt)
+                    recovery_model="Production ML ensemble + PIT-safe chronological direct run-rate recovery"
+                    if abs(lh-la) < 1e-6 and abs(lh-0.65) < 1e-6:
+                        raise RuntimeError("direct run-rate recovery collapsed to floor")
+                except RuntimeError:
                     lh,la,shared=robust_target_lambdas(bt,hist,r)
                     recovery_model="Production ML ensemble + PIT-safe chronological team-state recovery"
-                except RuntimeError:
-                    lh,la,shared=direct_pit_safe_lambdas(hist,r,bt)
-                    recovery_model="Production ML ensemble + PIT-safe direct run-rate fallback"
                 lh,la=blend_classifier_run_share(lh,la,p,weight=0.25)
                 scores=score_candidates(lh,la,shared,4)
                 low,high=low_high_probs(lh,la,shared)
