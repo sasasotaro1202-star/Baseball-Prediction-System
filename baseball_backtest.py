@@ -61,6 +61,8 @@ from sklearn.metrics import accuracy_score, brier_score_loss, log_loss, mean_abs
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
+from research.regime_router import RegimeRouter
+
 RANDOM_STATE = 42
 ROOT = Path(__file__).resolve().parent
 RESULTS = ROOT / "results"
@@ -240,6 +242,8 @@ class BaseballBacktest:
         self.checkpoint_dir = RESULTS / "checkpoints"
         self.checkpoint_version = "npb-massive-resume-v4-100target"
         self._last_temperature = 1.0
+        self._regime_router = None
+        self._regime_weights = {}
         self.player_game = pd.DataFrame()
         self.player_history = defaultdict(list)
         self.player_index = {}
@@ -1014,40 +1018,60 @@ class BaseballBacktest:
         return best_name,best,{name:float(sc) for sc,name in scores}
 
     def fit_ensemble(self, X: pd.DataFrame, y: np.ndarray, league: str, *, fast_oos: bool = False):
-        """Fit the production ensemble; fast_oos only reduces research screening cost.
+        """Fit an ensemble with leakage-safe regime-specific routing.
 
-        Production/default behavior is unchanged. Candidate Development-OOS may
-        set fast_oos=True to use the latest chronological validation window and
-        three finalists instead of the full nested screening path. The locked
-        holdout and production inference continue to use the default path.
+        Global chronological validation remains the primary selector. A
+        secondary regime router can change the mixture only when enough
+        validation observations exist for that regime; otherwise it shrinks
+        completely back to the global weights.
         """
         models=self.models(league); k=3 if league=="NPB" else 2
         splits=self._validation_splits(len(X))
         if fast_oos and splits:
             splits=splits[-1:]
         scored=[]
+        regime_losses={}
+        regime_counts={}
         for name,model in models.items():
             losses=[]
             for cut,val in splits:
                 try:
                     self._fit_model(model,X.iloc[:cut],y[:cut],self._sample_weights(cut),league)
                     p=self.align_proba(model.predict_proba(X.iloc[cut:cut+val]),model.classes_,league)
-                    losses.append(log_loss(y[cut:cut+val],p,labels=list(range(k))))
+                    yv=y[cut:cut+val]
+                    losses.append(log_loss(yv,p,labels=list(range(k))))
+                    router=RegimeRouter()
+                    router.fit(X.iloc[:cut])
+                    labels=router.labels(X.iloc[cut:cut+val])
+                    for regime in np.unique(labels):
+                        mask=labels==regime
+                        n=int(mask.sum())
+                        regime_counts[regime]=regime_counts.get(regime,0)+n
+                        regime_losses.setdefault(regime,{}).setdefault(name,[]).extend(
+                            (-np.log(np.clip(p[mask, yv[mask]], 1e-12, 1.0))).tolist()
+                        )
                 except Exception:
                     losses=[]; break
             if losses: scored.append((float(np.mean(losses)),name))
         if not scored: return None,{},None
         scored.sort(key=lambda z:z[0])
         top=scored[:3 if fast_oos else 5]
-        inv=np.array([1/max(x[0],1e-6) for x in top]); inv/=inv.sum()
+        top_names={name for _,name in top}
+        global_losses={name:float(loss) for loss,name in top}
         fitted=[]
-        for (loss,name),w in zip(top,inv):
+        for (loss,name) in top:
             model=models[name]
             self._fit_model(model,X,y,self._sample_weights(len(X)),league)
-            fitted.append((model,float(w),name))
+            fitted.append((model,float(1.0/max(loss,1e-6)),name))
+        inv=np.asarray([w for _,w,_ in fitted],dtype=float); inv/=max(inv.sum(),1e-12)
+        fitted=[(m,float(w),n) for (m,_,n),w in zip(fitted,inv)]
+        router=RegimeRouter().fit(X)
+        filtered_regime_losses={}
+        for regime,by_model in regime_losses.items():
+            filtered_regime_losses[regime]={name:float(np.mean(vals)) for name,vals in by_model.items() if name in top_names and vals}
+        self._regime_router=router
+        self._regime_weights=router.weights(global_losses,filtered_regime_losses,regime_counts) if filtered_regime_losses else {}
         temperature=1.0
-        # Calibration is deliberately retained for the full production path.
-        # Research screening does not spend another validation fit per finalist.
         if not fast_oos and splits and fitted:
             cut,val=splits[-1]
             try:
@@ -1061,13 +1085,25 @@ class BaseballBacktest:
             except Exception as e:
                 self.audit.append({"type":"calibration_error","error":str(e)})
         self._last_temperature = temperature
+        # Restore full-data fitted models after the calibration fit above.
+        for model,_,name in fitted:
+            self._fit_model(model,X,y,self._sample_weights(len(X)),league)
         return fitted,{name:float(loss) for loss,name in scored},top[0][0]
 
     def ensemble_proba(self, fitted, X: pd.DataFrame, league: str) -> np.ndarray:
         k=3 if league=="NPB" else 2
         p=np.zeros((len(X),k))
-        for model,w,_ in fitted:
-            p += float(w)*self.align_proba(model.predict_proba(X),model.classes_,league)
+        labels=self._regime_router.labels(X) if self._regime_router is not None else np.array(["global"]*len(X))
+        for i,label in enumerate(labels):
+            weights=self._regime_weights.get(str(label))
+            if not weights:
+                for model,w,_ in fitted:
+                    p[i] += float(w)*self.align_proba(model.predict_proba(X.iloc[[i]]),model.classes_,league)[0]
+            else:
+                for model,global_w,name in fitted:
+                    w=float(weights.get(name,global_w))
+                    p[i] += w*self.align_proba(model.predict_proba(X.iloc[[i]]),model.classes_,league)[0]
+                p[i]=clip_prob(p[i])
         t=float(getattr(self,"_last_temperature",1.0))
         if abs(t-1.0)>1e-9:
             p=np.clip(p,1e-7,1.0) ** (1.0/t)
