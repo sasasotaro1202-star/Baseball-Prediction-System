@@ -95,7 +95,25 @@ def build_target_rows(target_date: str) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 def predict(target_date: str, data_dir: str) -> dict:
-    games=build_target_rows(target_date)
+    try:
+        games=build_target_rows(target_date)
+    except RuntimeError as exc:
+        # A missing official date section means NPB has not published the
+        # target day's announced starters yet. Fail closed, but persist a
+        # machine-readable blocked state so scheduled retries can continue.
+        if "Official NPB starter page does not contain" not in str(exc):
+            raise
+        result={
+            "schema_version":"npb-production-v1", "target_date":target_date,
+            "execution_status":"BLOCKED_STARTERS", "pit_status":"NOT_RUN",
+            "starter_gate":"BLOCKED", "model_status":"NOT_RUN",
+            "git_commit":__import__("os").environ.get("GITHUB_SHA","unknown"),
+            "predictions":[], "block_reason":str(exc),
+            "prediction_generated_at":datetime.now(timezone.utc).isoformat(),
+        }
+        out=ROOT/"results"/f"npb_production_{target_date}.json"; out.parent.mkdir(exist_ok=True)
+        out.write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding="utf-8")
+        return result
     if games.empty or not bool(games["confirmed_starters"].all()):
         raise RuntimeError("PIT gate failed: every target game must have confirmed official starters.")
 
