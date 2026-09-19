@@ -355,6 +355,16 @@ def predict(target_date: str, data_dir: str) -> dict:
             result["predictions"]=outputs
             sig={(round(o["lambda_home"],6),round(o["lambda_away"],6),round(o["home_win_pct"],4),round(o["away_win_pct"],4)) for o in outputs}
             if len(sig) < 2:
+                debug = [
+                    {
+                        "home": o["home"], "away": o["away"],
+                        "lambda_home": o["lambda_home"], "lambda_away": o["lambda_away"],
+                        "home_win_pct": o["home_win_pct"], "away_win_pct": o["away_win_pct"],
+                    }
+                    for o in outputs
+                ]
+                teams = sorted(set(hist["home"].map(lambda x: norm_team(x, "NPB"))) | set(hist["away"].map(lambda x: norm_team(x, "NPB"))))
+                print("PRODUCTION_DEGENERACY_DEBUG", json.dumps({"predictions": debug, "historical_team_count": len(teams), "historical_teams": teams}, ensure_ascii=False))
                 raise RuntimeError("Production degeneracy guard: PIT-safe recovery remained insufficiently differentiated.")
     # Output validation: probabilities are finite, win probabilities sum to 100,
     # Low/High sum to 100, and exactly four score candidates exist.
