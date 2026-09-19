@@ -220,6 +220,8 @@ def acquire_mlb() -> int:
             "home_starter": _starter_name(home), "away_starter": _starter_name(away),
             "home_starter_announced_at": _explicit_announcement(g, "home"),
             "away_starter_announced_at": _explicit_announcement(g, "away"),
+            "home_starter_evidence_level": "OFFICIAL_ANNOUNCEMENT" if _explicit_announcement(g, "home") else "RETRIEVAL_ONLY",
+            "away_starter_evidence_level": "OFFICIAL_ANNOUNCEMENT" if _explicit_announcement(g, "away") else "RETRIEVAL_ONLY",
             "observed_at": retrieved, "prediction_cutoff": retrieved,
             "source": "MLB_STATS_API", "payload_hash": payload_hash(g),
         }
@@ -293,6 +295,7 @@ def acquire_npb() -> int:
                 _append_jsonl(AVAILABILITY_LOG, {
                     **row,
                     "starter_status": "ANNOUNCED" if row["home_starter_announced_at"] and row["away_starter_announced_at"] else "OBSERVED_UNVERIFIABLE_ANNOUNCEMENT_TIME",
+                    "starter_evidence_contract": "STRICT_OFFICIAL_ANNOUNCEMENT_ONLY",
                     "lineup_status": "UNVERIFIABLE",
                 })
                 _record_snapshot(event_id=f"NPB:{gid}", league="NPB", entity_type="game",
