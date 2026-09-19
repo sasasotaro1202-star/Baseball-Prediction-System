@@ -44,6 +44,37 @@ def fetch_text(url: str) -> str:
 def _clean_name(value: str) -> str:
     return re.sub(r"\s+", " ", html_lib.unescape(value)).replace("　", " ").strip()
 
+class _VisibleTextParser(__import__("html.parser", fromlist=["HTMLParser"]).HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.parts = []
+    def handle_data(self, data):
+        value = _clean_name(data)
+        if value:
+            self.parts.append(value)
+
+def _parse_starters_by_visible_text(section: str, teams: list[str]) -> list[tuple[int,str,str]]:
+    parser = _VisibleTextParser()
+    parser.feed(section)
+    text = parser.parts
+    found = []
+    for i, token in enumerate(text):
+        token_clean = _clean_name(token)
+        for team in teams:
+            if token_clean == team or team in token_clean:
+                j = i + 1
+                while j < len(text):
+                    cand = _clean_name(text[j])
+                    if cand and cand not in teams and not re.fullmatch(r"\d{1,2}:\d{2}", cand) and "予告先発投手" not in cand:
+                        found.append((i, team, cand))
+                        break
+                    j += 1
+                break
+    unique = {}
+    for pos, team, name in found:
+        unique.setdefault(team, (pos, team, name))
+    return sorted(unique.values())
+
 def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]:
     """Parse NPB's announced-starter section with semantic fail-closed validation."""
     month_day = f"{int(target_date[5:7])}月{int(target_date[8:10])}日"
@@ -98,6 +129,10 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
 
     occurrences.sort()
     times = [m.group(1) for m in re.finditer(r"(?<!\d)(\d{1,2}:\d{2})(?!\d)", section)]
+    if len(occurrences) != 12:
+        text_occurrences = _parse_starters_by_visible_text(section, teams)
+        if len(text_occurrences) == 12:
+            occurrences = text_occurrences
     if len(occurrences) != 12 or len(times) < 6:
         raise RuntimeError(
             f"PIT starter gate failed: expected 12 team/starter pairs and 6 times, "
