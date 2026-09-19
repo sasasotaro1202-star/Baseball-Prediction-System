@@ -222,6 +222,12 @@ class TeamState:
     bullpen_so: deque = field(default_factory=lambda: deque(maxlen=20))
     bullpen_hr: deque = field(default_factory=lambda: deque(maxlen=20))
     bullpen_actual_games: deque = field(default_factory=lambda: deque(maxlen=20))
+    bullpen_actual_er: deque = field(default_factory=lambda: deque(maxlen=20))
+    bullpen_actual_h: deque = field(default_factory=lambda: deque(maxlen=20))
+    bullpen_actual_bb: deque = field(default_factory=lambda: deque(maxlen=20))
+    bullpen_actual_so: deque = field(default_factory=lambda: deque(maxlen=20))
+    bullpen_actual_hr: deque = field(default_factory=lambda: deque(maxlen=20))
+    bullpen_actual_ip: deque = field(default_factory=lambda: deque(maxlen=20))
 
 
 class BaseballBacktest:
@@ -552,14 +558,15 @@ class BaseballBacktest:
         # Relief quality is calculated only from explicitly supplied relief
         # aggregates. Missing fields stay missing/zero rather than being
         # reconstructed from the target score.
-        bp_ip = float(np.sum(list(s.bullpen_ip)[-10:])) if s.bullpen_ip else 0.0
-        bp_h = float(np.sum(list(s.bullpen_h)[-10:])) if s.bullpen_h else 0.0
-        bp_bb = float(np.sum(list(s.bullpen_bb)[-10:])) if s.bullpen_bb else 0.0
-        bp_so = float(np.sum(list(s.bullpen_so)[-10:])) if s.bullpen_so else 0.0
-        bp_hr = float(np.sum(list(s.bullpen_hr)[-10:])) if s.bullpen_hr else 0.0
+        bp_ip = float(np.sum(list(s.bullpen_actual_ip)[-10:])) if s.bullpen_actual_ip else 0.0
+        bp_h = float(np.sum(list(s.bullpen_actual_h)[-10:])) if s.bullpen_actual_h else 0.0
+        bp_bb = float(np.sum(list(s.bullpen_actual_bb)[-10:])) if s.bullpen_actual_bb else 0.0
+        bp_so = float(np.sum(list(s.bullpen_actual_so)[-10:])) if s.bullpen_actual_so else 0.0
+        bp_hr = float(np.sum(list(s.bullpen_actual_hr)[-10:])) if s.bullpen_actual_hr else 0.0
+        bp_er_actual = float(np.sum(list(s.bullpen_actual_er)[-10:])) if s.bullpen_actual_er else 0.0
         bp_games = float(np.sum(list(s.bullpen_actual_games)[-10:])) if s.bullpen_actual_games else 0.0
         f["bp_ip_10"] = bp_ip
-        f["bp_era_10"] = 9.0 * float(np.sum(list(s.bullpen_er)[-10:])) / max(bp_ip, 1e-6) if bp_ip > 0 else 0.0
+        f["bp_era_10"] = 9.0 * bp_er_actual / max(bp_ip, 1e-6) if bp_ip > 0 else 0.0
         f["bp_whip_10"] = (bp_h + bp_bb) / max(bp_ip, 1e-6) if bp_ip > 0 else 0.0
         f["bp_k9_10"] = 9.0 * bp_so / max(bp_ip, 1e-6) if bp_ip > 0 else 0.0
         f["bp_bb9_10"] = 9.0 * bp_bb / max(bp_ip, 1e-6) if bp_ip > 0 else 0.0
@@ -891,6 +898,12 @@ class BaseballBacktest:
         s.bullpen_er.append(bp_er); s.bullpen_runs.append(bp_runs); s.bullpen_appearances.append(bp_app)
         s.bullpen_ip.append(bp_ip); s.bullpen_h.append(bp_h); s.bullpen_bb.append(bp_bb)
         s.bullpen_so.append(bp_so); s.bullpen_hr.append(bp_hr); s.bullpen_actual_games.append(bp_actual)
+        s.bullpen_actual_er.append(bp_er_explicit if np.isfinite(bp_er_explicit) else 0.0)
+        s.bullpen_actual_h.append(bp_h_explicit if np.isfinite(bp_h_explicit) else 0.0)
+        s.bullpen_actual_bb.append(bp_bb_explicit if np.isfinite(bp_bb_explicit) else 0.0)
+        s.bullpen_actual_so.append(bp_so_explicit if np.isfinite(bp_so_explicit) else 0.0)
+        s.bullpen_actual_hr.append(bp_hr_explicit if np.isfinite(bp_hr_explicit) else 0.0)
+        s.bullpen_actual_ip.append(bp_ip_explicit if np.isfinite(bp_ip_explicit) else 0.0)
         bp = max(0.0, ga - 3.0)
         s.bullpen_ip_3 = max(0.0, s.bullpen_ip_3 * 0.65 + bp * 0.45)
         s.bullpen_ip_7 = max(0.0, s.bullpen_ip_7 * 0.88 + bp * 0.20)
