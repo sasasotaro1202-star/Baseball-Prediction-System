@@ -21,6 +21,7 @@ from core.atomic_io import atomic_write_json
 from evaluation.metrics import expected_calibration_error, multiclass_brier
 from research.candidates import CandidateSpec, lock_candidate
 from research.validation_pipeline import run_validation_pipeline
+from research.adoption_gate import GatePolicy
 
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
@@ -276,6 +277,7 @@ def run_npb_candidate_cycle(
         holdout_hilo_baseline=base_hilo,
         holdout_hilo_candidate=cand_hilo,
         league="NPB",
+        policy=GatePolicy(require_pit_starter_evidence=True),
     )
 
     holdout = {
