@@ -112,7 +112,7 @@ jobs:
           last_error=''
           for attempt in 1 2 3; do
             echo "PIT acquisition attempt ${attempt}/3"
-            if python -m data.pit_acquisition; then
+            if timeout --signal=TERM --kill-after=15s 120s python -m data.pit_acquisition; then
               echo 'PIT acquisition succeeded'
               exit 0
             fi
