@@ -60,6 +60,35 @@ jobs:
         timeout-minutes: 5
         run: python -m compileall -q .
 
+      - name: Stage NPB historical PBP release data
+        if: matrix.league == 'NPB'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        timeout-minutes: 25
+        run: |
+          set -euo pipefail
+          mkdir -p data
+          for year in 2020 2021 2022 2023 2024 2025 2026; do
+            existing=$(find data -maxdepth 1 -type f -name "${year}-*_pbp.csv" | wc -l | tr -d ' ')
+            if [ "$existing" -gt 0 ]; then
+              echo "NPB ${year}: cached (${existing} file(s))"
+              continue
+            fi
+            downloaded=0
+            for attempt in 1 2 3; do
+              if gh release download pbp --repo armstjc/Nippon-Baseball-Data-Repository --pattern "${year}-*_pbp.csv" --dir data --clobber; then
+                downloaded=1
+                break
+              fi
+              if [ "$attempt" -lt 3 ]; then sleep $((attempt * 5)); fi
+            done
+            if [ "$downloaded" -ne 1 ]; then
+              echo "failed to stage NPB ${year}" >&2
+              exit 1
+            fi
+          done
+          test "$(find data -maxdepth 1 -name '*_pbp.csv' | wc -l | tr -d ' ')" -ge 7
+
       - name: Run candidate lifecycle
         timeout-minutes: 125
         env:
