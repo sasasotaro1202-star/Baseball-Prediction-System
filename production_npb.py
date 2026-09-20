@@ -121,7 +121,7 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
             tm = re.search(rf'alt=["\']{team_pat}["\']', section, re.I)
             if tm:
                 window = section[tm.end():tm.end()+1200]
-                sm = re.search(r'<span[^>]*>\s*([^<]+?)\\s*</span>', window, re.I | re.S)
+                sm = re.search(r'<span[^>]*>\s*([^<]+?)\s*</span>', window, re.I | re.S)
                 if not sm:
                     sm = re.search(r'<a[^>]*>\s*([^<]+?)\s*</a>', window, re.I | re.S)
                 if sm:
@@ -139,9 +139,14 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
         raise RuntimeError("PIT starter gate failed: no official game times found.")
     expected_games = len(time_matches)
 
-    # The official starter page can contain announced starters for a postponed
-    # or otherwise untimed fixture alongside the timed games. Pair consecutive
-    # starter occurrences and associate each official time with the nearest pair.
+    # First prefer the semantic visible-text parser when the strict live-page
+    # selector misses a team markup variant. This keeps extraction tied to the
+    # official section rather than guessing from footer/navigation content.
+    if len(occurrences) < 2 * expected_games:
+        visible = _parse_starters_by_visible_text(section, teams)
+        if len(visible) >= 2 * expected_games:
+            occurrences = visible
+
     pair_candidates = []
     if len(occurrences) >= 2:
         for i in range(0, len(occurrences) - 1, 2):
@@ -152,24 +157,45 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
             f"for {expected_games} officially timed games, got {len(pair_candidates)}."
         )
 
-    timed_pairs = {}
-    for tm in time_matches:
-        nearest = min(
-            pair_candidates,
-            key=lambda p: abs(((p[1][0] + p[2][0]) / 2.0) - tm.start()),
-        )
-        pair_idx = nearest[0]
-        distance = abs(((nearest[1][0] + nearest[2][0]) / 2.0) - tm.start())
-        if distance > 5000:
-            raise RuntimeError(
-                f"PIT starter gate failed: official time {tm.group(1)} could not be "
-                f"reliably associated with a starter pair (distance={distance:.0f})."
+    # In the common official markup each game's time appears in the same
+    # sequential unit as its two starters. When the parser has exactly one
+    # pair per official time, preserve that authoritative page order rather
+    # than using character-distance matching (which is unsafe when all times
+    # are rendered in a footer-like block after the starter cards).
+    if len(pair_candidates) == expected_games:
+        timed_pairs = {
+            i: (pair_candidates[i][1], pair_candidates[i][2], time_matches[i].group(1))
+            for i in range(expected_games)
+        }
+    else:
+        # There are extra announced-starter pairs without official times
+        # (e.g. postponed/untimed fixtures). Only accept a one-to-one nearest
+        # association when it is unambiguous; otherwise fail closed.
+        timed_pairs = {}
+        available = list(pair_candidates)
+        for tm in time_matches:
+            ranked = sorted(
+                available,
+                key=lambda p: abs(((p[1][0] + p[2][0]) / 2.0) - tm.start()),
             )
-        if pair_idx in timed_pairs:
-            raise RuntimeError(
-                f"PIT starter gate failed: multiple official times mapped to pair {pair_idx}."
-            )
-        timed_pairs[pair_idx] = (nearest[1], nearest[2], tm.group(1))
+            if not ranked:
+                raise RuntimeError("PIT starter gate failed: no candidate pair remains.")
+            nearest = ranked[0]
+            distance = abs(((nearest[1][0] + nearest[2][0]) / 2.0) - tm.start())
+            if distance > 5000:
+                raise RuntimeError(
+                    f"PIT starter gate failed: official time {tm.group(1)} could not be "
+                    f"reliably associated with a starter pair (distance={distance:.0f})."
+                )
+            if len(ranked) > 1:
+                d0 = abs(((ranked[0][1][0] + ranked[0][2][0]) / 2.0) - tm.start())
+                d1 = abs(((ranked[1][1][0] + ranked[1][2][0]) / 2.0) - tm.start())
+                if d1 - d0 < 200:
+                    raise RuntimeError(
+                        f"PIT starter gate failed: ambiguous official time {tm.group(1)} association."
+                    )
+            timed_pairs[nearest[0]] = (nearest[1], nearest[2], tm.group(1))
+            available.remove(nearest)
 
     if len(timed_pairs) != expected_games:
         raise RuntimeError(
