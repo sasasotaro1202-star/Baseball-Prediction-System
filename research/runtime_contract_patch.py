@@ -14,7 +14,7 @@ def apply() -> bool:
     import baseball_backtest as bt
     from prediction.score_distribution import low_high_probabilities, top_score_candidates
 
-    def canonical_score_candidates(lam_h: float, lam_a: float, n: int = 4) -> List[Tuple[str, float]]:
+    def canonical_score_candidates(lam_h: float, lam_a: float, shared: float = 0.0, n: int = 4) -> List[Tuple[str, float]]:
         if int(n) != 4:
             raise ValueError("production score contract requires exactly four candidates")
         return [
@@ -22,7 +22,7 @@ def apply() -> bool:
             for item in top_score_candidates(float(lam_h), float(lam_a), n=4)
         ]
 
-    def canonical_low_high_probs(lam_h: float, lam_a: float):
+    def canonical_low_high_probs(lam_h: float, lam_a: float, shared: float = 0.0):
         return low_high_probabilities(float(lam_h), float(lam_a))
 
     bt.score_candidates = canonical_score_candidates
