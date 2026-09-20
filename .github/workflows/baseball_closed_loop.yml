@@ -109,6 +109,7 @@ jobs:
         timeout-minutes: 8
         run: |
           set -euo pipefail
+          export PIT_ENABLE_MLB_GAME_PROBES=0
           last_error=''
           for attempt in 1 2 3; do
             echo "PIT acquisition attempt ${attempt}/3"
