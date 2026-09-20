@@ -134,24 +134,52 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
         occurrences.append((m.start(), team, name))
 
     occurrences.sort()
-    times = [m.group(1) for m in re.finditer(r"(?<!\d)(\d{1,2}:\d{2})(?!\d)", section)]
-    if len(occurrences) != 12:
-        text_occurrences = _parse_starters_by_visible_text(section, teams)
-        if len(text_occurrences) == 12:
-            occurrences = text_occurrences
-    expected_games = len(times)
-    if expected_games < 1:
+    time_matches = list(re.finditer(r"(?<!\\d)(\\d{1,2}:\\d{2})(?!\\d)", section))
+    if not time_matches:
         raise RuntimeError("PIT starter gate failed: no official game times found.")
-    expected_pairs = expected_games * 2
-    if len(occurrences) != expected_pairs:
-        text_occurrences = _parse_starters_by_visible_text(section, teams)
-        if len(text_occurrences) == expected_pairs:
-            occurrences = text_occurrences
-    if len(occurrences) != expected_pairs:
+    expected_games = len(time_matches)
+
+    # The official starter page can contain announced starters for a postponed
+    # or otherwise untimed fixture alongside the timed games. Pair consecutive
+    # starter occurrences and associate each official time with the nearest pair.
+    pair_candidates = []
+    if len(occurrences) >= 2:
+        for i in range(0, len(occurrences) - 1, 2):
+            pair_candidates.append((i // 2, occurrences[i], occurrences[i + 1]))
+    if len(pair_candidates) < expected_games:
         raise RuntimeError(
-            f"PIT starter gate failed: expected {expected_pairs} team/starter pairs "
-            f"for {expected_games} officially timed games, got {len(occurrences)}."
+            f"PIT starter gate failed: expected at least {expected_games} team/starter pairs "
+            f"for {expected_games} officially timed games, got {len(pair_candidates)}."
         )
+
+    timed_pairs = {}
+    for tm in time_matches:
+        nearest = min(
+            pair_candidates,
+            key=lambda p: abs(((p[1][0] + p[2][0]) / 2.0) - tm.start()),
+        )
+        pair_idx = nearest[0]
+        distance = abs(((nearest[1][0] + nearest[2][0]) / 2.0) - tm.start())
+        if distance > 5000:
+            raise RuntimeError(
+                f"PIT starter gate failed: official time {tm.group(1)} could not be "
+                f"reliably associated with a starter pair (distance={distance:.0f})."
+            )
+        if pair_idx in timed_pairs:
+            raise RuntimeError(
+                f"PIT starter gate failed: multiple official times mapped to pair {pair_idx}."
+            )
+        timed_pairs[pair_idx] = (nearest[1], nearest[2], tm.group(1))
+
+    if len(timed_pairs) != expected_games:
+        raise RuntimeError(
+            f"PIT starter gate failed: expected {expected_games} timed starter pairs, "
+            f"resolved {len(timed_pairs)}."
+        )
+
+    selected_pairs = [timed_pairs[i] for i in sorted(timed_pairs)]
+    occurrences = [item for pair in selected_pairs for item in pair[:2]]
+    times = [pair[2] for pair in selected_pairs]
 
     invalid = {"一般社団法人日本野球機構について", "採用情報", "プライバシーポリシー"}
     for _, team, name in occurrences:
@@ -159,7 +187,7 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
             raise RuntimeError(f"PIT starter gate failed: invalid starter extracted for {team}: {name!r}")
 
     out = []
-    for i in range(0, 12, 2):
+    for i in range(0, len(occurrences), 2):
         home_team, home_starter = occurrences[i][1], occurrences[i][2]
         away_team, away_starter = occurrences[i+1][1], occurrences[i+1][2]
         out.append({
