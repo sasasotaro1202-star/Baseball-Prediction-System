@@ -38,7 +38,7 @@ jobs:
       fail-fast: false
       matrix:
         league: [NPB, MLB]
-    timeout-minutes: 145
+    timeout-minutes: 260
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -90,9 +90,9 @@ jobs:
           test "$(find data -maxdepth 1 -name '*_pbp.csv' | wc -l | tr -d ' ')" -ge 7
 
       - name: Run candidate lifecycle
-        timeout-minutes: 125
+        timeout-minutes: 240
         env:
-          BASEBALL_TIME_BUDGET_SEC: '3600'
+          BASEBALL_TIME_BUDGET_SEC: '7200'
           NPB_RETRAIN_EVERY: '300'
           MLB_ENRICH_STARTERS: '0'
           PIT_SAFE_STARTER_DATA: '0'
