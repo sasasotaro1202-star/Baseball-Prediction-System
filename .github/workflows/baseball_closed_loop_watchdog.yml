@@ -25,29 +25,31 @@ jobs:
           runs_json="$(gh run list --repo "${REPO}" --workflow baseball_closed_loop.yml --limit 20 --json databaseId,status,conclusion,createdAt,headSha)"
 
           active="$(printf '%s' "${runs_json}" | jq '[.[] | select(.status == "in_progress")] | length')"
-          queued="$(printf '%s' "${runs_json}" | jq '[.[] | select(.status == "queued")] | length')"
+          blocked="$(printf '%s' "${runs_json}" | jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested")] | length')"
 
-          echo "active=${active} queued=${queued}"
+          echo "active=${active} blocked=${blocked}"
 
-          # A queued run older than 45 minutes is considered stuck. Cancel only
-          # the stale queued run; never cancel an actively executing research run.
-          printf '%s' "${runs_json}" | jq -c '.[] | select(.status == "queued")' |
+          # GitHub can expose a run that is waiting for capacity/concurrency as
+          # pending rather than queued. Treat all non-running scheduler states
+          # as blocked, but never cancel an actively executing research run.
+          printf '%s' "${runs_json}" |
+          jq -c '.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested")' |
           while IFS= read -r row; do
             [ -n "${row}" ] || continue
             id="$(printf '%s' "${row}" | jq -r '.databaseId')"
+            status="$(printf '%s' "${row}" | jq -r '.status')"
             created="$(printf '%s' "${row}" | jq -r '.createdAt')"
             created_epoch="$(date -d "${created}" +%s)"
             age=$((now - created_epoch))
             if [ "${age}" -ge 2700 ]; then
-              echo "Cancelling stale queued closed-loop run ${id} (age=${age}s)"
+              echo "Cancelling stale ${status} closed-loop run ${id} (age=${age}s)"
               gh run cancel "${id}" --repo "${REPO}" || true
             fi
           done
 
-          # If nothing is running/queued and the latest completed run is older
-          # than 150 minutes, start one from the current main branch. This is
-          # a safety net; the normal 3-hour schedule remains the primary cadence.
-          if [ "${active}" -eq 0 ] && [ "${queued}" -eq 0 ]; then
+          # If nothing is running or scheduler-blocked and the latest completed
+          # run is older than 150 minutes, start a safety-net run from main.
+          if [ "${active}" -eq 0 ] && [ "${blocked}" -eq 0 ]; then
             latest_created="$(printf '%s' "${runs_json}" | jq -r '[.[] | select(.status == "completed") | .createdAt] | max // empty')"
             if [ -n "${latest_created}" ]; then
               latest_epoch="$(date -d "${latest_created}" +%s)"
