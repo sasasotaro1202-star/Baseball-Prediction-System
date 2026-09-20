@@ -139,10 +139,18 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
         text_occurrences = _parse_starters_by_visible_text(section, teams)
         if len(text_occurrences) == 12:
             occurrences = text_occurrences
-    if len(occurrences) != 12 or len(times) < 6:
+    expected_games = len(times)
+    if expected_games < 1:
+        raise RuntimeError("PIT starter gate failed: no official game times found.")
+    expected_pairs = expected_games * 2
+    if len(occurrences) != expected_pairs:
+        text_occurrences = _parse_starters_by_visible_text(section, teams)
+        if len(text_occurrences) == expected_pairs:
+            occurrences = text_occurrences
+    if len(occurrences) != expected_pairs:
         raise RuntimeError(
-            f"PIT starter gate failed: expected 12 team/starter pairs and 6 times, "
-            f"got {len(occurrences)} and {len(times)}."
+            f"PIT starter gate failed: expected {expected_pairs} team/starter pairs "
+            f"for {expected_games} officially timed games, got {len(occurrences)}."
         )
 
     invalid = {"一般社団法人日本野球機構について", "採用情報", "プライバシーポリシー"}
