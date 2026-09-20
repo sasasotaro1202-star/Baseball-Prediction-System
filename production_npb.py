@@ -134,7 +134,7 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
         occurrences.append((m.start(), team, name))
 
     occurrences.sort()
-    time_matches = list(re.finditer(r"(?<!\\d)(\\d{1,2}:\\d{2})(?!\\d)", section))
+    time_matches = list(re.finditer(r"(?<!\d)(\d{1,2}:\d{2})(?!\d)", section))
     if not time_matches:
         raise RuntimeError("PIT starter gate failed: no official game times found.")
     expected_games = len(time_matches)
