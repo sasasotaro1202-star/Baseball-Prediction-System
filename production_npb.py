@@ -139,13 +139,20 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
         raise RuntimeError("PIT starter gate failed: no official game times found.")
     expected_games = len(time_matches)
 
-    # First prefer the semantic visible-text parser when the strict live-page
-    # selector misses a team markup variant. This keeps extraction tied to the
-    # official section rather than guessing from footer/navigation content.
-    if len(occurrences) < 2 * expected_games:
-        visible = _parse_starters_by_visible_text(section, teams)
-        if len(visible) >= 2 * expected_games:
-            occurrences = visible
+    # The official page can use responsive/CSS ordering in which the DOM
+    # positions of the game cards are not the visual game order. A strict
+    # per-team regex can therefore silently pair a valid starter with the
+    # wrong team. Prefer the semantic visible-text stream whenever it yields
+    # the expected team/starter cardinality; this follows the accessible
+    # sequence exposed by the official page and is safer than character-
+    # distance inference.
+    visible = _parse_starters_by_visible_text(section, teams)
+    if len(visible) >= 2 * expected_games:
+        visible = visible[: 2 * expected_games]
+        visible_teams = [x[1] for x in visible]
+        if len(set(visible_teams)) != len(visible_teams):
+            raise RuntimeError("PIT starter gate failed: duplicate team tokens in official starter order.")
+        occurrences = visible
 
     pair_candidates = []
     if len(occurrences) >= 2:
