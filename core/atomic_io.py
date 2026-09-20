@@ -42,7 +42,7 @@ def atomic_write_text(path: str | Path, text: str, *, encoding: str = "utf-8") -
 
 
 def atomic_write_json(path: str | Path, obj: Any) -> None:
-    text = json.dumps(obj, ensure_ascii=False, indent=2, allow_nan=False) + "\\n"
+    text = json.dumps(obj, ensure_ascii=False, indent=2, allow_nan=False) + "\n"
     atomic_write_text(path, text)
 
 
