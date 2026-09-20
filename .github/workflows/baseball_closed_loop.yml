@@ -8,8 +8,7 @@ on:
       - 'results/**'
       - 'data/pit/**'
   schedule:
-    # Eight bounded runs/day: keep the research loop advancing continuously
-    # while the 120-minute lifecycle timeout still leaves a one-hour buffer.
+    # Bounded cadence: enough independent OOS evidence to keep the lifecycle moving.
     - cron: '17 0,3,6,9,12,15,18,21 * * *'
 
 permissions:
