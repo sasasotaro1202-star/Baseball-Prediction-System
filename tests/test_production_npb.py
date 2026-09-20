@@ -34,3 +34,32 @@ def test_20260920_has_six_pit_safe_games(monkeypatch):
     assert (d["starter_evidence_status"]=="official_announced").all()
     assert d["home_score"].isna().all()
     assert d["away_score"].isna().all()
+
+
+def fixture_html_20260921_five_games():
+    games = [
+        ("中日ドラゴンズ","髙橋　宏斗","広島東洋カープ","斉藤　優汰","14:00"),
+        ("阪神タイガース","Ｅ．ルーカス","横浜DeNAベイスターズ","平良　拳太郎","14:00"),
+        ("北海道日本ハムファイターズ","加藤　貴之","オリックス・バファローズ","山口　廉王","14:00"),
+        ("東北楽天ゴールデンイーグルス","前田　健太","福岡ソフトバンクホークス","上茶谷　大河","13:00"),
+        ("千葉ロッテマリーンズ","Ａ．ジャクソン","埼玉西武ライオンズ","武内　夏暉","18:00"),
+    ]
+    parts = []
+    for h, hs, a, ass, tm in games:
+        parts.append(
+            f'<div class="unit"><img alt="{h}"><span>{hs}</span>'
+            f'<img alt="{a}"><span>{ass}</span><span>（球場）{tm}</span></div>'
+        )
+    return '<h4>9月21日の予告先発投手</h4>' + ''.join(parts)
+
+
+def test_parser_extracts_five_official_games_and_exact_starters():
+    d = parse_official_starters_html(fixture_html_20260921_five_games(), "2026-09-21")
+    assert len(d) == 5
+    assert [(x["home"], x["away"], x["home_starter"], x["away_starter"], x["official_start_time"]) for x in d] == [
+        ("中日ドラゴンズ","広島東洋カープ","髙橋 宏斗","斉藤 優汰","14:00"),
+        ("阪神タイガース","横浜DeNAベイスターズ","Ｅ．ルーカス","平良 拳太郎","14:00"),
+        ("北海道日本ハムファイターズ","オリックス・バファローズ","加藤 貴之","山口 廉王","14:00"),
+        ("東北楽天ゴールデンイーグルス","福岡ソフトバンクホークス","前田 健太","上茶谷 大河","13:00"),
+        ("千葉ロッテマリーンズ","埼玉西武ライオンズ","Ａ．ジャクソン","武内 夏暉","18:00"),
+    ]
