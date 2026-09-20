@@ -485,9 +485,41 @@ class BaseballBacktest:
         return out.sort_values(["datetime", "game_id"]).drop_duplicates("game_id").reset_index(drop=True)
 
     def _get_json(self, url: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        r = requests.get(url, params=params, timeout=REQUEST_TIMEOUT)
-        r.raise_for_status()
-        return r.json()
+        """Fetch JSON with bounded transient-error retries.
+
+        Historical MLB replay depends on a public API. A single 429/502/503/504
+        must not invalidate an otherwise valid OOS run. Retries are bounded and
+        deterministic; non-transient HTTP errors still fail closed.
+        """
+        attempts = 4
+        last_exc = None
+        for attempt in range(attempts):
+            try:
+                r = requests.get(
+                    url,
+                    params=params,
+                    timeout=REQUEST_TIMEOUT,
+                    headers={"User-Agent": "Baseball-Prediction-System/production"},
+                )
+                if r.status_code in {429, 502, 503, 504} and attempt < attempts - 1:
+                    retry_after = r.headers.get("Retry-After")
+                    try:
+                        delay = min(8.0, max(1.0, float(retry_after)))
+                    except (TypeError, ValueError):
+                        delay = float(2 ** attempt)
+                    time.sleep(delay)
+                    continue
+                r.raise_for_status()
+                return r.json()
+            except requests.RequestException as exc:
+                last_exc = exc
+                if attempt >= attempts - 1:
+                    raise
+                status = getattr(getattr(exc, "response", None), "status_code", None)
+                if status not in {429, 502, 503, 504}:
+                    raise
+                time.sleep(float(2 ** attempt))
+        raise RuntimeError(f"MLB API request failed after {attempts} attempts: {url}") from last_exc
 
     # ------------------------------------------------------------------
     # State and features
@@ -1148,7 +1180,9 @@ class BaseballBacktest:
         scored.sort(key=lambda z:z[0])
         top=scored[:3]
         top_names={name for _,name,_ in top}
-        global_losses={name:float(loss) for loss,name,_ in top}
+        # top contains (loss, model_name, factory); unpack all three fields.
+        # Keep the factory available for regime-specific validation.
+        global_losses={name:float(loss) for loss,name,_factory in top}
         fitted=[]
         weights=[]
         for loss,name,factory in top:
