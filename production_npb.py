@@ -175,8 +175,10 @@ def _load_official_starter_snapshot(target_date: str) -> list[dict] | None:
     if retrieved.tzinfo is None:
         retrieved = retrieved.tz_localize("UTC")
     games = payload.get("games", [])
-    if len(games) != 6:
-        raise RuntimeError("Official starter snapshot must contain exactly 6 games.")
+    if not games:
+        raise RuntimeError("Official starter snapshot contains no games.")
+    if any(not isinstance(g, dict) or not g.get("official_start_time") for g in games):
+        raise RuntimeError("Official starter snapshot contains a game without an official start time.")
     for g in games:
         g["confirmed_starters"] = True
         g["starter_evidence_status"] = "official_announced_snapshot"
@@ -397,7 +399,7 @@ def predict(target_date: str, data_dir: str) -> dict:
     # Recover from silent cross-target model collapse instead of emitting a
     # misleadingly uniform forecast. The recovery remains PIT-safe because it
     # recomputes every target from historical games strictly before the target set.
-    if len(outputs) == 6:
+    if len(outputs) >= 2:
         sig={(round(o["lambda_home"],6),round(o["lambda_away"],6),round(o["home_win_pct"],4),round(o["away_win_pct"],4)) for o in outputs}
         if len(sig) < 3:
             recovered=[]
