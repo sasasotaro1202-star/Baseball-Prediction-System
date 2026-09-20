@@ -36,6 +36,8 @@ NPB_URLS = (
 TIMEOUT = int(os.getenv("PIT_ACQ_TIMEOUT", "30"))
 LOOKAHEAD_DAYS = int(os.getenv("PIT_LOOKAHEAD_DAYS", "3"))
 LOOKBACK_DAYS = int(os.getenv("PIT_LOOKBACK_DAYS", "1"))
+# Expensive per-game MLB probes are optional; schedule acquisition is the PIT-critical path.
+ENABLE_MLB_GAME_PROBES = os.getenv("PIT_ENABLE_MLB_GAME_PROBES", "0").strip().lower() in {"1", "true", "yes"}
 
 SESSION = requests.Session()
 SESSION.headers.update({
@@ -234,22 +236,23 @@ def acquire_mlb() -> int:
         _record_snapshot(event_id=f"MLB:{gid}", league="MLB", entity_type="game",
                          entity_id=gid, source="MLB_STATS_API", payload=g,
                          retrieved_at=retrieved, available_at=retrieved)
-        timestamp_probe = acquire_mlb_game_timestamps(gid)
-        if timestamp_probe is not None:
-            ts_payload, ts_retrieved = timestamp_probe
-            _record_snapshot(
-                event_id=f"MLB:{gid}", league="MLB", entity_type="game_feed_timestamps",
-                entity_id=gid, source="MLB_STATS_API_GAME_TIMESTAMPS",
-                payload=ts_payload, retrieved_at=ts_retrieved, available_at=ts_retrieved,
-            )
-        content_probe = acquire_mlb_game_content(gid)
-        if content_probe is not None:
-            content_payload, content_retrieved = content_probe
-            _record_snapshot(
-                event_id=f"MLB:{gid}", league="MLB", entity_type="game_content",
-                entity_id=gid, source="MLB_STATS_API_GAME_CONTENT",
-                payload=content_payload, retrieved_at=content_retrieved, available_at=content_retrieved,
-            )
+        if ENABLE_MLB_GAME_PROBES:
+            timestamp_probe = acquire_mlb_game_timestamps(gid)
+            if timestamp_probe is not None:
+                ts_payload, ts_retrieved = timestamp_probe
+                _record_snapshot(
+                    event_id=f"MLB:{gid}", league="MLB", entity_type="game_feed_timestamps",
+                    entity_id=gid, source="MLB_STATS_API_GAME_TIMESTAMPS",
+                    payload=ts_payload, retrieved_at=ts_retrieved, available_at=ts_retrieved,
+                )
+            content_probe = acquire_mlb_game_content(gid)
+            if content_probe is not None:
+                content_payload, content_retrieved = content_probe
+                _record_snapshot(
+                    event_id=f"MLB:{gid}", league="MLB", entity_type="game_content",
+                    entity_id=gid, source="MLB_STATS_API_GAME_CONTENT",
+                    payload=content_payload, retrieved_at=content_retrieved, available_at=content_retrieved,
+                )
         count += 1
     return count
 
