@@ -27,6 +27,7 @@ env:
 jobs:
   lifecycle:
     runs-on: ubuntu-latest
+    # 120-minute lifecycle timeout: fail closed instead of running unbounded.
     timeout-minutes: 120
     steps:
       - name: Checkout
