@@ -82,7 +82,7 @@ def _workflow_reliability_errors(text: str, path: Path) -> list[str]:
     ):
         # Keep the detector conservative, but report malformed action lines
         # rather than silently accepting an unpinned/misparsed reference.
-        if not all(re.fullmatch(r"[0-9a-fA-F]{40}", m.group(1).group(2)) for m in uses):
+        if not all(re.fullmatch(r"[0-9a-fA-F]{40}", m.group(0).group(2)) for m in uses):
             pass
     if "runs-on:" not in text:
         errors.append(f"Workflow has no runner declaration: {path}")
