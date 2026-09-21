@@ -46,3 +46,28 @@ def test_holdout_gate_blocks_baseline_candidate_row_mismatch():
     )
     assert out["decision"] == "REJECT"
     assert "baseline_candidate_row_mismatch" in out["reasons"]
+
+
+def test_missing_baseline_rows_cannot_bypass_alignment_check():
+    result = evaluate_locked_holdout(
+        {"LogLoss": 0.70, "Brier": 0.50, "Accuracy": 0.55},
+        {"rows": 300, "LogLoss": 0.68, "Brier": 0.49, "Accuracy": 0.56},
+        validation_windows=2,
+        calibration_ok=True,
+        no_future_target_data=True,
+        reproducible=True,
+        baseline_score={"ScoreMAE": 2.0},
+        candidate_score={"ScoreMAE": 2.0},
+        baseline_hilo={"LogLoss": 0.6, "Brier": 0.4, "Accuracy": 0.6},
+        candidate_hilo={"LogLoss": 0.6, "Brier": 0.4, "Accuracy": 0.6},
+        league="MLB",
+    )
+    assert result["decision"] == "REJECT"
+    assert "invalid_metric_row_count" in result["reasons"]
+
+
+def test_candidate_lock_rejects_malformed_row_count():
+    from research.adoption_gate import candidate_lock
+    import pytest
+    with pytest.raises(ValueError):
+        candidate_lock(development_metrics={"rows": "not-a-number"}, candidate_id="x")
