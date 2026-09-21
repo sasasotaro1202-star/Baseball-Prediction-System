@@ -275,11 +275,14 @@ def official_starters(target_date: str) -> list[dict]:
         return parse_official_starters_html(
             fetch_text(NPB_STARTER_URL + "?_ts=" + str(int(time.time()))), target_date
         )
-    except RuntimeError:
-        # If the live official page is structurally changed but an independently
-        # captured official snapshot exists, use that PIT-safe snapshot rather than
-        # failing a scheduled production refresh. The snapshot itself is validated
-        # for provenance, target date, required per-game fields, and official source metadata.
+    except RuntimeError as exc:
+        # Correctness anomalies in the live official slate must never be masked
+        # by a cached snapshot. A snapshot may rescue a structural page change,
+        # but not duplicate/ambiguous team evidence that could indicate a wrong
+        # game-to-starter association.
+        message = str(exc)
+        if "duplicate team tokens" in message or "ambiguous official time" in message:
+            raise
         if snapshot is not None:
             return snapshot
         raise
