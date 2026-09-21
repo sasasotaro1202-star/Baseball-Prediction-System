@@ -428,6 +428,13 @@ def predict(target_date: str, data_dir: str) -> dict:
     for _,r in games.iterrows():
         xrow=pd.DataFrame([bt.match_features(r)]).replace([float("inf"),float("-inf")],float("nan")).fillna(0.0).astype(float)
         p=bt.ensemble_proba(fitted,xrow,"NPB")[0]
+        regime_label = str(bt._regime_router.labels(xrow)[0]) if getattr(bt, "_regime_router", None) is not None else "global"
+        regime_model_weights = dict(getattr(bt, "_regime_weights", {}).get(regime_label, {}))
+        score_regime_label = "global"
+        score_regime_weights = {}
+        if score_fit is not None and score_fit.get("regime_router") is not None:
+            score_regime_label = str(score_fit["regime_router"].labels(xrow)[0])
+            score_regime_weights = dict(score_fit.get("regime_weights", {}).get(score_regime_label, {}))
         lh,la,shared=bt.predict_scores(score_fit,xrow,"NPB")
         fallback_used = score_fit is None or (abs(lh-la)<1e-12 and abs(lh-2.35)<1e-12)
         if fallback_used:
@@ -453,6 +460,10 @@ def predict(target_date: str, data_dir: str) -> dict:
           "top4_exact_scores":[{"score":s,"prob_pct":round(float(v)*100,4)} for s,v in scores],
           "lambda_home":float(lh),"lambda_away":float(la),"shared_lambda":float(shared),
           "model":model_label,
+          "regime":regime_label,
+          "classification_regime_model_weights":regime_model_weights,
+          "score_regime":score_regime_label,
+          "score_regime_model_weights":score_regime_weights,
           "validation_scores":validation_scores,
           "historical_games_used":int(len(hist)),
           "pit_status":"PASS",
@@ -501,6 +512,10 @@ def predict(target_date: str, data_dir: str) -> dict:
                     "top4_exact_scores":[{"score":s,"prob_pct":round(float(v)*100,4)} for s,v in scores],
                     "lambda_home":float(lh),"lambda_away":float(la),"shared_lambda":float(shared),
                     "model":recovery_model,
+                    "regime":regime_label,
+                    "classification_regime_model_weights":regime_model_weights,
+                    "score_regime":"recovery",
+                    "score_regime_model_weights":{},
                 })
                 recovered.append(o)
             outputs=recovered
