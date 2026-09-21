@@ -44,7 +44,6 @@ jobs:
 
       - name: Restore immutable historical NPB PBP and official-result cache
         id: npb-cache
-        continue-on-error: true
         uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57
         with:
           path: |
@@ -61,7 +60,6 @@ jobs:
 
       - name: Restore chronological OOS checkpoints
         id: oos-checkpoint-restore
-        continue-on-error: true
         uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57
         with:
           path: results/checkpoints
@@ -235,7 +233,6 @@ jobs:
 
       - name: Save immutable historical NPB PBP and official-result cache
         if: always() && steps.npb-validate.outcome == 'success'
-        continue-on-error: true
         uses: actions/cache/save@1bd1e32a3bdc45362d1e726936510720a7c30a57
         with:
           path: |
@@ -258,7 +255,6 @@ jobs:
 
       - name: Save chronological OOS checkpoints
         if: always() && !cancelled()
-        continue-on-error: true
         uses: actions/cache/save@1bd1e32a3bdc45362d1e726936510720a7c30a57
         with:
           path: results/checkpoints
