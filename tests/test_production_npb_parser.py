@@ -2,7 +2,7 @@ from production_npb import parse_official_starters_html
 
 def test_visible_team_name_duplication_falls_back_to_bounded_unit_extraction():
     html = """
-    <h4>22月22日の予告先発投手</h4>
+    <h4>2月22日の予告先発投手</h4>
     <div class="unit">
       <img alt="読売ジャイアンツ">
       <div class="team_left"><span>読売ジャイアンツ</span></div>
