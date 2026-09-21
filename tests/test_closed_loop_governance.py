@@ -75,3 +75,25 @@ def test_pit_revision_stage_blocks_historical_backfill(tmp_path):
 
     assert stage.status == "BLOCKED"
     assert stage.blockers == ("pit_backfill_detected:1",)
+
+
+def test_holdout_stage_requires_both_leagues_and_untouched_flag(tmp_path):
+    path = tmp_path / "holdout.json"
+    path.write_text(json.dumps({
+        "NPB": {"used_for_candidate_selection": False},
+        "MLB": {"used_for_candidate_selection": False},
+    }), encoding="utf-8")
+    from research.closed_loop_governance import holdout_stage
+    assert holdout_stage(path).status == "READY"
+
+
+def test_holdout_stage_blocks_selection_contamination(tmp_path):
+    path = tmp_path / "holdout.json"
+    path.write_text(json.dumps({
+        "NPB": {"used_for_candidate_selection": True},
+        "MLB": {"used_for_candidate_selection": False},
+    }), encoding="utf-8")
+    from research.closed_loop_governance import holdout_stage
+    stage = holdout_stage(path)
+    assert stage.status == "BLOCKED"
+    assert stage.blockers == ("holdout_selection_contamination:NPB",)
