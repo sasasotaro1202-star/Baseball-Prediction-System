@@ -1235,7 +1235,6 @@ class BaseballBacktest:
         for tr, va in splits:
             if time.time() - self.started_at >= self.time_budget_sec:
                 break
-            labels=frozen_labels[va and 0:0] if False else frozen_labels[va:va+1]
             # Validation splits are represented as (cut, length), so slice by
             # their actual row interval. The router was fit only on the current
             # training prefix X, not on future target rows.
