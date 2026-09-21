@@ -49,20 +49,30 @@ jobs:
           test -s "${workflow}"
           now_epoch=$(date +%s)
 
-          active_rows=$(gh run list --repo "${GH_REPO}" --workflow "${workflow}" --limit 20 --json databaseId,status,updatedAt --jq '.[] | select(.status == "queued" or .status == "in_progress") | [.databaseId,.status,.updatedAt] | @tsv')
+          active_rows=$(gh run list --repo "${GH_REPO}" --workflow "${workflow}" --limit 20 --json databaseId,status,createdAt,updatedAt --jq '.[] | select(.status == "queued" or .status == "in_progress") | [.databaseId,.status,.createdAt,.updatedAt] | @tsv')
           stale_found=0
-          while IFS=$'\t' read -r run_id run_status updated_at; do
+          while IFS=$'\t' read -r run_id run_status created_at updated_at; do
             [ -z "${run_id}" ] && continue
+            created_epoch=$(date -d "${created_at}" +%s)
             updated_epoch=$(date -d "${updated_at}" +%s)
-            age_minutes=$(( (now_epoch - updated_epoch) / 60 ))
-            echo "Active run ${run_id}: status=${run_status} age_minutes=${age_minutes}"
-            if [ "${age_minutes}" -gt "${stale_after_minutes}" ]; then
-              echo "Run ${run_id} is stale beyond ${stale_after_minutes} minutes; cancelling for recovery."
+            created_age_minutes=$(( (now_epoch - created_epoch) / 60 ))
+            updated_age_minutes=$(( (now_epoch - updated_epoch) / 60 ))
+            echo "Active run ${run_id}: status=${run_status} created_age_minutes=${created_age_minutes} updated_age_minutes=${updated_age_minutes}"
+
+            # Queued runs can remain indefinitely when GitHub's concurrency
+            # scheduler is saturated. They must not block the 24h supervisor
+            # forever; recover only after a conservative queue grace period.
+            queued_stale_after_minutes=20
+            if [ "${run_status}" = "queued" ] && [ "${created_age_minutes}" -gt "${queued_stale_after_minutes}" ]; then
+              echo "Queued run ${run_id} is stale beyond ${queued_stale_after_minutes} minutes; cancelling for recovery."
+              gh run cancel "${run_id}" --repo "${GH_REPO}"
+              stale_found=1
+            elif [ "${run_status}" = "in_progress" ] && [ "${updated_age_minutes}" -gt "${stale_after_minutes}" ]; then
+              echo "In-progress run ${run_id} is stale beyond ${stale_after_minutes} minutes; cancelling for recovery."
               gh run cancel "${run_id}" --repo "${GH_REPO}"
               stale_found=1
             fi
           done <<< "${active_rows}"
-
           if [ "${stale_found}" -eq 1 ]; then
             for attempt in 1 2 3 4 5 6 7 8 9 10; do
               active_after_cancel=$(gh run list --repo "${GH_REPO}" --workflow "${workflow}" --limit 20 --json databaseId,status --jq '[.[] | select(.status == "queued" or .status == "in_progress")] | length')
