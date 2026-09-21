@@ -291,11 +291,6 @@ def process_league(league: str, path: Path) -> dict[str, Any]:
     # fail closed if an upstream artifact is ever malformed.
     if not df["datetime"].is_monotonic_increasing:
         raise RuntimeError(f"{league} walkforward chronology is not monotonic")
-    if df["datetime"].duplicated().any() and not df[["datetime", "game_id"]].duplicated().any():
-        # Multiple games can legitimately share a timestamp; only the
-        # datetime+game identity must remain unique.
-        pass
-
     temperature = fit_temperature_grid(np.log(np.maximum(p_selection, 1e-12)), y_selection)
     base_v1 = score_metrics(val1, y_val1, p_val1, league)
     cand_v1 = score_metrics(val1, y_val1, apply_temperature(p_val1, temperature), league)
