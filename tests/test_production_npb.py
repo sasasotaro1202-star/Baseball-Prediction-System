@@ -1,3 +1,4 @@
+from pathlib import Path
 from production_npb import build_target_rows, parse_official_starters_html
 
 TEAMS = [
