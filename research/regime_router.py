@@ -19,6 +19,7 @@ import pandas as pd
 class RegimeRouter:
     min_regime_rows: int = 35
     shrinkage: float = 80.0
+    min_relative_edge: float = 0.03
 
     def _signal(self, X: pd.DataFrame, kind: str) -> pd.Series:
         cols = list(X.columns)
@@ -77,6 +78,15 @@ class RegimeRouter:
                 r = float(losses.get(name, g))
                 adjusted[name] = alpha * r + (1.0 - alpha) * g
             if n < self.min_regime_rows:
+                adjusted = {name: float(global_losses[name]) for name in names}
+            # Do not specialize a regime merely because one model wins by noise.
+            # A regime-specific allocation is enabled only when the best adjusted
+            # loss beats the global loss for that model by the configured margin.
+            best_name = min(names, key=lambda name: adjusted[name])
+            global_best = min(global_losses[name] for name in names)
+            best_adjusted = adjusted[best_name]
+            relative_edge = (global_best - best_adjusted) / max(global_best, 1e-9)
+            if n < self.min_regime_rows or relative_edge < self.min_relative_edge:
                 adjusted = {name: float(global_losses[name]) for name in names}
             inv = np.array([1.0 / max(v, 1e-6) for v in adjusted.values()], dtype=float)
             inv /= max(inv.sum(), 1e-12)
