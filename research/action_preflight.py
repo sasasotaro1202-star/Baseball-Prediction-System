@@ -52,8 +52,8 @@ REQUIRED_FILES = (
 )
 
 WORKFLOW_DIR = ROOT / ".github" / "workflows"
-SHA_ACTION_RE = re.compile(r"^\s*uses:\s*[^@\s]+@([0-9a-fA-F]{40})\s*$", re.MULTILINE)
-USES_RE = re.compile(r"^\s*uses:\s*([^@\s]+)@([^\s#]+)", re.MULTILINE)
+SHA_ACTION_RE = re.compile(r"^[ \t]*uses:[ \t]*[^@\s]+@([0-9a-fA-F]{40})[ \t]*$", re.MULTILINE)
+USES_RE = re.compile(r"^[ \t]*uses:[ \t]*([^@\s]+)@([^\s#]+)", re.MULTILINE)
 
 
 def _workflow_reliability_errors(text: str, path: Path) -> list[str]:
