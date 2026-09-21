@@ -49,7 +49,15 @@ def candidate_lock(*, development_metrics: Mapping[str, float], candidate_id: st
     """Lock a candidate chosen on Development OOS without evaluating the holdout."""
     if not candidate_id:
         raise ValueError("candidate_id is required")
-    rows = int(development_metrics.get("rows", 0))
+    raw_rows = development_metrics.get("rows")
+    if isinstance(raw_rows, bool):
+        raise ValueError("development rows must be an integer")
+    try:
+        rows = int(raw_rows)
+    except (TypeError, ValueError):
+        raise ValueError("development rows must be an integer")
+    if rows < 0 or float(rows) != float(raw_rows):
+        raise ValueError("development rows must be a non-negative integer")
     return {
         "candidate_id": candidate_id,
         "stage": "candidate_locked",
@@ -89,8 +97,14 @@ def evaluate_locked_holdout(
     for evidence. This prevents incomplete evaluations from being promoted.
     """
     try:
-        rows = int(candidate.get("rows", 0))
-        baseline_rows = int(baseline.get("rows", rows))
+        raw_rows = candidate.get("rows")
+        raw_baseline_rows = baseline.get("rows")
+        if isinstance(raw_rows, bool) or isinstance(raw_baseline_rows, bool):
+            raise ValueError("metric rows must be integers")
+        rows = int(raw_rows)
+        baseline_rows = int(raw_baseline_rows)
+        if float(rows) != float(raw_rows) or float(baseline_rows) != float(raw_baseline_rows):
+            raise ValueError("metric rows must be integers")
     except (TypeError, ValueError):
         rows = 0
         baseline_rows = -1
