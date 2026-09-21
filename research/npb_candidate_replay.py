@@ -159,16 +159,16 @@ def _fit_candidate(
     if name not in models:
         raise ValueError(f"unknown NPB model candidate: {name}")
     model = models[name]
-    previous = os.environ.get("NPB_RECENCY_HALF_LIFE_GAMES")
+    previous = os.environ.get("BASEBALL_RECENCY_HALF_LIFE_GAMES")
     try:
         if recency_half_life is not None:
-            os.environ["NPB_RECENCY_HALF_LIFE_GAMES"] = str(int(recency_half_life))
+            os.environ["BASEBALL_RECENCY_HALF_LIFE_GAMES"] = str(int(recency_half_life))
         bt._fit_model(model, X, y, bt._sample_weights(len(X)), "NPB")
     finally:
         if previous is None:
-            os.environ.pop("NPB_RECENCY_HALF_LIFE_GAMES", None)
+            os.environ.pop("BASEBALL_RECENCY_HALF_LIFE_GAMES", None)
         else:
-            os.environ["NPB_RECENCY_HALF_LIFE_GAMES"] = previous
+            os.environ["BASEBALL_RECENCY_HALF_LIFE_GAMES"] = previous
     return model
 
 
@@ -301,7 +301,7 @@ def run_npb_candidate_cycle(
     # First, search a very small recency grid around the default half-life for
     # only the strongest Development-OOS model candidates. This keeps compute
     # bounded while allowing the system to adapt to changing league dynamics.
-    base_half_life = int(os.getenv("NPB_RECENCY_HALF_LIFE_GAMES", "1800"))
+    base_half_life = int(os.getenv("BASEBALL_RECENCY_HALF_LIFE_GAMES", "1800"))
     variant_specs: dict[str, tuple[str, int]] = {}
     for base_name, _metrics0 in candidates[:max(1, config.recency_variant_top_k)]:
         for half_life in config.recency_half_lives:
