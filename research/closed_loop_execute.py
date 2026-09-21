@@ -195,11 +195,16 @@ def hilo_probs(df: pd.DataFrame) -> np.ndarray:
             return clip_probs(p)
     values = []
     for _, row in df.iterrows():
-        lh = float(row["lambda_home"])
-        la = float(row["lambda_away"])
-        low_h = sum(math.exp(-lh) * lh**k / math.factorial(k) for k in range(7))
-        low_a = sum(math.exp(-la) * la**k / math.factorial(k) for k in range(7))
-        low = float(np.clip(low_h * low_a, 0.0, 1.0))
+        lh = max(float(row["lambda_home"]), 1e-9)
+        la = max(float(row["lambda_away"]), 1e-9)
+        # LOW/HIGH is defined on total runs, not on two independent per-team
+        # thresholds. Compute P(H+A <= 6) from the full joint distribution so
+        # the evaluation contract matches the production score distribution.
+        ph = np.asarray([math.exp(-lh) * lh**k / math.factorial(k) for k in range(16)], dtype=float)
+        pa = np.asarray([math.exp(-la) * la**k / math.factorial(k) for k in range(16)], dtype=float)
+        matrix = np.outer(ph, pa)
+        matrix /= max(float(matrix.sum()), 1e-12)
+        low = float(np.clip(sum(matrix[i, j] for i in range(16) for j in range(16) if i + j <= 6), 0.0, 1.0))
         values.append([low, 1.0 - low])
     return clip_probs(np.asarray(values))
 
