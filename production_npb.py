@@ -152,7 +152,18 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
     # the expected team/starter cardinality; this follows the accessible
     # sequence exposed by the official page and is safer than character-
     # distance inference.
-    visible = _parse_starters_by_visible_text(section, teams)
+    try:
+        visible = _parse_starters_by_visible_text(section, teams)
+    except RuntimeError as exc:
+        # Responsive NPB markup can expose a team logo alt-text and the same
+        # team name again in accessible visible text. That duplication is a
+        # presentation artifact, not proof of two games. Fall back to the
+        # already bounded per-unit extraction, which still requires unique
+        # team/starter pairing and exact time cardinality.
+        if "duplicate team tokens" in str(exc):
+            visible = []
+        else:
+            raise
     if len(visible) >= 2 * expected_games:
         visible = visible[: 2 * expected_games]
         visible_teams = [x[1] for x in visible]
