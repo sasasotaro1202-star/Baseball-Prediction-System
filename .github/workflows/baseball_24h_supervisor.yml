@@ -37,6 +37,11 @@ jobs:
 
           workflow='.github/workflows/baseball_9h_autopilot.yml'
           stale_after_minutes=600
+
+          # Supervisor must fail closed when the primary automation workflow is
+          # missing or empty; never report a healthy heartbeat against a broken
+          # automation backbone.
+          test -s "${workflow}"
           now_epoch=$(date +%s)
 
           active_rows=$(gh run list --repo "${GH_REPO}" --workflow "${workflow}" --limit 20 --json databaseId,status,updatedAt --jq '.[] | select(.status == "queued" or .status == "in_progress") | [.databaseId,.status,.updatedAt] | @tsv')
