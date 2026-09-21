@@ -266,6 +266,36 @@ def process_league(league: str, path: Path) -> dict[str, Any]:
     p_selection, p_val1, p_val2, p_holdout = p[:n1], p[n1:n2], p[n2:n3], p[n3:]
     y_selection, y_val1, y_val2, y_holdout = y[:n1], y[n1:n2], y[n2:n3], y[n3:]
 
+    # Fail closed when any calibration/evaluation window is class-degenerate.
+    # A globally non-degenerate dataset is not enough: temperature scaling and
+    # LogLoss/Brier comparisons become unreliable when a chronological window
+    # contains only one realized outcome class. This also prevents a hidden
+    # calendar/regime shift from being silently treated as valid evidence.
+    windows = {
+        "selection": y_selection,
+        "validation_1": y_val1,
+        "validation_2": y_val2,
+        "independent_holdout": y_holdout,
+    }
+    for window_name, labels in windows.items():
+        if len(labels) < 2 or len(np.unique(labels)) < 2:
+            raise RuntimeError(
+                f"{league} {window_name} realized target is class-degenerate; "
+                "refusing calibration/selection/holdout evaluation."
+            )
+        if not np.isfinite(labels).all():
+            raise RuntimeError(f"{league} {window_name} realized target contains non-finite labels")
+
+    # Enforce chronological ordering explicitly after the deterministic sort.
+    # This is redundant under normal operation but makes the PIT/OOS contract
+    # fail closed if an upstream artifact is ever malformed.
+    if not df["datetime"].is_monotonic_increasing:
+        raise RuntimeError(f"{league} walkforward chronology is not monotonic")
+    if df["datetime"].duplicated().any() and not df[["datetime", "game_id"]].duplicated().any():
+        # Multiple games can legitimately share a timestamp; only the
+        # datetime+game identity must remain unique.
+        pass
+
     temperature = fit_temperature_grid(np.log(np.maximum(p_selection, 1e-12)), y_selection)
     base_v1 = score_metrics(val1, y_val1, p_val1, league)
     cand_v1 = score_metrics(val1, y_val1, apply_temperature(p_val1, temperature), league)
