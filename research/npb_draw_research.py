@@ -79,6 +79,7 @@ def evaluate_top_draw_from_backtest(path: str | Path | None = None) -> dict[str,
     result = {
         "status": "PASS",
         "prediction_type": "NPB_TOP_DRAW_PROBABILITY_V1",
+        "threshold_research": _daily_top_draw_threshold_scan(df),
         "slates": int(len(selected)),
         "top_draw_hit_rate": float(selected["_actual_draw"].mean()),
         "top_draw_probability_mae": float(selected["draw_probability_error"].mean()),
