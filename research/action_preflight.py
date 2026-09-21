@@ -65,7 +65,7 @@ def _workflow_reliability_errors(text: str, path: Path) -> list[str]:
     errors: list[str] = []
     uses = []
     for lineno, raw in enumerate(text.splitlines(), 1):
-        match = re.match(r"^[ \\t]*-?[ \\t]*uses:[ \\t]*([^@\\s]+)@([^\\s#]+)", raw)
+        match = re.match(r"^[ \t]*-?[ \t]*uses:[ \t]*([^@\s]+)@([^\s#]+)", raw)
         if not match:
             continue
         uses.append((match, lineno))
