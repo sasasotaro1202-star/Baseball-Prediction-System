@@ -76,10 +76,16 @@ def _parse_starters_by_visible_text(section: str, teams: list[str]) -> list[tupl
                         break
                     j += 1
                 break
-    unique = {}
+    teams_seen = {}
     for pos, team, name in found:
-        unique.setdefault(team, (pos, team, name))
-    return sorted(unique.values())
+        teams_seen.setdefault(team, []).append((pos, team, name))
+    # Preserve duplicate evidence instead of silently collapsing it. The caller
+    # must fail closed when the official visible sequence contains a team token
+    # more than once in the target slate.
+    duplicates = {team: items for team, items in teams_seen.items() if len(items) > 1}
+    if duplicates:
+        raise RuntimeError("PIT starter gate failed: duplicate team tokens in official starter order.")
+    return sorted(item[0] for item in teams_seen.values())
 
 def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]:
     """Parse NPB's announced-starter section with semantic fail-closed validation."""
