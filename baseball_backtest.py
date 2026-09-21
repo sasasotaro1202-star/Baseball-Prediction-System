@@ -1057,9 +1057,21 @@ class BaseballBacktest:
         if fast_oos and splits:
             splits=splits[-1:]
         scored=[]
+        # Fit regime boundaries only from the data available to the current
+        # walk-forward training window. This router never sees the eventual
+        # prediction target, and its labels are used consistently across all
+        # validation models.
+        router=RegimeRouter().fit(X)
+        validation_regime_labels = {
+            (cut, val): router.labels(X.iloc[cut:cut+val])
+            for cut, val in splits
+        }
         regime_losses={}
         regime_counts={}
-        first_model_name=next(iter(models))
+        for cut, val in splits:
+            labels=validation_regime_labels[(cut,val)]
+            for regime in np.unique(labels):
+                regime_counts[str(regime)] = regime_counts.get(str(regime),0) + int(np.sum(labels==regime))
         for name,model in models.items():
             losses=[]
             for cut,val in splits:
@@ -1068,18 +1080,14 @@ class BaseballBacktest:
                     p=self.align_proba(model.predict_proba(X.iloc[cut:cut+val]),model.classes_,league)
                     yv=y[cut:cut+val]
                     losses.append(log_loss(yv,p,labels=list(range(k))))
-                    router=RegimeRouter()
-                    router.fit(X.iloc[:cut])
-                    labels=router.labels(X.iloc[cut:cut+val])
+                    labels=validation_regime_labels[(cut,val)]
+                    row_losses=-np.log(np.clip(p[np.arange(len(yv)),yv],1e-12,1.0))
                     for regime in np.unique(labels):
                         mask=labels==regime
-                        n=int(mask.sum())
-                        if name == first_model_name:
-                            regime_counts[regime]=regime_counts.get(regime,0)+n
-                        regime_losses.setdefault(regime,{}).setdefault(name,[]).extend(
-                            (-np.log(np.clip(p[mask, yv[mask]], 1e-12, 1.0))).tolist()
-                        )
-                except Exception:
+                        if mask.any():
+                            regime_losses.setdefault(str(regime),{}).setdefault(name,[]).extend(row_losses[mask].tolist())
+                except Exception as exc:
+                    self.audit.append({"type":"model_error","model":name,"error":str(exc),"stage":"ensemble_validation"})
                     losses=[]; break
             if losses: scored.append((float(np.mean(losses)),name))
         if not scored: return None,{},None
@@ -1094,45 +1102,23 @@ class BaseballBacktest:
             fitted.append((model,float(1.0/max(loss,1e-6)),name))
         inv=np.asarray([w for _,w,_ in fitted],dtype=float); inv/=max(inv.sum(),1e-12)
         fitted=[(m,float(w),n) for (m,_,n),w in zip(fitted,inv)]
-        # Freeze one regime definition from the complete information available
-        # before the current walk-forward block. Validation targets are never
-        # used to fit these boundaries. All validation-window regime losses are
-        # then assigned to this same frozen definition so regime performance is
-        # comparable across windows and cannot be mixed across incompatible
-        # quantile boundaries.
-        router=RegimeRouter().fit(X)
-        frozen_regime_labels=router.labels(X)
-        filtered_regime_losses={}
-        for regime,by_model in regime_losses.items():
-            filtered_regime_losses[regime]={name:float(np.mean(vals)) for name,vals in by_model.items() if name in top_names and vals}
-        # Recompute validation regime losses/counts under the frozen training-only
-        # router. This deliberately replaces split-specific label buckets before
-        # routing is promoted to the current walk-forward prediction block.
-        frozen_regime_losses={}
-        frozen_regime_counts={}
-        for name,model in models.items():
-            if name not in top_names:
-                continue
-            vals_by_regime={}
-            for cut,val in splits:
-                try:
-                    p=self.align_proba(model.predict_proba(X.iloc[cut:cut+val]),model.classes_,league)
-                    yv=y[cut:cut+val]
-                    labels=frozen_regime_labels[cut:cut+val]
-                    losses=-np.log(np.clip(p[np.arange(len(yv)),yv],1e-12,1.0))
-                    for regime in np.unique(labels):
-                        mask=labels==regime
-                        if mask.any():
-                            frozen_regime_counts[str(regime)]=frozen_regime_counts.get(str(regime),0)+int(mask.sum())
-                            frozen_regime_losses.setdefault(str(regime),{}).setdefault(name,[]).extend(losses[mask].tolist())
-                except Exception:
-                    continue
+        # Regime-specific routing uses only prefix-trained OOS predictions
+        # collected above. Never re-evaluate validation rows with models fitted
+        # on the complete X window, which would contaminate the routing signal.
+        filtered_regime_losses={
+            str(regime): {
+                name: float(np.mean(vals))
+                for name, vals in by_model.items()
+                if name in top_names and vals
+            }
+            for regime, by_model in regime_losses.items()
+        }
         self._regime_router=router
         self._regime_weights=router.weights(
             global_losses,
-            {r:{n:float(np.mean(v)) for n,v in by.items() if v} for r,by in frozen_regime_losses.items()},
-            frozen_regime_counts,
-        ) if frozen_regime_losses else {}
+            filtered_regime_losses,
+            regime_counts,
+        ) if filtered_regime_losses else {}
         temperature=1.0
         if not fast_oos and splits and fitted:
             cut,val=splits[-1]
