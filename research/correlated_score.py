@@ -18,9 +18,14 @@ def poisson_pmf(k: int, lam: float) -> float:
 
 def grid(lam_home: float, lam_away: float, shared: float = 0.0, max_runs: int = 14) -> np.ndarray:
     """Return a normalized bivariate-Poisson score grid."""
-    lh = max(float(lam_home) - float(shared), 1e-6)
-    la = max(float(lam_away) - float(shared), 1e-6)
-    lc = max(float(shared), 0.0)
+    # A bivariate-Poisson shared component cannot exceed either marginal
+    # intensity. Clamp it so the requested marginal means remain valid rather
+    # than silently changing the model when a noisy estimator overshoots.
+    lh_raw = max(float(lam_home), 1e-9)
+    la_raw = max(float(lam_away), 1e-9)
+    lc = min(max(float(shared), 0.0), lh_raw, la_raw)
+    lh = max(lh_raw - lc, 1e-9)
+    la = max(la_raw - lc, 1e-9)
     out = np.zeros((max_runs + 1, max_runs + 1), dtype=float)
     # Tail mass is normalized inside the visible grid, matching the existing
     # exact-score contract while preserving the shared component.
