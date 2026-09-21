@@ -2,8 +2,15 @@ name: Baseball 24h Supervisor
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/baseball_24h_supervisor.yml'
+  workflow_run:
+    workflows: ["Baseball 9h Autopilot"]
+    types: [completed]
   schedule:
-    # Lightweight keep-alive check; it starts a new 9h cycle when no cycle is active.
+    # Lightweight keep-alive fallback; it starts a new 9h cycle when no cycle is active.
     - cron: '*/15 * * * *'
 
 permissions:
