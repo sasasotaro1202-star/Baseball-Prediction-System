@@ -20,8 +20,10 @@ def test_closed_loop_keeps_safe_sequential_execution_and_quality_gates():
     text = CLOSED_LOOP.read_text(encoding="utf-8")
 
     assert "group: baseball-closed-loop" in text
-    assert "queue: max" in text
-    assert "cancel-in-progress: false" in text
+    # Stale queued lifecycle runs must be discarded so evidence stays tied to the current main commit.
+    assert "cancel-in-progress: true" in text
+    assert "queue: max" not in text
+    assert "cancel-in-progress: false" not in text
     assert "- cron: '17 0,3,6,9,12,15,18,21 * * *'" in text
     assert "120-minute lifecycle timeout" in text
     _assert_official_actions_are_immutable(text)
