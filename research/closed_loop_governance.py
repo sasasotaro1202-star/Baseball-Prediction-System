@@ -171,6 +171,25 @@ def holdout_stage(holdout_artifact: str | Path = "results/independent_holdout.js
                 continue
             if payload.get("used_for_candidate_selection") is not False:
                 blockers.append(f"holdout_selection_contamination:{league}")
+            for side in ("baseline", "candidate"):
+                metrics = payload.get(side)
+                if not isinstance(metrics, dict):
+                    blockers.append(f"missing_holdout_metrics:{league}:{side}")
+                    continue
+                for key in ("rows", "LogLoss", "Brier", "Accuracy"):
+                    try:
+                        value = float(metrics[key])
+                    except (KeyError, TypeError, ValueError):
+                        blockers.append(f"invalid_holdout_metric:{league}:{side}:{key}")
+                        continue
+                    if not math.isfinite(value) or (key == "rows" and (value < 0 or value % 1 != 0)):
+                        blockers.append(f"invalid_holdout_metric:{league}:{side}:{key}")
+            if isinstance(payload.get("baseline"), dict) and isinstance(payload.get("candidate"), dict):
+                try:
+                    if int(payload["baseline"]["rows"]) != int(payload["candidate"]["rows"]):
+                        blockers.append(f"holdout_row_mismatch:{league}")
+                except (KeyError, TypeError, ValueError):
+                    pass
         return Stage("Independent Holdout", "READY" if not blockers else "BLOCKED", tuple(blockers))
     except Exception as exc:
         return Stage("Independent Holdout", "BLOCKED", (f"invalid_holdout:{type(exc).__name__}",))
@@ -216,7 +235,7 @@ def candidate_stage(candidate_artifact: str | Path = "results/candidate_validati
                 if not isinstance(metrics, dict):
                     blockers.append(f"missing_candidate_metrics:{league}:{key}")
                     continue
-                for metric in ("LogLoss", "Brier", "Accuracy"):
+                for metric in ("LogLoss", "Brier", "Accuracy", "rows"):
                     try:
                         value = float(metrics[metric])
                     except (KeyError, TypeError, ValueError):
