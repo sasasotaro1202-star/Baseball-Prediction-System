@@ -140,6 +140,20 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
         occurrences.append((m.start(), team, name))
 
     occurrences.sort()
+    # Audit raw team-logo evidence separately from the semantic visible-text
+    # stream. A repeated official team logo in the target section means the
+    # same team would be assigned to multiple games, which is structurally
+    # impossible for a single-day NPB slate and must fail closed.
+    logo_counts = {}
+    for team in teams:
+        hits = re.findall(
+            rf'<img\\b[^>]*\\balt=["\\\']{re.escape(team)}["\\\']',
+            section, re.I,
+        )
+        if len(hits) > 1:
+            raise RuntimeError("PIT starter gate failed: duplicate team tokens in official starter order.")
+        if hits:
+            logo_counts[team] = len(hits)
     time_matches = list(re.finditer(r"(?<!\d)(\d{1,2}:\d{2})(?!\d)", section))
     if not time_matches:
         raise RuntimeError("PIT starter gate failed: no official game times found.")
