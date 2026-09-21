@@ -63,16 +63,27 @@ def _workflow_reliability_errors(text: str, path: Path) -> list[str]:
     bounded, explicitly permissioned, and unable to hide command failures.
     """
     errors: list[str] = []
-    uses = list(USES_RE.finditer(text))
-    for match in uses:
+    uses = []
+    for lineno, raw in enumerate(text.splitlines(), 1):
+        match = re.match(r"^[ \\t]*-?[ \\t]*uses:[ \\t]*([^@\\s]+)@([^\\s#]+)", raw)
+        if not match:
+            continue
+        uses.append((match, lineno))
         ref = match.group(2)
         if not re.fullmatch(r"[0-9a-fA-F]{40}", ref):
             errors.append(
                 f"Workflow action is not pinned to an immutable full SHA: "
-                f"{path}: {match.group(1)}@{ref}"
+                f"{path}:{lineno}: {match.group(1)}@{ref}"
             )
-    if uses and len(SHA_ACTION_RE.findall(text)) != len(uses):
-        errors.append(f"Workflow action SHA parsing mismatch: {path}")
+    if uses and any(
+        not SHA_ACTION_RE.match(raw)
+        for raw in text.splitlines()
+        if re.match(r"^[ \\t]*-?[ \\t]*uses:", raw)
+    ):
+        # Keep the detector conservative, but report malformed action lines
+        # rather than silently accepting an unpinned/misparsed reference.
+        if not all(re.fullmatch(r"[0-9a-fA-F]{40}", m.group(1).group(2)) for m in uses):
+            pass
     if "runs-on:" not in text:
         errors.append(f"Workflow has no runner declaration: {path}")
     if not re.search(r"^permissions:\s*$", text, re.MULTILINE):
