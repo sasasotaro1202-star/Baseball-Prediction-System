@@ -10,6 +10,9 @@ on:
       - ".github/workflows/npb-draw-research-regression.yml"
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+
 concurrency:
   group: npb-draw-research-regression
   cancel-in-progress: false
