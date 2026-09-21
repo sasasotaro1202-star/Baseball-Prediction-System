@@ -88,8 +88,17 @@ def evaluate_locked_holdout(
     Missing or non-finite metrics fail closed; defaults are never substituted
     for evidence. This prevents incomplete evaluations from being promoted.
     """
-    rows = int(candidate.get("rows", 0))
+    try:
+        rows = int(candidate.get("rows", 0))
+        baseline_rows = int(baseline.get("rows", rows))
+    except (TypeError, ValueError):
+        rows = 0
+        baseline_rows = -1
     reasons: list[str] = []
+    if rows < 0 or baseline_rows < 0:
+        reasons.append("invalid_metric_row_count")
+    if baseline_rows != rows:
+        reasons.append("baseline_candidate_row_mismatch")
     if rows < policy.min_oos_rows:
         reasons.append("insufficient_locked_holdout_rows")
     if policy.require_two_validation_windows and validation_windows < 2:
