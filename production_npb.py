@@ -10,6 +10,7 @@ The target game itself is never appended to historical training data.
 from __future__ import annotations
 import time
 import argparse, json, re, html as html_lib
+from html.parser import HTMLParser
 from datetime import datetime, timezone
 from pathlib import Path
 import numpy as np
@@ -58,6 +59,83 @@ class _VisibleTextParser(__import__("html.parser", fromlist=["HTMLParser"]).HTML
         value = _clean_name(data)
         if value:
             self.parts.append(value)
+
+class _UnitStarterParser(HTMLParser):
+    """Extract team/starter pairs only from official game-card .unit containers.
+
+    This intentionally ignores duplicated responsive/accessibility text outside
+    the structural game card, while still failing closed when a real .unit
+    contains the same team more than once or a team appears in multiple cards.
+    """
+    def __init__(self, teams: list[str]):
+        super().__init__()
+        self.teams = set(teams)
+        self.depth = 0
+        self.unit_depth = None
+        self.team_left_depth = None
+        self.current_team = None
+        self.current_name = []
+        self.results = []
+        self.position = 0
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.lower()
+        attrs_dict = {k: v or "" for k, v in attrs}
+        classes = set((attrs_dict.get("class") or "").split())
+        if tag == "div" and "unit" in classes and self.unit_depth is None:
+            self.unit_depth = self.depth
+        if self.unit_depth is None:
+            self.depth += 1
+            return
+        if tag == "img" and self.current_team is None:
+            alt = _clean_name(attrs_dict.get("alt", ""))
+            if alt in self.teams:
+                self.current_team = alt
+                self.current_name = []
+        if tag == "div" and "team_left" in classes and self.current_team is not None and self.team_left_depth is None:
+            self.team_left_depth = self.depth
+            self.current_name = []
+        self.depth += 1
+
+    def handle_data(self, data):
+        if self.unit_depth is not None and self.team_left_depth is not None:
+            value = _clean_name(data)
+            if value:
+                self.current_name.append(value)
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        self.depth = max(0, self.depth - 1)
+        if self.unit_depth is None:
+            return
+        if tag == "div" and self.team_left_depth is not None and self.depth == self.team_left_depth:
+            name = _clean_name(" ".join(self.current_name))
+            if self.current_team and name:
+                self.results.append((self.position, self.current_team, name))
+                self.position += 1
+            self.current_team = None
+            self.current_name = []
+            self.team_left_depth = None
+        if tag == "div" and self.depth == self.unit_depth:
+            self.unit_depth = None
+            self.team_left_depth = None
+            self.current_team = None
+            self.current_name = []
+
+
+def _parse_starters_by_units(section: str, teams: list[str]) -> list[tuple[int,str,str]]:
+    parser = _UnitStarterParser(teams)
+    parser.feed(section)
+    found = parser.results
+    if not found:
+        return []
+    seen = {}
+    for pos, team, name in found:
+        seen.setdefault(team, []).append((pos, team, name))
+    if any(len(items) > 1 for items in seen.values()):
+        raise RuntimeError("PIT starter gate failed: duplicate team tokens in official starter order.")
+    return found
+
 
 def _parse_starters_by_visible_text(section: str, teams: list[str]) -> list[tuple[int,str,str]]:
     parser = _VisibleTextParser()
@@ -140,20 +218,11 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
         occurrences.append((m.start(), team, name))
 
     occurrences.sort()
-    # Audit raw team-logo evidence separately from the semantic visible-text
-    # stream. A repeated official team logo in the target section means the
-    # same team would be assigned to multiple games, which is structurally
-    # impossible for a single-day NPB slate and must fail closed.
-    logo_counts = {}
-    for team in teams:
-        hits = re.findall(
-            rf'<img\b[^>]*\balt=["\\\']{re.escape(team)}["\\\']',
-            section, re.I,
-        )
-        if len(hits) > 1:
-            raise RuntimeError("PIT starter gate failed: duplicate team tokens in official starter order.")
-        if hits:
-            logo_counts[team] = len(hits)
+    structural_occurrences = _parse_starters_by_units(section, teams)
+    if structural_occurrences:
+        # Prefer true structural game-card evidence. Responsive/accessibility
+        # duplicates outside .unit must never create false duplicate games.
+        occurrences = structural_occurrences
     time_matches = list(re.finditer(r"(?<!\d)(\d{1,2}:\d{2})(?!\d)", section))
     if not time_matches:
         raise RuntimeError("PIT starter gate failed: no official game times found.")
@@ -166,13 +235,6 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
     # the expected team/starter cardinality; this follows the accessible
     # sequence exposed by the official page and is safer than character-
     # distance inference.
-    # The bounded per-unit extraction is the authoritative structural
-    # cross-check. A real duplicate team across separate game units is invalid;
-    # only the accessible visible-text stream may contain harmless duplicated
-    # team tokens caused by responsive markup.
-    unit_teams = [team for _, team, _ in occurrences]
-    if len(unit_teams) != len(set(unit_teams)):
-        raise RuntimeError("PIT starter gate failed: duplicate team tokens in official starter order.")
     try:
         visible = _parse_starters_by_visible_text(section, teams)
     except RuntimeError as exc:
