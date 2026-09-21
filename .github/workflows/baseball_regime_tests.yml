@@ -26,6 +26,9 @@ on:
       - ".github/workflows/baseball_regime_tests.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: baseball-regime-tests
   cancel-in-progress: true
