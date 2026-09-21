@@ -56,6 +56,54 @@ SHA_ACTION_RE = re.compile(r"^\s*uses:\s*[^@\s]+@([0-9a-fA-F]{40})\s*$", re.MULT
 USES_RE = re.compile(r"^\s*uses:\s*([^@\s]+)@([^\s#]+)", re.MULTILINE)
 
 
+def _workflow_reliability_errors(text: str, path: Path) -> list[str]:
+    """Return deterministic workflow hardening failures.
+
+    These checks are intentionally conservative: a workflow must be reproducible,
+    bounded, explicitly permissioned, and unable to hide command failures.
+    """
+    errors: list[str] = []
+    uses = list(USES_RE.finditer(text))
+    for match in uses:
+        ref = match.group(2)
+        if not re.fullmatch(r"[0-9a-fA-F]{40}", ref):
+            errors.append(
+                f"Workflow action is not pinned to an immutable full SHA: "
+                f"{path}: {match.group(1)}@{ref}"
+            )
+    if uses and len(SHA_ACTION_RE.findall(text)) != len(uses):
+        errors.append(f"Workflow action SHA parsing mismatch: {path}")
+    if "runs-on:" not in text:
+        errors.append(f"Workflow has no runner declaration: {path}")
+    if not re.search(r"^permissions:\s*$", text, re.MULTILINE):
+        errors.append(f"Workflow has no explicit top-level permissions: {path}")
+
+    for lineno, raw in enumerate(text.splitlines(), 1):
+        stripped = raw.strip()
+        if stripped.startswith("#"):
+            continue
+        if re.match(r"^continue-on-error\s*:", stripped):
+            errors.append(f"Workflow masks step/job failure with continue-on-error: {path}:{lineno}")
+        if "|| true" in stripped:
+            errors.append(f"Workflow masks command failure with '|| true': {path}:{lineno}")
+
+    jobs_match = re.search(r"^jobs:\s*$", text, re.MULTILINE)
+    if jobs_match:
+        jobs_text = text[jobs_match.end():]
+        job_blocks = list(re.finditer(
+            r"^  ([A-Za-z0-9_-]+):\s*$(?P<body>.*?)(?=^  [A-Za-z0-9_-]+:\s*$|\Z)",
+            jobs_text, re.MULTILINE | re.DOTALL,
+        ))
+        if not job_blocks:
+            errors.append(f"Workflow has no recognizable jobs: {path}")
+        for block in job_blocks:
+            job_name = block.group(1)
+            body = block.group("body")
+            if not re.search(r"^    timeout-minutes:\s*\d+\s*$", body, re.MULTILINE):
+                errors.append(f"Job '{job_name}' has no bounded timeout-minutes: {path}")
+    return errors
+
+
 def _workflow_reliability_checks() -> None:
     """Reject workflow wiring that would make CI non-reproducible or fragile."""
     if not WORKFLOW_DIR.is_dir():
@@ -67,19 +115,11 @@ def _workflow_reliability_checks() -> None:
     checked = 0
     for path in workflows:
         text = path.read_text(encoding="utf-8")
-        uses = list(USES_RE.finditer(text))
-        for match in uses:
-            ref = match.group(2)
-            if not re.fullmatch(r"[0-9a-fA-F]{40}", ref):
-                raise SystemExit(
-                    f"Workflow action is not pinned to an immutable full SHA: {path}: {match.group(1)}@{ref}"
-                )
-        if uses and len(SHA_ACTION_RE.findall(text)) != len(uses):
-            raise SystemExit(f"Workflow action SHA parsing mismatch: {path}")
-        if "runs-on:" not in text:
-            raise SystemExit(f"Workflow has no runner declaration: {path}")
+        errors = _workflow_reliability_errors(text, path)
+        if errors:
+            raise SystemExit("\n".join(errors))
         checked += 1
-    print(f"OK: {checked} workflow files use immutable action refs")
+    print(f"OK: {checked} workflow files pass immutable-action, permission, timeout, and failure-propagation checks")
 
 
 def main() -> int:
