@@ -273,7 +273,7 @@ def official_starters(target_date: str) -> list[dict]:
         # If the live official page is structurally changed but an independently
         # captured official snapshot exists, use that PIT-safe snapshot rather than
         # failing a scheduled production refresh. The snapshot itself is validated
-        # for provenance, target date, six games, and official source metadata.
+        # for provenance, target date, required per-game fields, and official source metadata.
         if snapshot is not None:
             return snapshot
         raise
@@ -299,10 +299,6 @@ def direct_pit_safe_lambdas(hist: pd.DataFrame, row: pd.Series, bt: BaseballBack
     """
     league="NPB"; cutoff=pd.Timestamp(row["datetime"])
     h=norm_team(row["home"],league); a=norm_team(row["away"],league)
-    hh=hist[hist["home"].map(lambda x:norm_team(x,league))==h]
-    ha=hist[hist["away"].map(lambda x:norm_team(x,league))==h]
-    ah=hist[hist["home"].map(lambda x:norm_team(x,league))==a]
-    aa=hist[hist["away"].map(lambda x:norm_team(x,league))==a]
     hist=hist.sort_values(["datetime","game_id"]).copy()
     def ew_team(team, side, scored, default):
         rows=[]
@@ -541,9 +537,19 @@ def predict(target_date: str, data_dir: str) -> dict:
     # Output validation: probabilities are finite, win probabilities sum to 100,
     # Low/High sum to 100, and exactly four score candidates exist.
     for o in outputs:
-        assert abs(o["home_win_pct"]+o["draw_pct"]+o["away_win_pct"]-100) < 0.05
-        assert abs(o["low_pct"]+o["high_pct"]-100) < 0.05
-        assert len(o["top4_exact_scores"]) == 4
+        probs = [float(o[k]) for k in ("home_win_pct", "draw_pct", "away_win_pct", "low_pct", "high_pct")]
+        if not all(np.isfinite(v) and 0.0 <= v <= 100.0 for v in probs):
+            raise RuntimeError("Production output validation failed: non-finite or out-of-range probability.")
+        if abs(o["home_win_pct"]+o["draw_pct"]+o["away_win_pct"]-100) >= 0.05:
+            raise RuntimeError("Production output validation failed: final-result probabilities do not sum to 100%.")
+        if abs(o["low_pct"]+o["high_pct"]-100) >= 0.05:
+            raise RuntimeError("Production output validation failed: Low/High probabilities do not sum to 100%.")
+        exact = o["top4_exact_scores"]
+        if len(exact) != 4 or len({s.get("score") for s in exact}) != 4:
+            raise RuntimeError("Production output validation failed: Top4 exact scores are not four unique candidates.")
+        exact_probs = [float(s.get("prob_pct", float("nan"))) for s in exact]
+        if not all(np.isfinite(v) and 0.0 <= v <= 100.0 for v in exact_probs):
+            raise RuntimeError("Production output validation failed: exact-score probability is invalid.")
     out=ROOT/"results"/f"npb_production_{target_date}.json"; out.parent.mkdir(exist_ok=True)
     out.write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding="utf-8")
     return result
