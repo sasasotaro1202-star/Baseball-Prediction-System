@@ -64,3 +64,14 @@ def test_material_regime_edge_allows_specialization():
         {"s0_e0": 100},
     )
     assert weights["s0_e0"]["A"] > weights["s0_e0"]["B"]
+
+
+def test_router_rejects_invalid_loss_evidence():
+    import pytest
+    router = RegimeRouter()
+    with pytest.raises(ValueError):
+        router.weights({"a": 0.0}, {"r": {"a": 1.0}}, {"r": 40})
+    with pytest.raises(ValueError):
+        router.weights({"a": 1.0}, {"r": {"a": float("nan")}}, {"r": 40})
+    with pytest.raises(ValueError):
+        router.weights({"a": 1.0}, {"r": {"a": 1.0}}, {"r": -1})
