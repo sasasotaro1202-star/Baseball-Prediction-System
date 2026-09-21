@@ -1,6 +1,6 @@
 name: Baseball 9h Autopilot
 # Hardened after CI diagnosis: deterministic gates run before expensive phases.
-# Retry trigger after action-preflight parser hardening.
+# Retry trigger after whitespace-regex correction.
 
 on:
   workflow_dispatch:
