@@ -990,7 +990,7 @@ class BaseballBacktest:
 
     def _sample_weights(self, n: int) -> np.ndarray:
         if n <= 1: return np.ones(n, dtype=float)
-        half_life = float(os.getenv("NPB_RECENCY_HALF_LIFE_GAMES", "1800"))
+        half_life = float(os.getenv("BASEBALL_RECENCY_HALF_LIFE_GAMES", os.getenv("NPB_RECENCY_HALF_LIFE_GAMES", "1800")))
         age = np.arange(n-1, -1, -1, dtype=float)
         w = np.exp(-np.log(2.0) * age / max(100.0, half_life))
         return np.clip(w, 0.20, 1.0)
