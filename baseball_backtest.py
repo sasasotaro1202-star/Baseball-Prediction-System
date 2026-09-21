@@ -1094,12 +1094,45 @@ class BaseballBacktest:
             fitted.append((model,float(1.0/max(loss,1e-6)),name))
         inv=np.asarray([w for _,w,_ in fitted],dtype=float); inv/=max(inv.sum(),1e-12)
         fitted=[(m,float(w),n) for (m,_,n),w in zip(fitted,inv)]
+        # Freeze one regime definition from the complete information available
+        # before the current walk-forward block. Validation targets are never
+        # used to fit these boundaries. All validation-window regime losses are
+        # then assigned to this same frozen definition so regime performance is
+        # comparable across windows and cannot be mixed across incompatible
+        # quantile boundaries.
         router=RegimeRouter().fit(X)
+        frozen_regime_labels=router.labels(X)
         filtered_regime_losses={}
         for regime,by_model in regime_losses.items():
             filtered_regime_losses[regime]={name:float(np.mean(vals)) for name,vals in by_model.items() if name in top_names and vals}
+        # Recompute validation regime losses/counts under the frozen training-only
+        # router. This deliberately replaces split-specific label buckets before
+        # routing is promoted to the current walk-forward prediction block.
+        frozen_regime_losses={}
+        frozen_regime_counts={}
+        for name,model in models.items():
+            if name not in top_names:
+                continue
+            vals_by_regime={}
+            for cut,val in splits:
+                try:
+                    p=self.align_proba(model.predict_proba(X.iloc[cut:cut+val]),model.classes_,league)
+                    yv=y[cut:cut+val]
+                    labels=frozen_regime_labels[cut:cut+val]
+                    losses=-np.log(np.clip(p[np.arange(len(yv)),yv],1e-12,1.0))
+                    for regime in np.unique(labels):
+                        mask=labels==regime
+                        if mask.any():
+                            frozen_regime_counts[str(regime)]=frozen_regime_counts.get(str(regime),0)+int(mask.sum())
+                            frozen_regime_losses.setdefault(str(regime),{}).setdefault(name,[]).extend(losses[mask].tolist())
+                except Exception:
+                    continue
         self._regime_router=router
-        self._regime_weights=router.weights(global_losses,filtered_regime_losses,regime_counts) if filtered_regime_losses else {}
+        self._regime_weights=router.weights(
+            global_losses,
+            {r:{n:float(np.mean(v)) for n,v in by.items() if v} for r,by in frozen_regime_losses.items()},
+            frozen_regime_counts,
+        ) if frozen_regime_losses else {}
         temperature=1.0
         if not fast_oos and splits and fitted:
             cut,val=splits[-1]
