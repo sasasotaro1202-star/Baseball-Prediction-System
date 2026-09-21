@@ -138,10 +138,22 @@ def calibration_stage(calibration_artifact: str | Path = "results/calibration.js
     return Stage("Calibration", "READY")
 
 
+def _validate_league_artifact(path: str | Path, required_leagues: set[str]) -> tuple[bool, tuple[str, ...]]:
+    try:
+        obj = json.loads(Path(path).read_text(encoding="utf-8"))
+        if not isinstance(obj, dict):
+            return False, ("artifact_not_object",)
+        missing = sorted(required_leagues - set(obj))
+        return (not missing), tuple(f"missing_league:{x}" for x in missing)
+    except Exception as exc:
+        return False, (f"invalid_json:{type(exc).__name__}",)
+
+
 def oos_stage(oos_artifact: str | Path = "results/development_oos.json") -> Stage:
     if not _nonempty(oos_artifact):
         return Stage("Development OOS", "BLOCKED", ("development_oos_missing",))
-    return Stage("Development OOS", "READY")
+    ok, blockers = _validate_league_artifact(oos_artifact, {"NPB", "MLB"})
+    return Stage("Development OOS", "READY" if ok else "BLOCKED", blockers)
 
 
 def holdout_stage(holdout_artifact: str | Path = "results/independent_holdout.json") -> Stage:
@@ -153,7 +165,8 @@ def holdout_stage(holdout_artifact: str | Path = "results/independent_holdout.js
 def result_stage(result_artifact: str | Path = "results/result_audit.json") -> Stage:
     if not _nonempty(result_artifact):
         return Stage("Result Collection", "BLOCKED", ("result_audit_missing",))
-    return Stage("Result Collection", "READY")
+    ok, blockers = _validate_league_artifact(result_artifact, {"NPB", "MLB"})
+    return Stage("Result Collection", "READY" if ok else "BLOCKED", blockers)
 
 
 def weakness_stage(weakness_artifact: str | Path = "results/weakness_report.json") -> Stage:
