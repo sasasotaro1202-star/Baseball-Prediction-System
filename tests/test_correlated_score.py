@@ -43,3 +43,14 @@ def test_symmetric_npb_model_is_symmetric():
     home, draw, away = npb_final_outcomes(3.0, 3.0, 0.0)
     assert abs(home - away) < 1e-12
     assert abs(home + draw + away - 1.0) < 1e-12
+
+
+def test_npb_home_away_orientation_matches_score_grid():
+    home, draw, away = npb_final_outcomes(5.0, 2.0, 0.0, extra_innings=0)
+    m = grid(5.0, 2.0, 0.0)
+    expected_home = float(np.tril(m, -1).sum())
+    expected_away = float(np.triu(m, 1).sum())
+    expected_draw = float(np.trace(m))
+    assert abs(home - expected_home) < 1e-12
+    assert abs(draw - expected_draw) < 1e-12
+    assert abs(away - expected_away) < 1e-12
