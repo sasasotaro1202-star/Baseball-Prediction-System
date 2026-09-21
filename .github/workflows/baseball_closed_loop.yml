@@ -16,8 +16,9 @@ permissions:
 
 concurrency:
   group: baseball-closed-loop
-  queue: max
-  cancel-in-progress: false
+  # Closed-loop evidence must correspond to the current main commit. Stale
+  # queued runs are discarded so the free runner queue stays available.
+  cancel-in-progress: true
 
 env:
   PYTHONPATH: .
