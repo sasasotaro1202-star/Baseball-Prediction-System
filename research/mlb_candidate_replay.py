@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,9 @@ class MLBReplayConfig:
     min_holdout_rows: int = 200
     block_size: int = 60
     retrain_every: int = 180
+    calibration_tolerance: float = 0.005
+    recency_half_lives: tuple[int, ...] = (900, 1800, 3600)
+    recency_variant_top_k: int = 2
 
 
 def _proba(bt: BaseballBacktest, model: Any, X):
@@ -115,6 +119,60 @@ def _target_metrics(bt: BaseballBacktest, X_train, games_train, games_holdout, X
     return {"ScoreMAE": score_mae, "Top4HitRate": float(np.mean(score_hits)), "rows": int(len(ya))}, hilo
 
 
+def _temperature_scale(p: np.ndarray, temperature: float) -> np.ndarray:
+    if not np.isfinite(temperature) or temperature <= 0:
+        raise ValueError("temperature must be positive and finite")
+    logp = np.log(np.clip(np.asarray(p, dtype=float), 1e-12, 1.0))
+    z = logp / float(temperature)
+    z -= np.max(z, axis=1, keepdims=True)
+    q = np.exp(z)
+    return q / np.sum(q, axis=1, keepdims=True)
+
+
+def _fit_temperature(y: np.ndarray, p: np.ndarray) -> float:
+    best_t = 1.0
+    best_ll = float("inf")
+    for t in np.linspace(0.75, 1.25, 51):
+        q = _temperature_scale(p, float(t))
+        ll = float(classification_metrics(y, q, classes=[0, 1])["LogLoss"])
+        if ll < best_ll - 1e-12 or (abs(ll - best_ll) <= 1e-12 and abs(float(t)-1.0) < abs(best_t-1.0)):
+            best_ll = ll
+            best_t = float(t)
+    return best_t
+
+
+def _fit_with_half_life(bt: BaseballBacktest, name: str, X, y, half_life: int | None):
+    models = bt.models("MLB")
+    if name not in models:
+        raise ValueError(f"unknown MLB model candidate: {name}")
+    previous = os.environ.get("NPB_RECENCY_HALF_LIFE_GAMES")
+    try:
+        if half_life is not None:
+            os.environ["NPB_RECENCY_HALF_LIFE_GAMES"] = str(int(half_life))
+        bt._fit_model(models[name], X, y, bt._sample_weights(len(X)), "MLB")
+    finally:
+        if previous is None:
+            os.environ.pop("NPB_RECENCY_HALF_LIFE_GAMES", None)
+        else:
+            os.environ["NPB_RECENCY_HALF_LIFE_GAMES"] = previous
+    return models[name]
+
+
+def _development_variant(bt, X, y, start, end, name, half_life, block, retrain_every):
+    chunks=[]; actual=[]; fitted=None; last=-10**9; windows=0
+    for cut in range(start,end,block):
+        stop=min(end,cut+block)
+        if fitted is None or cut-last>=retrain_every:
+            fitted=_fit_with_half_life(bt,name,X.iloc[:cut],y[:cut],half_life)
+            last=cut
+        actual.append(y[cut:stop])
+        chunks.append(_proba(bt,fitted,X.iloc[cut:stop]))
+        windows+=1
+    if not chunks: raise RuntimeError(f"No OOS windows for {name}@{half_life}")
+    yy=np.concatenate(actual); pp=np.vstack(chunks)
+    return classification_metrics(yy[:len(pp)],pp,classes=[0,1]),pp,windows
+
+
 def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
                             mlb_start: int = 2020, mlb_end: int = 2026,
                             feature_version: str = "baseball-features-v1",
@@ -137,14 +195,80 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
     names = list(bt.models("MLB").keys())
     development, windows = _development(bt, X, y, dev_start, holdout_start, names, config.block_size, config.retrain_every)
     baseline = development["ProductionEnsemble"]
-    candidates = [(k, v) for k, v in development.items() if k != "ProductionEnsemble"]
-    candidates.sort(key=lambda kv: (kv[1]["LogLoss"], kv[1]["Brier"], -kv[1]["Accuracy"], kv[0]))
-    selected_name, selected_metrics = candidates[0]
+    candidates = [(k,v) for k,v in development.items() if k!="ProductionEnsemble"]
+    candidates.sort(key=lambda kv:(kv[1]["LogLoss"],kv[1]["Brier"],-kv[1]["Accuracy"],kv[0]))
+    if not candidates:
+        raise RuntimeError("no MLB candidate produced valid Development OOS metrics")
+
+    base_half_life=int(os.getenv("NPB_RECENCY_HALF_LIFE_GAMES","1800"))
+    variant_specs={}
+    development_predictions={}
+    # Re-run the strict Development OOS once to retain raw predictions for
+    # low-complexity calibration and recency challengers.
+    actual_dev=[]; fitted_base={}; last_fit=-10**9
+    for cut in range(dev_start,holdout_start,config.block_size):
+        stop=min(holdout_start,cut+config.block_size)
+        if not fitted_base or cut-last_fit>=config.retrain_every:
+            for name in ["ProductionEnsemble"] + [k for k,_ in candidates[:max(1,config.recency_variant_top_k)]]:
+                if name=="ProductionEnsemble":
+                    fitted_base[name]=None
+                else:
+                    fitted_base[name]=_fit_with_half_life(bt,name,X.iloc[:cut],y[:cut],None)
+            last_fit=cut
+        actual_dev.append(y[cut:stop])
+        if fitted_base:
+            for name,model in list(fitted_base.items()):
+                if name=="ProductionEnsemble":
+                    continue
+                development_predictions.setdefault(name,[]).append(_proba(bt,model,X.iloc[cut:stop]))
+    y_dev=np.concatenate(actual_dev) if actual_dev else np.empty(0,dtype=int)
+    for name in list(development_predictions):
+        if development_predictions[name]:
+            development_predictions[name]=np.vstack(development_predictions[name])
+
+    for base_name,_m in candidates[:max(1,config.recency_variant_top_k)]:
+        for half_life in config.recency_half_lives:
+            if int(half_life)==base_half_life:
+                continue
+            vname=f"{base_name}@recency_hl={int(half_life)}"
+            try:
+                vm,vp,vw=_development_variant(bt,X,y,dev_start,holdout_start,base_name,int(half_life),config.block_size,config.retrain_every)
+            except Exception as exc:
+                bt.audit.append({"type":"mlb_recency_variant_error","model":base_name,"recency_half_life":int(half_life),"error":f"{type(exc).__name__}: {exc}"})
+                continue
+            development[vname]=vm
+            development_predictions[vname]=vp
+            variant_specs[vname]=(base_name,int(half_life))
+
+    candidates=[(k,v) for k,v in development.items() if k!="ProductionEnsemble"]
+    candidates.sort(key=lambda kv:(kv[1]["LogLoss"],kv[1]["Brier"],-kv[1]["Accuracy"],kv[0]))
+    calibration_specs={}
+    for name,_m in candidates[:max(5,config.recency_variant_top_k+1)]:
+        pred=development_predictions.get(name)
+        if pred is None or len(pred)!=len(y_dev):
+            continue
+        t=_fit_temperature(y_dev,pred)
+        q=_temperature_scale(pred,t)
+        cname=f"TemperatureScaled:{name}"
+        development[cname]=classification_metrics(y_dev,q,classes=[0,1])
+        development_predictions[cname]=q
+        calibration_specs[cname]=(name,t)
+
+    candidates=[(k,v) for k,v in development.items() if k!="ProductionEnsemble"]
+    candidates.sort(key=lambda kv:(kv[1]["LogLoss"],kv[1]["Brier"],-kv[1]["Accuracy"],kv[0]))
+    selected_name,selected_metrics=candidates[0]
+    selected_temperature=1.0
+    base_selected=selected_name
+    if selected_name.startswith("TemperatureScaled:"):
+        base_selected=selected_name[len("TemperatureScaled:"):]
+        selected_temperature=calibration_specs[selected_name][1]
+    selected_model_name,selected_half_life=variant_specs.get(base_selected,(base_selected,None))
+
     if baseline["LogLoss"] - selected_metrics["LogLoss"] <= 0:
-        result = {"stage": "development_evaluated", "decision": "NO_CHANGE", "baseline": baseline,
-                  "candidate": selected_metrics, "candidate_model": selected_name, "validation_windows": windows}
-        atomic_write_json(RESULTS / "mlb_candidate_development.json", result)
-        return result
+        return {"stage":"development_evaluated","decision":"NO_CHANGE","baseline":baseline,
+                "candidate":selected_metrics,"candidate_model":selected_model_name,
+                "candidate_recency_half_life":selected_half_life,"candidate_temperature":selected_temperature,
+                "validation_windows":windows,"development":development}
 
     # Hash the actual ordered dataset content, not only row count/index. This
     # makes candidate identity sensitive to data changes and strengthens
@@ -154,10 +278,10 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
     ).encode("utf-8")
     dataset_hash = hashlib.sha256(dataset_bytes).hexdigest()
     spec = CandidateSpec(
-        candidate_id="cand-" + hashlib.sha256(f"MLB|{selected_name}|{feature_version}|{git_commit}|{dataset_hash}".encode()).hexdigest()[:20],
-        league="MLB", objective="win", model_version=selected_name, feature_version=feature_version,
+        candidate_id="cand-" + hashlib.sha256(f"MLB|{selected_model_name}|HL={selected_half_life or base_half_life}|T={selected_temperature:.4f}|{feature_version}|{git_commit}|{dataset_hash}".encode()).hexdigest()[:20],
+        league="MLB", objective="win", model_version=selected_model_name, feature_version=feature_version,
         development_metrics=selected_metrics,
-        selection_reason="Development OOS only; lowest LogLoss, then Brier, then highest Accuracy.",
+        selection_reason=f"Development OOS only; selected {selected_model_name} with recency_half_life={selected_half_life or base_half_life} and frozen temperature={selected_temperature:.4f}.",
         git_commit=git_commit, dataset_hash=dataset_hash,
     )
     locked = lock_candidate(spec)
@@ -168,7 +292,9 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
     if not base_fit:
         raise RuntimeError("MLB production ensemble could not be fitted for holdout")
     base_p = bt.ensemble_proba(base_fit, X_holdout, "MLB")
-    cand_p = _proba(bt, _fit(bt, selected_name, X_train, y_train), X_holdout)
+    cand_p = _proba(bt, _fit_with_half_life(bt, selected_model_name, X_train, y_train, selected_half_life), X_holdout)
+    if selected_temperature != 1.0:
+        cand_p = _temperature_scale(cand_p, selected_temperature)
     base = classification_metrics(y_holdout, base_p, classes=[0, 1])
     cand = classification_metrics(y_holdout, cand_p, classes=[0, 1])
 
