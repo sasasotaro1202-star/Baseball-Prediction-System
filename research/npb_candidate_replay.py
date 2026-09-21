@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -35,6 +36,11 @@ class ReplayConfig:
     block_size: int = 60
     retrain_every: int = 180
     calibration_tolerance: float = 0.005
+    # Low-dimensional recency search is evaluated only on Development OOS.
+    # The default production half-life remains the repository setting unless a
+    # challenger variant demonstrably improves OOS and then survives holdout.
+    recency_half_lives: tuple[int, ...] = (900, 1800, 3600)
+    recency_variant_top_k: int = 2
 
 
 def _metrics(y: np.ndarray, p: np.ndarray) -> dict[str, float]:
@@ -142,12 +148,27 @@ def _target_metrics(
     return {"ScoreMAE": score_mae, "Top4HitRate": score_top4, "rows": int(len(home_true))}, hilo
 
 
-def _fit_candidate(bt: BaseballBacktest, name: str, X: pd.DataFrame, y: np.ndarray):
+def _fit_candidate(
+    bt: BaseballBacktest,
+    name: str,
+    X: pd.DataFrame,
+    y: np.ndarray,
+    recency_half_life: int | None = None,
+):
     models = bt.models("NPB")
     if name not in models:
         raise ValueError(f"unknown NPB model candidate: {name}")
     model = models[name]
-    bt._fit_model(model, X, y, bt._sample_weights(len(X)), "NPB")
+    previous = os.environ.get("NPB_RECENCY_HALF_LIFE_GAMES")
+    try:
+        if recency_half_life is not None:
+            os.environ["NPB_RECENCY_HALF_LIFE_GAMES"] = str(int(recency_half_life))
+        bt._fit_model(model, X, y, bt._sample_weights(len(X)), "NPB")
+    finally:
+        if previous is None:
+            os.environ.pop("NPB_RECENCY_HALF_LIFE_GAMES", None)
+        else:
+            os.environ["NPB_RECENCY_HALF_LIFE_GAMES"] = previous
     return model
 
 
@@ -204,6 +225,40 @@ def _development_compare(
     return out, windows, predictions
 
 
+def _development_candidate_variant(
+    bt: BaseballBacktest,
+    X: pd.DataFrame,
+    y: np.ndarray,
+    start: int,
+    end: int,
+    model_name: str,
+    recency_half_life: int,
+    block_size: int,
+    retrain_every: int,
+) -> tuple[dict[str, float], np.ndarray, int]:
+    """Evaluate one model/recency variant using strict chronological OOS."""
+    preds: list[np.ndarray] = []
+    actual: list[np.ndarray] = []
+    windows = 0
+    fitted = None
+    last_fit_cut = -10**9
+    for cut in range(start, end, block_size):
+        stop = min(end, cut + block_size)
+        if fitted is None or cut - last_fit_cut >= retrain_every:
+            fitted = _fit_candidate(
+                bt, model_name, X.iloc[:cut], y[:cut], recency_half_life=recency_half_life
+            )
+            last_fit_cut = cut
+        windows += 1
+        actual.append(y[cut:stop])
+        preds.append(_candidate_probability(bt, fitted, X.iloc[cut:stop]))
+    if not preds:
+        raise RuntimeError(f"No OOS windows for recency variant {model_name}@{recency_half_life}")
+    yy = np.concatenate(actual)
+    pp = np.vstack(preds)
+    return _metrics(yy[:len(pp)], pp), pp, windows
+
+
 def run_npb_candidate_cycle(
     *,
     data_dir: str | Path = "data",
@@ -243,12 +298,49 @@ def run_npb_candidate_cycle(
     if not candidates:
         raise RuntimeError("no NPB candidate produced valid Development OOS metrics")
 
-    # Add a low-complexity calibrated challenger for every base candidate.
-    # Temperature is fitted strictly on Development OOS predictions and frozen
-    # before the independent holdout is evaluated.
+    # First, search a very small recency grid around the default half-life for
+    # only the strongest Development-OOS model candidates. This keeps compute
+    # bounded while allowing the system to adapt to changing league dynamics.
+    base_half_life = int(os.getenv("NPB_RECENCY_HALF_LIFE_GAMES", "1800"))
+    variant_specs: dict[str, tuple[str, int]] = {}
+    for base_name, _metrics0 in candidates[:max(1, config.recency_variant_top_k)]:
+        for half_life in config.recency_half_lives:
+            if int(half_life) == base_half_life:
+                continue
+            variant_name = f"{base_name}@recency_hl={int(half_life)}"
+            try:
+                variant_metrics, variant_pred, variant_windows = _development_candidate_variant(
+                    bt, X, y, dev_start, holdout_start, base_name, int(half_life),
+                    config.block_size, config.retrain_every,
+                )
+            except Exception as exc:
+                bt.audit.append({
+                    "type": "recency_variant_error",
+                    "model": base_name,
+                    "recency_half_life": int(half_life),
+                    "error": f"{type(exc).__name__}: {exc}",
+                })
+                continue
+            development[variant_name] = variant_metrics
+            development_predictions[variant_name] = variant_pred
+            variant_specs[variant_name] = (base_name, int(half_life))
+
+    candidates = [(name, metrics) for name, metrics in development.items() if name != "ProductionEnsemble"]
+    candidates.sort(key=lambda x: (x[1]["LogLoss"], x[1]["Brier"], -x[1]["Accuracy"], x[0]))
+    selected_name, selected_metrics = candidates[0]
+
+    raw_variant = variant_specs.get(selected_name)
+    if raw_variant is None:
+        selected_model_name, selected_half_life = selected_name, None
+    else:
+        selected_model_name, selected_half_life = raw_variant
+
+    # Apply temperature calibration only after the model/recency variant has
+    # been selected on Development OOS. Calibration itself never sees holdout.
     calibrated_specs: dict[str, tuple[str, float]] = {}
     y_dev = y[dev_start:holdout_start]
-    for name, metrics in list(candidates):
+    calibration_candidates = candidates[:max(5, config.recency_variant_top_k + 1)]
+    for name, _metrics0 in calibration_candidates:
         pred = development_predictions.get(name)
         if pred is None or len(pred) != len(y_dev):
             continue
@@ -260,14 +352,26 @@ def run_npb_candidate_cycle(
         development_predictions[cal_name] = calibrated
         calibrated_specs[cal_name] = (name, temperature)
 
+    # Re-rank after calibration challengers have been added.
     candidates = [(name, metrics) for name, metrics in development.items() if name != "ProductionEnsemble"]
     candidates.sort(key=lambda x: (x[1]["LogLoss"], x[1]["Brier"], -x[1]["Accuracy"], x[0]))
     selected_name, selected_metrics = candidates[0]
 
     if selected_name.startswith("TemperatureScaled:"):
-        selected_model_name, selected_temperature = calibrated_specs[selected_name]
+        base_selected = selected_name[len("TemperatureScaled:"):]
+        base_variant = variant_specs.get(base_selected)
+        if base_variant is None:
+            selected_model_name, selected_half_life = base_selected, None
+        else:
+            selected_model_name, selected_half_life = base_variant
+        selected_temperature = calibrated_specs[selected_name][1]
     else:
-        selected_model_name, selected_temperature = selected_name, 1.0
+        base_variant = variant_specs.get(selected_name)
+        if base_variant is None:
+            selected_model_name, selected_half_life = selected_name, None
+        else:
+            selected_model_name, selected_half_life = base_variant
+        selected_temperature = 1.0
 
     if baseline["LogLoss"] - selected_metrics["LogLoss"] <= 0:
         return {
@@ -276,6 +380,7 @@ def run_npb_candidate_cycle(
             "baseline": baseline,
             "candidate": selected_metrics,
             "candidate_model": selected_model_name,
+            "candidate_recency_half_life": selected_half_life,
             "candidate_temperature": selected_temperature,
             "validation_windows": validation_windows,
             "development": development,
@@ -284,14 +389,14 @@ def run_npb_candidate_cycle(
     dataset_hash = hashlib.sha256(pd.util.hash_pandas_object(games, index=True).values.tobytes()).hexdigest()
     spec = CandidateSpec(
         candidate_id="cand-" + hashlib.sha256(
-            f"NPB|{selected_model_name}|T={selected_temperature:.4f}|{feature_version}|{git_commit}|{dataset_hash}".encode("utf-8")
+            f"NPB|{selected_model_name}|HL={selected_half_life or base_half_life}|T={selected_temperature:.4f}|{feature_version}|{git_commit}|{dataset_hash}".encode("utf-8")
         ).hexdigest()[:20],
         league="NPB",
         objective="win",
         model_version=selected_model_name,
         feature_version=feature_version,
         development_metrics=selected_metrics,
-        selection_reason=f"Development OOS only; selected {selected_model_name} with frozen temperature={selected_temperature:.4f}; lowest LogLoss, then Brier, then highest Accuracy among candidates.",
+        selection_reason=f"Development OOS only; selected {selected_model_name} with recency_half_life={selected_half_life or base_half_life} and frozen temperature={selected_temperature:.4f}; lowest LogLoss, then Brier, then highest Accuracy among challengers.",
         git_commit=git_commit,
         dataset_hash=dataset_hash,
     )
@@ -307,7 +412,10 @@ def run_npb_candidate_cycle(
     if not base_fit:
         raise RuntimeError("production ensemble could not be fitted for locked holdout")
     base_p = bt.ensemble_proba(base_fit, X_holdout, "NPB")
-    cand_model = _fit_candidate(bt, selected_model_name, X_train, y_train)
+    cand_model = _fit_candidate(
+        bt, selected_model_name, X_train, y_train,
+        recency_half_life=selected_half_life,
+    )
     cand_p = _candidate_probability(bt, cand_model, X_holdout)
     if selected_temperature != 1.0:
         cand_p = _temperature_scale(cand_p, selected_temperature)
@@ -358,6 +466,7 @@ def run_npb_candidate_cycle(
         "holdout_start": str(games_holdout["datetime"].iloc[0]),
         "holdout_end": str(games_holdout["datetime"].iloc[-1]),
         "candidate_model": selected_model_name,
+        "candidate_recency_half_life": selected_half_life,
         "candidate_temperature": float(selected_temperature),
         "dataset_hash": dataset_hash,
         "selection_locked_before_holdout": True,
