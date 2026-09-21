@@ -2,8 +2,18 @@ name: Baseball PIT Acquisition
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/baseball_pit_acquisition.yml'
+      - 'data/pit_acquisition.py'
+      - 'core/pit_snapshot.py'
+      - 'core/pit_replay.py'
+      - 'research/pit_readiness_audit.py'
+      - 'tools_pit_ledger_validator.py'
+      - 'requirements-pit.txt'
   schedule:
-    - cron: '*/30 * * * *'
+    - cron: '*/10 * * * *'
 
 permissions:
   contents: write
