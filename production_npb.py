@@ -248,6 +248,11 @@ def _load_official_starter_snapshot(target_date: str) -> list[dict] | None:
         raise RuntimeError("Official starter snapshot contains no games.")
     if any(not isinstance(g, dict) or not g.get("official_start_time") for g in games):
         raise RuntimeError("Official starter snapshot contains a game without an official start time.")
+    # NPB slates are not fixed at six games. Validate required fields while
+    # allowing valid 5/6/other-game slates.
+    required = ("home", "away", "home_starter", "away_starter", "official_start_time")
+    if any(any(not str(g.get(k, "")).strip() for k in required) for g in games):
+        raise RuntimeError("Official starter snapshot contains an incomplete game record.")
     for g in games:
         g["confirmed_starters"] = True
         g["starter_evidence_status"] = "official_announced_snapshot"
