@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Recover failures and ensure 9h Autopilot is active
+      - name: Recover stale failures and ensure 9h Autopilot is active
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -36,57 +36,69 @@ jobs:
           set -euo pipefail
 
           workflow='.github/workflows/baseball_9h_autopilot.yml'
+          stale_after_minutes=600
+          now_epoch=$(date +%s)
+
+          active_rows=$(gh run list --repo "${GH_REPO}" --workflow "${workflow}" --limit 20 --json databaseId,status,updatedAt --jq '.[] | select(.status == "queued" or .status == "in_progress") | [.databaseId,.status,.updatedAt] | @tsv')
+          stale_found=0
+          while IFS=$'\t' read -r run_id run_status updated_at; do
+            [ -z "${run_id}" ] && continue
+            updated_epoch=$(date -d "${updated_at}" +%s)
+            age_minutes=$(( (now_epoch - updated_epoch) / 60 ))
+            echo "Active run ${run_id}: status=${run_status} age_minutes=${age_minutes}"
+            if [ "${age_minutes}" -gt "${stale_after_minutes}" ]; then
+              echo "Run ${run_id} is stale beyond ${stale_after_minutes} minutes; cancelling for recovery."
+              gh run cancel "${run_id}" --repo "${GH_REPO}"
+              stale_found=1
+            fi
+          done <<< "${active_rows}"
+
+          if [ "${stale_found}" -eq 1 ]; then
+            for attempt in 1 2 3 4 5 6 7 8 9 10; do
+              active_after_cancel=$(gh run list --repo "${GH_REPO}" --workflow "${workflow}" --limit 20 --json databaseId,status --jq '[.[] | select(.status == "queued" or .status == "in_progress")] | length')
+              echo "Stale-cancel drain ${attempt}/10: active=${active_after_cancel}"
+              if [ "${active_after_cancel}" -eq 0 ]; then break; fi
+              sleep 5
+            done
+          fi
 
           active=$(gh run list --repo "${GH_REPO}" --workflow "${workflow}" --limit 20 --json databaseId,status --jq '[.[] | select(.status == "queued" or .status == "in_progress")] | length')
-
-          echo "Active 9h Autopilot runs: ${active}"
+          echo "Active 9h Autopilot runs after stale recovery: ${active}"
 
           if [ "${active}" -gt 0 ]; then
-            echo '9h Autopilot already active; no recovery/dispatch required.'
+            echo '9h Autopilot already active; no dispatch required.'
             exit 0
           fi
 
           if [ -n "${EVENT_RUN_ID}" ] && [ "${EVENT_CONCLUSION}" != "success" ]; then
             echo "Previous 9h run ${EVENT_RUN_ID} concluded ${EVENT_CONCLUSION}; rerunning failed jobs first."
             gh run rerun "${EVENT_RUN_ID}" --repo "${GH_REPO}" --failed
-
             verified=0
             for attempt in 1 2 3 4 5; do
               sleep 3
               active_after=$(gh run list --repo "${GH_REPO}" --workflow "${workflow}" --limit 10 --json databaseId,status --jq '[.[] | select(.status == "queued" or .status == "in_progress")] | length')
               echo "Failure-recovery verification ${attempt}/5: active=${active_after}"
-              if [ "${active_after}" -gt 0 ]; then
-                verified=1
-                break
-              fi
+              if [ "${active_after}" -gt 0 ]; then verified=1; break; fi
             done
-
             if [ "${verified}" -ne 1 ]; then
               echo 'Failed-job rerun requested but an active recovery run was not observed' >&2
               exit 1
             fi
-
             echo 'Failed-job recovery rerun verified.'
             exit 0
           fi
 
           echo 'No active 9h run; dispatching a fresh main-branch cycle.'
           gh workflow run "${workflow}" --repo "${GH_REPO}" --ref main
-
           verified=0
           for attempt in 1 2 3 4 5; do
             sleep 3
             active_after=$(gh run list --repo "${GH_REPO}" --workflow "${workflow}" --limit 10 --json databaseId,status --jq '[.[] | select(.status == "queued" or .status == "in_progress")] | length')
             echo "Dispatch verification ${attempt}/5: active=${active_after}"
-            if [ "${active_after}" -gt 0 ]; then
-              verified=1
-              break
-            fi
+            if [ "${active_after}" -gt 0 ]; then verified=1; break; fi
           done
-
           if [ "${verified}" -ne 1 ]; then
             echo 'workflow_dispatch completed but a new active run was not observed' >&2
             exit 1
           fi
-
           echo '9h Autopilot dispatch verified.'
