@@ -1,0 +1,59 @@
+name: Baseball 24h Supervisor
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Lightweight keep-alive check; it starts a new 9h cycle when no cycle is active.
+    - cron: '*/15 * * * *'
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: baseball-24h-supervisor
+  cancel-in-progress: false
+
+jobs:
+  keep-autopilot-moving:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ensure 9h Autopilot is active
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          workflow='.github/workflows/baseball_9h_autopilot.yml'
+
+          active=$(gh run list             --repo "${GH_REPO}"             --workflow "${workflow}"             --limit 20             --json databaseId,status             --jq '[.[] | select(.status == "queued" or .status == "in_progress")] | length')
+
+          echo "Active 9h Autopilot runs: ${active}"
+
+          if [ "${active}" -gt 0 ]; then
+            echo '9h Autopilot already active; no dispatch required.'
+            exit 0
+          fi
+
+          echo 'No active 9h Autopilot run; dispatching a fresh main-branch cycle.'
+          gh workflow run "${workflow}"             --repo "${GH_REPO}"             --ref main
+
+          verified=0
+          for attempt in 1 2 3 4 5; do
+            sleep 3
+            active_after=$(gh run list               --repo "${GH_REPO}"               --workflow "${workflow}"               --limit 10               --json databaseId,status               --jq '[.[] | select(.status == "queued" or .status == "in_progress")] | length')
+            echo "Dispatch verification ${attempt}/5: active=${active_after}"
+            if [ "${active_after}" -gt 0 ]; then
+              verified=1
+              break
+            fi
+          done
+
+          if [ "${verified}" -ne 1 ]; then
+            echo 'workflow_dispatch completed but a new active run was not observed' >&2
+            exit 1
+          fi
+
+          echo '9h Autopilot dispatch verified.'
