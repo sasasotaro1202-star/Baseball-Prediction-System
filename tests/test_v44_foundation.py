@@ -39,7 +39,7 @@ def test_metrics_and_multi_target_gate():
     locked = candidate_lock(development_metrics={"LogLoss": 0.60, "rows": 300}, candidate_id="cand-001")
     assert locked["stage"] == "candidate_locked"
     result = evaluate_locked_holdout(
-        {"LogLoss": 0.60, "Brier": 0.20, "Accuracy": 0.70},
+        {"LogLoss": 0.60, "Brier": 0.20, "Accuracy": 0.70, "rows": 300},
         {"LogLoss": 0.58, "Brier": 0.19, "Accuracy": 0.705, "rows": 300},
         validation_windows=2,
         calibration_ok=True,
