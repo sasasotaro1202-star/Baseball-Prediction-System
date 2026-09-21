@@ -147,7 +147,7 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
     logo_counts = {}
     for team in teams:
         hits = re.findall(
-            rf'<img\\b[^>]*\\balt=["\\\']{re.escape(team)}["\\\']',
+            rf'<img\b[^>]*\balt=["\\\']{re.escape(team)}["\\\']',
             section, re.I,
         )
         if len(hits) > 1:
