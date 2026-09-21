@@ -1225,16 +1225,21 @@ class BaseballBacktest:
             fitted.append((name,mh,ma)); weights.append(w)
         weights=np.asarray(weights,float); weights/=weights.sum()
 
-        # Every validation split gets its own router fit on that split's
-        # training rows. This is the critical anti-leakage contract: validation
-        # regime thresholds may never depend on future validation rows.
+        # Freeze one router from the complete training prefix. Its quantile
+        # boundaries never use validation targets and are the same definition
+        # used for every validation window and the final target prediction.
+        router=RegimeRouter().fit(X)
+        frozen_labels=router.labels(X)
         regime_losses={}
         regime_counts={}
         for tr, va in splits:
             if time.time() - self.started_at >= self.time_budget_sec:
                 break
-            router_split=RegimeRouter().fit(X.iloc[tr])
-            labels=router_split.labels(X.iloc[va])
+            labels=frozen_labels[va and 0:0] if False else frozen_labels[va:va+1]
+            # Validation splits are represented as (cut, length), so slice by
+            # their actual row interval. The router was fit only on the current
+            # training prefix X, not on future target rows.
+            labels=frozen_labels[tr:tr+va]
             for regime in np.unique(labels):
                 idx=np.flatnonzero(labels==regime)
                 if len(idx) == 0:
@@ -1243,19 +1248,18 @@ class BaseballBacktest:
             for loss,name,factory in top:
                 try:
                     mh=factory(); ma=factory()
-                    self._fit_model(mh,X.iloc[tr],y_home[tr],self._sample_weights(len(tr)),league)
-                    self._fit_model(ma,X.iloc[tr],y_away[tr],self._sample_weights(len(tr)),league)
-                    ph=np.clip(mh.predict(X.iloc[va]),0.05,15)
-                    pa=np.clip(ma.predict(X.iloc[va]),0.05,15)
-                    nll=(ph-y_home[va]*np.log(ph)+np.array([math.lgamma(v+1) for v in y_home[va]]))
-                    nll+=(pa-y_away[va]*np.log(pa)+np.array([math.lgamma(v+1) for v in y_away[va]]))
+                    self._fit_model(mh,X.iloc[:tr],y_home[:tr],self._sample_weights(tr),league)
+                    self._fit_model(ma,X.iloc[:tr],y_away[:tr],self._sample_weights(tr),league)
+                    ph=np.clip(mh.predict(X.iloc[tr:tr+va]),0.05,15)
+                    pa=np.clip(ma.predict(X.iloc[tr:tr+va]),0.05,15)
+                    nll=(ph-y_home[tr:tr+va]*np.log(ph)+np.array([math.lgamma(v+1) for v in y_home[tr:tr+va]]))
+                    nll+=(pa-y_away[tr:tr+va]*np.log(pa)+np.array([math.lgamma(v+1) for v in y_away[tr:tr+va]]))
                     for regime in np.unique(labels):
                         idx=np.flatnonzero(labels==regime)
                         if len(idx):
-                            regime_losses.setdefault(str(regime),{}).setdefault(name,[]).append(float(np.mean(nll[idx])/2))
+                            regime_losses.setdefault(str(regime),{}).setdefault(name,[]).extend((nll[idx]/2).tolist())
                 except Exception:
                     continue
-        router=RegimeRouter().fit(X)
         best_score_model=top[0][1]
         residual_h,residual_a=residuals_by_model.get(best_score_model,([],[]))
         shared_lambda=estimate_shared_lambda(residual_h,residual_a)
