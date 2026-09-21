@@ -496,6 +496,8 @@ def predict(target_date: str, data_dir: str) -> dict:
             for idx, (_, r) in enumerate(games.iterrows()):
                 xrow=pd.DataFrame([bt.match_features(r)]).replace([float("inf"),float("-inf")],float("nan")).fillna(0.0).astype(float)
                 p=bt.ensemble_proba(fitted,xrow,"NPB")[0]
+                recovery_regime_label = str(bt._regime_router.labels(xrow)[0]) if getattr(bt, "_regime_router", None) is not None else "global"
+                recovery_regime_weights = dict(getattr(bt, "_regime_weights", {}).get(recovery_regime_label, {}))
                 # Prefer the raw historical run-rate recovery here. It is
                 # independent of target state and therefore remains PIT-safe, while
                 # also avoiding the failure mode where a sparse team-state feature
@@ -522,8 +524,8 @@ def predict(target_date: str, data_dir: str) -> dict:
                     "top4_exact_scores":[{"score":s,"prob_pct":round(float(v)*100,4)} for s,v in scores],
                     "lambda_home":float(lh),"lambda_away":float(la),"shared_lambda":float(shared),
                     "model":recovery_model,
-                    "regime":regime_label,
-                    "classification_regime_model_weights":regime_model_weights,
+                    "regime":recovery_regime_label,
+                    "classification_regime_model_weights":recovery_regime_weights,
                     "score_regime":"recovery",
                     "score_regime_model_weights":{},
                 })
