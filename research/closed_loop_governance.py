@@ -159,7 +159,21 @@ def oos_stage(oos_artifact: str | Path = "results/development_oos.json") -> Stag
 def holdout_stage(holdout_artifact: str | Path = "results/independent_holdout.json") -> Stage:
     if not _nonempty(holdout_artifact):
         return Stage("Independent Holdout", "BLOCKED", ("independent_holdout_missing",))
-    return Stage("Independent Holdout", "READY")
+    try:
+        obj = json.loads(Path(holdout_artifact).read_text(encoding="utf-8"))
+        if not isinstance(obj, dict):
+            raise ValueError("holdout artifact must be an object")
+        blockers: list[str] = []
+        for league in ("NPB", "MLB"):
+            payload = obj.get(league)
+            if not isinstance(payload, dict):
+                blockers.append(f"missing_league:{league}")
+                continue
+            if payload.get("used_for_candidate_selection") is not False:
+                blockers.append(f"holdout_selection_contamination:{league}")
+        return Stage("Independent Holdout", "READY" if not blockers else "BLOCKED", tuple(blockers))
+    except Exception as exc:
+        return Stage("Independent Holdout", "BLOCKED", (f"invalid_holdout:{type(exc).__name__}",))
 
 
 def result_stage(result_artifact: str | Path = "results/result_audit.json") -> Stage:
