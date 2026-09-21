@@ -190,9 +190,43 @@ def weakness_stage(weakness_artifact: str | Path = "results/weakness_report.json
 
 
 def candidate_stage(candidate_artifact: str | Path = "results/candidate_validation.json") -> Stage:
+    """Validate candidate decisions before lifecycle promotion.
+
+    A present file is not evidence of a completed candidate evaluation. Both
+    leagues must have an explicit ADOPT/REJECT decision and finite primary
+    metrics; malformed or incomplete artifacts fail closed.
+    """
     if not _nonempty(candidate_artifact):
         return Stage("Candidate Validation", "BLOCKED", ("candidate_validation_missing",))
-    return Stage("Candidate Validation", "READY")
+    try:
+        obj = json.loads(Path(candidate_artifact).read_text(encoding="utf-8"))
+        if not isinstance(obj, dict):
+            raise ValueError("candidate validation artifact must be an object")
+        blockers: list[str] = []
+        for league in ("NPB", "MLB"):
+            payload = obj.get(league)
+            if not isinstance(payload, dict):
+                blockers.append(f"missing_league:{league}")
+                continue
+            decision = payload.get("decision")
+            if decision not in {"ADOPT", "REJECT"}:
+                blockers.append(f"invalid_candidate_decision:{league}")
+            for key in ("baseline", "candidate"):
+                metrics = payload.get(key)
+                if not isinstance(metrics, dict):
+                    blockers.append(f"missing_candidate_metrics:{league}:{key}")
+                    continue
+                for metric in ("LogLoss", "Brier", "Accuracy"):
+                    try:
+                        value = float(metrics[metric])
+                    except (KeyError, TypeError, ValueError):
+                        blockers.append(f"invalid_candidate_metric:{league}:{key}:{metric}")
+                        continue
+                    if not math.isfinite(value):
+                        blockers.append(f"nonfinite_candidate_metric:{league}:{key}:{metric}")
+        return Stage("Candidate Validation", "READY" if not blockers else "BLOCKED", tuple(blockers))
+    except Exception as exc:
+        return Stage("Candidate Validation", "BLOCKED", (f"invalid_candidate_validation:{type(exc).__name__}",))
 
 
 def lifecycle_report() -> dict[str, Any]:
