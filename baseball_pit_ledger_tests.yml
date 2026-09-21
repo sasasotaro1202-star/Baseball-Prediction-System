@@ -1,0 +1,49 @@
+name: Baseball PIT Ledger Tests
+
+on:
+permissions:
+  contents: read
+  push:
+    branches: ["main"]
+    paths:
+      - "data/pit_acquisition.py"
+      - "core/pit_evidence.py"
+      - "core/pit_snapshot.py"
+      - "core/pit_replay.py"
+      - "research/pit_readiness_audit.py"
+      - "production_pit_gate.py"
+      - "tests/test_pit_evidence.py"
+      - "tests/test_production_pit_gate.py"
+      - ".github/workflows/baseball_pit_ledger_tests.yml"
+  pull_request:
+    paths:
+      - "data/pit_acquisition.py"
+      - "core/pit_evidence.py"
+      - "core/pit_snapshot.py"
+      - "core/pit_replay.py"
+      - "research/pit_readiness_audit.py"
+      - "production_pit_gate.py"
+      - "tests/test_pit_evidence.py"
+      - "tests/test_production_pit_gate.py"
+      - ".github/workflows/baseball_pit_ledger_tests.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: baseball-pit-ledger-tests
+  cancel-in-progress: true
+
+jobs:
+  pit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: python -m pip install --disable-pip-version-check numpy pandas pytest
+      - name: Compile PIT code
+        run: python -m py_compile data/pit_acquisition.py core/pit_evidence.py core/pit_snapshot.py core/pit_replay.py research/pit_readiness_audit.py production_pit_gate.py tests/test_pit_evidence.py tests/test_production_pit_gate.py
+      - name: Run PIT tests
+        run: python -m pytest -q tests/test_pit_evidence.py tests/test_production_pit_gate.py
