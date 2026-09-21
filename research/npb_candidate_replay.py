@@ -48,6 +48,32 @@ def _metrics(y: np.ndarray, p: np.ndarray) -> dict[str, float]:
     }
 
 
+def _temperature_scale(p: np.ndarray, temperature: float) -> np.ndarray:
+    """Apply multiclass temperature scaling to probabilities without changing classes."""
+    if not np.isfinite(temperature) or temperature <= 0:
+        raise ValueError("temperature must be positive and finite")
+    logp = np.log(np.clip(np.asarray(p, dtype=float), 1e-12, 1.0))
+    z = logp / float(temperature)
+    z -= np.max(z, axis=1, keepdims=True)
+    scaled = np.exp(z)
+    return scaled / np.sum(scaled, axis=1, keepdims=True)
+
+
+def _fit_temperature(y: np.ndarray, p: np.ndarray) -> float:
+    """Fit a low-variance temperature on Development OOS only."""
+    best_t = 1.0
+    best_ll = log_loss(y, np.clip(p, 1e-9, 1 - 1e-9), labels=[0, 1, 2])
+    # Restrict the search to a small fixed grid to keep calibration reproducible
+    # and materially reduce the risk of tuning a high-dimensional transform.
+    for temperature in np.linspace(0.75, 1.25, 51):
+        candidate = _temperature_scale(p, float(temperature))
+        ll = log_loss(y, np.clip(candidate, 1e-9, 1 - 1e-9), labels=[0, 1, 2])
+        if ll < best_ll - 1e-12 or (abs(ll - best_ll) <= 1e-12 and abs(float(temperature) - 1.0) < abs(best_t - 1.0)):
+            best_ll = ll
+            best_t = float(temperature)
+    return best_t
+
+
 def _draw_metrics(y: np.ndarray, p: np.ndarray) -> dict[str, float]:
     actual = (y == 1).astype(int)
     predicted = (np.argmax(p, axis=1) == 1).astype(int)
@@ -138,7 +164,7 @@ def _development_compare(
     candidate_names: list[str],
     block_size: int,
     retrain_every: int,
-) -> tuple[dict[str, dict[str, float]], int]:
+) -> tuple[dict[str, dict[str, float]], int, dict[str, np.ndarray]]:
     if block_size <= 0 or retrain_every <= 0:
         raise ValueError("block_size and retrain_every must be > 0")
     rows: dict[str, list[np.ndarray]] = {name: [] for name in ["ProductionEnsemble"] + candidate_names}
@@ -174,7 +200,8 @@ def _development_compare(
             continue
         p = np.vstack(chunks)
         out[name] = _metrics(y_dev[:len(p)], p)
-    return out, windows
+    predictions = {name: np.vstack(chunks) for name, chunks in rows.items() if chunks}
+    return out, windows, predictions
 
 
 def run_npb_candidate_cycle(
@@ -202,7 +229,7 @@ def run_npb_candidate_cycle(
         raise RuntimeError("NPB replay does not have enough chronological rows for an independent holdout")
 
     candidate_names = list(bt.models("NPB").keys())
-    development, validation_windows = _development_compare(
+    development, validation_windows, development_predictions = _development_compare(
         bt, X, y, dev_start, holdout_start, candidate_names, config.block_size, config.retrain_every
     )
     if "ProductionEnsemble" not in development:
@@ -215,14 +242,41 @@ def run_npb_candidate_cycle(
     candidates.sort(key=lambda x: (x[1]["LogLoss"], x[1]["Brier"], -x[1]["Accuracy"], x[0]))
     if not candidates:
         raise RuntimeError("no NPB candidate produced valid Development OOS metrics")
+
+    # Add a low-complexity calibrated challenger for every base candidate.
+    # Temperature is fitted strictly on Development OOS predictions and frozen
+    # before the independent holdout is evaluated.
+    calibrated_specs: dict[str, tuple[str, float]] = {}
+    y_dev = y[dev_start:holdout_start]
+    for name, metrics in list(candidates):
+        pred = development_predictions.get(name)
+        if pred is None or len(pred) != len(y_dev):
+            continue
+        temperature = _fit_temperature(y_dev, pred)
+        calibrated = _temperature_scale(pred, temperature)
+        cal_name = f"TemperatureScaled:{name}"
+        cal_metrics = _metrics(y_dev, calibrated)
+        development[cal_name] = cal_metrics
+        development_predictions[cal_name] = calibrated
+        calibrated_specs[cal_name] = (name, temperature)
+
+    candidates = [(name, metrics) for name, metrics in development.items() if name != "ProductionEnsemble"]
+    candidates.sort(key=lambda x: (x[1]["LogLoss"], x[1]["Brier"], -x[1]["Accuracy"], x[0]))
     selected_name, selected_metrics = candidates[0]
+
+    if selected_name.startswith("TemperatureScaled:"):
+        selected_model_name, selected_temperature = calibrated_specs[selected_name]
+    else:
+        selected_model_name, selected_temperature = selected_name, 1.0
+
     if baseline["LogLoss"] - selected_metrics["LogLoss"] <= 0:
         return {
             "stage": "development_evaluated",
             "decision": "NO_CHANGE",
             "baseline": baseline,
             "candidate": selected_metrics,
-            "candidate_model": selected_name,
+            "candidate_model": selected_model_name,
+            "candidate_temperature": selected_temperature,
             "validation_windows": validation_windows,
             "development": development,
         }
@@ -230,14 +284,14 @@ def run_npb_candidate_cycle(
     dataset_hash = hashlib.sha256(pd.util.hash_pandas_object(games, index=True).values.tobytes()).hexdigest()
     spec = CandidateSpec(
         candidate_id="cand-" + hashlib.sha256(
-            f"NPB|{selected_name}|{feature_version}|{git_commit}|{dataset_hash}".encode("utf-8")
+            f"NPB|{selected_model_name}|T={selected_temperature:.4f}|{feature_version}|{git_commit}|{dataset_hash}".encode("utf-8")
         ).hexdigest()[:20],
         league="NPB",
         objective="win",
-        model_version=selected_name,
+        model_version=selected_model_name,
         feature_version=feature_version,
         development_metrics=selected_metrics,
-        selection_reason="Development OOS only; lowest LogLoss, then Brier, then highest Accuracy among candidates beating the production ensemble.",
+        selection_reason=f"Development OOS only; selected {selected_model_name} with frozen temperature={selected_temperature:.4f}; lowest LogLoss, then Brier, then highest Accuracy among candidates.",
         git_commit=git_commit,
         dataset_hash=dataset_hash,
     )
@@ -253,8 +307,10 @@ def run_npb_candidate_cycle(
     if not base_fit:
         raise RuntimeError("production ensemble could not be fitted for locked holdout")
     base_p = bt.ensemble_proba(base_fit, X_holdout, "NPB")
-    cand_model = _fit_candidate(bt, selected_name, X_train, y_train)
+    cand_model = _fit_candidate(bt, selected_model_name, X_train, y_train)
     cand_p = _candidate_probability(bt, cand_model, X_holdout)
+    if selected_temperature != 1.0:
+        cand_p = _temperature_scale(cand_p, selected_temperature)
 
     y_holdout = y[holdout_start:]
     base_metrics = _metrics(y_holdout, base_p)
@@ -301,7 +357,8 @@ def run_npb_candidate_cycle(
         "holdout_rows": int(len(X_holdout)),
         "holdout_start": str(games_holdout["datetime"].iloc[0]),
         "holdout_end": str(games_holdout["datetime"].iloc[-1]),
-        "candidate_model": selected_name,
+        "candidate_model": selected_model_name,
+        "candidate_temperature": float(selected_temperature),
         "dataset_hash": dataset_hash,
         "selection_locked_before_holdout": True,
         "starter_pit_evidence_ok": False,
