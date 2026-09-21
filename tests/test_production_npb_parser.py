@@ -5,13 +5,13 @@ def test_visible_team_name_duplication_falls_back_to_bounded_unit_extraction():
     <h4>2月22日の予告先発投手</h4>
     <div class="unit">
       <img alt="読売ジャイアンツ">
-      <div class="team_left"><span>読売ジャイアンツ</span></div>
-      <div class="pitcher"><span>山田太郎</span></div>
+      <span>読売ジャイアンツ</span>
+      <div class="team_left"><span>山田太郎</span></div>
     </div>
     <div class="unit">
       <img alt="阪神タイガース">
-      <div class="team_left"><span>阪神タイガース</span></div>
-      <div class="pitcher"><span>佐藤次郎</span></div>
+      <span>阪神タイガース</span>
+      <div class="team_left"><span>佐藤次郎</span></div>
     </div>
     <div class="game-time">18:00</div>
     """
