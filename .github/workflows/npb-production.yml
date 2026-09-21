@@ -55,7 +55,25 @@ jobs:
           GITHUB_SHA: ${{ github.sha }}
           PIT_SAFE_STARTER_DATA: "1"
           BASEBALL_TIME_BUDGET_SEC: "4800"
-        run: python production_npb.py --date "${{ steps.target.outputs.date }}" --data-dir "${{ steps.target.outputs.data_dir }}"
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="${{ steps.target.outputs.date }}"
+          python production_npb.py --date "$target" --data-dir "${{ steps.target.outputs.data_dir }}"
+          output="results/npb_production_${target}.json"
+          if [ -s "$output" ] && python - "$output" <<'PY'
+          import json, sys
+          d=json.load(open(sys.argv[1], encoding="utf-8"))
+          raise SystemExit(0 if d.get("execution_status") == "BLOCKED_STARTERS" else 1)
+          PY
+          then
+            # NPB can roll the public starter page forward after the day's games
+            # have started. On push/manual runs, automatically try the next JST
+            # date instead of treating that expected state as a production failure.
+            next_date="$(TZ=Asia/Tokyo date -d "$target +1 day" +%F)"
+            echo "Today's official starter section is no longer available; retrying next JST date: $next_date"
+            python production_npb.py --date "$next_date" --data-dir "${{ steps.target.outputs.data_dir }}"
+          fi
       - name: Validate output
         run: |
           python - <<'PY'
