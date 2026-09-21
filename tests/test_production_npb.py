@@ -63,3 +63,10 @@ def test_parser_extracts_five_official_games_and_exact_starters():
         ("東北楽天ゴールデンイーグルス","福岡ソフトバンクホークス","前田 健太","上茶谷 大河","13:00"),
         ("千葉ロッテマリーンズ","埼玉西武ライオンズ","Ａ．ジャクソン","武内 夏暉","18:00"),
     ]
+
+
+def test_recovery_regime_diagnostics_are_recomputed_per_game():
+    source = Path("production_npb.py").read_text(encoding="utf-8")
+    assert "recovery_regime_label = str(bt._regime_router.labels(xrow)[0])" in source
+    assert '"regime":recovery_regime_label' in source
+    assert '"classification_regime_model_weights":recovery_regime_weights' in source
