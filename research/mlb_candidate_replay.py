@@ -145,16 +145,16 @@ def _fit_with_half_life(bt: BaseballBacktest, name: str, X, y, half_life: int | 
     models = bt.models("MLB")
     if name not in models:
         raise ValueError(f"unknown MLB model candidate: {name}")
-    previous = os.environ.get("NPB_RECENCY_HALF_LIFE_GAMES")
+    previous = os.environ.get("BASEBALL_RECENCY_HALF_LIFE_GAMES")
     try:
         if half_life is not None:
-            os.environ["NPB_RECENCY_HALF_LIFE_GAMES"] = str(int(half_life))
+            os.environ["BASEBALL_RECENCY_HALF_LIFE_GAMES"] = str(int(half_life))
         bt._fit_model(models[name], X, y, bt._sample_weights(len(X)), "MLB")
     finally:
         if previous is None:
-            os.environ.pop("NPB_RECENCY_HALF_LIFE_GAMES", None)
+            os.environ.pop("BASEBALL_RECENCY_HALF_LIFE_GAMES", None)
         else:
-            os.environ["NPB_RECENCY_HALF_LIFE_GAMES"] = previous
+            os.environ["BASEBALL_RECENCY_HALF_LIFE_GAMES"] = previous
     return models[name]
 
 
@@ -200,7 +200,7 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
     if not candidates:
         raise RuntimeError("no MLB candidate produced valid Development OOS metrics")
 
-    base_half_life=int(os.getenv("NPB_RECENCY_HALF_LIFE_GAMES","1800"))
+    base_half_life=int(os.getenv("BASEBALL_RECENCY_HALF_LIFE_GAMES","1800"))
     variant_specs={}
     development_predictions={}
     # Re-run the strict Development OOS once to retain raw predictions for
