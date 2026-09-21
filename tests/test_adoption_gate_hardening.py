@@ -27,3 +27,22 @@ def test_complete_but_missing_score_evidence_cannot_be_adopted():
     assert result["decision"] == "REJECT"
     assert "score_target_not_evaluated" in result["reasons"]
     assert "hilo_target_not_evaluated" in result["reasons"]
+
+
+def test_holdout_gate_blocks_baseline_candidate_row_mismatch():
+    baseline = {"rows": 300, "LogLoss": 0.70, "Brier": 0.50, "Accuracy": 0.55}
+    candidate = {"rows": 299, "LogLoss": 0.68, "Brier": 0.49, "Accuracy": 0.56}
+    out = evaluate_locked_holdout(
+        baseline, candidate,
+        validation_windows=2,
+        calibration_ok=True,
+        no_future_target_data=True,
+        reproducible=True,
+        baseline_score={"ScoreMAE": 2.0},
+        candidate_score={"ScoreMAE": 2.0},
+        baseline_hilo={"LogLoss": 0.6, "Brier": 0.4, "Accuracy": 0.6},
+        candidate_hilo={"LogLoss": 0.6, "Brier": 0.4, "Accuracy": 0.6},
+        league="MLB",
+    )
+    assert out["decision"] == "REJECT"
+    assert "baseline_candidate_row_mismatch" in out["reasons"]
