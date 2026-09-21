@@ -104,13 +104,13 @@ def test_candidate_stage_requires_both_leagues_and_explicit_decisions(tmp_path):
     path.write_text(json.dumps({
         "NPB": {
             "decision": "ADOPT",
-            "baseline": {"LogLoss": 0.8, "Brier": 0.5, "Accuracy": 0.55},
-            "candidate": {"LogLoss": 0.79, "Brier": 0.49, "Accuracy": 0.56},
+            "baseline": {"rows": 300, "LogLoss": 0.8, "Brier": 0.5, "Accuracy": 0.55},
+            "candidate": {"rows": 300, "LogLoss": 0.79, "Brier": 0.49, "Accuracy": 0.56},
         },
         "MLB": {
             "decision": "REJECT",
-            "baseline": {"LogLoss": 0.72, "Brier": 0.52, "Accuracy": 0.47},
-            "candidate": {"LogLoss": 0.70, "Brier": 0.50, "Accuracy": 0.47},
+            "baseline": {"rows": 300, "LogLoss": 0.72, "Brier": 0.52, "Accuracy": 0.47},
+            "candidate": {"rows": 300, "LogLoss": 0.70, "Brier": 0.50, "Accuracy": 0.47},
         },
     }), encoding="utf-8")
     from research.closed_loop_governance import candidate_stage
@@ -132,3 +132,23 @@ def test_candidate_stage_blocks_incomplete_or_invalid_artifact(tmp_path):
     assert "missing_league:MLB" in stage.blockers
     assert "invalid_candidate_decision:NPB" in stage.blockers
     assert "invalid_candidate_metric:NPB:baseline:Accuracy" in stage.blockers
+
+
+def test_holdout_stage_blocks_row_mismatch(tmp_path):
+    path = tmp_path / "holdout.json"
+    path.write_text(json.dumps({
+        "NPB": {
+            "used_for_candidate_selection": False,
+            "baseline": {"rows": 300, "LogLoss": 0.8, "Brier": 0.5, "Accuracy": 0.55},
+            "candidate": {"rows": 299, "LogLoss": 0.79, "Brier": 0.49, "Accuracy": 0.56},
+        },
+        "MLB": {
+            "used_for_candidate_selection": False,
+            "baseline": {"rows": 300, "LogLoss": 0.72, "Brier": 0.52, "Accuracy": 0.47},
+            "candidate": {"rows": 300, "LogLoss": 0.70, "Brier": 0.50, "Accuracy": 0.47},
+        },
+    }), encoding="utf-8")
+    from research.closed_loop_governance import holdout_stage
+    stage = holdout_stage(path)
+    assert stage.status == "BLOCKED"
+    assert "holdout_row_mismatch:NPB" in stage.blockers
