@@ -152,6 +152,13 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
     # the expected team/starter cardinality; this follows the accessible
     # sequence exposed by the official page and is safer than character-
     # distance inference.
+    # The bounded per-unit extraction is the authoritative structural
+    # cross-check. A real duplicate team across separate game units is invalid;
+    # only the accessible visible-text stream may contain harmless duplicated
+    # team tokens caused by responsive markup.
+    unit_teams = [team for _, team, _ in occurrences]
+    if len(unit_teams) != len(set(unit_teams)):
+        raise RuntimeError("PIT starter gate failed: duplicate team tokens in official starter order.")
     try:
         visible = _parse_starters_by_visible_text(section, teams)
     except RuntimeError as exc:
