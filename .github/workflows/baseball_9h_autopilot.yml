@@ -1,4 +1,5 @@
 name: Baseball 9h Autopilot
+# Hardened after CI diagnosis: deterministic gates run before expensive phases.
 
 on:
   workflow_dispatch:
