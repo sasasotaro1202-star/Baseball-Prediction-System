@@ -68,14 +68,28 @@ class RegimeRouter:
         min_regime_rows gets a distinct model allocation.
         """
         names = list(global_losses)
+        if not names:
+            raise ValueError("global_losses must contain at least one model")
+        for name in names:
+            value = float(global_losses[name])
+            if not np.isfinite(value) or value <= 0:
+                raise ValueError(f"global loss must be finite and positive: {name}")
         out: dict[str, dict[str, float]] = {}
         for regime, losses in regime_losses.items():
-            n = int(regime_counts.get(regime, 0))
+            raw_n = regime_counts.get(regime, 0)
+            if isinstance(raw_n, bool):
+                raise ValueError(f"invalid regime row count: {regime}")
+            n = int(raw_n)
+            if n < 0 or float(n) != float(raw_n):
+                raise ValueError(f"invalid regime row count: {regime}")
             alpha = n / (n + self.shrinkage)
             adjusted = {}
             for name in names:
                 g = float(global_losses[name])
-                r = float(losses.get(name, g))
+                raw_r = losses.get(name, g)
+                r = float(raw_r)
+                if not np.isfinite(r) or r <= 0:
+                    raise ValueError(f"regime loss must be finite and positive: {regime}:{name}")
                 adjusted[name] = alpha * r + (1.0 - alpha) * g
             if n < self.min_regime_rows:
                 adjusted = {name: float(global_losses[name]) for name in names}
