@@ -43,3 +43,24 @@ def test_regime_weights_normalize():
         {"s0_e0": 100},
     )
     assert abs(sum(weights["s0_e0"].values()) - 1.0) < 1e-9
+
+
+def test_marginal_regime_edge_falls_back_to_global():
+    router = RegimeRouter(min_regime_rows=10, shrinkage=0, min_relative_edge=0.03)
+    weights = router.weights(
+        {"A": 0.50, "B": 0.60},
+        {"s0_e0": {"A": 0.49, "B": 0.59}},
+        {"s0_e0": 100},
+    )
+    global_a = (1/0.50) / (1/0.50 + 1/0.60)
+    assert abs(weights["s0_e0"]["A"] - global_a) < 1e-9
+
+
+def test_material_regime_edge_allows_specialization():
+    router = RegimeRouter(min_regime_rows=10, shrinkage=0, min_relative_edge=0.03)
+    weights = router.weights(
+        {"A": 0.50, "B": 0.60},
+        {"s0_e0": {"A": 0.40, "B": 0.60}},
+        {"s0_e0": 100},
+    )
+    assert weights["s0_e0"]["A"] > weights["s0_e0"]["B"]
