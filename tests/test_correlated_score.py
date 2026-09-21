@@ -54,3 +54,13 @@ def test_npb_home_away_orientation_matches_score_grid():
     assert abs(home - expected_home) < 1e-12
     assert abs(draw - expected_draw) < 1e-12
     assert abs(away - expected_away) < 1e-12
+
+
+def test_shared_component_cannot_change_requested_marginal_means():
+    # Oversized shared intensity must be clamped rather than producing a
+    # different marginal model through the old per-component floor.
+    m = grid(2.0, 5.0, 9.0, 14)
+    home_mean = sum(i * m[i, j] for i in range(m.shape[0]) for j in range(m.shape[1]))
+    away_mean = sum(j * m[i, j] for i in range(m.shape[0]) for j in range(m.shape[1]))
+    assert abs(home_mean - 2.0) < 0.08
+    assert abs(away_mean - 5.0) < 0.08
