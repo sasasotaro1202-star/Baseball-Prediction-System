@@ -308,7 +308,16 @@ def direct_pit_safe_lambdas(hist: pd.DataFrame, row: pd.Series, bt: BaseballBack
     """
     league="NPB"; cutoff=pd.Timestamp(row["datetime"])
     h=norm_team(row["home"],league); a=norm_team(row["away"],league)
-    hist=hist.sort_values(["datetime","game_id"]).copy()
+    hist=hist.copy()
+    hist["_pit_dt"]=pd.to_datetime(hist["datetime"],errors="coerce",utc=True)
+    if hist["_pit_dt"].isna().any():
+        raise RuntimeError("PIT-safe fallback refused: historical datetime is malformed.")
+    cutoff_utc=cutoff.tz_convert("UTC") if cutoff.tzinfo is not None else cutoff.tz_localize("UTC")
+    # Never let a fallback model consume games at or after the target cutoff.
+    hist=hist.loc[hist["_pit_dt"] < cutoff_utc].copy()
+    if hist.empty:
+        raise RuntimeError("PIT-safe fallback refused: no historical games before prediction cutoff.")
+    hist=hist.sort_values(["_pit_dt","game_id"]).drop(columns=["_pit_dt"])
     def ew_team(team, side, scored, default):
         rows=[]
         for _,g in hist.iterrows():
@@ -359,6 +368,15 @@ def blend_classifier_run_share(lh: float, la: float, p: np.ndarray, weight: floa
 def robust_target_lambdas(bt: BaseballBacktest, hist: pd.DataFrame, row: pd.Series) -> tuple[float,float,float]:
     """Fail-safe target-specific run model used only when the fitted score ensemble degenerates."""
     league="NPB"; dt=pd.Timestamp(row["datetime"])
+    cutoff_utc=dt.tz_convert("UTC") if dt.tzinfo is not None else dt.tz_localize("UTC")
+    hist=hist.copy()
+    hist["_pit_dt"]=pd.to_datetime(hist["datetime"],errors="coerce",utc=True)
+    if hist["_pit_dt"].isna().any():
+        raise RuntimeError("PIT-safe fallback refused: historical datetime is malformed.")
+    hist=hist.loc[hist["_pit_dt"] < cutoff_utc].copy()
+    if hist.empty:
+        raise RuntimeError("PIT-safe fallback refused: no historical games before prediction cutoff.")
+    hist=hist.drop(columns=["_pit_dt"]).sort_values(["datetime","game_id"])
     hteam,a_team=norm_team(row["home"],league),norm_team(row["away"],league)
     hf=bt._team_features(league,hteam,"home",dt); af=bt._team_features(league,a_team,"away",dt)
     if hf.get("matches",0.0)<5 or af.get("matches",0.0)<5:
