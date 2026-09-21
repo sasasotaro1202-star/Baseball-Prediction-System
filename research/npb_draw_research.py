@@ -16,6 +16,39 @@ ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
 
 
+def _binary_brier(y: pd.Series, p: pd.Series) -> float:
+    return float(((p - y.astype(float)) ** 2).mean())
+
+
+def _daily_top_draw_threshold_scan(df: pd.DataFrame) -> dict[str, Any]:
+    """Tune a draw-probability threshold on development data only.
+
+    This is research evidence, not a production override. The threshold scan is
+    deliberately isolated so any future candidate must pass the normal
+    chronological development/holdout gates before adoption.
+    """
+    rows = []
+    for threshold in [i / 100 for i in range(1, 31)]:
+        eligible = df[df["_draw_p"] >= threshold]
+        if eligible.empty:
+            continue
+        selected = eligible.loc[eligible.groupby("_game_date")["_draw_p"].idxmax()].copy()
+        hit = selected["_actual_draw"].mean()
+        brier = _binary_brier(selected["_actual_draw"], selected["_draw_p"])
+        rows.append({
+            "threshold": threshold,
+            "slates": int(len(selected)),
+            "hit_rate": float(hit),
+            "brier": float(brier),
+            "mean_probability": float(selected["_draw_p"].mean()),
+        })
+    if not rows:
+        return {"status": "UNAVAILABLE", "reason": "no threshold candidates"}
+    # Research ranking is deterministic and uses Brier first, then hit rate.
+    best = min(rows, key=lambda x: (x["brier"], -x["hit_rate"], x["threshold"]))
+    return {"status": "PASS", "best": best, "scan": rows}
+
+
 def evaluate_top_draw_from_backtest(path: str | Path | None = None) -> dict[str, Any]:
     path = Path(path or RESULTS / "npb_backtest_results.csv")
     if not path.exists():
