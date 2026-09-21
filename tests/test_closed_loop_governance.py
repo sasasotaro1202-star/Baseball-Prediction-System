@@ -80,8 +80,12 @@ def test_pit_revision_stage_blocks_historical_backfill(tmp_path):
 def test_holdout_stage_requires_both_leagues_and_untouched_flag(tmp_path):
     path = tmp_path / "holdout.json"
     path.write_text(json.dumps({
-        "NPB": {"used_for_candidate_selection": False},
-        "MLB": {"used_for_candidate_selection": False},
+        "NPB": {"used_for_candidate_selection": False,
+                "baseline": {"rows": 300, "LogLoss": 0.8, "Brier": 0.5, "Accuracy": 0.55},
+                "candidate": {"rows": 300, "LogLoss": 0.79, "Brier": 0.49, "Accuracy": 0.56}},
+        "MLB": {"used_for_candidate_selection": False,
+                "baseline": {"rows": 300, "LogLoss": 0.72, "Brier": 0.52, "Accuracy": 0.47},
+                "candidate": {"rows": 300, "LogLoss": 0.70, "Brier": 0.50, "Accuracy": 0.47}},
     }), encoding="utf-8")
     from research.closed_loop_governance import holdout_stage
     assert holdout_stage(path).status == "READY"
@@ -90,8 +94,12 @@ def test_holdout_stage_requires_both_leagues_and_untouched_flag(tmp_path):
 def test_holdout_stage_blocks_selection_contamination(tmp_path):
     path = tmp_path / "holdout.json"
     path.write_text(json.dumps({
-        "NPB": {"used_for_candidate_selection": True},
-        "MLB": {"used_for_candidate_selection": False},
+        "NPB": {"used_for_candidate_selection": True,
+                "baseline": {"rows": 300, "LogLoss": 0.8, "Brier": 0.5, "Accuracy": 0.55},
+                "candidate": {"rows": 300, "LogLoss": 0.79, "Brier": 0.49, "Accuracy": 0.56}},
+        "MLB": {"used_for_candidate_selection": False,
+                "baseline": {"rows": 300, "LogLoss": 0.72, "Brier": 0.52, "Accuracy": 0.47},
+                "candidate": {"rows": 300, "LogLoss": 0.70, "Brier": 0.50, "Accuracy": 0.47}},
     }), encoding="utf-8")
     from research.closed_loop_governance import holdout_stage
     stage = holdout_stage(path)
