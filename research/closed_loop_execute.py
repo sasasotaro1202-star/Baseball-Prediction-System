@@ -115,6 +115,10 @@ def actual_labels(df: pd.DataFrame, league: str) -> np.ndarray:
     aw = pd.to_numeric(df["actual_away_score"], errors="coerce")
     if hs.isna().any() or aw.isna().any():
         raise RuntimeError(f"{league} contains missing realized score targets")
+    if (~np.isfinite(hs.to_numpy()) | ~np.isfinite(aw.to_numpy())).any():
+        raise RuntimeError(f"{league} contains non-finite realized score targets")
+    if (hs < 0).any() or (aw < 0).any() or (hs % 1 != 0).any() or (aw % 1 != 0).any():
+        raise RuntimeError(f"{league} contains invalid non-integer/non-negative realized scores")
     if league == "NPB":
         y = np.where(hs > aw, 0, np.where(hs == aw, 1, 2)).astype(int)
     else:
@@ -246,8 +250,14 @@ def process_league(league: str, path: Path) -> dict[str, Any]:
     df = pd.read_csv(path)
     if "datetime" not in df.columns or "game_id" not in df.columns:
         raise RuntimeError(f"{league} walkforward identity columns missing")
+    if df["game_id"].isna().any() or df["game_id"].astype(str).str.strip().eq("").any():
+        raise RuntimeError(f"{league} walkforward contains missing game_id")
+    if df["game_id"].duplicated().any():
+        raise RuntimeError(f"{league} walkforward contains duplicate game_id")
     df["datetime"] = pd.to_datetime(df["datetime"], errors="coerce", utc=True)
-    df = df.dropna(subset=["datetime"]).sort_values(["datetime", "game_id"], kind="mergesort").reset_index(drop=True)
+    if df["datetime"].isna().any():
+        raise RuntimeError(f"{league} walkforward contains invalid datetime")
+    df = df.sort_values(["datetime", "game_id"], kind="mergesort").reset_index(drop=True)
     y = actual_labels(df, league)
     p, probability_source = build_probabilities(df, league)
 
