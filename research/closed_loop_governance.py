@@ -243,6 +243,14 @@ def candidate_stage(candidate_artifact: str | Path = "results/candidate_validati
                         continue
                     if not math.isfinite(value):
                         blockers.append(f"nonfinite_candidate_metric:{league}:{key}:{metric}")
+            baseline_metrics = payload.get("baseline")
+            candidate_metrics = payload.get("candidate")
+            if isinstance(baseline_metrics, dict) and isinstance(candidate_metrics, dict):
+                try:
+                    if int(baseline_metrics["rows"]) != int(candidate_metrics["rows"]):
+                        blockers.append(f"candidate_row_mismatch:{league}")
+                except (KeyError, TypeError, ValueError):
+                    pass
         return Stage("Candidate Validation", "READY" if not blockers else "BLOCKED", tuple(blockers))
     except Exception as exc:
         return Stage("Candidate Validation", "BLOCKED", (f"invalid_candidate_validation:{type(exc).__name__}",))
