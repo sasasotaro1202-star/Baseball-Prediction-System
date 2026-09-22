@@ -12,15 +12,15 @@ def test_current_game_target_cannot_change_its_pregame_features(tmp_path):
         "datetime": pd.date_range("2026-04-01", periods=n, freq="h", tz="UTC"),
         "home": ["Home"] * n,
         "away": ["Away"] * n,
-        "home_score": [1 + (i % 4) for i in range(n)],
-        "away_score": [i % 3 for i in range(n)],
+        "home_score": [1 + (i % 4) for i in range(n - 1)] + [1],
+        "away_score": [i % 3 for i in range(n - 1)] + [0],
         "home_starter": [""] * n,
         "away_starter": [""] * n,
     })
     mutated = games.copy()
     target_idx = n - 1
-    mutated.loc[target_idx, "home_score"] = 11
-    mutated.loc[target_idx, "away_score"] = 0
+    mutated.loc[target_idx, "home_score"] = 0
+    mutated.loc[target_idx, "away_score"] = 2
 
     bt_a = BaseballBacktest(tmp_path)
     x_a, y_a, meta_a = bt_a.build_features(games)
