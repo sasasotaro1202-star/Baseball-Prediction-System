@@ -15,6 +15,10 @@ def _kwargs():
         holdout_score_candidate={"ScoreMAE": 1.9},
         holdout_hilo_baseline={"LogLoss": 0.60, "Brier": 0.20, "Accuracy": 0.70},
         holdout_hilo_candidate={"LogLoss": 0.58, "Brier": 0.19, "Accuracy": 0.705},
+        holdout_uncertainty={
+            "improvement_ci95": {"LogLoss": [0.005, 0.04]},
+            "p_improvement_positive": {"LogLoss": 0.99},
+        },
     )
 
 
@@ -34,3 +38,25 @@ def test_pipeline_rejects_when_score_not_evaluated():
     record = run_validation_pipeline(**kw)
     assert record.decision == "REJECT"
     assert "score_target_not_evaluated" in record.locked_holdout["reasons"]
+
+
+def test_pipeline_rejects_missing_uncertainty():
+    kw = _kwargs()
+    kw["holdout_uncertainty"] = None
+    record = run_validation_pipeline(**kw)
+    assert record.decision == "REJECT"
+    assert "uncertainty_check_missing" in record.locked_holdout["reasons"]
+
+
+def test_pipeline_forces_mlb_starter_pit_evidence():
+    kw = _kwargs()
+    kw["candidate_id"] = "mlb-candidate-001"
+    kw["holdout_uncertainty"] = {
+        "improvement_ci95": {"LogLoss": [0.005, 0.04]},
+        "p_improvement_positive": {"LogLoss": 0.99},
+    }
+    kw["league"] = "MLB"
+    kw["pit_starter_evidence_ok"] = False
+    record = run_validation_pipeline(**kw)
+    assert record.decision == "REJECT"
+    assert "starter_pit_evidence_not_verified" in record.locked_holdout["reasons"]
