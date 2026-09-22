@@ -1466,11 +1466,14 @@ class BaseballBacktest:
         # collected above. Never re-evaluate validation rows with models fitted
         # on the complete X window, which would contaminate the routing signal.
         filtered_regime_losses={
-            str(regime): {
-                name: float(np.mean(vals))
-                for name, vals in by_model.items()
-                if name in top_names and vals
-            }
+            str(regime): adjust_losses(
+                {
+                    name: float(np.mean(vals))
+                    for name, vals in by_model.items()
+                    if name in top_names and vals
+                },
+                diversity_lambda,
+            )
             for regime, by_model in regime_losses.items()
         }
         # The deployment router is fit on the complete current training prefix
@@ -1498,7 +1501,10 @@ class BaseballBacktest:
                 raw_parts=[]
                 y_parts=[]
                 model_parts={name: [] for _,name in top}
-                inv=np.array([1/max(loss,1e-6)**weight_power for _,loss in top],dtype=float)
+                inv=np.array([
+                    1/max(float(effective_global_losses.get(name, loss)), 1e-6)**weight_power
+                    for loss, name in top
+                ],dtype=float)
                 inv/=max(inv.sum(),1e-12)
                 for cut,val in splits:
                     self._check_time_budget(f"fit_ensemble:{league}:calibration:{cut}")
