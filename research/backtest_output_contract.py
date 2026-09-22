@@ -26,7 +26,11 @@ def _repair_scores(df: pd.DataFrame) -> pd.DataFrame:
 
     score_rows: list[dict[str, Any]] = []
     for _, row in out.iterrows():
-        generated = build_score_outputs(float(row["lambda_home"]), float(row["lambda_away"]))
+        generated = build_score_outputs(
+            float(row["lambda_home"]),
+            float(row["lambda_away"]),
+            shared_lambda=float(row.get("shared_lambda", 0.0)),
+        )
         score_rows.append(generated)
     out["score1"] = [x["score_candidates"][0]["score"] for x in score_rows]
     out["score1_prob"] = [x["score_candidates"][0]["probability"] for x in score_rows]
