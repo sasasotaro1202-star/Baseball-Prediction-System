@@ -58,7 +58,7 @@ jobs:
           done
       - name: Run NPB production prediction
         env:
-          GITHUB_SHA: ${{ steps.target.outputs.date }}
+          GITHUB_SHA: ${{ github.sha }}
           PIT_SAFE_STARTER_DATA: "1"
           BASEBALL_TIME_BUDGET_SEC: "4800"
         shell: bash
