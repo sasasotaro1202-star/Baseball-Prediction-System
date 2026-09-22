@@ -181,7 +181,9 @@ def hilo_probs(df: pd.DataFrame) -> np.ndarray:
 def hilo_metrics(df: pd.DataFrame, p: np.ndarray) -> dict[str, float]:
     hs = pd.to_numeric(df["actual_home_score"], errors="coerce").to_numpy(float)
     aw = pd.to_numeric(df["actual_away_score"], errors="coerce").to_numpy(float)
-    y = ((hs >= 7) | (aw >= 7)).astype(int)
+    if not np.isfinite(hs).all() or not np.isfinite(aw).all():
+        raise RuntimeError("Low/High evaluation contains non-finite realized scores")
+    y = ((hs + aw) >= 7).astype(int)
     return metrics(y, p)
 
 
