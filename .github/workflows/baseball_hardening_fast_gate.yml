@@ -53,8 +53,13 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
+          from pathlib import Path
+          import json
+          import subprocess
+          import tempfile
           from baseball_backtest import clip_prob
           import numpy as np
+
           assert np.allclose(clip_prob([2.0, 1.0]), [2/3, 1/3])
           for bad in ([np.nan, 1.0], [-1.0, 2.0], [0.0, 0.0]):
               try:
@@ -63,7 +68,47 @@ jobs:
                   pass
               else:
                   raise SystemExit(f'clip_prob fail-opened invalid input: {bad!r}')
-          print('probability contract smoke: PASS')
+
+          valid = [{
+              "event_id": "NPB-SMOKE-1",
+              "league": "NPB",
+              "event_start_at": "2026-09-23T18:00:00+09:00",
+              "home": "読売ジャイアンツ",
+              "away": "阪神タイガース",
+              "home_starter": "投手A",
+              "away_starter": "投手B",
+              "home_starter_evidence_level": "OFFICIAL_ANNOUNCEMENT",
+              "away_starter_evidence_level": "OFFICIAL_ANNOUNCEMENT",
+              "home_starter_announced_at": "2026-09-23T09:00:00+09:00",
+              "away_starter_announced_at": "2026-09-23T09:00:00+09:00",
+              "home_starter_source": "https://npb.jp/",
+              "away_starter_source": "https://npb.jp/",
+          }]
+          invalid = [dict(valid[0], home_starter_source="https://example.com/")]
+
+          with tempfile.TemporaryDirectory() as d:
+              root = Path(d)
+              vp = root / "valid.json"
+              ip = root / "invalid.json"
+              vp.write_text(json.dumps(valid, ensure_ascii=False), encoding="utf-8")
+              ip.write_text(json.dumps(invalid, ensure_ascii=False), encoding="utf-8")
+              cutoff = "2026-09-23T12:00:00+09:00"
+
+              ok = subprocess.run(
+                  ["python", "production_pit_gate.py", str(vp), "--cutoff", cutoff],
+                  check=False, capture_output=True, text=True,
+              )
+              if ok.returncode != 0:
+                  raise SystemExit(f"production PIT valid fixture failed: {ok.stdout}\n{ok.stderr}")
+
+              bad = subprocess.run(
+                  ["python", "production_pit_gate.py", str(ip), "--cutoff", cutoff],
+                  check=False, capture_output=True, text=True,
+              )
+              if bad.returncode == 0:
+                  raise SystemExit("production PIT gate accepted a non-official starter source")
+
+          print("PIT/probability contract smoke: PASS")
           PY
 
       - name: Automation contract scan
