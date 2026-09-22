@@ -61,3 +61,13 @@ jobs:
                   raise SystemExit(f'clip_prob fail-opened invalid input: {bad!r}')
           print('probability contract smoke: PASS')
           PY
+
+      - name: Workflow fail-closed policy scan
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          if grep -RInE '^[[:space:]]*continue-on-error:[[:space:]]*true|\|\|[[:space:]]*true([[:space:]]|$)' .github/workflows; then
+            echo 'Unsafe workflow failure suppression detected.' >&2
+            exit 1
+          fi
+          echo 'Workflow failure-suppression scan: PASS'
