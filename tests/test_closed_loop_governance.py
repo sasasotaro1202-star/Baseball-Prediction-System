@@ -2,6 +2,12 @@ import json
 
 from research.closed_loop_governance import calibration_stage, pit_revision_stage
 
+VALID_UNCERTAINTY = {
+    "status": "EVALUATED",
+    "improvement_ci95": {"LogLoss": [0.001, 0.04]},
+    "p_improvement_positive": {"LogLoss": 0.97},
+}
+
 
 def test_calibration_stage_accepts_current_per_league_schema(tmp_path):
     path = tmp_path / "calibration.json"
@@ -82,10 +88,13 @@ def test_holdout_stage_requires_both_leagues_and_untouched_flag(tmp_path):
     path.write_text(json.dumps({
         "NPB": {"used_for_candidate_selection": False,
                 "baseline": {"rows": 300, "LogLoss": 0.8, "Brier": 0.5, "Accuracy": 0.55},
-                "candidate": {"rows": 300, "LogLoss": 0.79, "Brier": 0.49, "Accuracy": 0.56}},
+                "candidate": {"rows": 300, "LogLoss": 0.79, "Brier": 0.49, "Accuracy": 0.56},
+                "uncertainty": VALID_UNCERTAINTY},
         "MLB": {"used_for_candidate_selection": False,
                 "baseline": {"rows": 300, "LogLoss": 0.72, "Brier": 0.52, "Accuracy": 0.47},
-                "candidate": {"rows": 300, "LogLoss": 0.70, "Brier": 0.50, "Accuracy": 0.47}},
+                "candidate": {"rows": 300, "LogLoss": 0.70, "Brier": 0.50, "Accuracy": 0.47},
+                "uncertainty": VALID_UNCERTAINTY,
+                "uncertainty": VALID_UNCERTAINTY},
     }), encoding="utf-8")
     from research.closed_loop_governance import holdout_stage
     assert holdout_stage(path).status == "READY"
@@ -96,10 +105,13 @@ def test_holdout_stage_blocks_selection_contamination(tmp_path):
     path.write_text(json.dumps({
         "NPB": {"used_for_candidate_selection": True,
                 "baseline": {"rows": 300, "LogLoss": 0.8, "Brier": 0.5, "Accuracy": 0.55},
-                "candidate": {"rows": 300, "LogLoss": 0.79, "Brier": 0.49, "Accuracy": 0.56}},
+                "candidate": {"rows": 300, "LogLoss": 0.79, "Brier": 0.49, "Accuracy": 0.56},
+                "uncertainty": VALID_UNCERTAINTY},
         "MLB": {"used_for_candidate_selection": False,
                 "baseline": {"rows": 300, "LogLoss": 0.72, "Brier": 0.52, "Accuracy": 0.47},
-                "candidate": {"rows": 300, "LogLoss": 0.70, "Brier": 0.50, "Accuracy": 0.47}},
+                "candidate": {"rows": 300, "LogLoss": 0.70, "Brier": 0.50, "Accuracy": 0.47},
+                "uncertainty": VALID_UNCERTAINTY,
+                "uncertainty": VALID_UNCERTAINTY},
     }), encoding="utf-8")
     from research.closed_loop_governance import holdout_stage
     stage = holdout_stage(path)
@@ -119,6 +131,7 @@ def test_candidate_stage_requires_both_leagues_and_explicit_decisions(tmp_path):
             "decision": "REJECT",
             "baseline": {"rows": 300, "LogLoss": 0.72, "Brier": 0.52, "Accuracy": 0.47},
             "candidate": {"rows": 300, "LogLoss": 0.70, "Brier": 0.50, "Accuracy": 0.47},
+                "uncertainty": VALID_UNCERTAINTY,
         },
     }), encoding="utf-8")
     from research.closed_loop_governance import candidate_stage
@@ -132,6 +145,7 @@ def test_candidate_stage_blocks_incomplete_or_invalid_artifact(tmp_path):
             "decision": "MAYBE",
             "baseline": {"LogLoss": 0.8, "Brier": 0.5},
             "candidate": {"LogLoss": 0.79, "Brier": 0.49, "Accuracy": 0.56},
+            "uncertainty": VALID_UNCERTAINTY,
         },
     }), encoding="utf-8")
     from research.closed_loop_governance import candidate_stage
@@ -149,11 +163,13 @@ def test_holdout_stage_blocks_row_mismatch(tmp_path):
             "used_for_candidate_selection": False,
             "baseline": {"rows": 300, "LogLoss": 0.8, "Brier": 0.5, "Accuracy": 0.55},
             "candidate": {"rows": 299, "LogLoss": 0.79, "Brier": 0.49, "Accuracy": 0.56},
+                "uncertainty": VALID_UNCERTAINTY,
         },
         "MLB": {
             "used_for_candidate_selection": False,
             "baseline": {"rows": 300, "LogLoss": 0.72, "Brier": 0.52, "Accuracy": 0.47},
             "candidate": {"rows": 300, "LogLoss": 0.70, "Brier": 0.50, "Accuracy": 0.47},
+                "uncertainty": VALID_UNCERTAINTY,
         },
     }), encoding="utf-8")
     from research.closed_loop_governance import holdout_stage
