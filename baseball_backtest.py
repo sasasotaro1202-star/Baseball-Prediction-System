@@ -773,6 +773,29 @@ class BaseballBacktest:
         out["offense_contact_gap_10"] = (hf.get("bat_avg_10",0.0)-hf.get("bat_so_rate_10",0.0))-(af.get("bat_avg_10",0.0)-af.get("bat_so_rate_10",0.0))
         out["run_volatility_gap_20"] = hf.get("gf_sd_20",0.0)-af.get("gf_sd_20",0.0)
         out["run_trend_gap_20"] = hf.get("gf_slope_20",0.0)-af.get("gf_slope_20",0.0)
+
+        # Low-complexity pregame interaction features. These are intentionally
+        # algebraic combinations of already PIT-safe signals, so they add
+        # matchup structure without introducing new data sources or target
+        # dependence. They are especially useful for linear/logistic members;
+        # tree models can also exploit them as explicit stability aids.
+        elo_diff = float(out.get("d_elo", 0.0))
+        starter_quality_gap = float(out.get("starter_x_quality_proxy", 0.0))
+        starter_reliability_gap = (
+            float(out.get("hs_starts", 0.0)) / (float(out.get("hs_starts", 0.0)) + 8.0)
+            - float(out.get("as_starts", 0.0)) / (float(out.get("as_starts", 0.0)) + 8.0)
+        )
+        out["elo_x_starter_quality_gap"] = elo_diff * starter_quality_gap
+        out["elo_x_starter_reliability_gap"] = elo_diff * starter_reliability_gap
+        out["form_x_rest_gap"] = float(out.get("d_gd_10", 0.0)) * (
+            float(out.get("h_rest_days", 0.0)) - float(out.get("a_rest_days", 0.0))
+        )
+        out["bullpen_fatigue_x_rest_gap"] = float(out.get("bullpen_fatigue_diff", 0.0)) * (
+            1.0 + abs(float(out.get("h_rest_days", 0.0)) - float(out.get("a_rest_days", 0.0)))
+        )
+        out["offense_power_x_starter_quality"] = float(out.get("offense_power_gap_10", 0.0)) * starter_quality_gap
+        out["environment_x_volatility_gap"] = float(out.get("expected_env", 0.0)) * float(out.get("run_volatility_gap_20", 0.0))
+        out["starter_quality_reliability_gap"] = starter_quality_gap * starter_reliability_gap
         out["starter_known"] = float(bool(hs and ass))
         return out
 
