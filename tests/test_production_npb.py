@@ -109,3 +109,36 @@ def test_target_rows_reject_non_official_starter_source(monkeypatch):
         assert "allowlisted official NPB" in str(exc)
     else:
         raise AssertionError("non-official starter source was accepted")
+
+
+def test_official_starter_snapshot_rejects_future_retrieval(monkeypatch, tmp_path):
+    import json
+    import production_npb as p
+
+    root = tmp_path
+    snapshot_dir = root / "data" / "official_starters"
+    snapshot_dir.mkdir(parents=True)
+    (snapshot_dir / "2026-09-20.json").write_text(
+        json.dumps({
+            "schema_version": "npb-official-starter-snapshot-v1",
+            "target_date": "2026-09-20",
+            "source_type": "NPB_OFFICIAL",
+            "source_url": "https://npb.jp/",
+            "retrieved_at_utc": "2999-01-01T00:00:00+00:00",
+            "games": [{
+                "home": "読売ジャイアンツ",
+                "away": "阪神タイガース",
+                "home_starter": "投手A",
+                "away_starter": "投手B",
+                "official_start_time": "18:00",
+            }],
+        }, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(p, "ROOT", root)
+    try:
+        p._load_official_starter_snapshot("2026-09-20")
+    except RuntimeError as exc:
+        assert "in the future" in str(exc)
+    else:
+        raise AssertionError("future-dated official snapshot was accepted")
