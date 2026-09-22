@@ -509,8 +509,14 @@ def build_target_rows(target_date: str) -> pd.DataFrame:
         if r["datetime"] <= now_utc:
             continue
         r["home_score"]=float("nan"); r["away_score"]=float("nan")
-        r["starter_evidence_status"]="official_announced"
-        r["starter_evidence_observed_at_utc"]=now_utc.isoformat()
+        evidence_status = str(r.get("starter_evidence_status") or "").strip()
+        if evidence_status not in {"official_announced", "official_announced_snapshot"}:
+            raise RuntimeError(
+                f"Unsupported NPB starter evidence status: {evidence_status!r}; refusing prediction."
+            )
+        r["starter_evidence_status"] = evidence_status
+        r["starter_evidence_observed_at_utc"] = now_utc.isoformat()
+        r["prediction_cutoff_utc"] = now_utc.isoformat()
         output.append(r)
     return pd.DataFrame(output)
 
@@ -721,6 +727,8 @@ def predict(target_date: str, data_dir: str) -> dict:
           "game_id":r.game_id,"datetime_jst":pd.Timestamp(r.datetime).tz_convert("Asia/Tokyo").isoformat(),
           "home":r.home,"away":r.away,"home_starter":r.home_starter,"away_starter":r.away_starter,
           "starter_evidence_status":r.starter_evidence_status,
+          "starter_evidence_observed_at_utc":r.starter_evidence_observed_at_utc,
+          "prediction_cutoff_utc":r.prediction_cutoff_utc,
           "home_win_pct":round(float(home_final)*100,4),"draw_pct":round(float(draw_final)*100,4),"away_win_pct":round(float(away_final)*100,4),
           "low_pct":round(float(low)*100,4),"high_pct":round(float(high)*100,4),
           "top4_exact_scores":[{"score":s,"prob_pct":round(float(v)*100,4)} for s,v in scores],
