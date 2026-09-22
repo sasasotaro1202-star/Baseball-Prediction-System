@@ -62,6 +62,32 @@ jobs:
           print('probability contract smoke: PASS')
           PY
 
+      - name: Automation contract scan
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          closed=".github/workflows/baseball_closed_loop.yml"
+          supervisor=".github/workflows/baseball_24h_supervisor.yml"
+          recovery=".github/workflows/baseball_actions_recovery.yml"
+          test -s "$closed"
+          test -s "$supervisor"
+          test -s "$recovery"
+
+          grep -Fq "cancel-in-progress: false" "$closed"
+          grep -Fq "cron: '17 0,3,6,9,12,15,18,21 * * *'" "$closed"
+          grep -Fq "retries 0" "$closed"
+          grep -Fq "BASEBALL_TIME_BUDGET_SEC: '3600'" "$closed"
+
+          grep -Fq "cron: '*/15 * * * *'" "$supervisor"
+          grep -Fq "gh workflow run" "$supervisor"
+          grep -Fq "gh run view" "$supervisor"
+
+          grep -Fq "Re-run failed jobs with bounded recovery" "$recovery"
+          grep -Fq "RUN_ATTEMPT" "$recovery"
+          grep -Fq "Mixed transient and deterministic failures detected" "$recovery"
+
+          echo 'Automation contract scan: PASS'
+
       - name: Workflow fail-closed policy scan
         timeout-minutes: 2
         run: |
