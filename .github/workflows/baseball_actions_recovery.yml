@@ -71,8 +71,8 @@ jobs:
           # inspection/API problem. The parent workflow's failure remains
           # authoritative; if inspection is unavailable, preserve it and stop.
           if [ "${inspect_ok}" -ne 1 ]; then
-            echo 'Recovery could not inspect the parent run after 3 attempts; preserving the original failure signal.' >&2
-            exit 0
+            echo 'Recovery could not inspect the parent run after 3 attempts; recovery itself is FAILED and the original failure signal remains authoritative.' >&2
+            exit 1
           fi
 
           echo 'Failed steps:'
