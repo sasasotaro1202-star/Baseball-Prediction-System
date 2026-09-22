@@ -78,3 +78,34 @@ def test_recovery_regime_diagnostics_are_recomputed_per_game():
     assert "recovery_regime_label = str(bt._regime_router.labels(xrow)[0])" in source
     assert '"regime":recovery_regime_label' in source
     assert '"classification_regime_model_weights":recovery_regime_weights' in source
+
+
+def test_target_rows_reject_non_official_starter_source(monkeypatch):
+    import production_npb as p
+    import pandas as pd
+
+    monkeypatch.setattr(
+        p,
+        "official_starters",
+        lambda target_date: [{
+            "home": "読売ジャイアンツ",
+            "away": "阪神タイガース",
+            "home_starter": "投手A",
+            "away_starter": "投手B",
+            "confirmed_starters": True,
+            "starter_evidence_status": "official_announced",
+            "starter_source": "https://example.com/not-official",
+            "official_start_time": "18:00",
+        }],
+    )
+    monkeypatch.setattr(
+        p,
+        "_utc_now",
+        lambda: pd.Timestamp("2026-09-20 00:00:00+00:00"),
+    )
+    try:
+        p.build_target_rows("2026-09-20")
+    except RuntimeError as exc:
+        assert "allowlisted official NPB" in str(exc)
+    else:
+        raise AssertionError("non-official starter source was accepted")
