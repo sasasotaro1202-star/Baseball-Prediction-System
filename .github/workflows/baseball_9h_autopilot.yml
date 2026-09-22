@@ -235,7 +235,10 @@ jobs:
           mkdir -p results/checkpoints results/phase3
           cp phase2-evidence/results/checkpoints/npb_walkforward.csv results/checkpoints/
           cp phase2-evidence/results/checkpoints/mlb_walkforward.csv results/checkpoints/
-          cp phase2-evidence/results/checkpoints/*.version results/checkpoints/ 2>/dev/null || true
+          test -s phase2-evidence/results/checkpoints/npb_walkforward.version
+          test -s phase2-evidence/results/checkpoints/mlb_walkforward.version
+          cp phase2-evidence/results/checkpoints/npb_walkforward.version results/checkpoints/
+          cp phase2-evidence/results/checkpoints/mlb_walkforward.version results/checkpoints/
           cp "${npb_dir}/results/npb_candidate_development.json" results/phase3/
           cp "${npb_dir}/results/npb_locked_holdout.json" results/phase3/
           cp "${mlb_dir}/results/mlb_candidate_development.json" results/phase3/
