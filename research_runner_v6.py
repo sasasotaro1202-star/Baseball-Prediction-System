@@ -201,13 +201,33 @@ def run_one(league: str, data_dir: Path, *, mlb_start: int, mlb_end: int, retrie
                 if games.empty:
                     raise RuntimeError("NPB adapter produced zero games")
                 games = _repair_npb_targets(pbp, games)
-                starter_before = int(len(games))
-                games, starter_audit = _filter_confirmed_starters(games, league)
+                pit_safe = (
+                    "starter_evidence_status" in games.columns
+                    and bool((games["starter_evidence_status"] == "pit_safe").all())
+                    and "confirmed_starters" in games.columns
+                    and bool(games["confirmed_starters"].all())
+                )
+                if pit_safe:
+                    games, starter_audit = _filter_confirmed_starters(games, league)
+                else:
+                    games = games.copy()
+                    starter_audit = {
+                        "before": int(len(games)),
+                        "after": int(len(games)),
+                        "excluded": 0,
+                        "coverage": 0.0,
+                        "status": "research_without_starter_pit",
+                    }
+                    for c in ("home_starter", "away_starter"):
+                        if c in games.columns:
+                            games[c] = ""
+                    if "confirmed_starters" in games.columns:
+                        games["confirmed_starters"] = False
                 result["starter_filter"] = starter_audit
                 target_quality = _validate_targets(games, "NPB")
                 frame = bt.run_walkforward(games, "NPB")
                 if len(games) >= 200 and len(frame) < max(100, int(len(games) * 0.15)):
-                    raise RuntimeError(f"NPB OOS coverage unexpectedly low after starter filter: games={len(games)}, predictions={len(frame)}, raw_games={starter_before}")
+                    raise RuntimeError(f"NPB OOS coverage unexpectedly low after PIT starter handling: games={len(games)}, predictions={len(frame)}")
             else:
                 games = bt.load_mlb(mlb_start, mlb_end)
                 if games.empty:
