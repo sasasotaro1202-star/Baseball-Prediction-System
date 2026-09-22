@@ -67,6 +67,25 @@ def test_shared_component_cannot_change_requested_marginal_means():
 
 
 
+
+
+def test_canonical_output_contract_rejects_nonfinite_distribution_parameters():
+    import numpy as np
+    import pandas as pd
+    from research.backtest_output_contract import _repair_scores
+
+    frame = pd.DataFrame({
+        "lambda_home": [4.5, np.inf],
+        "lambda_away": [3.2, 3.2],
+        "shared_lambda": [0.75, 0.1],
+    })
+    try:
+        _repair_scores(frame)
+    except ValueError as exc:
+        assert "non-finite" in str(exc)
+    else:
+        raise AssertionError("non-finite score parameters must fail closed")
+
 def test_canonical_output_contract_requires_shared_component():
     import pandas as pd
     from research.backtest_output_contract import _repair_scores
