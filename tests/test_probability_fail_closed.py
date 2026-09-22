@@ -53,3 +53,15 @@ def test_low_high_metrics_uses_total_runs_threshold():
     p = np.array([[0.2, 0.8], [0.2, 0.8], [0.8, 0.2]], dtype=float)
     m = hilo_metrics(frame, p)
     assert m["Accuracy"] == 1.0
+
+
+def test_closed_loop_probability_artifact_accepts_saturated_valid_row():
+    from research.closed_loop_execute import build_probabilities
+    frame = pd.DataFrame({
+        "pred_home": [1.0],
+        "pred_draw": [0.0],
+        "pred_away": [0.0],
+    })
+    p, source = build_probabilities(frame, "NPB")
+    assert source == "raw_classifier_strict"
+    assert np.allclose(p[0], [1.0, 0.0, 0.0])
