@@ -22,6 +22,7 @@ from core.atomic_io import atomic_write_json
 from evaluation.metrics import classification_metrics
 from research.candidates import CandidateSpec, lock_candidate
 from research.validation_pipeline import run_validation_pipeline
+from evaluation.uncertainty import paired_block_bootstrap, to_dict as uncertainty_to_dict
 from research.adoption_gate import GatePolicy
 
 ROOT = Path(__file__).resolve().parents[1]
