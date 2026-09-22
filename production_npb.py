@@ -751,9 +751,9 @@ def predict(target_date: str, data_dir: str) -> dict:
             recovered=[]
             for idx, (_, r) in enumerate(games.iterrows()):
                 xrow=pd.DataFrame([bt.match_features(r)]).replace([float("inf"),float("-inf")],float("nan"))
-        if xrow.isna().any().any() or not np.isfinite(xrow.to_numpy(dtype=float)).all():
-            raise RuntimeError("Production target feature vector contains undefined/non-finite values; refusing implicit imputation.")
-        xrow=xrow.astype(float)
+                if xrow.isna().any().any() or not np.isfinite(xrow.to_numpy(dtype=float)).all():
+                    raise RuntimeError("Production target feature vector contains undefined/non-finite values; refusing implicit imputation.")
+                xrow=xrow.astype(float)
                 p=bt.ensemble_proba(fitted,xrow,"NPB")[0]
                 recovery_regime_label = str(bt._regime_router.labels(xrow)[0]) if getattr(bt, "_regime_router", None) is not None else "global"
                 recovery_regime_weights = dict(getattr(bt, "_regime_weights", {}).get(recovery_regime_label, {}))
