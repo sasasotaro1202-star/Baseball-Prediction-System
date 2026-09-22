@@ -34,6 +34,7 @@ def lock_candidate(spec: CandidateSpec) -> dict[str, Any]:
         "stage": "candidate_locked",
         "locked_at": locked_at,
         "candidate": asdict(spec),
+        "candidate_fingerprint": candidate_fingerprint(spec),
         "holdout_evaluated": False,
         "holdout_access": "forbidden_during_selection",
     }
