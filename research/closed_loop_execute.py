@@ -16,6 +16,7 @@ import pandas as pd
 from evaluation.calibration import fit_temperature
 from core.atomic_io import atomic_write_json, file_sha256
 from research.adoption_gate import candidate_lock, evaluate_locked_holdout
+from evaluation.uncertainty import paired_block_bootstrap, to_dict as uncertainty_to_dict
 
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
@@ -297,8 +298,26 @@ def process_league(league: str, path: Path) -> dict[str, Any]:
     calibration_ok = cand_v1["LogLoss"] <= base_v1["LogLoss"] and cand_v2["LogLoss"] <= base_v2["LogLoss"]
 
     base_holdout = score_metrics(holdout, y_holdout, p_holdout, league)
-    cand_holdout = score_metrics(holdout, y_holdout, apply_temperature(p_holdout, temperature), league)
+    cand_holdout_p = apply_temperature(p_holdout, temperature)
+    cand_holdout = score_metrics(holdout, y_holdout, cand_holdout_p, league)
     base_hilo = hilo_metrics(holdout, hilo_probs(holdout))
+    try:
+        uncertainty = uncertainty_to_dict(
+            paired_block_bootstrap(
+                y=y_holdout,
+                baseline_proba=p_holdout,
+                candidate_proba=cand_holdout_p,
+                block_size=30,
+                replications=400,
+                seed=42,
+            )
+        )
+    except Exception as exc:
+        uncertainty = {
+            "status": "UNAVAILABLE",
+            "reason": f"{type(exc).__name__}: {exc}",
+            "rows": int(len(y_holdout)),
+        }
     cand_hilo = hilo_metrics(holdout, apply_temperature(hilo_probs(holdout), temperature))
 
     lock = candidate_lock(
@@ -325,7 +344,14 @@ def process_league(league: str, path: Path) -> dict[str, Any]:
         "split": {"selection": len(selection), "validation_1": len(val1), "validation_2": len(val2), "independent_holdout": len(holdout)},
         "calibration": {"method": "chronological_temperature_grid", "temperature": temperature, "fit_window": "selection_only"},
         "development_oos": {"validation_1_baseline": base_v1, "validation_1_candidate": cand_v1, "validation_2_baseline": base_v2, "validation_2_candidate": cand_v2, "calibration_ok": calibration_ok},
-        "holdout": {"baseline": base_holdout, "candidate": cand_holdout, "hilo_baseline": base_hilo, "hilo_candidate": cand_hilo, "used_for_candidate_selection": False},
+        "holdout": {
+            "baseline": base_holdout,
+            "candidate": cand_holdout,
+            "hilo_baseline": base_hilo,
+            "hilo_candidate": cand_hilo,
+            "uncertainty": uncertainty,
+            "used_for_candidate_selection": False,
+        },
         "candidate_lock": lock,
         "candidate_gate": gate,
         "weakness": weakness_report(selection, y_selection, p_selection, league),
