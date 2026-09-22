@@ -128,7 +128,7 @@ def test_npb_production_never_scores_started_games_and_accepts_empty_future_stat
     assert "execution_status" in source
     assert "NO_FUTURE_GAMES" in source
     assert 'if r["datetime"] <= now_utc:' in source
-    assert 'execution_status" in {"EXECUTED", "BLOCKED_STARTERS", "NO_FUTURE_GAMES"}' in production
+    assert 'd["execution_status"] in {"EXECUTED", "BLOCKED_STARTERS", "NO_FUTURE_GAMES"}' in production
     assert 'd["execution_status"] == "NO_FUTURE_GAMES"' in production
     assert 'd["pit_status"] == "PASS"' in production
     assert 'd["starter_gate"] == "PASS"' in production
@@ -144,5 +144,5 @@ def test_24h_supervisor_avoids_deterministic_failure_retry_loop():
     assert "baseball_actions_recovery.yml owns transient failed-job retries" in text
     assert "gh run rerun" not in text
     assert "gh workflow run" in text
-    assert "dispatch verification" in text
+    assert "Dispatch verification" in text
     assert "latest_age_minutes" in text
