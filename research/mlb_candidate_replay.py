@@ -99,12 +99,12 @@ def _target_metrics(bt: BaseballBacktest, X_train, games_train, games_holdout, X
     away_true = games_holdout["away_score"].astype(float).to_numpy()
     expected_home, expected_away, score_hits, hilo_actual, hilo_prob = [], [], [], [], []
     for i in range(len(games_holdout)):
-        lam_h, lam_a, _shared = bt.predict_scores(score_fit, X_holdout.iloc[[i]], "MLB")
+        lam_h, lam_a, shared = bt.predict_scores(score_fit, X_holdout.iloc[[i]], "MLB")
         split = float(np.clip(p[i, 0] - 0.5, -0.35, 0.35))
         lam_h *= 1.0 + 0.08 * split
         lam_a *= 1.0 - 0.08 * split
         expected_home.append(lam_h); expected_away.append(lam_a)
-        choices = {x for x, _ in score_candidates(lam_h, lam_a, 4)}
+        choices = {x for x, _ in score_candidates(lam_h, lam_a, shared)}
         high = (home_true[i] + away_true[i]) >= 7
         # "その他" is a tail bucket, not an exact score. Keep Top4HitRate
         # conservative and exact-score based.
@@ -112,7 +112,7 @@ def _target_metrics(bt: BaseballBacktest, X_train, games_train, games_holdout, X
             (not high)
             and (f"{int(home_true[i])}-{int(away_true[i])}" in choices)
         )
-        _, high_p = low_high_probs(lam_h, lam_a)
+        _, high_p = low_high_probs(lam_h, lam_a, shared)
         hilo_prob.append(high_p); hilo_actual.append(int(high))
     score_mae = float((np.mean(np.abs(np.asarray(expected_home)-home_true)) + np.mean(np.abs(np.asarray(expected_away)-away_true))) / 2.0)
     ya = np.asarray(hilo_actual, dtype=int); hp = np.clip(np.asarray(hilo_prob), 1e-9, 1-1e-9)
