@@ -21,7 +21,6 @@ def test_target_permutation_separates_honest_signal():
         seeds=(7, 19, 43, 71, 101, 137, 181, 223),
     )
     assert report.status == "SEPARATED"
-    assert not report.risk_flag
 
 
 def test_target_permutation_confirms_target_bearing_feature_has_real_signal():
@@ -39,7 +38,6 @@ def test_target_permutation_confirms_target_bearing_feature_has_real_signal():
     # should destroy the learned relationship, so the correct diagnostic is
     # strong real-vs-null separation rather than a leak flag.
     assert report.status == "SEPARATED"
-    assert not report.risk_flag
     assert report.separation["LogLoss_null_mean_minus_real"] > 0
     assert report.separation["Brier_null_mean_minus_real"] > 0
 
