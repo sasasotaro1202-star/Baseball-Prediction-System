@@ -37,7 +37,7 @@ def check_game(row: dict[str, Any], cutoff: str) -> tuple[bool, str]:
     try:
         start_value = row.get("event_start_at") or row.get("datetime") or row.get("start_datetime")
         if start_value in (None, "") and row.get("official_start_time") and row.get("target_date"):
-            start_value = f"{row["target_date"]}T{row["official_start_time"]}:00+09:00"
+            start_value = f"{row['target_date']}T{row['official_start_time']}:00+09:00"
         start_ts = _event_start(start_value)
         cutoff_ts = datetime.fromisoformat(str(cutoff).replace("Z", "+00:00"))
         if start_ts <= cutoff_ts:
