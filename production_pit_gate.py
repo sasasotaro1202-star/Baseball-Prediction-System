@@ -12,6 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from core.atomic_io import atomic_write_text
 from core.pit_evidence import EvidenceLevel, StarterEvidence, strict_eligible
 
 
@@ -95,7 +96,7 @@ def main() -> None:
     }
     text = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
     if args.output:
-        args.output.write_text(text, encoding="utf-8")
+        atomic_write_text(args.output, text)
     else:
         print(text)
     if any(not x["production_eligible"] for x in results):
