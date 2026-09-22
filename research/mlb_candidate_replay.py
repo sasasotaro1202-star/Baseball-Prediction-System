@@ -99,7 +99,7 @@ def _target_metrics(bt: BaseballBacktest, X_train, games_train, games_holdout, X
     away_true = games_holdout["away_score"].astype(float).to_numpy()
     expected_home, expected_away, score_hits, hilo_actual, hilo_prob = [], [], [], [], []
     for i in range(len(games_holdout)):
-        lam_h, lam_a = bt.predict_scores(score_fit, X_holdout.iloc[[i]], "MLB")
+        lam_h, lam_a, _shared = bt.predict_scores(score_fit, X_holdout.iloc[[i]], "MLB")
         split = float(np.clip(p[i, 0] - 0.5, -0.35, 0.35))
         lam_h *= 1.0 + 0.08 * split
         lam_a *= 1.0 - 0.08 * split
