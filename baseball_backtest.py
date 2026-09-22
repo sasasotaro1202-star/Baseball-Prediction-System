@@ -503,6 +503,49 @@ class BaseballBacktest:
         out = out.dropna(subset=["datetime", "home_score", "away_score", "home", "away"])
         out["league"] = "MLB"
         out["game_id"] = out["game_id"].astype(str)
+
+        # A starter identity is usable in prediction-time features only when
+        # publication/availability evidence exists no later than prediction time.
+        # The Stats API probablePitcher field alone has no historical
+        # announcement timestamp, so names from that field are never treated as
+        # PIT-safe. This prevents probable/final starter hindsight leakage.
+        for c in ("home_starter", "away_starter"):
+            if c not in out.columns:
+                out[c] = ""
+        for c in ("home_starter_announced_at", "away_starter_announced_at"):
+            if c not in out.columns:
+                out[c] = pd.NaT
+            out[c] = pd.to_datetime(out[c], errors="coerce", utc=True)
+
+        if "prediction_cutoff" in out.columns:
+            out["prediction_cutoff"] = pd.to_datetime(
+                out["prediction_cutoff"], errors="coerce", utc=True
+            )
+        else:
+            out["prediction_cutoff"] = pd.NaT
+
+        home_name = out["home_starter"].fillna("").astype(str).str.strip()
+        away_name = out["away_starter"].fillna("").astype(str).str.strip()
+        home_ok = (
+            home_name.ne("")
+            & out["home_starter_announced_at"].notna()
+            & out["prediction_cutoff"].notna()
+            & (out["home_starter_announced_at"] <= out["prediction_cutoff"])
+        )
+        away_ok = (
+            away_name.ne("")
+            & out["away_starter_announced_at"].notna()
+            & out["prediction_cutoff"].notna()
+            & (out["away_starter_announced_at"] <= out["prediction_cutoff"])
+        )
+        out["starter_evidence_status"] = np.select(
+            [home_ok & away_ok, home_ok ^ away_ok],
+            ["pit_safe", "partial"],
+            default="unknown",
+        )
+        out.loc[~home_ok, "home_starter"] = ""
+        out.loc[~away_ok, "away_starter"] = ""
+        out["confirmed_starters"] = home_ok & away_ok
         return out.sort_values(["datetime", "game_id"]).drop_duplicates("game_id").reset_index(drop=True)
 
     def _get_json(self, url: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
