@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from core.atomic_io import atomic_write_json
+
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
 
@@ -39,9 +41,9 @@ def lock_candidate(spec: CandidateSpec) -> dict[str, Any]:
         "holdout_access": "forbidden_during_selection",
     }
     RESULTS.mkdir(parents=True, exist_ok=True)
-    (RESULTS / f"{spec.league.lower()}_candidate_lock.json").write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
-        encoding="utf-8",
+    atomic_write_json(
+        RESULTS / f"{spec.league.lower()}_candidate_lock.json",
+        payload,
     )
     return payload
 
