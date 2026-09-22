@@ -24,7 +24,7 @@ def test_target_permutation_separates_honest_signal():
     assert not report.risk_flag
 
 
-def test_target_permutation_flags_target_bearing_feature():
+def test_target_permutation_confirms_target_bearing_feature_has_real_signal():
     rng = np.random.default_rng(456)
     y = rng.integers(0, 2, size=320)
     X = rng.normal(size=(320, 3))
@@ -35,8 +35,13 @@ def test_target_permutation_flags_target_bearing_feature():
         fit_predict=_fit_predict,
         seeds=(7, 19, 43, 71, 101, 137, 181, 223),
     )
-    assert report.status == "SUSPICIOUS"
-    assert report.risk_flag
+    # The feature is literally the realized target. Shuffling training labels
+    # should destroy the learned relationship, so the correct diagnostic is
+    # strong real-vs-null separation rather than a leak flag.
+    assert report.status == "SEPARATED"
+    assert not report.risk_flag
+    assert report.separation["LogLoss_null_mean_minus_real"] > 0
+    assert report.separation["Brier_null_mean_minus_real"] > 0
 
 
 def test_target_permutation_requires_enough_seeds():
