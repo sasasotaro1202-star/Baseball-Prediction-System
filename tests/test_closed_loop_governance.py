@@ -109,7 +109,6 @@ def test_holdout_stage_blocks_selection_contamination(tmp_path):
         "MLB": {"used_for_candidate_selection": False,
                 "baseline": {"rows": 300, "LogLoss": 0.72, "Brier": 0.52, "Accuracy": 0.47},
                 "candidate": {"rows": 300, "LogLoss": 0.70, "Brier": 0.50, "Accuracy": 0.47},
-                "uncertainty": VALID_UNCERTAINTY,
                 "uncertainty": VALID_UNCERTAINTY},
     }), encoding="utf-8")
     from research.closed_loop_governance import holdout_stage
