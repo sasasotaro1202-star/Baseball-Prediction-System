@@ -1295,26 +1295,52 @@ class BaseballBacktest:
                         self._calibration_mode="individual"
                         self._model_temperatures=member_temps
                         temperature=1.0
-                        self.audit.append({
-                            "type":"calibration_selection",
-                            "mode":"individual",
-                            "ensemble_logloss":ensemble_ll,
-                            "individual_logloss":member_ll,
-                            "model_temperatures":member_temps,
-                            "rows":int(len(y_all)),
-                        })
+                        base_calibrated=member_q
+                        chosen_ll=member_ll
+                        chosen_mode="individual"
                     else:
                         temperature=float(ensemble_cal)
-                        self.audit.append({
-                            "type":"calibration_selection",
-                            "mode":"ensemble",
-                            "ensemble_logloss":ensemble_ll,
-                            "individual_logloss":member_ll,
-                            "model_temperatures":member_temps,
-                            "rows":int(len(y_all)),
-                        })
+                        base_calibrated=ensemble_q
+                        chosen_ll=ensemble_ll
+                        chosen_mode="ensemble"
+
+                    # Regime-relative temperature calibration is a bounded
+                    # challenger layered on top of the already-selected
+                    # global calibration. It is fitted only on chronological
+                    # validation OOS rows. Small regimes shrink toward 1.0 so
+                    # regime routing cannot overfit sparse slices.
+                    from research.regime_calibration import fit_regime_relative_temperatures
+                    labels_all=np.concatenate([
+                        validation_regime_labels[(cut,val)] for cut,val in splits
+                    ])
+                    regime_result=fit_regime_relative_temperatures(
+                        base_calibrated,
+                        y_all,
+                        labels_all,
+                        min_rows=120,
+                        prior_strength=240.0,
+                    )
+                    regime_q=regime_result["probabilities"]
+                    regime_ll=float(log_loss(y_all,regime_q,labels=list(range(k))))
+                    self._regime_temperatures=(
+                        dict(regime_result["temperatures"])
+                        if regime_ll < chosen_ll - 1e-6 else {}
+                    )
+                    self.audit.append({
+                        "type":"calibration_selection",
+                        "mode":chosen_mode,
+                        "ensemble_logloss":ensemble_ll,
+                        "individual_logloss":member_ll,
+                        "selected_logloss":float(chosen_ll),
+                        "regime_logloss":regime_ll,
+                        "regime_adopted":bool(self._regime_temperatures),
+                        "regime_temperatures":dict(regime_result["temperatures"]),
+                        "regime_counts":dict(regime_result["counts"]),
+                        "rows":int(len(y_all)),
+                    })
             except Exception as e:
                 self.audit.append({"type":"calibration_error","error":str(e)})
+        self._regime_temperatures = {}
         self._last_temperature = temperature
         # Restore full-data fitted models after the calibration fit above.
         for model,_,name in fitted:
@@ -1342,6 +1368,13 @@ class BaseballBacktest:
         if abs(t-1.0)>1e-9:
             p=np.clip(p,1e-7,1.0) ** (1.0/t)
             p=p/p.sum(axis=1,keepdims=True)
+        regime_temperatures=getattr(self,"_regime_temperatures",{}) or {}
+        if regime_temperatures:
+            for label in np.unique(labels):
+                idx=np.flatnonzero(labels==label)
+                rt=float(regime_temperatures.get(str(label),1.0))
+                if abs(rt-1.0)>1e-9 and len(idx):
+                    p[idx]=TemperatureCalibration(rt).transform(p[idx])
         return np.apply_along_axis(clip_prob,1,p)
 
     def align_proba(self, raw: np.ndarray, classes: np.ndarray, league: str) -> np.ndarray:
