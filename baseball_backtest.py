@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import math
 import os
@@ -65,6 +66,7 @@ from sklearn.preprocessing import StandardScaler
 from research.regime_router import RegimeRouter
 from research.correlated_score import estimate_shared_lambda, low_high as correlated_low_high, top_scores as correlated_top_scores
 from evaluation.calibration import fit_temperature, TemperatureCalibration
+from core.atomic_io import atomic_write_text
 
 RANDOM_STATE = 42
 ROOT = Path(__file__).resolve().parent
@@ -1979,8 +1981,13 @@ class BaseballBacktest:
                 all_rows.extend(block_rows)
                 completed_ids.update(str(x["game_id"]) for x in block_rows)
                 try:
-                    pd.DataFrame(all_rows).drop_duplicates(["game_id","model"], keep="last").to_csv(ck, index=False)
-                    version_file.write_text(expected_checkpoint_version, encoding="utf-8")
+                    checkpoint_text = (
+                        pd.DataFrame(all_rows)
+                        .drop_duplicates(["game_id","model"], keep="last")
+                        .to_csv(index=False)
+                    )
+                    atomic_write_text(ck, checkpoint_text)
+                    atomic_write_text(version_file, expected_checkpoint_version + "\n")
                     print(f"[{league}] checkpoint saved: {len(completed_ids)} games", flush=True)
                 except Exception as e:
                     self.audit.append({"type":"checkpoint_write_error","league":league,"error":str(e)})
