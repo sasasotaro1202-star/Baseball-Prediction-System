@@ -32,7 +32,6 @@ def test_npb_holdout_uses_shared_lambda(monkeypatch):
 
     score, hilo = npb_candidate._target_metrics(
         _FakeScoreBT(), _x(), _games(), _games(), _x(), pd.DataFrame([[0.6, 0.1, 0.3]]).to_numpy(),
-        object(),
     )
 
     assert seen["shared"] == 0.25
