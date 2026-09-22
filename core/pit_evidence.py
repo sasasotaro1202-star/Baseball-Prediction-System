@@ -16,6 +16,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import IntEnum
 from typing import Any, Mapping
+from urllib.parse import urlparse
+
+OFFICIAL_HOST_SUFFIXES = (".mlb.com", ".npb.jp")
+OFFICIAL_HOSTS = {"mlb.com", "npb.jp"}
 
 
 class EvidenceLevel(IntEnum):
@@ -38,6 +42,8 @@ class StarterEvidence:
     def validate(self) -> None:
         if not self.source:
             raise ValueError("source is required")
+        if self.level >= EvidenceLevel.OFFICIAL_PUBLICATION and not _is_official_source(self.source):
+            raise ValueError("official evidence requires an allowlisted official source")
         if self.timestamp is not None:
             ts = datetime.fromisoformat(self.timestamp.replace("Z", "+00:00"))
             if ts.tzinfo is None:
@@ -45,6 +51,18 @@ class StarterEvidence:
         if self.level >= EvidenceLevel.OFFICIAL_ANNOUNCEMENT and not self.starter:
             raise ValueError("official announcement evidence requires starter identity")
 
+
+
+
+def _is_official_source(source: str) -> bool:
+    value = str(source).strip().lower()
+    if not value:
+        return False
+    host = urlparse(value).hostname
+    if not host:
+        # Bare hostnames are accepted only when exactly allowlisted.
+        host = value.split("/", 1)[0].split(":", 1)[0]
+    return host in OFFICIAL_HOSTS or any(host.endswith(suffix) for suffix in OFFICIAL_HOST_SUFFIXES)
 
 def normalize_level(value: Any) -> EvidenceLevel:
     if isinstance(value, EvidenceLevel):
