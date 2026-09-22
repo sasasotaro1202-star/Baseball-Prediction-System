@@ -55,8 +55,14 @@ def main() -> None:
     cutoff = _ts(args.cutoff)
     payload = json.loads(args.input.read_text(encoding="utf-8"))
     rows = payload if isinstance(payload, list) else payload.get("games", [])
+    if not isinstance(rows, list):
+        raise SystemExit("PIT gate input must contain a list of games")
+    if not rows:
+        raise SystemExit("PIT gate received zero games; empty evidence cannot pass")
     results = []
     for row in rows:
+        if not isinstance(row, dict):
+            raise SystemExit("PIT gate input contains a non-object game row")
         eligible, reason = check_game(dict(row), cutoff)
         results.append({**row, "production_eligible": eligible, "eligibility_reason": reason})
     report = {
