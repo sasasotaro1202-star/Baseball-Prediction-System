@@ -123,10 +123,18 @@ def num(x: Any, default=np.nan) -> float:
 
 
 def clip_prob(p: Sequence[float]) -> np.ndarray:
+    """Normalize a valid probability vector; fail closed on invalid values."""
     a = np.asarray(p, dtype=float)
-    a = np.nan_to_num(a, nan=1/len(a), posinf=1/len(a), neginf=1/len(a))
+    if a.ndim != 1 or len(a) < 2:
+        raise ValueError("probability vector must be one-dimensional with >=2 classes")
+    if not np.isfinite(a).all() or (a < 0).any():
+        raise ValueError("probability vector contains non-finite or negative values")
+    total = float(a.sum())
+    if not np.isfinite(total) or total <= 0:
+        raise ValueError("probability vector must have a positive finite sum")
     a = np.maximum(a, 1e-9)
-    return a / a.sum()
+    total = float(a.sum())
+    return a / total
 
 
 def parse_dt(x: Any) -> pd.Timestamp:
