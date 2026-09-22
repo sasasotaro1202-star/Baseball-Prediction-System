@@ -309,6 +309,16 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
         raise RuntimeError("MLB score model could not be fitted for locked holdout")
     base_score, base_hilo = _target_metrics(bt, X_train, games_train, games_holdout, X_holdout, base_p, score_fit)
     cand_score, cand_hilo = _target_metrics(bt, X_train, games_train, games_holdout, X_holdout, cand_p, score_fit)
+    holdout_uncertainty = uncertainty_to_dict(
+        paired_block_bootstrap(
+            y=y_holdout,
+            baseline_proba=base_p,
+            candidate_proba=cand_p,
+            block_size=max(10, min(30, len(y_holdout) // 10)),
+            replications=400,
+            seed=42,
+        )
+    )
     lifecycle = run_validation_pipeline(
         candidate_id=spec.candidate_id,
         development_metrics=selected_metrics,
@@ -325,13 +335,15 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
         holdout_hilo_candidate=cand_hilo,
         league="MLB",
         policy=GatePolicy(require_pit_starter_evidence=True),
+        holdout_uncertainty=holdout_uncertainty,
     )
     out = {"stage": "locked_holdout_evaluated", "candidate": locked,
            "holdout": {"baseline": base, "candidate": cand,
                        "baseline_score": base_score, "candidate_score": cand_score,
                        "baseline_hilo": base_hilo, "candidate_hilo": cand_hilo},
            "validation": asdict(lifecycle), "decision": lifecycle.decision,
-           "score_hilo_status": "CONNECTED_PIT_SAFE_TRAINING_ONLY"}
+           "score_hilo_status": "CONNECTED_PIT_SAFE_TRAINING_ONLY",
+           "holdout_uncertainty": holdout_uncertainty}
     RESULTS.mkdir(parents=True, exist_ok=True)
     atomic_write_json(RESULTS / "mlb_candidate_development.json", development)
     atomic_write_json(RESULTS / "mlb_locked_holdout.json", out)
