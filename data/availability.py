@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any, Mapping
 
 from data.competition_registry import get as get_competition
+from core.pit_evidence import _is_official_source
 
 _ALLOWED_LINEUP_STATUS = {"CONFIRMED", "UNCONFIRMED", "UNAVAILABLE", "UNVERIFIABLE"}
 
@@ -115,6 +116,8 @@ def production_prediction_eligible(record: AvailabilityRecord) -> tuple[bool, li
     have been promoted.
     """
     ok, reasons = prediction_eligible(record)
+    if not _is_official_source(record.source):
+        reasons.append("starter_source_not_official")
     spec = get_competition(record.league)
     if not spec.status == "PRODUCTION_ELIGIBLE":
         reasons.append("competition_not_production_eligible")
