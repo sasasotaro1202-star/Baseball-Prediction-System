@@ -19,7 +19,7 @@ def test_small_sample_win_rate_is_shrunk_toward_half():
     bt.elo_ratings = {}
     f = bt._team_features("MLB", "X", "home", np.datetime64("2026-09-22"))
     assert 0.50 < f["win_shrunk_3"] < f["win_3"]
-    assert abs(f["win_shrunk_3"] - (3 + 10) / 23) < 1e-12
+    assert abs(f["win_shrunk_3"] - (3 * 3 + 10) / 23) < 1e-12
 
 
 def test_shrinkage_never_uses_future_and_draw_feature_is_npb_only():
