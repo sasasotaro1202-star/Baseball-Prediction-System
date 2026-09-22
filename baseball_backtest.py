@@ -1630,8 +1630,9 @@ class BaseballBacktest:
             losses=[]
             for tr, va in splits:
                 self._check_time_budget(f"fit_score_ensemble:{league}:{name}:split")
-                if time.time() - self.started_at >= self.time_budget_sec:
-                    break
+                self._check_time_budget(
+                    f"fit_score_ensemble:{league}:{name}:validation_loop"
+                )
                 try:
                     mh=factory(); ma=factory()
                     self._fit_model(mh, X.iloc[tr], y_home[tr], self._sample_weights(tr), league); self._fit_model(ma, X.iloc[tr], y_away[tr], self._sample_weights(tr), league)
@@ -1731,8 +1732,15 @@ class BaseballBacktest:
         games = games.copy()
         games = games[games["league"] == league].sort_values(["datetime", "game_id"]).reset_index(drop=True)
         if len(games) <= MIN_TRAIN + 1:
-            print(f"[{league}] insufficient games: {len(games)}")
-            return pd.DataFrame()
+            self.audit.append({
+                "type": "insufficient_oos_games",
+                "league": league,
+                "games": int(len(games)),
+                "minimum_required": int(MIN_TRAIN + 2),
+            })
+            raise RuntimeError(
+                f"{league} OOS input is too small: {len(games)} <= {MIN_TRAIN + 1}"
+            )
         if league == "NPB":
             starter_rate = float(
                 ((games["home_starter"].fillna("").astype(str).str.len() > 0) &
