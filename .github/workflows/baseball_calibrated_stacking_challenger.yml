@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - research/individual-calibrated-stacking
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
