@@ -29,6 +29,7 @@ out-of-sample performance and expose model error honestly.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -236,7 +237,7 @@ class BaseballBacktest:
         self.time_budget_sec = min(float(os.getenv("BASEBALL_TIME_BUDGET_SEC", "1500")), 5400.0)
         self.audit: List[Dict[str, Any]] = []
         self.checkpoint_dir = RESULTS / "checkpoints"
-        self.checkpoint_version = "npb-massive-resume-v4-100target"
+        self.checkpoint_version = "npb-massive-resume-v5-input-fingerprint"
         self._last_temperature = 1.0
         self._ensemble_weight_power = 1.0
         self._model_temperatures = {}
@@ -1493,15 +1494,55 @@ class BaseballBacktest:
             games["confirmed_starters"] = False
             games["starter_evidence_status"] = "not_pit_safe"
         X, y, meta = self.build_features(games)
+
+        # A game_id-only resume key is insufficient: a source correction can
+        # change the derived feature state for every later game. Store a stable
+        # fingerprint of the full ordered input row and invalidate the entire
+        # checkpoint when any completed source row no longer matches.
+        input_fingerprints: Dict[str, str] = {}
+        for _, row in meta.iterrows():
+            payload = {
+                str(k): row[k]
+                for k in meta.columns
+            }
+            encoded = json.dumps(
+                payload, ensure_ascii=False, sort_keys=True, default=str, separators=(",", ":")
+            ).encode("utf-8")
+            input_fingerprints[str(row["game_id"])] = hashlib.sha256(encoded).hexdigest()
+
         ck = self.checkpoint_dir / f"{league.lower()}_walkforward.csv"
         existing = pd.DataFrame()
         version_file = ck.with_suffix(".version")
-        if ck.exists() and version_file.exists() and version_file.read_text(encoding="utf-8").strip() == self.checkpoint_version:
-            try: existing = pd.read_csv(ck)
-            except Exception: existing = pd.DataFrame()
+        checkpoint_valid = (
+            ck.exists()
+            and version_file.exists()
+            and version_file.read_text(encoding="utf-8").strip() == self.checkpoint_version
+        )
+        if checkpoint_valid:
+            try:
+                existing = pd.read_csv(ck)
+            except Exception:
+                existing = pd.DataFrame()
+                checkpoint_valid = False
         elif ck.exists():
             print(f"[{league}] ignoring stale checkpoint (version mismatch)")
             existing = pd.DataFrame()
+
+        if checkpoint_valid and not existing.empty:
+            if "input_fingerprint" not in existing.columns:
+                print(f"[{league}] ignoring stale checkpoint (input fingerprints missing)")
+                existing = pd.DataFrame()
+            else:
+                existing_ids = existing["game_id"].astype(str)
+                fingerprint_ok = True
+                for game_id, fingerprint in existing[["game_id", "input_fingerprint"]].astype(str).itertuples(index=False):
+                    if input_fingerprints.get(game_id) != fingerprint:
+                        fingerprint_ok = False
+                        break
+                if not fingerprint_ok:
+                    print(f"[{league}] ignoring stale checkpoint (input fingerprint mismatch)")
+                    existing = pd.DataFrame()
+
         completed_ids = set(existing.get("game_id", pd.Series(dtype=str)).astype(str)) if not existing.empty else set()
         all_rows = existing.to_dict("records") if not existing.empty else []
         start = max(MIN_TRAIN, int(len(X) * 0.25))
@@ -1549,6 +1590,7 @@ class BaseballBacktest:
                 low, high = low_high_probs(lam_h, lam_a, shared)
                 block_rows.append({
                     "league": league, "game_id": r["game_id"], "datetime": r["datetime"],
+                    "input_fingerprint": input_fingerprints[str(r["game_id"])],
                     "home": r["home"], "away": r["away"], "home_starter": r.get("home_starter", ""), "away_starter": r.get("away_starter", ""),
                     "pred_home": float(prob[0]), "pred_draw": float(prob[1]) if league == "NPB" else np.nan,
                     "pred_away": float(prob[2]) if league == "NPB" else float(prob[1]),
