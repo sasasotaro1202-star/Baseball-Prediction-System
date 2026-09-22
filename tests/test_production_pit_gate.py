@@ -14,7 +14,7 @@ def row(level="OFFICIAL_ANNOUNCEMENT", ts="2026-09-19T10:00:00+00:00"):
         "away_starter_evidence_level": level,
         "home_starter_announced_at": ts,
         "away_starter_announced_at": ts,
-        "source": "official",
+        "source": "https://npb.jp/",
     }
 
 
@@ -25,6 +25,13 @@ def test_strict_gate_accepts_two_official_announcements():
 
 def test_retrieval_only_is_rejected():
     ok, reason = check_game(row("RETRIEVAL_ONLY"), CUTOFF)
+    assert not ok and "not_strictly_eligible" in reason
+
+
+def test_non_official_source_is_rejected():
+    r = row()
+    r["source"] = "https://example.com/"
+    ok, reason = check_game(r, CUTOFF)
     assert not ok and "not_strictly_eligible" in reason
 
 
