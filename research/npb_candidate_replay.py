@@ -117,7 +117,7 @@ def _target_metrics(
     low_high_prob: list[float] = []
 
     for i in range(len(games_holdout)):
-        lam_h, lam_a = bt.predict_scores(score_fit, X_holdout.iloc[[i]], "NPB")
+        lam_h, lam_a, _shared = bt.predict_scores(score_fit, X_holdout.iloc[[i]], "NPB")
         split = float(np.clip(p[i, 0] - p[i, 2], -0.35, 0.35))
         lam_h *= 1.0 + 0.08 * split
         lam_a *= 1.0 - 0.08 * split
