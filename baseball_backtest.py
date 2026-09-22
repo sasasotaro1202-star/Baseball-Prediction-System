@@ -558,6 +558,25 @@ class BaseballBacktest:
         else:
             rr, gf, ga = list(s.away_results), list(s.away_gf), list(s.away_ga)
             vm, vp = s.away_matches, s.away_points
+        # Small-sample empirical-Bayes style shrinkage features. The raw
+        # rolling rates remain available; these additional features pull volatile
+        # short windows toward the league prior without introducing future data.
+        # This is deliberately low-dimensional and fixed rather than a tuned
+        # high-capacity transform.
+        for w in (3, 5, 10, 20):
+            n_eff = float(min(s.total_matches, w))
+            kappa = 20.0
+            f[f"win_shrunk_{w}"] = (
+                f[f"win_{w}"] * n_eff + 0.50 * kappa
+            ) / max(n_eff + kappa, 1e-9)
+            f[f"gd_shrunk_{w}"] = (
+                f[f"gd_{w}"] * n_eff
+            ) / max(n_eff + kappa, 1e-9)
+            if league == "NPB":
+                f[f"draw_shrunk_{w}"] = (
+                    f[f"draw_{w}"] * n_eff + 0.24 * kappa
+                ) / max(n_eff + kappa, 1e-9)
+
         f["venue_n"] = float(vm)
         f["venue_pts"] = float(vp / vm) if vm else 1.0
         f["venue_gf"] = float(np.mean(gf[-10:])) if gf else 0.0
