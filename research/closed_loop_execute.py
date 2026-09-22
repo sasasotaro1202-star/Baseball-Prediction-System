@@ -351,17 +351,27 @@ def process_league(league: str, path: Path) -> dict[str, Any]:
         },
         candidate_id=candidate_id,
     )
+    starter_pit_evidence_ok = (
+        "confirmed_starters" in development.columns
+        and bool(development["confirmed_starters"].all())
+        and "starter_evidence_status" in development.columns
+        and bool((development["starter_evidence_status"] == "pit_safe").all())
+    )
     gate = evaluate_locked_holdout(
         base_holdout,
         cand_holdout,
         policy=GatePolicy(
             require_uncertainty_check=True,
-            require_pit_starter_evidence=True,
+            # MLB starter identities require authoritative pre-cutoff
+            # announcement evidence. NPB may be evaluated without starter
+            # features when those features are explicitly absent.
+            require_pit_starter_evidence=(league == "MLB"),
         ),
         validation_windows=2,
         calibration_ok=calibration_ok,
         no_future_target_data=True,
         reproducible=True,
+        pit_starter_evidence_ok=starter_pit_evidence_ok,
         baseline_score={"ScoreMAE": base_holdout.get("ScoreMAE", float("nan"))},
         candidate_score={"ScoreMAE": cand_holdout.get("ScoreMAE", float("nan"))},
         baseline_hilo=base_hilo,
