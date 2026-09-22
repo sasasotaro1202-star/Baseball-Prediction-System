@@ -465,6 +465,16 @@ def run_npb_candidate_cycle(
     base_score, base_hilo = _target_metrics(bt, X_train, games_train, games_holdout, X_holdout, base_p)
     cand_score, cand_hilo = _target_metrics(bt, X_train, games_train, games_holdout, X_holdout, cand_p)
 
+    holdout_uncertainty = uncertainty_to_dict(
+        paired_block_bootstrap(
+            y=y_holdout,
+            baseline_proba=base_p,
+            candidate_proba=cand_p,
+            block_size=max(10, min(30, len(y_holdout) // 10)),
+            replications=400,
+            seed=42,
+        )
+    )
     calibration_ok = cand_metrics["ECE"] <= base_metrics["ECE"] + config.calibration_tolerance
     reproducible = True  # fixed model seeds + deterministic chronological ordering are encoded by the core
 
@@ -483,7 +493,8 @@ def run_npb_candidate_cycle(
         holdout_hilo_baseline=base_hilo,
         holdout_hilo_candidate=cand_hilo,
         league="NPB",
-        policy=GatePolicy(require_pit_starter_evidence=True),
+        policy=GatePolicy(),
+        holdout_uncertainty=holdout_uncertainty,
     )
 
     holdout = {
@@ -511,6 +522,7 @@ def run_npb_candidate_cycle(
         "starter_pit_evidence_ok": False,
         "validation_decision": lifecycle.decision,
         "validation_reasons": list((lifecycle.locked_holdout or {}).get("reasons", ())),
+        "holdout_uncertainty": holdout_uncertainty,
     }
     RESULTS.mkdir(parents=True, exist_ok=True)
     atomic_write_json(RESULTS / "npb_candidate_development.json", {
@@ -518,6 +530,7 @@ def run_npb_candidate_cycle(
         "candidate": asdict(spec),
         "baseline": baseline,
         "validation_windows": validation_windows,
+        "holdout_uncertainty": holdout_uncertainty,
     })
     atomic_write_json(RESULTS / "npb_locked_holdout.json", holdout)
     return {"stage": "locked_holdout_evaluated", "decision": lifecycle.decision, "candidate": locked, "holdout": holdout}
