@@ -80,18 +80,8 @@ def _draw_scale(p: np.ndarray, multiplier: float) -> np.ndarray:
 
 
 def _fit_temperature(y: np.ndarray, p: np.ndarray) -> float:
-    """Fit a low-variance temperature on Development OOS only."""
-    best_t = 1.0
-    best_ll = log_loss(y, np.clip(p, 1e-9, 1 - 1e-9), labels=[0, 1, 2])
-    # Restrict the search to a small fixed grid to keep calibration reproducible
-    # and materially reduce the risk of tuning a high-dimensional transform.
-    for temperature in np.linspace(0.75, 1.25, 51):
-        candidate = _temperature_scale(p, float(temperature))
-        ll = log_loss(y, np.clip(candidate, 1e-9, 1 - 1e-9), labels=[0, 1, 2])
-        if ll < best_ll - 1e-12 or (abs(ll - best_ll) <= 1e-12 and abs(float(temperature) - 1.0) < abs(best_t - 1.0)):
-            best_ll = ll
-            best_t = float(temperature)
-    return best_t
+    """Fit the shared point-in-time-safe temperature contract on Development OOS only."""
+    return float(fit_temperature(p, y).temperature)
 
 
 def _draw_metrics(y: np.ndarray, p: np.ndarray) -> dict[str, float]:
