@@ -219,14 +219,16 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
 
     occurrences.sort()
     structural_occurrences = _parse_starters_by_units(section, teams)
-    if structural_occurrences:
-        # Prefer true structural game-card evidence. Responsive/accessibility
-        # duplicates outside .unit must never create false duplicate games.
-        occurrences = structural_occurrences
     time_matches = list(re.finditer(r"(?<!\d)(\d{1,2}:\d{2})(?!\d)", section))
     if not time_matches:
         raise RuntimeError("PIT starter gate failed: no official game times found.")
     expected_games = len(time_matches)
+    # Some official NPB revisions use one .unit per team rather than one .unit
+    # per game. Do not let a structurally valid-but-cardinality-incomplete
+    # extraction erase the broader team-bounded extraction above. Structural
+    # evidence is preferred only when it resolves every expected team.
+    if structural_occurrences and len(structural_occurrences) == 2 * expected_games:
+        occurrences = structural_occurrences
 
     # The official page can use responsive/CSS ordering in which the DOM
     # positions of the game cards are not the visual game order. A strict
