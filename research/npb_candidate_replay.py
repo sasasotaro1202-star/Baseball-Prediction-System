@@ -79,7 +79,8 @@ def _draw_scale(p: np.ndarray, multiplier: float) -> np.ndarray:
     return q / row_sum
 
 
-\n# Latest calibration contract is revalidated by repository regression tests.\ndef _fit_temperature(y: np.ndarray, p: np.ndarray) -> float:
+# Latest calibration contract is revalidated by repository regression tests.
+def _fit_temperature(y: np.ndarray, p: np.ndarray) -> float:
     """Fit the shared point-in-time-safe temperature contract on Development OOS only."""
     return float(fit_temperature(p, y).temperature)
 
