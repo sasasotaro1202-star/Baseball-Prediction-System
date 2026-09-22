@@ -61,55 +61,30 @@ def poisson_result_probs(lh: float, la: float, league: str) -> np.ndarray:
 
 
 def build_probabilities(df: pd.DataFrame, league: str) -> tuple[np.ndarray, str]:
-    if league == "NPB":
-        cols = ["pred_home", "pred_draw", "pred_away"]
-        raw = (
-            df[cols].apply(pd.to_numeric, errors="coerce").to_numpy(float)
-            if all(c in df.columns for c in cols)
-            else np.full((len(df), 3), np.nan)
-        )
-        usable = (
-            np.isfinite(raw).all(axis=1)
-            & (raw >= 0).all(axis=1)
-            & (raw.sum(axis=1) > 0.999)
-            & (raw.sum(axis=1) < 1.001)
-            & (raw.max(axis=1) < 0.999999)
-        )
-        repaired = []
-        for i, row in df.iterrows():
-            if usable[i]:
-                repaired.append(raw[i])
-                continue
-            if not np.isfinite(float(row["lambda_home"])) or not np.isfinite(float(row["lambda_away"])):
-                raise RuntimeError("NPB invalid probabilities and missing Poisson lambdas")
-            repaired.append(poisson_result_probs(row["lambda_home"], row["lambda_away"], "NPB"))
-        return clip_probs(np.asarray(repaired)), (
-            "raw_classifier_with_poisson_repair" if (~usable).any() else "raw_classifier"
-        )
+    """Accept only finite, normalized classifier probabilities.
 
-    cols = ["pred_home", "pred_away"]
+    Invalid probability rows are evidence that the upstream OOS artifact is
+    malformed or incomplete. Do not silently substitute another model because
+    that would change the evaluated system and obscure the failure.
+    """
+    cols = ["pred_home", "pred_draw", "pred_away"] if league == "NPB" else ["pred_home", "pred_away"]
     if not set(cols).issubset(df.columns):
-        raise RuntimeError("MLB probability columns missing")
-    raw = df[cols].apply(pd.to_numeric, errors="coerce").to_numpy(float)
-    usable = (
-        np.isfinite(raw).all(axis=1)
-        & (raw >= 0).all(axis=1)
-        & (raw.sum(axis=1) > 0.999)
-        & (raw.sum(axis=1) < 1.001)
-        & (raw.max(axis=1) < 0.999999)
-    )
-    if usable.all():
-        return clip_probs(raw), "raw_classifier"
-    repaired = []
-    for i, row in df.iterrows():
-        if usable[i]:
-            repaired.append(raw[i])
-            continue
-        if not np.isfinite(float(row["lambda_home"])) or not np.isfinite(float(row["lambda_away"])):
-            raise RuntimeError("MLB invalid probabilities and missing Poisson lambdas")
-        repaired.append(poisson_result_probs(row["lambda_home"], row["lambda_away"], "MLB"))
-    return clip_probs(np.asarray(repaired)), "raw_classifier_with_poisson_repair"
+        raise RuntimeError(f"{league} probability columns missing: {cols}")
 
+    raw = df[cols].apply(pd.to_numeric, errors="coerce").to_numpy(float)
+    finite = np.isfinite(raw).all(axis=1)
+    nonnegative = (raw >= 0).all(axis=1)
+    sums = raw.sum(axis=1)
+    normalized = (sums > 0.999) & (sums < 1.001)
+    nondegenerate = raw.max(axis=1) < 0.999999
+    valid = finite & nonnegative & normalized & nondegenerate
+    if not bool(valid.all()):
+        bad = int((~valid).sum())
+        raise RuntimeError(
+            f"{league} OOS probability artifact contains {bad} invalid rows; "
+            "refusing Poisson substitution during evaluation"
+        )
+    return clip_probs(raw), "raw_classifier_strict"
 
 def actual_labels(df: pd.DataFrame, league: str) -> np.ndarray:
     hs = pd.to_numeric(df["actual_home_score"], errors="coerce")
