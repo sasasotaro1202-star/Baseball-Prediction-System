@@ -71,3 +71,59 @@ def test_candidate_lock_rejects_malformed_row_count():
     import pytest
     with pytest.raises(ValueError):
         candidate_lock(development_metrics={"rows": "not-a-number"}, candidate_id="x")
+
+
+def test_uncertainty_gate_requires_positive_robust_logloss_improvement():
+    from research.adoption_gate import GatePolicy
+
+    result = evaluate_locked_holdout(
+        {"rows": 300, "LogLoss": 0.70, "Brier": 0.50, "Accuracy": 0.55},
+        {"rows": 300, "LogLoss": 0.68, "Brier": 0.49, "Accuracy": 0.56},
+        policy=GatePolicy(
+            require_uncertainty_check=True,
+            min_positive_improvement_probability=0.95,
+        ),
+        validation_windows=2,
+        calibration_ok=True,
+        no_future_target_data=True,
+        reproducible=True,
+        baseline_score={"ScoreMAE": 2.0},
+        candidate_score={"ScoreMAE": 1.9},
+        baseline_hilo={"LogLoss": 0.6, "Brier": 0.4, "Accuracy": 0.6},
+        candidate_hilo={"LogLoss": 0.59, "Brier": 0.39, "Accuracy": 0.61},
+        league="MLB",
+        holdout_uncertainty={
+            "improvement_ci95": {"LogLoss": [-0.01, 0.04]},
+            "p_improvement_positive": {"LogLoss": 0.90},
+        },
+    )
+    assert result["decision"] == "REJECT"
+    assert "logloss_improvement_uncertainty_ci_failed" in result["reasons"]
+    assert "logloss_improvement_probability_failed" in result["reasons"]
+
+
+def test_uncertainty_gate_accepts_robust_holdout_signal_when_other_gates_pass():
+    from research.adoption_gate import GatePolicy
+
+    result = evaluate_locked_holdout(
+        {"rows": 300, "LogLoss": 0.70, "Brier": 0.50, "Accuracy": 0.55},
+        {"rows": 300, "LogLoss": 0.68, "Brier": 0.49, "Accuracy": 0.56},
+        policy=GatePolicy(
+            require_uncertainty_check=True,
+            min_positive_improvement_probability=0.95,
+        ),
+        validation_windows=2,
+        calibration_ok=True,
+        no_future_target_data=True,
+        reproducible=True,
+        baseline_score={"ScoreMAE": 2.0},
+        candidate_score={"ScoreMAE": 1.9},
+        baseline_hilo={"LogLoss": 0.6, "Brier": 0.4, "Accuracy": 0.6},
+        candidate_hilo={"LogLoss": 0.59, "Brier": 0.39, "Accuracy": 0.61},
+        league="MLB",
+        holdout_uncertainty={
+            "improvement_ci95": {"LogLoss": [0.005, 0.04]},
+            "p_improvement_positive": {"LogLoss": 0.97},
+        },
+    )
+    assert result["decision"] == "ADOPT"
