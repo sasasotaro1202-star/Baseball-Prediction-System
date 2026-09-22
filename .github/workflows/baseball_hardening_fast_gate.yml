@@ -86,6 +86,10 @@ jobs:
           grep -Fq "RUN_ATTEMPT" "$recovery"
           grep -Fq "Mixed transient and deterministic failures detected" "$recovery"
 
+          if grep -nE '\\.fillna\\([[:space:]]*0([.]0)?[[:space:]]*\\)' production_npb.py; then
+            echo 'Production NPB target-feature implicit zero imputation detected.' >&2
+            exit 1
+          fi
           echo 'Automation contract scan: PASS'
 
       - name: Workflow fail-closed policy scan
