@@ -1004,7 +1004,20 @@ class BaseballBacktest:
             for row in pending_rows:
                 self.update_after_game(row)
 
-        X = pd.DataFrame(Xrows).replace([np.inf, -np.inf], np.nan).fillna(0.0).astype(float)
+        X = pd.DataFrame(Xrows).replace([np.inf, -np.inf], np.nan)
+        missing = X.isna().sum()
+        missing = missing[missing > 0].sort_values(ascending=False)
+        if not missing.empty:
+            self.audit.append({
+                "type": "feature_missing_fail_closed",
+                "columns": {str(k): int(v) for k, v in missing.items()},
+                "rows": int(missing.max()),
+            })
+            raise RuntimeError(
+                "Feature matrix contains undefined values; refusing implicit zero imputation: "
+                + ", ".join(f"{k}={v}" for k, v in missing.items())
+            )
+        X = X.astype(float)
         return X, np.asarray(y, dtype=int), pd.DataFrame(meta)
 
     def update_after_game(self, row: pd.Series):
