@@ -310,6 +310,7 @@ def process_league(league: str, path: Path) -> dict[str, Any]:
                 block_size=30,
                 replications=400,
                 seed=42,
+                block_labels=pd.to_datetime(holdout["datetime"], errors="coerce", utc=True).dt.year.to_numpy(),
             )
         )
     except Exception as exc:
