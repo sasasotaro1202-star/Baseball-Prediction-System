@@ -146,3 +146,6 @@ def test_24h_supervisor_avoids_deterministic_failure_retry_loop():
     assert "gh workflow run" in text
     assert "dispatch verification" in text
     assert "latest_age_minutes" in text
+
+
+# Verification-only trigger for current main regression v2.
