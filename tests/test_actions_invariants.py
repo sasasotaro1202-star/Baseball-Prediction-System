@@ -102,6 +102,10 @@ def test_closed_loop_uses_shared_temporal_calibration_contract():
     assert "fit_temperature(" in text
     assert "atomic_write_json" in text
     assert "source_fingerprints" in text
+    assert '"production_approved": False' in text
+    assert 'evaluation_only_no_auto_promotion' in text
+    assert 'def development_candidate_id(' in text
+    assert 'candidate_id=candidate_id' in text
 
 
 def test_9h_autopilot_hands_off_evidence_to_final_phase_and_hides_no_failures():
