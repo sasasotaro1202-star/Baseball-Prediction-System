@@ -489,15 +489,24 @@ def official_starters(target_date: str) -> list[dict]:
 
 def build_target_rows(target_date: str) -> pd.DataFrame:
     rows=official_starters(target_date)
+    now_utc=pd.Timestamp.now(tz="UTC")
+    output=[]
     for i,r in enumerate(rows):
         r["league"]="NPB"; r["game_id"]=f"NPB-{target_date}-{i+1}"
         start_time=r.get("official_start_time")
         if not start_time:
             raise RuntimeError("Official NPB schedule time missing; refusing prediction.")
         r["datetime"]=pd.Timestamp(f"{target_date} {start_time}").tz_localize("Asia/Tokyo").tz_convert("UTC")
+        # A completed or already-started game is never a valid future prediction
+        # target. Keeping it in the production set would turn a day-of schedule
+        # refresh into a post-start prediction.
+        if r["datetime"] <= now_utc:
+            continue
         r["home_score"]=float("nan"); r["away_score"]=float("nan")
         r["starter_evidence_status"]="official_announced"
-    return pd.DataFrame(rows)
+        r["starter_evidence_observed_at_utc"]=now_utc.isoformat()
+        output.append(r)
+    return pd.DataFrame(output)
 
 def direct_pit_safe_lambdas(hist: pd.DataFrame, row: pd.Series, bt: BaseballBacktest) -> tuple[float,float,float]:
     """Fast independent PIT-safe run-rate model from historical games only.
@@ -624,7 +633,19 @@ def predict(target_date: str, data_dir: str) -> dict:
         out=ROOT/"results"/f"npb_production_{target_date}.json"; out.parent.mkdir(exist_ok=True)
         out.write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding="utf-8")
         return result
-    if games.empty or not bool(games["confirmed_starters"].all()):
+    if games.empty:
+        result={
+            "schema_version":"npb-production-v1", "target_date":target_date,
+            "execution_status":"NO_FUTURE_GAMES", "pit_status":"PASS",
+            "starter_gate":"PASS", "model_status":"NOT_RUN",
+            "git_commit":__import__("os").environ.get("GITHUB_SHA","unknown"),
+            "predictions":[], "block_reason":"all scheduled games for the requested JST date have already started or finished",
+            "prediction_generated_at":datetime.now(timezone.utc).isoformat(),
+        }
+        out=ROOT/"results"/f"npb_production_{target_date}.json"; out.parent.mkdir(exist_ok=True)
+        out.write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding="utf-8")
+        return result
+    if not bool(games["confirmed_starters"].all()):
         raise RuntimeError("PIT gate failed: every target game must have confirmed official starters.")
 
     bt=BaseballBacktest(Path(data_dir))
