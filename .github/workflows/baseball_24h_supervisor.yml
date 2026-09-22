@@ -161,7 +161,7 @@ jobs:
           fi
 
           if [ "${dispatch}" -ne 1 ]; then
-            echo "No dispatch needed. latest_conclusion=${latest_conclusion:-<none>} latest_age_minutes=${latest_age_minutes}"
+            echo "cooldown active: no dispatch needed. latest_conclusion=${latest_conclusion:-<none>} latest_age_minutes=${latest_age_minutes}"
             exit 0
           fi
 
