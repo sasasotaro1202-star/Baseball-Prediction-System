@@ -1,10 +1,11 @@
 from dataclasses import asdict
 
+import research.candidates as candidates_module
 from research.candidates import CandidateSpec, candidate_fingerprint, lock_candidate
 
 
 def test_candidate_lock_persists_reproducible_fingerprint(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(candidates_module, "RESULTS", tmp_path / "results")
     spec = CandidateSpec(
         candidate_id="cand-test-001",
         league="NPB",
