@@ -323,8 +323,18 @@ jobs:
         with:
           name: baseball-closed-loop-${{ github.run_id }}
           path: |
-            results/**
-            data/pit/**
-            data/.npb_stage_ready
+            results/research_execution_manifest.json
+            results/lifecycle_execution.json
+            results/lifecycle_governance.json
+            results/candidate_validation.json
+            results/calibration.json
+            results/development_oos.json
+            results/independent_holdout.json
+            results/result_audit.json
+            results/weakness_report.json
+            data/pit/acquisition_runs.jsonl
+            data/pit/availability_observations.jsonl
           if-no-files-found: error
-          retention-days: 30
+          # Keep Actions storage bounded. Large/raw datasets remain in the
+          # repository cache path rather than being copied into artifacts.
+          retention-days: 1
