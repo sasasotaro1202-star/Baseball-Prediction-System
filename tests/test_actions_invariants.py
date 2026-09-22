@@ -148,4 +148,12 @@ def test_24h_supervisor_avoids_deterministic_failure_retry_loop():
     assert "Dispatch verification" in text
     assert "latest_age_minutes" in text
     assert "failure_classes" in text
-    assert "cooldown_minutes=60" not in text
+    assert "cooldown_minutes=60" in text
+    assert "cooldown_minutes=10" in text
+    assert "cooldown_minutes=15" in text
+
+
+def test_regression_ci_cancellation_is_scoped_per_ref():
+    text = (ROOT / ".github" / "workflows" / "baseball_regression_tests.yml").read_text(encoding="utf-8")
+    assert "group: baseball-regression-tests-${{ github.ref }}" in text
+    assert "cancel-in-progress: true" in text
