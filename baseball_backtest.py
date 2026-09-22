@@ -63,6 +63,7 @@ from sklearn.preprocessing import StandardScaler
 
 from research.regime_router import RegimeRouter
 from research.correlated_score import estimate_shared_lambda, low_high as correlated_low_high, top_scores as correlated_top_scores
+from evaluation.calibration import fit_temperature
 
 RANDOM_STATE = 42
 ROOT = Path(__file__).resolve().parent
@@ -1006,16 +1007,9 @@ class BaseballBacktest:
             return model.fit(X, y)
 
     def _temperature_from_probs(self, p: np.ndarray, y: np.ndarray) -> float:
-        if len(p) < 25: return 1.0
-        labels=np.asarray(y,dtype=int)
-        best_t=1.0; best_ll=float("inf")
-        for t in np.linspace(0.65,2.20,32):
-            q=np.clip(p,1e-7,1.0) ** (1.0/t)
-            q=q/q.sum(axis=1,keepdims=True)
-            ll=log_loss(labels,q,labels=list(range(p.shape[1])))
-            if ll < best_ll: best_ll=float(ll); best_t=float(t)
-        return best_t
-
+        if len(p) < 25:
+            return 1.0
+        return float(fit_temperature(p, y).temperature)
     def fit_best(self, X: pd.DataFrame, y: np.ndarray, league: str) -> Tuple[str, Any, Dict[str, float]]:
         if len(X) < MIN_TRAIN or len(np.unique(y)) < 2:
             raise ValueError("Insufficient training data")
@@ -1121,15 +1115,30 @@ class BaseballBacktest:
         ) if filtered_regime_losses else {}
         temperature=1.0
         if not fast_oos and splits and fitted:
-            cut,val=splits[-1]
             try:
-                raw=np.zeros((val,k))
-                inv=np.array([1/max(loss,1e-6) for loss,_ in top]); inv/=inv.sum()
-                for (name,_loss),w in zip(top,inv):
-                    mm=models[name]
-                    self._fit_model(mm,X.iloc[:cut],y[:cut],self._sample_weights(cut),league)
-                    raw += float(w)*self.align_proba(mm.predict_proba(X.iloc[cut:cut+val]),mm.classes_,league)
-                temperature=self._temperature_from_probs(raw,y[cut:cut+val])
+                # Fit the low-dimensional calibrator on multiple chronological
+                # validation folds. Each fold prediction is produced by models
+                # trained strictly before that fold; the future target block is
+                # never observed by this calibration fit.
+                raw_parts=[]
+                y_parts=[]
+                inv=np.array([1/max(loss,1e-6) for _,loss in top])
+                inv/=max(inv.sum(),1e-12)
+                for cut,val in splits:
+                    raw=np.zeros((val,k))
+                    for (name,_loss),w in zip(top,inv):
+                        mm=models[name]
+                        self._fit_model(mm,X.iloc[:cut],y[:cut],self._sample_weights(cut),league)
+                        raw += float(w)*self.align_proba(
+                            mm.predict_proba(X.iloc[cut:cut+val]),
+                            mm.classes_,league
+                        )
+                    raw_parts.append(raw)
+                    y_parts.append(np.asarray(y[cut:cut+val],dtype=int))
+                if raw_parts:
+                    temperature=self._temperature_from_probs(
+                        np.vstack(raw_parts),np.concatenate(y_parts)
+                    )
             except Exception as e:
                 self.audit.append({"type":"calibration_error","error":str(e)})
         self._last_temperature = temperature
