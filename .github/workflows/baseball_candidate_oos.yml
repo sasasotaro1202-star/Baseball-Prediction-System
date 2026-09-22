@@ -1,7 +1,8 @@
 name: Baseball Candidate OOS Validation
 # Phase 1 screening: NPB and MLB run concurrently; production defaults remain unchanged.
 # Trusted-main workflow: candidate selection is OOS-only; holdout is locked before evaluation.
-# Candidate calibration uses the same shared evaluation.calibration contract as closed-loop governance.\n# Retrigger after verified parser/calibration hardening.
+# Candidate calibration uses the same shared evaluation.calibration contract as closed-loop governance.
+# Candidate scoring now preserves the learned bivariate shared-lambda term in Top-4 and Low/High holdout evaluation.\n# Retrigger after verified parser/calibration hardening.
 # Shared calibration grid and multi-fold ensemble calibration were refreshed on 2026-09-22; candidate OOS is re-run from this commit.
 # Candidate OOS must be re-executed after any calibration/core-model hardening.
 # Final replay trigger after score tuple compatibility fixes; production defaults remain unchanged.
