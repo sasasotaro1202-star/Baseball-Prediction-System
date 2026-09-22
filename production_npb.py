@@ -458,11 +458,10 @@ def _load_official_starter_snapshot(target_date: str) -> list[dict] | None:
     return games
 
 def official_starters(target_date: str) -> list[dict]:
-    snapshot = None
-    try:
-        snapshot = _load_official_starter_snapshot(target_date)
-    except Exception:
-        snapshot = None
+    # An existing immutable snapshot is evidence, not an optional cache.
+    # If it exists but is malformed, refuse prediction rather than silently
+    # replacing a provenance problem with a live fetch.
+    snapshot = _load_official_starter_snapshot(target_date)
     try:
         return parse_official_starters_html(
             fetch_text(NPB_STARTER_URL + "?_ts=" + str(int(time.time()))), target_date
