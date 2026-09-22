@@ -488,9 +488,16 @@ class BaseballBacktest:
                             return name
                     return ""
                 hname, aname = find_starter(hp), find_starter(ap)
-                if hname: games.at[i, "home_starter"] = hname
-                if aname: games.at[i, "away_starter"] = aname
-                games.at[i, "confirmed_starters"] = bool(hname and aname)
+                # Feed/live can establish who actually started, but it does not
+                # provide a historical public-announcement timestamp. Preserve
+                # this only as realized post-game metadata; never promote it into
+                # prediction-time starter features.
+                if "home_actual_starter" not in games.columns:
+                    games["home_actual_starter"] = ""
+                if "away_actual_starter" not in games.columns:
+                    games["away_actual_starter"] = ""
+                if hname: games.at[i, "home_actual_starter"] = hname
+                if aname: games.at[i, "away_actual_starter"] = aname
             except Exception as e:
                 print(f"[MLB feed skip] {gid}: {e}")
         return games
