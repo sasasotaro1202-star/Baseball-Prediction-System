@@ -15,6 +15,16 @@ from typing import Any
 from core.pit_evidence import EvidenceLevel, StarterEvidence, strict_eligible
 
 
+def _event_start(value: Any) -> datetime:
+    """Parse the scheduled game start time required by the pregame gate."""
+    if value in (None, ""):
+        raise ValueError("missing_event_start")
+    ts = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if ts.tzinfo is None:
+        raise ValueError("event_start_must_be_timezone_aware")
+    return ts
+
+
 def _ts(value: Any) -> str:
     return datetime.fromisoformat(str(value).replace("Z", "+00:00")).isoformat()
 
@@ -24,6 +34,16 @@ def check_game(row: dict[str, Any], cutoff: str) -> tuple[bool, str]:
         return False, "game_not_playable"
     if not row.get("event_id") or not row.get("league"):
         return False, "missing_event_identity"
+    try:
+        start_value = row.get("event_start_at") or row.get("datetime") or row.get("start_datetime")
+        if start_value in (None, "") and row.get("official_start_time") and row.get("target_date"):
+            start_value = f"{row["target_date"]}T{row["official_start_time"]}:00+09:00"
+        start_ts = _event_start(start_value)
+        cutoff_ts = datetime.fromisoformat(str(cutoff).replace("Z", "+00:00"))
+        if start_ts <= cutoff_ts:
+            return False, "game_already_started_or_not_future_at_cutoff"
+    except (TypeError, ValueError):
+        return False, "event_start_invalid"
     for side in ("home", "away"):
         starter = row.get(f"{side}_starter")
         level = row.get(f"{side}_starter_evidence_level", "NONE")
