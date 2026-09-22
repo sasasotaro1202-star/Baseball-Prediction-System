@@ -64,9 +64,9 @@ jobs:
         uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57
         with:
           path: results/checkpoints
-          key: baseball-oos-checkpoints-v2-${{ runner.os }}-${{ hashFiles('requirements.txt', 'baseball_backtest.py', 'research_runner_v6.py', 'data/npb_pbp_adapter.py') }}-${{ github.run_number }}
+          key: baseball-oos-checkpoints-v3-${{ runner.os }}-${{ hashFiles('requirements.txt', 'baseball_backtest.py', 'research_runner_v6.py', 'research/regime_router.py', 'research/correlated_score.py', 'research/backtest_output_contract.py', 'prediction/score_distribution.py', 'data/npb_pbp_adapter.py') }}-${{ github.run_number }}
           restore-keys: |
-            baseball-oos-checkpoints-v2-${{ runner.os }}-${{ hashFiles('requirements.txt', 'baseball_backtest.py', 'research_runner_v6.py', 'data/npb_pbp_adapter.py') }}-
+            baseball-oos-checkpoints-v3-${{ runner.os }}-${{ hashFiles('requirements.txt', 'baseball_backtest.py', 'research_runner_v6.py', 'research/regime_router.py', 'research/correlated_score.py', 'research/backtest_output_contract.py', 'prediction/score_distribution.py', 'data/npb_pbp_adapter.py') }}-
 
       - name: Install research dependencies
         timeout-minutes: 10
@@ -259,7 +259,7 @@ jobs:
         uses: actions/cache/save@1bd1e32a3bdc45362d1e726936510720a7c30a57
         with:
           path: results/checkpoints
-          key: baseball-oos-checkpoints-v2-${{ runner.os }}-${{ hashFiles('requirements.txt', 'baseball_backtest.py', 'research_runner_v6.py', 'data/npb_pbp_adapter.py') }}-${{ github.run_number }}
+          key: baseball-oos-checkpoints-v3-${{ runner.os }}-${{ hashFiles('requirements.txt', 'baseball_backtest.py', 'research_runner_v6.py', 'research/regime_router.py', 'research/correlated_score.py', 'research/backtest_output_contract.py', 'prediction/score_distribution.py', 'data/npb_pbp_adapter.py') }}-${{ github.run_number }}
 
       - name: Verify research manifest
         timeout-minutes: 5
