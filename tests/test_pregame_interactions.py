@@ -68,6 +68,6 @@ def test_pregame_interactions_are_deterministic_and_target_free(monkeypatch):
 
     assert out["elo_x_starter_quality_gap"] == 20.0 * ((9.0 - 2.0 - 0.8) - (7.0 - 3.0 - 1.1))
     assert out["starter_quality_reliability_gap"] != 0.0
-    assert out["bullpen_fatigue_x_rest_gap"] == 2.0 * (1.0 + 1.0)
+    assert out["bullpen_fatigue_x_rest_gap"] == -2.0 * (1.0 + 1.0)
     assert out["environment_x_volatility_gap"] != 0.0
     assert all(v == v for v in out.values())
