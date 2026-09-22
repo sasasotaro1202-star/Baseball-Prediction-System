@@ -235,6 +235,8 @@ class BaseballBacktest:
         # equal to the 90-minute OOS job timeout. The previous 1500-second clamp
         # silently ignored larger configured budgets and reduced OOS coverage.
         self.time_budget_sec = min(float(os.getenv("BASEBALL_TIME_BUDGET_SEC", "1500")), 5400.0)
+        # Keep long OOS fits visibly alive without materially increasing compute.
+        self.heartbeat_sec = max(10.0, float(os.getenv("BASEBALL_HEARTBEAT_SEC", "45")))
         self.audit: List[Dict[str, Any]] = []
         self.checkpoint_dir = RESULTS / "checkpoints"
         self.checkpoint_version = "npb-massive-resume-v5-input-fingerprint"
@@ -1573,9 +1575,24 @@ class BaseballBacktest:
         completed_ids = set(existing.get("game_id", pd.Series(dtype=str)).astype(str)) if not existing.empty else set()
         all_rows = existing.to_dict("records") if not existing.empty else []
         start = max(MIN_TRAIN, int(len(X) * 0.25))
+        next_heartbeat = time.monotonic()
+        total_blocks = int(math.ceil(max(0, len(X) - start) / max(RETRAIN_EVERY, 1)))
+        block_number = 0
         for bstart in range(start, len(X), RETRAIN_EVERY):
+            block_number += 1
             bend = min(len(X), bstart + RETRAIN_EVERY)
             block_ids = set(meta.iloc[bstart:bend]["game_id"].astype(str))
+            now_mono = time.monotonic()
+            if now_mono >= next_heartbeat:
+                elapsed = max(0.0, time.time() - self.started_at)
+                remaining = max(0.0, self.time_budget_sec - elapsed)
+                print(
+                    f"[{league} HEARTBEAT] block={block_number}/{total_blocks} "
+                    f"range={bstart}:{bend} completed={len(completed_ids)}/{max(1, len(X)-start)} "
+                    f"elapsed={elapsed:.0f}s budget_remaining={remaining:.0f}s",
+                    flush=True,
+                )
+                next_heartbeat = now_mono + self.heartbeat_sec
             if block_ids and block_ids.issubset(completed_ids):
                 print(f"[{league}] resume skip block {bstart}:{bend} ({len(block_ids)} games already checkpointed)")
                 continue
@@ -1584,6 +1601,7 @@ class BaseballBacktest:
                 print(f"[{league}] time budget reached; stopping walk-forward cleanly")
                 break
             try:
+                print(f"[{league} HEARTBEAT] fitting block={block_number}/{total_blocks} train={bstart} eval={bend-bstart}", flush=True)
                 fitted, val_scores, best_name = self.fit_ensemble(X.iloc[:bstart], y[:bstart], league)
                 if not fitted: raise RuntimeError("ensemble fitting failed")
                 name = "Ensemble(" + "+".join(x[2] for x in fitted) + ")"
@@ -1636,7 +1654,7 @@ class BaseballBacktest:
                 try:
                     pd.DataFrame(all_rows).drop_duplicates(["game_id","model"], keep="last").to_csv(ck, index=False)
                     version_file.write_text(self.checkpoint_version, encoding="utf-8")
-                    print(f"[{league}] checkpoint saved: {len(completed_ids)} games")
+                    print(f"[{league}] checkpoint saved: {len(completed_ids)} games", flush=True)
                 except Exception as e:
                     self.audit.append({"type":"checkpoint_write_error","league":league,"error":str(e)})
         expected_ids = set(meta.iloc[start:]["game_id"].astype(str))
