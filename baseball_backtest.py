@@ -1334,7 +1334,10 @@ class BaseballBacktest:
                 raw_parts=[]
                 y_parts=[]
                 model_parts={name: [] for _,name in top}
-                inv=np.array([1/max(loss,1e-6)**weight_power for _,loss in top],dtype=float)
+                inv=np.array([
+                    1/max(float(effective_global_losses.get(name, loss)), 1e-6)**weight_power
+                    for loss, name in top
+                ], dtype=float)
                 inv/=max(inv.sum(),1e-12)
                 for cut,val in splits:
                     raw=np.zeros((val,k))
