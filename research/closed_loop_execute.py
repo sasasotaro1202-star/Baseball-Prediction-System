@@ -160,12 +160,50 @@ def score_metrics(df: pd.DataFrame, y: np.ndarray, p: np.ndarray, league: str) -
 
 
 def hilo_probs(df: pd.DataFrame) -> np.ndarray:
-    if {"low", "high"}.issubset(df.columns):
-        p = df[["low", "high"]].apply(pd.to_numeric, errors="coerce").to_numpy(float)
-        valid = np.isfinite(p).all(axis=1) & (p >= 0).all(axis=1) & (p.sum(axis=1) > 0.999) & (p.sum(axis=1) < 1.001)
-        if valid.all():
-            return clip_probs(p)
-    values = []
+    required = {"low", "high"}
+    if not required.issubset(df.columns):
+        raise RuntimeError(
+            "Low/High probability columns are missing from the canonical OOS artifact"
+        )
+    p = df[["low", "high"]].apply(pd.to_numeric, errors="coerce").to_numpy(float)
+    valid = (
+        np.isfinite(p).all(axis=1)
+        & (p >= 0).all(axis=1)
+        & (p.sum(axis=1) > 0.999)
+        & (p.sum(axis=1) < 1.001)
+    )
+    if not bool(valid.all()):
+        raise RuntimeError(
+            f"Low/High probability artifact contains {int((~valid).sum())} invalid rows; "
+            "refusing synthetic probability reconstruction during evaluation"
+        )
+    return clip_probs(p)
+
+def development_candidate_id(
+    df: pd.DataFrame,
+    *,
+    league: str,
+    temperature: float,
+    probability_source: str,
+) -> str:
+    """Deterministic candidate identity derived only from development OOS."""
+    development_cols = [
+        c for c in (
+            "game_id", "datetime", "pred_home", "pred_draw", "pred_away",
+            "actual", "model", "input_fingerprint",
+        ) if c in df.columns
+    ]
+    payload = {
+        "league": league,
+        "temperature": float(temperature),
+        "probability_source": probability_source,
+        "development_rows": df[development_cols].to_dict(orient="records"),
+    }
+    raw = json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, default=str,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return "tempcal-v2-" + hashlib.sha256(raw).hexdigest()[:20]
     for _, row in df.iterrows():
         lh = max(float(row["lambda_home"]), 1e-9)
         la = max(float(row["lambda_away"]), 1e-9)
@@ -297,9 +335,21 @@ def process_league(league: str, path: Path) -> dict[str, Any]:
         }
     cand_hilo = hilo_metrics(holdout, apply_temperature(hilo_probs(holdout), temperature))
 
+    development = pd.concat([selection, val1, val2], ignore_index=True)
+    candidate_id = development_candidate_id(
+        development,
+        league=league,
+        temperature=temperature,
+        probability_source=probability_source,
+    )
     lock = candidate_lock(
-        development_metrics={"rows": int(len(selection) + len(val1) + len(val2)), "validation_window_1_LogLoss": cand_v1["LogLoss"], "validation_window_2_LogLoss": cand_v2["LogLoss"], "temperature": temperature},
-        candidate_id="temperature_calibration_v2",
+        development_metrics={
+            "rows": int(len(development)),
+            "validation_window_1_LogLoss": cand_v1["LogLoss"],
+            "validation_window_2_LogLoss": cand_v2["LogLoss"],
+            "temperature": temperature,
+        },
+        candidate_id=candidate_id,
     )
     gate = evaluate_locked_holdout(
         base_holdout,
@@ -372,6 +422,12 @@ def main() -> int:
         "status": "READY",
         "blockers": [],
         "candidate_decisions": decisions,
+        # This workflow evaluates and locks candidates but never performs an
+        # automatic production promotion. Production approval requires the
+        # independent pregame PIT gate and an explicit deployment step.
+        "production_approved": False,
+        "promotion_status": "BLOCKED",
+        "promotion_reason": "evaluation_only_no_auto_promotion",
         "production_principles": [
             "chronological split",
             "four-window development/validation/holdout separation",
