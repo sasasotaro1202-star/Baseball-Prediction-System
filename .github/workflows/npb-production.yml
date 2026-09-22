@@ -58,14 +58,17 @@ jobs:
           done
       - name: Run NPB production prediction
         env:
-          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_SHA: ${{ steps.target.outputs.date }}
           PIT_SAFE_STARTER_DATA: "1"
           BASEBALL_TIME_BUDGET_SEC: "4800"
         shell: bash
         run: |
           set -euo pipefail
           target="${{ steps.target.outputs.date }}"
-          python production_npb.py --date "$target" --data-dir "${{ steps.target.outputs.data_dir }}"
+          data_dir="${{ steps.target.outputs.data_dir }}"
+
+          python production_npb.py --date "$target" --data-dir "$data_dir"
+
           output="results/npb_production_${target}.json"
           if [ -s "$output" ] && python - "$output" <<'PY'
           import json, sys
@@ -73,12 +76,12 @@ jobs:
           raise SystemExit(0 if d.get("execution_status") == "BLOCKED_STARTERS" else 1)
           PY
           then
-            # NPB can roll the public starter page forward after the day's games
-            # have started. On push/manual runs, automatically try the next JST
-            # date instead of treating that expected state as a production failure.
+            # The official NPB starter page can roll forward after the day's
+            # games begin. Try the next JST date once. A second BLOCKED_STARTERS
+            # result is an explicit no-prediction state, not a hidden failure.
             next_date="$(TZ=Asia/Tokyo date -d "$target +1 day" +%F)"
-            echo "Today's official starter section is no longer available; retrying next JST date: $next_date"
-            python production_npb.py --date "$next_date" --data-dir "${{ steps.target.outputs.data_dir }}"
+            echo "Starter evidence for $target is unavailable; retrying next JST date: $next_date"
+            python production_npb.py --date "$next_date" --data-dir "$data_dir"
           fi
       - name: Validate output
         run: |
