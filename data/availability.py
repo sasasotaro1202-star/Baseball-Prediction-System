@@ -33,6 +33,7 @@ class AvailabilityRecord:
     source: str
     retrieved_at: str
     prediction_cutoff: str
+    event_start_at: str | None = None
 
     def validate(self) -> None:
         if not self.event_id:
@@ -55,6 +56,8 @@ class AvailabilityRecord:
         retrieved = _dt(self.retrieved_at)
         if retrieved > cutoff:
             raise ValueError("retrieved_at is after prediction cutoff")
+        if self.event_start_at:
+            _dt(self.event_start_at)
 
         for starter, announced_at, side in (
             (self.home_starter, self.home_starter_announced_at, "home"),
@@ -88,6 +91,7 @@ def from_mapping(row: Mapping[str, Any]) -> AvailabilityRecord:
         lineup_announced_at=row.get("lineup_announced_at"),
         source=str(row.get("source", "UNVERIFIABLE")),
         retrieved_at=str(row["retrieved_at"]), prediction_cutoff=str(row["prediction_cutoff"]),
+        event_start_at=row.get("event_start_at"),
     )
     record.validate()
     return record
@@ -116,6 +120,13 @@ def production_prediction_eligible(record: AvailabilityRecord) -> tuple[bool, li
     have been promoted.
     """
     ok, reasons = prediction_eligible(record)
+    if not record.event_start_at:
+        reasons.append("event_start_time_missing")
+    else:
+        cutoff = _dt(record.prediction_cutoff)
+        event_start = _dt(record.event_start_at)
+        if event_start <= cutoff:
+            reasons.append("event_already_started_or_not_future")
     if not _is_official_source(record.source):
         reasons.append("starter_source_not_official")
     spec = get_competition(record.league)
