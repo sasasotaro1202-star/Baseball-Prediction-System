@@ -887,24 +887,51 @@ class BaseballBacktest:
                 self.player_index[(str(gid),str(pid),str(side))] = g.iloc[-1].to_dict()
         Xrows, y, meta = [], [], []
         games = games.sort_values(["datetime", "game_id"]).reset_index(drop=True)
-        last_season=None
-        for _, row in games.iterrows():
-            cur_season=int(pd.Timestamp(row["datetime"]).year)
+
+        # Freeze state for every exact prediction timestamp. Results from one
+        # game must never become features for another game that starts at the
+        # same timestamp, because all games in that timestamp group share the
+        # same pregame information horizon. State is advanced only after the
+        # entire timestamp group has produced features/targets.
+        same_timestamp_groups = int(
+            games.groupby("datetime", dropna=False).size().gt(1).sum()
+        )
+        same_timestamp_rows = int(
+            games.groupby("datetime", dropna=False).size()
+            .loc[lambda s: s > 1].sum()
+        )
+        self.audit.append({
+            "type": "same_timestamp_state_freeze",
+            "groups": same_timestamp_groups,
+            "rows": same_timestamp_rows,
+        })
+
+        last_season = None
+        for _, time_group in games.groupby("datetime", sort=False, dropna=False):
+            first_dt = pd.Timestamp(time_group.iloc[0]["datetime"])
+            cur_season = int(first_dt.year)
             if last_season is not None and cur_season != last_season:
-                for key,val in list(self.elo_ratings.items()):
-                    self.elo_ratings[key] = ELO_START + ELO_REGRESSION*(val-ELO_START)
-            last_season=cur_season
-            feat = self.match_features(row)
-            Xrows.append(feat)
-            league = row["league"]
-            hscore, ascore = float(row["home_score"]), float(row["away_score"])
-            if league == "NPB":
-                target = 0 if hscore > ascore else 1 if hscore == ascore else 2
-            else:
-                target = 0 if hscore > ascore else 1
-            y.append(target)
-            meta.append(row.to_dict())
-            self.update_after_game(row)
+                for key, val in list(self.elo_ratings.items()):
+                    self.elo_ratings[key] = ELO_START + ELO_REGRESSION * (val - ELO_START)
+            last_season = cur_season
+
+            pending_rows = []
+            for _, row in time_group.iterrows():
+                feat = self.match_features(row)
+                Xrows.append(feat)
+                league = row["league"]
+                hscore, ascore = float(row["home_score"]), float(row["away_score"])
+                if league == "NPB":
+                    target = 0 if hscore > ascore else 1 if hscore == ascore else 2
+                else:
+                    target = 0 if hscore > ascore else 1
+                y.append(target)
+                meta.append(row.to_dict())
+                pending_rows.append(row)
+
+            for row in pending_rows:
+                self.update_after_game(row)
+
         X = pd.DataFrame(Xrows).replace([np.inf, -np.inf], np.nan).fillna(0.0).astype(float)
         return X, np.asarray(y, dtype=int), pd.DataFrame(meta)
 
