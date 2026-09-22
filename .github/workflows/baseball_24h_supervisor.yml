@@ -92,19 +92,56 @@ jobs:
             exit 0
           fi
 
-          if [ -n "${EVENT_RUN_ID}" ] && [ "${EVENT_CONCLUSION}" != "success" ]; then
-            # Deterministic failures must not enter an unbounded retry loop.
-            # baseball_actions_recovery.yml owns transient failed-job retries;
-            # this supervisor only enforces a cooldown before starting a fresh
-            # independent cycle.
-            latest_age_minutes=$(gh run view "${EVENT_RUN_ID}" --repo "${GH_REPO}" --json updatedAt --jq '.updatedAt' | xargs -I{} date -d "{}" +%s)
+          guard_run_id="${EVENT_RUN_ID}"
+          guard_conclusion="${EVENT_CONCLUSION}"
+          guard_updated_at=""
+          if [ -z "${guard_run_id}" ]; then
+            latest_completed=$(gh run list --repo "${GH_REPO}" --workflow "${workflow}" --status completed --limit 1 --json databaseId,conclusion,updatedAt)
+            guard_run_id=$(printf "%s" "${latest_completed}" | jq -r '.[0].databaseId // empty')
+            guard_conclusion=$(printf "%s" "${latest_completed}" | jq -r '.[0].conclusion // empty')
+            guard_updated_at=$(printf "%s" "${latest_completed}" | jq -r '.[0].updatedAt // empty')
+          else
+            guard_updated_at=$(gh run view "${guard_run_id}" --repo "${GH_REPO}" --json updatedAt --jq '.updatedAt')
+          fi
+
+          if [ -n "${guard_run_id}" ] && [ "${guard_conclusion}" != "success" ]; then
+            # Deterministic failures retain a conservative cooldown. A run
+            # that failed only from GitHub time-budget/cancellation conditions
+            # recovers sooner, preserving continuity without masking code/test
+            # failures behind an unbounded retry loop.
+            failure_classes=$(gh run view "${guard_run_id}" --repo "${GH_REPO}" --json jobs --jq '[.jobs[] | select(.conclusion != null and .conclusion != "success" and .conclusion != "skipped") | .conclusion] | unique | join(",")')
+            cooldown_minutes=60
+            if [ -n "${failure_classes}" ]; then
+              deterministic_failure=0
+              has_timeout=0
+              has_cancelled=0
+              IFS=, read -r -a failure_class_array <<< "${failure_classes}"
+              for failure_class in "${failure_class_array[@]}"; do
+                case "${failure_class}" in
+                  timed_out) has_timeout=1 ;;
+                  cancelled) has_cancelled=1 ;;
+                  failure|startup_failure) deterministic_failure=1 ;;
+                  *) deterministic_failure=1 ;;
+                esac
+              done
+              if [ "${deterministic_failure}" -eq 0 ] && [ "${has_timeout}" -eq 1 ]; then
+                cooldown_minutes=10
+              elif [ "${deterministic_failure}" -eq 0 ] && [ "${has_cancelled}" -eq 1 ]; then
+                cooldown_minutes=15
+              fi
+            fi
+            if [ -z "${guard_updated_at}" ]; then
+              guard_updated_at=$(gh run view "${guard_run_id}" --repo "${GH_REPO}" --json updatedAt --jq '.updatedAt')
+            fi
+            latest_epoch=$(date -d "${guard_updated_at}" +%s)
             now_epoch=$(date +%s)
-            latest_age_minutes=$(( (now_epoch - latest_age_minutes) / 60 ))
-            if [ "${latest_age_minutes}" -lt 60 ]; then
-              echo "Previous 9h run ${EVENT_RUN_ID} concluded ${EVENT_CONCLUSION}; cooldown active (${latest_age_minutes}m < 60m)."
+            latest_age_minutes=$(( (now_epoch - latest_epoch) / 60 ))
+            echo "Previous 9h run ${guard_run_id}: conclusion=${guard_conclusion}, failed_jobs=${failure_classes:-none}, cooldown=${cooldown_minutes}m, age=${latest_age_minutes}m"
+            if [ "${latest_age_minutes}" -lt "${cooldown_minutes}" ]; then
+              echo "Cooldown active; preserving the failed evidence and not overlapping a fresh cycle."
               exit 0
             fi
-            echo "Previous 9h run ${EVENT_RUN_ID} failed and cooldown expired; starting a fresh main-branch cycle."
+            echo "Cooldown expired; starting a fresh independent main-branch cycle."
           fi
 
           echo 'No active 9h run; dispatching a fresh main-branch cycle.'
