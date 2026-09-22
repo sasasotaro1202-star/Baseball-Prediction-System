@@ -4,7 +4,12 @@ from research.closed_loop_governance import calibration_stage, pit_revision_stag
 
 VALID_UNCERTAINTY = {
     "status": "EVALUATED",
-    "improvement_ci95": {"LogLoss": [0.001, 0.04]},
+    "replications": 400,
+    "improvement_ci95": {
+        "LogLoss": [0.001, 0.04],
+        "Brier": [0.001, 0.03],
+        "Accuracy": [0.001, 0.02],
+    },
     "p_improvement_positive": {"LogLoss": 0.97},
 }
 
