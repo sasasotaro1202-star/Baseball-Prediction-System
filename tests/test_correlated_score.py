@@ -65,6 +65,23 @@ def test_shared_component_cannot_change_requested_marginal_means():
     assert abs(home_mean - 2.0) < 0.08
     assert abs(away_mean - 5.0) < 0.08
 
+
+
+def test_canonical_output_contract_requires_shared_component():
+    import pandas as pd
+    from research.backtest_output_contract import _repair_scores
+
+    frame = pd.DataFrame({
+        "lambda_home": [4.5],
+        "lambda_away": [3.2],
+    })
+    try:
+        _repair_scores(frame)
+    except ValueError as exc:
+        assert "shared_lambda" in str(exc)
+    else:
+        raise AssertionError("missing shared_lambda must fail closed")
+
 def test_canonical_output_contract_uses_shared_component(monkeypatch, tmp_path):
     import pandas as pd
     from research.backtest_output_contract import _repair_scores
