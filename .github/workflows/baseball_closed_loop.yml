@@ -333,4 +333,4 @@ jobs:
           if-no-files-found: error
           # Keep Actions storage bounded. Large/raw datasets remain in the
           # repository cache path rather than being copied into artifacts.
-          retention-days: 1
+          retention-days: 7
