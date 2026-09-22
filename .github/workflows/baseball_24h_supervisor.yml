@@ -110,10 +110,12 @@ jobs:
           # are handled by the dedicated recovery workflow instead of entering
           # an infinite retry loop.
           latest="$(printf '%s' "${runs_json}" | jq -r 'sort_by(.createdAt) | last // empty')"
+          latest_id=''
           latest_conclusion=''
           latest_created=''
           latest_age_minutes=999999
           if [ -n "${latest}" ]; then
+            latest_id="$(printf '%s' "${latest}" | jq -r '.databaseId // empty')"
             latest_conclusion="$(printf '%s' "${latest}" | jq -r '.conclusion // empty')"
             latest_created="$(printf '%s' "${latest}" | jq -r '.createdAt // empty')"
             if [ -n "${latest_created}" ]; then
@@ -135,6 +137,15 @@ jobs:
           elif [ "${latest_conclusion}" = "success" ] && [ "${latest_age_minutes}" -ge 150 ]; then
             dispatch=1
             reason="successful cycle is stale at ${latest_age_minutes}m"
+          elif [ "${latest_conclusion}" = "failure" ] && [ "${latest_age_minutes}" -ge 10 ] && [ -n "${latest_id}" ]; then
+            # Cooperative time-budget stops are deliberately failed runs so
+            # partial OOS can never be misreported as success. Resume only when
+            # the failed log proves that exact resumable stop condition.
+            failed_log="$(gh run view "${latest_id}" --repo "${GH_REPO}" --log-failed 2>/dev/null || true)"
+            if printf "%s" "${failed_log}" | grep -Fq "walk-forward incomplete:" &&                printf "%s" "${failed_log}" | grep -Fq "time budget reached before block"; then
+              dispatch=1
+              reason="latest run ${latest_id} stopped at cooperative OOS time budget"
+            fi
           elif [ "${EVENT_RUN_ID}" != '' ] && [ "${EVENT_CONCLUSION}" = "cancelled" ]; then
             dispatch=1
             reason="event run ${EVENT_RUN_ID} was cancelled"
