@@ -1072,6 +1072,21 @@ class BaseballBacktest:
                 windows.append((cut, val))
         return list(dict.fromkeys(windows))
 
+    def _check_time_budget(self, stage: str = "") -> None:
+        """Fail early at safe Python boundaries before GitHub forces cancellation."""
+        elapsed = time.time() - self.started_at
+        if elapsed >= self.time_budget_sec:
+            self.audit.append({
+                "type": "time_budget_exceeded",
+                "stage": str(stage),
+                "elapsed_seconds": float(elapsed),
+                "budget_seconds": float(self.time_budget_sec),
+            })
+            raise TimeoutError(
+                f"Baseball computation budget reached during {stage or 'research'} "
+                f"({elapsed:.1f}s >= {self.time_budget_sec:.1f}s)"
+            )
+
     def _sample_weights(self, n: int) -> np.ndarray:
         if n <= 1: return np.ones(n, dtype=float)
         half_life = float(os.getenv("BASEBALL_RECENCY_HALF_LIFE_GAMES", os.getenv("NPB_RECENCY_HALF_LIFE_GAMES", "1800")))
@@ -1100,8 +1115,10 @@ class BaseballBacktest:
         models=self.models(league)
         splits=self._validation_splits(len(X))
         for name, model in models.items():
+            self._check_time_budget(f"fit_best:{league}:{name}:start")
             losses=[]
             for cut,val in splits:
+                self._check_time_budget(f"fit_best:{league}:{name}:split")
                 Xfit,Xval=X.iloc[:cut],X.iloc[cut:cut+val]
                 yfit,yval=y[:cut],y[cut:cut+val]
                 if len(np.unique(yfit)) < (3 if league=="NPB" else 2): continue
@@ -1157,8 +1174,10 @@ class BaseballBacktest:
             for regime in np.unique(labels):
                 regime_counts[str(regime)] = regime_counts.get(str(regime),0) + int(np.sum(labels==regime))
         for name,model in models.items():
+            self._check_time_budget(f"fit_ensemble:{league}:{name}:start")
             losses=[]
             for cut,val in splits:
+                self._check_time_budget(f"fit_ensemble:{league}:{name}:split")
                 try:
                     self._fit_model(model,X.iloc[:cut],y[:cut],self._sample_weights(cut),league)
                     p=self.align_proba(model.predict_proba(X.iloc[cut:cut+val]),model.classes_,league)
@@ -1240,6 +1259,7 @@ class BaseballBacktest:
 
         fitted=[]
         for (loss,name) in top:
+            self._check_time_budget(f"fit_ensemble:{league}:{name}:final_fit")
             model=models[name]
             self._fit_model(model,X,y,self._sample_weights(len(X)),league)
             fitted.append((model,float(1.0/max(loss,1e-6)**weight_power),name))
@@ -1284,6 +1304,7 @@ class BaseballBacktest:
                 inv=np.array([1/max(loss,1e-6)**weight_power for _,loss in top],dtype=float)
                 inv/=max(inv.sum(),1e-12)
                 for cut,val in splits:
+                    self._check_time_budget(f"fit_ensemble:{league}:calibration:{cut}")
                     raw=np.zeros((val,k))
                     yv=np.asarray(y[cut:cut+val],dtype=int)
                     for (name,_loss),w in zip(top,inv):
@@ -1348,6 +1369,7 @@ class BaseballBacktest:
         self._last_temperature = temperature
         # Restore full-data fitted models after the calibration fit above.
         for model,_,name in fitted:
+            self._check_time_budget(f"fit_ensemble:{league}:{name}:restore_full_fit")
             self._fit_model(model,X,y,self._sample_weights(len(X)),league)
         return fitted,{name:float(loss) for loss,name in scored},top[0][0]
 
@@ -1401,8 +1423,10 @@ class BaseballBacktest:
         scored=[]
         residuals_by_model={}
         for name, factory in specs:
+            self._check_time_budget(f"fit_score_ensemble:{league}:{name}:start")
             losses=[]
             for tr, va in splits:
+                self._check_time_budget(f"fit_score_ensemble:{league}:{name}:split")
                 if time.time() - self.started_at >= self.time_budget_sec:
                     break
                 try:
@@ -1434,6 +1458,7 @@ class BaseballBacktest:
         fitted=[]
         weights=[]
         for loss,name,factory in top:
+            self._check_time_budget(f"fit_score_ensemble:{league}:{name}:final_fit")
             mh=factory(); ma=factory()
             self._fit_model(mh, X, y_home, self._sample_weights(len(X)), league); self._fit_model(ma, X, y_away, self._sample_weights(len(X)), league)
             w=1.0/max(loss,1e-6)
@@ -1447,8 +1472,7 @@ class BaseballBacktest:
         regime_losses={}
         regime_counts={}
         for tr, va in splits:
-            if time.time() - self.started_at >= self.time_budget_sec:
-                break
+            self._check_time_budget(f"fit_score_ensemble:{league}:regime_split")
             labels=validation_regime_labels[(tr, va)]
             for regime in np.unique(labels):
                 idx=np.flatnonzero(labels==regime)
