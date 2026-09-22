@@ -31,6 +31,8 @@ def score_distribution(
         raise ValueError("run means must be finite")
     if float(home_lambda) <= 0 or float(away_lambda) <= 0:
         raise ValueError("run means must be positive")
+    if not math.isfinite(float(shared_lambda)):
+        raise ValueError("shared run intensity must be finite")
     if int(max_runs) < 7:
         raise ValueError("max_runs must be at least 7")
 
