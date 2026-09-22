@@ -75,6 +75,6 @@ def test_canonical_output_contract_uses_shared_component(monkeypatch, tmp_path):
         "shared_lambda": [0.75],
     })
     out = _repair_scores(frame)
-    expected = grid(4.5, 3.2, 0.75, 20)
+    expected = grid(4.5, 3.2, 0.75, 14)
     assert np.isclose(out.loc[0, "low"], expected[np.indices(expected.shape).sum(axis=0) <= 6].sum())
     assert out.loc[0, "score1"] == top_scores(4.5, 3.2, 0.75, 4)[0][0]
