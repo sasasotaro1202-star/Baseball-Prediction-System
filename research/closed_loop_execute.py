@@ -379,6 +379,12 @@ def process_league(league: str, path: Path) -> dict[str, Any]:
         and "starter_evidence_status" in development.columns
         and bool((development["starter_evidence_status"] == "pit_safe").all())
     )
+    holdout_pit_starter_evidence_ok = (
+        "confirmed_starters" in holdout.columns
+        and bool(holdout["confirmed_starters"].all())
+        and "starter_evidence_status" in holdout.columns
+        and bool((holdout["starter_evidence_status"] == "pit_safe").all())
+    )
     lock_path = RESULTS / f"{league.lower()}_candidate_lock.json"
     lock_disk = json.loads(lock_path.read_text(encoding="utf-8"))
     reproducible = bool(
@@ -402,6 +408,7 @@ def process_league(league: str, path: Path) -> dict[str, Any]:
         no_future_target_data=True,
         reproducible=reproducible,
         pit_starter_evidence_ok=starter_pit_evidence_ok,
+        holdout_pit_starter_evidence_ok=holdout_pit_starter_evidence_ok,
         baseline_score={"ScoreMAE": base_holdout.get("ScoreMAE", float("nan"))},
         candidate_score={"ScoreMAE": cand_holdout.get("ScoreMAE", float("nan"))},
         baseline_hilo=base_hilo,
