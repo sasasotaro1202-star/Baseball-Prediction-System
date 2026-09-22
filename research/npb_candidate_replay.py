@@ -21,7 +21,7 @@ from evaluation.calibration import fit_temperature
 from baseball_backtest import BaseballBacktest, low_high_probs, score_candidates
 from core.atomic_io import atomic_write_json
 from evaluation.metrics import expected_calibration_error, multiclass_brier
-from research.candidates import CandidateSpec, lock_candidate
+from research.candidates import CandidateSpec, candidate_fingerprint, lock_candidate
 from research.validation_pipeline import run_validation_pipeline
 from evaluation.uncertainty import paired_block_bootstrap, to_dict as uncertainty_to_dict
 from research.adoption_gate import GatePolicy
@@ -476,7 +476,13 @@ def run_npb_candidate_cycle(
         )
     )
     calibration_ok = cand_metrics["ECE"] <= base_metrics["ECE"] + config.calibration_tolerance
-    reproducible = True  # fixed model seeds + deterministic chronological ordering are encoded by the core
+    lock_path = RESULTS / ("npb_candidate_lock.json" if spec.league == "NPB" else "mlb_candidate_lock.json")
+    lock_disk = json.loads(lock_path.read_text(encoding="utf-8"))
+    reproducible = bool(
+        lock_disk.get("candidate_fingerprint") == candidate_fingerprint(spec)
+        and lock_disk.get("candidate") == asdict(spec)
+        and lock_disk.get("holdout_evaluated") is False
+    )
 
     lifecycle = run_validation_pipeline(
         candidate_id=spec.candidate_id,
