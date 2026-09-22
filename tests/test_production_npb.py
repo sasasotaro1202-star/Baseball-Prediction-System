@@ -142,3 +142,27 @@ def test_official_starter_snapshot_rejects_future_retrieval(monkeypatch, tmp_pat
         assert "in the future" in str(exc)
     else:
         raise AssertionError("future-dated official snapshot was accepted")
+
+
+def test_existing_malformed_official_snapshot_is_not_silently_ignored(monkeypatch, tmp_path):
+    import json
+    import production_npb as p
+
+    root = tmp_path
+    snapshot_dir = root / "data" / "official_starters"
+    snapshot_dir.mkdir(parents=True)
+    (snapshot_dir / "2026-09-20.json").write_text(
+        json.dumps({
+            "schema_version": "BROKEN",
+            "target_date": "2026-09-20",
+        }, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(p, "ROOT", root)
+
+    try:
+        p.official_starters("2026-09-20")
+    except RuntimeError as exc:
+        assert "schema mismatch" in str(exc)
+    else:
+        raise AssertionError("malformed existing official snapshot was silently ignored")
