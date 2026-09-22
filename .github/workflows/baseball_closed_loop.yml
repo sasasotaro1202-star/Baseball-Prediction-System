@@ -2,12 +2,8 @@ name: Baseball Closed Loop Research
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths-ignore:
-      - 'results/**'
-      - 'data/pit/**'
-      - '.github/workflows/baseball_24h_supervisor.yml'
+  # Long-running research is dispatched by schedule/Supervisor only.
+  # Code pushes run the fast gate and do not start another expensive lifecycle.
   schedule:
     # Bounded cadence: enough independent OOS evidence to keep the lifecycle moving.
     - cron: '17 0,3,6,9,12,15,18,21 * * *'
