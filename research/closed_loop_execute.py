@@ -16,6 +16,7 @@ import pandas as pd
 from evaluation.calibration import fit_temperature
 from core.atomic_io import atomic_write_json, file_sha256
 from research.adoption_gate import GatePolicy, candidate_lock, evaluate_locked_holdout
+from research.candidates import candidate_fingerprint
 from evaluation.uncertainty import paired_block_bootstrap, to_dict as uncertainty_to_dict
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -356,6 +357,16 @@ def process_league(league: str, path: Path) -> dict[str, Any]:
         and "starter_evidence_status" in development.columns
         and bool((development["starter_evidence_status"] == "pit_safe").all())
     )
+    lock_path = RESULTS / f"{league.lower()}_candidate_lock.json"
+    lock_disk = json.loads(lock_path.read_text(encoding="utf-8"))
+    reproducible = bool(
+        lock_disk.get("candidate_fingerprint") == candidate_fingerprint(
+            __import__("research.candidates", fromlist=["CandidateSpec"]).CandidateSpec(
+                **lock_disk["candidate"]
+            )
+        )
+        and lock_disk.get("holdout_evaluated") is False
+    )
     gate = evaluate_locked_holdout(
         base_holdout,
         cand_holdout,
@@ -369,7 +380,7 @@ def process_league(league: str, path: Path) -> dict[str, Any]:
         validation_windows=2,
         calibration_ok=calibration_ok,
         no_future_target_data=True,
-        reproducible=True,
+        reproducible=reproducible,
         pit_starter_evidence_ok=starter_pit_evidence_ok,
         baseline_score={"ScoreMAE": base_holdout.get("ScoreMAE", float("nan"))},
         candidate_score={"ScoreMAE": cand_holdout.get("ScoreMAE", float("nan"))},
