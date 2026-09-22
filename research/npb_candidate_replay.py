@@ -275,8 +275,16 @@ def run_npb_candidate_cycle(
     bt = BaseballBacktest(Path(data_dir))
     raw = bt.load_npb_pbp()
     games = bt.aggregate_npb_games(raw)
-    if __import__("os").getenv("PIT_SAFE_STARTER_DATA", "0") != "1":
-        games = games.copy()
+    games = games.copy()
+    starter_pit_safe = (
+        __import__("os").getenv("PIT_SAFE_STARTER_DATA", "0") == "1"
+        and "starter_evidence_status" in games.columns
+        and bool((games["starter_evidence_status"] == "pit_safe").all())
+        and "confirmed_starters" in games.columns
+        and bool(games["confirmed_starters"].all())
+    )
+    if not starter_pit_safe:
+        # Candidate selection must never use hindsight starter identities.
         games["home_starter"] = ""
         games["away_starter"] = ""
         games["confirmed_starters"] = False
