@@ -61,12 +61,15 @@ class RegimeRouter:
         global_losses: Mapping[str, float],
         regime_losses: Mapping[str, Mapping[str, float]],
         regime_counts: Mapping[str, int],
+        power: float = 1.0,
     ) -> dict[str, dict[str, float]]:
         """Return conservative per-regime inverse-loss weights.
 
         Small regimes are shrunk toward global losses. No regime with fewer
         min_regime_rows gets a distinct model allocation.
         """
+        if not np.isfinite(power) or power <= 0:
+            raise ValueError("power must be finite and positive")
         names = list(global_losses)
         if not names:
             raise ValueError("global_losses must contain at least one model")
@@ -102,7 +105,7 @@ class RegimeRouter:
             relative_edge = (global_best - best_adjusted) / max(global_best, 1e-9)
             if n < self.min_regime_rows or relative_edge < self.min_relative_edge:
                 adjusted = {name: float(global_losses[name]) for name in names}
-            inv = np.array([1.0 / max(v, 1e-6) for v in adjusted.values()], dtype=float)
+            inv = np.array([1.0 / max(v, 1e-6) ** float(power) for v in adjusted.values()], dtype=float)
             inv /= max(inv.sum(), 1e-12)
             out[regime] = {name: float(w) for name, w in zip(names, inv)}
         return out
