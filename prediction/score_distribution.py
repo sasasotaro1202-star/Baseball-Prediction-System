@@ -23,7 +23,7 @@ def score_distribution(
     home_lambda: float,
     away_lambda: float,
     *,
-    max_runs: int = 20,
+    max_runs: int = 14,
     shared_lambda: float = 0.0,
 ) -> np.ndarray:
     """Return a normalized joint exact-score matrix for 0..max_runs each."""
