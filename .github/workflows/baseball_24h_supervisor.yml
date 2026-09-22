@@ -4,8 +4,6 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths:
-      - '.github/workflows/baseball_24h_supervisor.yml'
   workflow_run:
     workflows: ["Baseball 9h Autopilot"]
     types: [completed]
@@ -19,7 +17,9 @@ permissions:
 
 concurrency:
   group: baseball-24h-supervisor
-  cancel-in-progress: false
+  # Keep only the newest lightweight heartbeat check; never let supervisor
+  # invocations queue behind one another during rapid main-branch updates.
+  cancel-in-progress: true
 
 jobs:
   keep-autopilot-moving:
