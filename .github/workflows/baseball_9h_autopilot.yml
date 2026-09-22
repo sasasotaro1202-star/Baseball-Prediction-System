@@ -82,6 +82,15 @@ jobs:
           cache-dependency-path: requirements.txt
       - name: Install
         run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
+      - name: Restore chronological OOS checkpoints
+        id: oos-checkpoint-restore
+        uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57
+        with:
+          path: results/checkpoints
+          key: baseball-9h-oos-checkpoints-v1-${{ runner.os }}-${{ hashFiles('requirements.txt', 'baseball_backtest.py', 'research_runner_v6.py', 'data/npb_pbp_adapter.py') }}-${{ github.run_number }}
+          restore-keys: |
+            baseball-9h-oos-checkpoints-v1-${{ runner.os }}-${{ hashFiles('requirements.txt', 'baseball_backtest.py', 'research_runner_v6.py', 'data/npb_pbp_adapter.py') }}-
+
       - name: Stage NPB historical data
         env:
           GH_TOKEN: ${{ github.token }}
@@ -99,12 +108,35 @@ jobs:
           done
           test "$(find data -maxdepth 1 -name '*_pbp.csv' | wc -l | tr -d ' ')" -ge 7
       - name: Run chronological OOS
-        timeout-minutes: 115
+        id: chronological-oos
+        timeout-minutes: 100
         env:
-          BASEBALL_TIME_BUDGET_SEC: '6600'
+          # Incremental pass: checkpoint frequently, stop cleanly before the
+          # runner wall-clock edge, and resume from cache on the next cycle.
+          BASEBALL_TIME_BUDGET_SEC: '5400'
           NPB_RETRAIN_EVERY: '150'
           MLB_ENRICH_STARTERS: '0'
-        run: python -u research_runner_v6.py --league BOTH --mlb-start 2020 --mlb-end 2026 --retries 3
+        run: python -u research_runner_v6.py --league BOTH --mlb-start 2020 --mlb-end 2026 --retries 0
+
+      - name: Audit incomplete OOS checkpoint state
+        if: always() && steps.chronological-oos.outcome != 'success'
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          files=$(find results/checkpoints -maxdepth 1 -type f -name '*_walkforward.csv' -size +0c -print 2>/dev/null | sort || true)
+          if [ -z "$files" ]; then
+            echo 'No non-empty OOS checkpoint was produced; refusing a false continuation signal.' >&2
+            exit 1
+          fi
+          printf '%s\n' "$files"
+
+      - name: Save chronological OOS checkpoints
+        if: always() && !cancelled()
+        uses: actions/cache/save@1bd1e32a3bdc45362d1e726936510720a7c30a57
+        with:
+          path: results/checkpoints
+          key: baseball-9h-oos-checkpoints-v1-${{ runner.os }}-${{ hashFiles('requirements.txt', 'baseball_backtest.py', 'research_runner_v6.py', 'data/npb_pbp_adapter.py') }}-${{ github.run_number }}
+
       - name: Verify manifest
         run: |
           set -euo pipefail

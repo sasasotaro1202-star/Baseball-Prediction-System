@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - hardening/permutation-and-feature-stability-audit
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
