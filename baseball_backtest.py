@@ -1093,6 +1093,7 @@ class BaseballBacktest:
         validation_regime_labels = self._chronological_regime_labels(X, splits)
         regime_losses={}
         regime_counts={}
+        validation_predictions = {}
         for cut, val in splits:
             labels=validation_regime_labels[(cut,val)]
             for regime in np.unique(labels):
@@ -1104,6 +1105,7 @@ class BaseballBacktest:
                     self._fit_model(model,X.iloc[:cut],y[:cut],self._sample_weights(cut),league)
                     p=self.align_proba(model.predict_proba(X.iloc[cut:cut+val]),model.classes_,league)
                     yv=y[cut:cut+val]
+                    validation_predictions.setdefault((cut, val), {})[name] = p
                     losses.append(log_loss(yv,p,labels=list(range(k))))
                     labels=validation_regime_labels[(cut,val)]
                     row_losses=-np.log(np.clip(p[np.arange(len(yv)),yv],1e-12,1.0))
@@ -1120,11 +1122,69 @@ class BaseballBacktest:
         top=scored[:3 if fast_oos else 5]
         top_names={name for _,name in top}
         global_losses={name:float(loss) for loss,name in top}
+
+        # Low-dimensional ensemble concentration is itself an OOS challenger.
+        # A power <1 spreads mass across similar models; >1 concentrates more
+        # strongly on lower-loss models. The power is selected only from
+        # chronological validation predictions, never from the future target.
+        weight_power=1.0
+        power_grid=(0.50,0.75,1.00,1.25,1.50,2.00)
+        if not fast_oos and validation_predictions:
+            best_key=(float("inf"), abs(weight_power-1.0))
+            for power in power_grid:
+                try:
+                    trial_weights=RegimeRouter().fit(X)
+                    # Keep the same regime-loss evidence and regime sample-size
+                    # shrinkage; only vary the inverse-loss concentration.
+                    wmap=trial_weights.weights(
+                        global_losses,
+                        {
+                            str(regime): {
+                                name: float(np.mean(vals))
+                                for name, vals in by_model.items()
+                                if name in top_names and vals
+                            }
+                            for regime, by_model in regime_losses.items()
+                        },
+                        regime_counts,
+                        power=float(power),
+                    )
+                    trial_ll_parts=[]
+                    # Each validation fold has model predictions trained strictly
+                    # before that fold. Evaluate the candidate weighting on exactly
+                    # those OOS rows.
+                    for (cut,val), by_model_pred in validation_predictions.items():
+                        labels=validation_regime_labels[(cut,val)]
+                        yv=np.asarray(y[cut:cut+val],dtype=int)
+                        q=np.zeros((len(yv),k))
+                        for label in np.unique(labels):
+                            idx=np.flatnonzero(labels==label)
+                            regime_w=wmap.get(str(label), {})
+                            for name in top_names:
+                                pred=by_model_pred.get(name)
+                                if pred is not None:
+                                    w=float(regime_w.get(name,0.0))
+                                    if w:
+                                        q[idx] += w*pred[idx]
+                        q=np.apply_along_axis(clip_prob,1,q)
+                        trial_ll_parts.append(log_loss(yv,q,labels=list(range(k))))
+                    if trial_ll_parts:
+                        key=(float(np.mean(trial_ll_parts)), abs(float(power)-1.0))
+                        if key < best_key:
+                            best_key=key
+                            weight_power=float(power)
+                except Exception as exc:
+                    self.audit.append({
+                        "type":"ensemble_weight_power_error",
+                        "power":float(power),
+                        "error":str(exc),
+                    })
+
         fitted=[]
         for (loss,name) in top:
             model=models[name]
             self._fit_model(model,X,y,self._sample_weights(len(X)),league)
-            fitted.append((model,float(1.0/max(loss,1e-6)),name))
+            fitted.append((model,float(1.0/max(loss,1e-6)**weight_power),name))
         inv=np.asarray([w for _,w,_ in fitted],dtype=float); inv/=max(inv.sum(),1e-12)
         fitted=[(m,float(w),n) for (m,_,n),w in zip(fitted,inv)]
         # Regime-specific routing uses only prefix-trained OOS predictions
@@ -1146,7 +1206,9 @@ class BaseballBacktest:
             global_losses,
             filtered_regime_losses,
             regime_counts,
+            power=float(weight_power),
         ) if filtered_regime_losses else {}
+        self._ensemble_weight_power=float(weight_power)
         # Calibration is itself a candidate. Compare two low-dimensional,
         # strictly chronological contracts on the same validation folds:
         # (A) calibrate the ensemble after blending, or
