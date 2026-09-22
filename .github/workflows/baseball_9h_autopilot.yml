@@ -2,14 +2,10 @@ name: Baseball 9h Autopilot
 # Hardened after CI diagnosis: deterministic gates run before expensive phases.
 # Retry trigger after tuple-access correction.
 
+# Legacy multi-phase workflow retained for manual forensic use only.
+# Automatic production scheduling is owned by Baseball Closed Loop Research.
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 0 * * *'
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/baseball_9h_autopilot.yml'
 
 permissions:
   contents: read
