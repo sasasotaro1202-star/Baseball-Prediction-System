@@ -66,6 +66,19 @@ def _temperature_scale(p: np.ndarray, temperature: float) -> np.ndarray:
     return scaled / np.sum(scaled, axis=1, keepdims=True)
 
 
+def _draw_scale(p: np.ndarray, multiplier: float) -> np.ndarray:
+    if not np.isfinite(multiplier) or multiplier <= 0:
+        raise ValueError("draw multiplier must be positive and finite")
+    q = np.asarray(p, dtype=float).copy()
+    if q.ndim != 2 or q.shape[1] != 3:
+        raise ValueError("NPB draw scaling requires a 3-class probability matrix")
+    q[:, 1] *= float(multiplier)
+    row_sum = q.sum(axis=1, keepdims=True)
+    if np.any(row_sum <= 0) or not np.isfinite(row_sum).all():
+        raise ValueError("invalid NPB probability row after draw scaling")
+    return q / row_sum
+
+
 def _fit_temperature(y: np.ndarray, p: np.ndarray) -> float:
     """Fit a low-variance temperature on Development OOS only."""
     best_t = 1.0
@@ -374,6 +387,27 @@ def run_npb_candidate_cycle(
             selected_model_name, selected_half_life = base_variant
         selected_temperature = 1.0
 
+    # Tune one draw-prior scalar on Development OOS only. This addresses
+    # the rare NPB draw class without changing the underlying model family.
+    selected_draw_scale = 1.0
+    selected_dev_pred = development_predictions.get(selected_name)
+    if selected_dev_pred is not None and len(selected_dev_pred) == len(y_dev):
+        best_q = selected_dev_pred
+        best_m = _metrics(y_dev, best_q)
+        best_mae = float(np.mean(np.abs(best_q[:, 1] - (y_dev == 1).astype(float))))
+        for multiplier in np.linspace(0.75, 2.50, 36):
+            q = _draw_scale(selected_dev_pred, float(multiplier))
+            qm = _metrics(y_dev, q)
+            qmae = float(np.mean(np.abs(q[:, 1] - (y_dev == 1).astype(float))))
+            key = (qm["LogLoss"], qmae, abs(float(multiplier) - 1.0))
+            best_key = (best_m["LogLoss"], best_mae, abs(selected_draw_scale - 1.0))
+            if key < best_key:
+                best_q, best_m, best_mae = q, qm, qmae
+                selected_draw_scale = float(multiplier)
+        if selected_draw_scale != 1.0:
+            selected_metrics = {**best_m, "DrawProbabilityMAE": best_mae, "draw_scale": selected_draw_scale}
+            development_predictions["DrawScaled:selected"] = best_q
+
     if baseline["LogLoss"] - selected_metrics["LogLoss"] <= 0:
         return {
             "stage": "development_evaluated",
@@ -390,14 +424,14 @@ def run_npb_candidate_cycle(
     dataset_hash = hashlib.sha256(pd.util.hash_pandas_object(games, index=True).values.tobytes()).hexdigest()
     spec = CandidateSpec(
         candidate_id="cand-" + hashlib.sha256(
-            f"NPB|{selected_model_name}|HL={selected_half_life or base_half_life}|T={selected_temperature:.4f}|{feature_version}|{git_commit}|{dataset_hash}".encode("utf-8")
+            f"NPB|{selected_model_name}|HL={selected_half_life or base_half_life}|T={selected_temperature:.4f}|DrawScale={selected_draw_scale:.4f}|{feature_version}|{git_commit}|{dataset_hash}".encode("utf-8")
         ).hexdigest()[:20],
         league="NPB",
         objective="win",
         model_version=selected_model_name,
         feature_version=feature_version,
         development_metrics=selected_metrics,
-        selection_reason=f"Development OOS only; selected {selected_model_name} with recency_half_life={selected_half_life or base_half_life} and frozen temperature={selected_temperature:.4f}; lowest LogLoss, then Brier, then highest Accuracy among challengers.",
+        selection_reason=f"Development OOS only; selected {selected_model_name} with recency_half_life={selected_half_life or base_half_life}, frozen temperature={selected_temperature:.4f}, and frozen draw scale={selected_draw_scale:.4f}.",
         git_commit=git_commit,
         dataset_hash=dataset_hash,
     )
@@ -420,6 +454,8 @@ def run_npb_candidate_cycle(
     cand_p = _candidate_probability(bt, cand_model, X_holdout)
     if selected_temperature != 1.0:
         cand_p = _temperature_scale(cand_p, selected_temperature)
+    if selected_draw_scale != 1.0:
+        cand_p = _draw_scale(cand_p, selected_draw_scale)
 
     y_holdout = y[holdout_start:]
     base_metrics = _metrics(y_holdout, base_p)
@@ -469,6 +505,7 @@ def run_npb_candidate_cycle(
         "candidate_model": selected_model_name,
         "candidate_recency_half_life": selected_half_life,
         "candidate_temperature": float(selected_temperature),
+        "candidate_draw_scale": float(selected_draw_scale),
         "dataset_hash": dataset_hash,
         "selection_locked_before_holdout": True,
         "starter_pit_evidence_ok": False,
