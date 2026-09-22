@@ -7,6 +7,7 @@ on:
     paths-ignore:
       - 'results/**'
       - 'data/pit/**'
+      - '.github/workflows/baseball_24h_supervisor.yml'
   schedule:
     # Bounded cadence: enough independent OOS evidence to keep the lifecycle moving.
     - cron: '17 0,3,6,9,12,15,18,21 * * *'
