@@ -487,9 +487,13 @@ def official_starters(target_date: str) -> list[dict]:
             return snapshot
         raise
 
+def _utc_now() -> pd.Timestamp:
+    return pd.Timestamp.now(tz="UTC")
+
+
 def build_target_rows(target_date: str) -> pd.DataFrame:
     rows=official_starters(target_date)
-    now_utc=pd.Timestamp.now(tz="UTC")
+    now_utc=_utc_now()
     output=[]
     for i,r in enumerate(rows):
         r["league"]="NPB"; r["game_id"]=f"NPB-{target_date}-{i+1}"
