@@ -31,6 +31,7 @@ class RealDataRun:
     holdout_rows: int | None
     reasons: tuple[str, ...]
     evidence: dict[str, Any]
+    execution_status: str = "EXECUTED"
 
 
 def _run_npb(data_dir: str, commit: str) -> RealDataRun:
@@ -38,7 +39,7 @@ def _run_npb(data_dir: str, commit: str) -> RealDataRun:
         result = run_npb_candidate_cycle(data_dir=data_dir, git_commit=commit)
     except Exception as exc:
         return RealDataRun("NPB", "HOLD", "error", None, None, None,
-                           (f"{type(exc).__name__}: {exc}",), {})
+                           (f"{type(exc).__name__}: {exc}",), {}, "FAILED")
     holdout = result.get("holdout", {}) if isinstance(result, dict) else {}
     development = result.get("development", {}) if isinstance(result, dict) else {}
     dev_rows = max((int(v.get("rows", 0)) for v in development.values()
@@ -59,7 +60,7 @@ def _run_mlb(data_dir: str, commit: str, start: int, end: int) -> RealDataRun:
         )
     except Exception as exc:
         return RealDataRun("MLB", "HOLD", "error", None, None, None,
-                           (f"{type(exc).__name__}: {exc}",), {})
+                           (f"{type(exc).__name__}: {exc}",), {}, "FAILED")
     holdout = result.get("holdout", {}) if isinstance(result, dict) else {}
     baseline = holdout.get("baseline", {}) if isinstance(holdout, dict) else {}
     return RealDataRun(
@@ -88,10 +89,12 @@ def run_real_data_validation(*, data_dir: str | Path = "data",
             raise ValueError("league must be NPB, MLB, or omitted")
 
     decisions = [r.decision for r in runs]
+    execution_failed = any(r.execution_status == "FAILED" or r.stage == "error" for r in runs)
     overall = "ADOPT" if runs and all(d == "ADOPT" for d in decisions) else "HOLD"
     payload = {
-        "status": "COMPLETED_WITH_FAIL_CLOSED_DECISION",
+        "status": "FAILED_WITH_FAIL_CLOSED_DECISION" if execution_failed else "COMPLETED_WITH_FAIL_CLOSED_DECISION",
         "overall_decision": overall,
+        "execution_status": "FAILED" if execution_failed else "EXECUTED",
         "runs": [asdict(r) for r in runs],
         "rules": {
             "candidate_distinct_from_baseline": True,
