@@ -55,3 +55,38 @@ def test_official_starter_parser_does_not_discard_team_bounded_evidence_when_uni
         ("千葉ロッテマリーンズ", "Ａ．ジャクソン", "オリックス・バファローズ", "東松 快征"),
         ("福岡ソフトバンクホークス", "上茶谷 大河", "埼玉西武ライオンズ", "佐藤 爽"),
     ]
+
+
+def test_official_league_fallback_parses_three_games_per_league():
+    from production_npb import parse_official_league_starters_html
+
+    html = (
+        "<h4>2026年9月22日（火）の予告先発</h4>"
+        '<div><img alt="読売ジャイアンツ"><a>戸郷 翔征</a><img alt="阪神タイガース"><a>伊藤 将司</a><span>18:00</span></div>'
+        '<div><img alt="東京ヤクルトスワローズ"><a>松本 健吾</a><img alt="広島東洋カープ"><a>玉村 昇悟</a><span>18:00</span></div>'
+        '<div><img alt="中日ドラゴンズ"><a>Ｋ．マラー</a><img alt="横浜DeNAベイスターズ"><a>東 克樹</a><span>18:00</span></div>'
+        "<h4>2026年 平均試合時間</h4>"
+    )
+    rows = parse_official_league_starters_html(html, "2026-09-22", "https://npb.jp/cl/")
+    assert len(rows) == 3
+    assert [(x["home"], x["home_starter"], x["away"], x["away_starter"], x["official_start_time"]) for x in rows] == [
+        ("読売ジャイアンツ", "戸郷 翔征", "阪神タイガース", "伊藤 将司", "18:00"),
+        ("東京ヤクルトスワローズ", "松本 健吾", "広島東洋カープ", "玉村 昇悟", "18:00"),
+        ("中日ドラゴンズ", "Ｋ．マラー", "横浜DeNAベイスターズ", "東 克樹", "18:00"),
+    ]
+
+
+def test_official_league_fallback_rejects_incomplete_slate():
+    from production_npb import parse_official_league_starters_html
+
+    html = (
+        "<h4>2026年9月23日（水）の予告先発</h4>"
+        '<div><img alt="読売ジャイアンツ"><a>戸郷 翔征</a><img alt="阪神タイガース"><a>伊藤 将司</a><span>14:00</span></div>'
+        '<div><img alt="東京ヤクルトスワローズ"><a>松本 健吾</a><img alt="広島東洋カープ"><a>玉村 昇悟</a><span>15:00</span></div>'
+    )
+    try:
+        parse_official_league_starters_html(html, "2026-09-23", "https://npb.jp/cl/")
+    except RuntimeError as exc:
+        assert "resolved 4" in str(exc)
+    else:
+        raise AssertionError("incomplete official league slate must fail closed")
