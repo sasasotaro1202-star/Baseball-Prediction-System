@@ -8,6 +8,16 @@ from research.correlated_score import (
 )
 
 
+def test_score_contract_rejects_invalid_intensities():
+    import pytest
+    with pytest.raises(ValueError):
+        grid(0.0, 3.0, 0.0)
+    with pytest.raises(ValueError):
+        grid(3.0, 3.0, -0.1)
+    with pytest.raises(ValueError):
+        grid(3.0, np.inf, 0.0)
+
+
 def test_grid_normalizes_and_preserves_nonnegative_mass():
     m = grid(4.2, 3.8, 0.35, 14)
     assert abs(m.sum() - 1.0) < 1e-9
