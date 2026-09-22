@@ -17,9 +17,10 @@ permissions:
 
 concurrency:
   group: baseball-closed-loop
-  # Closed-loop evidence must correspond to the current main commit. Stale
-  # queued runs are discarded so the free runner queue stays available.
-  cancel-in-progress: true
+  # Never interrupt an in-progress lifecycle. GitHub keeps at most one running
+  # job plus one pending job for this concurrency group; with cancellation off,
+  # a long OOS run can finish and the newest pending run takes the next slot.
+  cancel-in-progress: false
 
 env:
   PYTHONPATH: .
