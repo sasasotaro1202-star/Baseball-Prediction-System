@@ -204,16 +204,6 @@ def development_candidate_id(
         separators=(",", ":"),
     ).encode("utf-8")
     return "tempcal-v2-" + hashlib.sha256(raw).hexdigest()[:20]
-    for _, row in df.iterrows():
-        lh = max(float(row["lambda_home"]), 1e-9)
-        la = max(float(row["lambda_away"]), 1e-9)
-        # LOW/HIGH is defined on total runs, not on two independent per-team
-        # thresholds. Compute P(H+A <= 6) from the full joint distribution so
-        # the evaluation contract matches the production score distribution.
-        total_lambda = lh + la
-        low = float(np.clip(sum(math.exp(-total_lambda) * total_lambda**k / math.factorial(k) for k in range(7)), 0.0, 1.0))
-        values.append([low, 1.0 - low])
-    return clip_probs(np.asarray(values))
 
 
 def hilo_metrics(df: pd.DataFrame, p: np.ndarray) -> dict[str, float]:
