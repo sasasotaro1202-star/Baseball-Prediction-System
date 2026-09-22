@@ -86,6 +86,11 @@ jobs:
           grep -Fq "RUN_ATTEMPT" "$recovery"
           grep -Fq "Mixed transient and deterministic failures detected" "$recovery"
 
+          grep -Fq "FAILED_WITH_LIMIT" "$recovery"
+          grep -Fq "FAILED_NO_RETRYABLE_STEP" "$recovery"
+          grep -Fq "FAILED_MIXED_FAILURES" "$recovery"
+          grep -Fq "FAILED_RERUN_REQUEST" "$recovery"
+
           if grep -nE '\\.fillna\\([[:space:]]*0([.]0)?[[:space:]]*\\)' production_npb.py; then
             echo 'Production NPB target-feature implicit zero imputation detected.' >&2
             exit 1
