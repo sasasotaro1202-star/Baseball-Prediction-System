@@ -12,12 +12,22 @@ import numpy as np
 
 
 def poisson_pmf(k: int, lam: float) -> float:
-    lam = max(float(lam), 1e-9)
-    return math.exp(-lam + k * math.log(lam) - math.lgamma(k + 1))
+    value = float(lam)
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError("Poisson intensity must be finite and positive")
+    if int(k) < 0 or int(k) != k:
+        raise ValueError("Poisson count must be a non-negative integer")
+    return math.exp(-value + int(k) * math.log(value) - math.lgamma(int(k) + 1))
 
 
 def grid(lam_home: float, lam_away: float, shared: float = 0.0, max_runs: int = 14) -> np.ndarray:
     """Return a normalized bivariate-Poisson score grid."""
+    if not all(math.isfinite(float(x)) for x in (lam_home, lam_away, shared)):
+        raise ValueError("score intensities must be finite")
+    if float(lam_home) <= 0 or float(lam_away) <= 0 or float(shared) < 0:
+        raise ValueError("score intensities must be positive/non-negative")
+    if int(max_runs) < 7 or int(max_runs) != max_runs:
+        raise ValueError("max_runs must be an integer >= 7")
     # A bivariate-Poisson shared component cannot exceed either marginal
     # intensity. Clamp it so the requested marginal means remain valid rather
     # than silently changing the model when a noisy estimator overshoots.
@@ -99,8 +109,8 @@ def npb_final_outcomes(lam_home: float, lam_away: float, shared: float = 0.0,
     draw = tie_reg * draw_cond
     away = away_reg + tie_reg * a_abs
     z = home + draw + away
-    if z <= 0:
-        return 1/3, 1/3, 1/3
+    if z <= 0 or not np.isfinite(z):
+        raise RuntimeError("invalid NPB final-outcome normalization")
     return float(home/z), float(draw/z), float(away/z)
 
 def estimate_shared_lambda(home_residuals, away_residuals, max_shared: float = 1.25) -> float:
