@@ -904,7 +904,15 @@ class BaseballBacktest:
             y.append(target)
             meta.append(row.to_dict())
             self.update_after_game(row)
-        X = pd.DataFrame(Xrows).replace([np.inf, -np.inf], np.nan).fillna(0.0).astype(float)
+        X = pd.DataFrame(Xrows).replace([np.inf, -np.inf], np.nan).astype(float)
+        if X.empty:
+            raise RuntimeError("Feature construction produced an empty matrix.")
+        if not np.isfinite(X.to_numpy(dtype=float)).all():
+            bad = X.columns[X.isna().any()].tolist()
+            raise RuntimeError(
+                "Feature construction produced non-finite feature value; "
+                f"refusing implicit imputation. columns={bad[:20]}"
+            )
         return X, np.asarray(y, dtype=int), pd.DataFrame(meta)
 
     def update_after_game(self, row: pd.Series):
