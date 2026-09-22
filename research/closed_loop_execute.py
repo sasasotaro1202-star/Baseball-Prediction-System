@@ -16,7 +16,7 @@ import pandas as pd
 from evaluation.calibration import fit_temperature
 from core.atomic_io import atomic_write_json, file_sha256
 from research.adoption_gate import GatePolicy, candidate_lock, evaluate_locked_holdout
-from research.candidates import candidate_fingerprint
+from research.candidates import CandidateSpec, candidate_fingerprint
 from evaluation.uncertainty import paired_block_bootstrap, to_dict as uncertainty_to_dict
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -351,9 +351,7 @@ def process_league(league: str, path: Path) -> dict[str, Any]:
     lock_disk = json.loads(lock_path.read_text(encoding="utf-8"))
     reproducible = bool(
         lock_disk.get("candidate_fingerprint") == candidate_fingerprint(
-            __import__("research.candidates", fromlist=["CandidateSpec"]).CandidateSpec(
-                **lock_disk["candidate"]
-            )
+            CandidateSpec(**lock_disk["candidate"])
         )
         and lock_disk.get("holdout_evaluated") is False
     )
