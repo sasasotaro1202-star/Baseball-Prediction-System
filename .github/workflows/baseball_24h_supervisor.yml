@@ -110,12 +110,16 @@ jobs:
           # are handled by the dedicated recovery workflow instead of entering
           # an infinite retry loop.
           latest="$(printf '%s' "${runs_json}" | jq -r 'sort_by(.createdAt) | last // empty')"
-          latest_conclusion="$(printf '%s' "${latest}" | jq -r '.conclusion // empty')"
-          latest_created="$(printf '%s' "${latest}" | jq -r '.createdAt // empty')"
+          latest_conclusion=''
+          latest_created=''
           latest_age_minutes=999999
-          if [ -n "${latest_created}" ]; then
-            latest_epoch="$(date -d "${latest_created}" +%s)"
-            latest_age_minutes=$(( (now_epoch - latest_epoch) / 60 ))
+          if [ -n "${latest}" ]; then
+            latest_conclusion="$(printf '%s' "${latest}" | jq -r '.conclusion // empty')"
+            latest_created="$(printf '%s' "${latest}" | jq -r '.createdAt // empty')"
+            if [ -n "${latest_created}" ]; then
+              latest_epoch="$(date -d "${latest_created}" +%s)"
+              latest_age_minutes=$(( (now_epoch - latest_epoch) / 60 ))
+            fi
           fi
 
           dispatch=0
