@@ -230,6 +230,7 @@ class BaseballBacktest:
         self.checkpoint_dir = RESULTS / "checkpoints"
         self.checkpoint_version = "npb-massive-resume-v4-100target"
         self._last_temperature = 1.0
+        self._ensemble_weight_power = 1.0
         self._model_temperatures = {}
         self._calibration_mode = "ensemble"
         self._regime_router = None
@@ -1223,7 +1224,7 @@ class BaseballBacktest:
                 raw_parts=[]
                 y_parts=[]
                 model_parts={name: [] for _,name in top}
-                inv=np.array([1/max(loss,1e-6) for _,loss in top],dtype=float)
+                inv=np.array([1/max(loss,1e-6)**weight_power for _,loss in top],dtype=float)
                 inv/=max(inv.sum(),1e-12)
                 for cut,val in splits:
                     raw=np.zeros((val,k))
