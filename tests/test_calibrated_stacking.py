@@ -29,3 +29,27 @@ def test_calibrated_stacking_requires_two_or_three_components():
     y = np.array([0, 1] * 40)
     with pytest.raises(ValueError):
         fit_calibrated_stacking(predictions={"a": p}, y=y)
+
+
+def test_calibrated_stacking_supports_npb_three_class_probabilities():
+    rng = np.random.default_rng(224)
+    logits1 = rng.normal(size=(180, 3))
+    logits2 = logits1 * 0.7 + rng.normal(size=(180, 3)) * 0.4
+    y = np.argmax(logits1 + 0.5 * logits2, axis=1)
+
+    def softmax(z):
+        z = z - z.max(axis=1, keepdims=True)
+        q = np.exp(z)
+        return q / q.sum(axis=1, keepdims=True)
+
+    p1, p2 = softmax(logits1), softmax(logits2)
+    spec = fit_calibrated_stacking(
+        predictions={"a": p1, "b": p2},
+        y=y,
+        component_names=("a", "b"),
+        simplex_step=0.25,
+    )
+    q = apply_calibrated_stacking(spec, {"a": p1, "b": p2})
+    assert q.shape == (180, 3)
+    assert np.allclose(q.sum(axis=1), 1.0)
+    assert np.isfinite(q).all()
