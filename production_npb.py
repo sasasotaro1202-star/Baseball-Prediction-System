@@ -435,8 +435,12 @@ def _load_official_starter_snapshot(target_date: str) -> list[dict] | None:
     if payload.get("target_date") != target_date or payload.get("source_type") != "NPB_OFFICIAL":
         raise RuntimeError("Official starter snapshot provenance mismatch; refusing prediction.")
     retrieved = pd.Timestamp(payload.get("retrieved_at_utc"))
+    if pd.isna(retrieved):
+        raise RuntimeError("Official starter snapshot retrieval timestamp is invalid.")
     if retrieved.tzinfo is None:
         retrieved = retrieved.tz_localize("UTC")
+    if retrieved > pd.Timestamp.now(tz="UTC") + pd.Timedelta(minutes=5):
+        raise RuntimeError("Official starter snapshot retrieval timestamp is in the future; refusing prediction.")
     games = payload.get("games", [])
     if not games:
         raise RuntimeError("Official starter snapshot contains no games.")
