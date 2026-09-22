@@ -219,7 +219,7 @@ def run_one(league: str, data_dir: Path, *, mlb_start: int, mlb_end: int, retrie
                 pit_safe = (
                     "starter_evidence_status" in games.columns
                     and bool((games["starter_evidence_status"] == "pit_safe").all())
-                    and bool(games.get("confirmed_starters", False).all())
+                    and bool(games["confirmed_starters"].all())
                 )
                 if pit_safe:
                     games, starter_audit = _filter_confirmed_starters(games, league)
