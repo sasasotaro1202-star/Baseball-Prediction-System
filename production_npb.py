@@ -17,6 +17,8 @@ import numpy as np
 import pandas as pd
 import requests
 
+from core.atomic_io import atomic_write_json
+
 from baseball_backtest import BaseballBacktest, norm_team, score_candidates, low_high_probs
 from research.correlated_score import npb_final_outcomes
 
@@ -635,7 +637,7 @@ def predict(target_date: str, data_dir: str) -> dict:
             "prediction_generated_at":datetime.now(timezone.utc).isoformat(),
         }
         out=ROOT/"results"/f"npb_production_{target_date}.json"; out.parent.mkdir(exist_ok=True)
-        out.write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding="utf-8")
+        atomic_write_json(out, result)
         return result
     if games.empty:
         result={
@@ -647,7 +649,7 @@ def predict(target_date: str, data_dir: str) -> dict:
             "prediction_generated_at":datetime.now(timezone.utc).isoformat(),
         }
         out=ROOT/"results"/f"npb_production_{target_date}.json"; out.parent.mkdir(exist_ok=True)
-        out.write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding="utf-8")
+        atomic_write_json(out, result)
         return result
     if not bool(games["confirmed_starters"].all()):
         raise RuntimeError("PIT gate failed: every target game must have confirmed official starters.")
@@ -813,7 +815,7 @@ def predict(target_date: str, data_dir: str) -> dict:
         if not all(np.isfinite(v) and 0.0 <= v <= 100.0 for v in exact_probs):
             raise RuntimeError("Production output validation failed: exact-score probability is invalid.")
     out=ROOT/"results"/f"npb_production_{target_date}.json"; out.parent.mkdir(exist_ok=True)
-    out.write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding="utf-8")
+    atomic_write_json(out, result)
     return result
 
 def main():
