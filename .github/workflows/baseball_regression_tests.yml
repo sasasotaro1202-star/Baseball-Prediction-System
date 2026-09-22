@@ -20,7 +20,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: baseball-regression-tests
+  # Scope cancellation to one ref so PR/main verification cannot cancel
+  # another ref regression evidence.
+  group: baseball-regression-tests-${{ github.ref }}
   cancel-in-progress: true
 
 env:
