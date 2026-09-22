@@ -17,9 +17,10 @@ permissions:
 
 concurrency:
   group: baseball-closed-loop
-  # Closed-loop evidence must correspond to the current main commit. Stale
-  # queued runs are discarded so the free runner queue stays available.
-  cancel-in-progress: true
+  # Never interrupt an in-progress lifecycle. GitHub keeps at most one running
+  # job plus one pending job for this concurrency group; with cancellation off,
+  # a long OOS run can finish and the newest pending run takes the next slot.
+  cancel-in-progress: false
 
 env:
   PYTHONPATH: .
@@ -251,9 +252,8 @@ jobs:
         id: chronological-oos
         timeout-minutes: 50
         env:
-          # Bounded incremental pass. A clean self-stop preserves checkpoints;
-          # the next scheduled/supervisor run resumes from cache instead of
-          # losing a long in-flight OOS job to a runner cancellation.
+          # Bounded incremental pass. Stop before runner cancellation and resume
+          # from the durable checkpoint on the next scheduled/supervisor run.
           BASEBALL_TIME_BUDGET_SEC: '2700'
           NPB_RETRAIN_EVERY: '150'
           MLB_ENRICH_STARTERS: '0'
