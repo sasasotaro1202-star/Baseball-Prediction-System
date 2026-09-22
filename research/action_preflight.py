@@ -18,6 +18,8 @@ if str(ROOT) not in sys.path:
 
 REQUIRED_MODULES = (
     "baseball_backtest",
+    "production_npb",
+    "production_pit_gate",
     "research_runner",
     "research_runner_v6",
     "data.npb_pbp_adapter",
@@ -38,6 +40,8 @@ REQUIRED_FILES = (
     Path("requirements-pit.txt"),
     Path("research_runner.py"),
     Path("research_runner_v6.py"),
+    Path("production_npb.py"),
+    Path("production_pit_gate.py"),
     Path("baseball_backtest.py"),
     Path("data/pit_acquisition.py"),
     Path("data/availability.py"),
