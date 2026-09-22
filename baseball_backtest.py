@@ -242,7 +242,10 @@ class BaseballBacktest:
         self.inner_jobs = max(1, int(os.getenv("BASEBALL_INNER_JOBS", "2")))
         self.audit: List[Dict[str, Any]] = []
         self.checkpoint_dir = RESULTS / "checkpoints"
-        self.checkpoint_version = "npb-massive-resume-v5-input-fingerprint"
+        self.checkpoint_version = "npb-massive-resume-v6-code-input-fingerprint"
+        self.checkpoint_code_fingerprint = hashlib.sha256(
+            Path(__file__).read_bytes()
+        ).hexdigest()
         self._last_temperature = 1.0
         self._ensemble_weight_power = 1.0
         self._model_temperatures = {}
@@ -1569,10 +1572,13 @@ class BaseballBacktest:
         ck = self.checkpoint_dir / f"{league.lower()}_walkforward.csv"
         existing = pd.DataFrame()
         version_file = ck.with_suffix(".version")
+        expected_checkpoint_version = (
+            f"{self.checkpoint_version}:{self.checkpoint_code_fingerprint}"
+        )
         checkpoint_valid = (
             ck.exists()
             and version_file.exists()
-            and version_file.read_text(encoding="utf-8").strip() == self.checkpoint_version
+            and version_file.read_text(encoding="utf-8").strip() == expected_checkpoint_version
         )
         if checkpoint_valid:
             try:
@@ -1680,7 +1686,7 @@ class BaseballBacktest:
                 completed_ids.update(str(x["game_id"]) for x in block_rows)
                 try:
                     pd.DataFrame(all_rows).drop_duplicates(["game_id","model"], keep="last").to_csv(ck, index=False)
-                    version_file.write_text(self.checkpoint_version, encoding="utf-8")
+                    version_file.write_text(expected_checkpoint_version, encoding="utf-8")
                     print(f"[{league}] checkpoint saved: {len(completed_ids)} games", flush=True)
                 except Exception as e:
                     self.audit.append({"type":"checkpoint_write_error","league":league,"error":str(e)})
