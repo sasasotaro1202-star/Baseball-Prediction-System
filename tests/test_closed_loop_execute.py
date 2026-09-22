@@ -1,6 +1,9 @@
 import pandas as pd
 
-from research.closed_loop_execute import poisson_result_probs
+import numpy as np
+import pytest
+
+from research.closed_loop_execute import apply_temperature, poisson_result_probs
 
 
 def test_hilo_uses_total_run_boundary_not_per_team_thresholds():
@@ -10,3 +13,15 @@ def test_hilo_uses_total_run_boundary_not_per_team_thresholds():
     expected_low = sum(__import__("math").exp(-4.0) * 4.0**k / __import__("math").factorial(k) for k in range(7))
     assert abs(float(low) - expected_low) < 1e-10
     assert abs(float(low) + float(high) - 1.0) < 1e-12
+
+
+def test_apply_temperature_rejects_nonpositive_temperature():
+    p = np.asarray([[0.6, 0.4]], dtype=float)
+    with pytest.raises(ValueError, match="strictly positive"):
+        apply_temperature(p, 0.0)
+
+
+def test_apply_temperature_rejects_nonfinite_probabilities():
+    p = np.asarray([[np.nan, 1.0]], dtype=float)
+    with pytest.raises(ValueError, match="invalid values"):
+        apply_temperature(p, 1.0)
