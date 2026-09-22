@@ -114,3 +114,58 @@ def test_time_budget_fails_closed_at_safe_boundary(tmp_path):
     with pytest.raises(TimeoutError, match="computation budget reached"):
         bt._check_time_budget("unit-test")
     assert any(row.get("type") == "time_budget_exceeded" for row in bt.audit)
+
+
+def test_walkforward_model_block_failure_is_fail_closed(tmp_path):
+    bt = BaseballBacktest(tmp_path)
+    bt.time_budget_sec = 3600.0
+    rows = []
+    for i in range(120):
+        rows.append({
+            "league": "NPB",
+            "game_id": f"g-{i}",
+            "datetime": pd.Timestamp("2025-04-01T09:00:00Z") + pd.Timedelta(minutes=i),
+            "home": "A",
+            "away": "B",
+            "home_score": 3,
+            "away_score": 2,
+            "home_starter": "",
+            "away_starter": "",
+            "confirmed_starters": False,
+        })
+    games = pd.DataFrame(rows)
+
+    def fail_fit(*args, **kwargs):
+        raise RuntimeError("synthetic model failure")
+
+    bt.fit_ensemble = fail_fit
+    with pytest.raises(RuntimeError, match="walk-forward incomplete"):
+        bt.run_walkforward(games, "NPB")
+
+
+def test_npb_non_pit_safe_historical_replay_does_not_require_starter_coverage(tmp_path):
+    bt = BaseballBacktest(tmp_path)
+    rows = []
+    for i in range(120):
+        rows.append({
+            "league": "NPB",
+            "game_id": f"g-{i}",
+            "datetime": pd.Timestamp("2025-04-01T09:00:00Z") + pd.Timedelta(minutes=i),
+            "home": "A",
+            "away": "B",
+            "home_score": 3,
+            "away_score": 2,
+            "home_starter": "",
+            "away_starter": "",
+            "confirmed_starters": False,
+        })
+    games = pd.DataFrame(rows)
+    # Reach the feature gate without requiring expensive model fitting.
+    bt.build_features = lambda g: (
+        pd.DataFrame({"home_adv": [1.0] * len(g)}),
+        __import__("numpy").array([0] * len(g), dtype=int),
+        g.copy(),
+    )
+    bt.fit_ensemble = lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("stop at fit"))
+    with pytest.raises(RuntimeError, match="walk-forward incomplete"):
+        bt.run_walkforward(games, "NPB")
