@@ -21,6 +21,7 @@ from core.atomic_io import atomic_write_json
 
 from baseball_backtest import BaseballBacktest, norm_team, score_candidates, low_high_probs
 from research.correlated_score import npb_final_outcomes
+from core.pit_evidence import _is_official_source
 
 ROOT = Path(__file__).resolve().parent
 TIMEOUT = 30
@@ -514,7 +515,13 @@ def build_target_rows(target_date: str) -> pd.DataFrame:
             raise RuntimeError(
                 f"Unsupported NPB starter evidence status: {evidence_status!r}; refusing prediction."
             )
+        source = str(r.get("starter_source") or "").strip()
+        if not _is_official_source(source):
+            raise RuntimeError(
+                f"NPB starter evidence source is not allowlisted official NPB: {source!r}; refusing prediction."
+            )
         r["starter_evidence_status"] = evidence_status
+        r["starter_source"] = source
         r["starter_evidence_observed_at_utc"] = now_utc.isoformat()
         r["prediction_cutoff_utc"] = now_utc.isoformat()
         output.append(r)
