@@ -354,13 +354,27 @@ class BaseballBacktest:
             if gt and not any(k in gt for k in NPB_OFFICIAL_KEYWORDS):
                 if any(k in gt.lower() for k in ("open", "spring", "farm", "allstar")):
                     continue
-            hp = self._first_pitcher(g, "home")
-            ap = self._first_pitcher(g, "away")
+            # The first pitcher appearing in PBP is a realized post-game
+            # identity, not announcement-time evidence. Preserve starter names
+            # only when explicit publication/availability timestamps are present
+            # and are at or before the prediction cutoff.
+            cutoff_col = "prediction_cutoff" if "prediction_cutoff" in g.columns else None
+            h_ann_col = "home_starter_announced_at" if "home_starter_announced_at" in g.columns else None
+            a_ann_col = "away_starter_announced_at" if "away_starter_announced_at" in g.columns else None
+            cutoff = pd.to_datetime(g[cutoff_col].iloc[0], errors="coerce", utc=True) if cutoff_col else pd.NaT
+            h_ann = pd.to_datetime(g[h_ann_col].iloc[0], errors="coerce", utc=True) if h_ann_col else pd.NaT
+            a_ann = pd.to_datetime(g[a_ann_col].iloc[0], errors="coerce", utc=True) if a_ann_col else pd.NaT
+            hp = str(g.get("home_starter", pd.Series([""])).iloc[0] or "").strip() if "home_starter" in g.columns else ""
+            ap = str(g.get("away_starter", pd.Series([""])).iloc[0] or "").strip() if "away_starter" in g.columns else ""
+            h_safe = bool(hp and pd.notna(cutoff) and pd.notna(h_ann) and h_ann <= cutoff)
+            a_safe = bool(ap and pd.notna(cutoff) and pd.notna(a_ann) and a_ann <= cutoff)
             rows.append({
                 "league": "NPB", "game_id": str(gid), "datetime": dt,
                 "home": home, "away": away, "home_score": hscore, "away_score": ascore,
-                "home_starter": hp, "away_starter": ap,
-                "venue": "unknown", "confirmed_starters": bool(hp and ap),
+                "home_starter": hp if h_safe else "", "away_starter": ap if a_safe else "",
+                "venue": "unknown",
+                "confirmed_starters": bool(h_safe and a_safe),
+                "starter_evidence_status": "pit_safe" if (h_safe and a_safe) else "unknown",
             })
         out = pd.DataFrame(rows)
         if out.empty:
