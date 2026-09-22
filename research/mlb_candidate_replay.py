@@ -16,6 +16,7 @@ from typing import Any
 
 import numpy as np
 
+from evaluation.calibration import fit_temperature
 from baseball_backtest import BaseballBacktest, low_high_probs, score_candidates
 from core.atomic_io import atomic_write_json
 from evaluation.metrics import classification_metrics
@@ -130,15 +131,7 @@ def _temperature_scale(p: np.ndarray, temperature: float) -> np.ndarray:
 
 
 def _fit_temperature(y: np.ndarray, p: np.ndarray) -> float:
-    best_t = 1.0
-    best_ll = float("inf")
-    for t in np.linspace(0.75, 1.25, 51):
-        q = _temperature_scale(p, float(t))
-        ll = float(classification_metrics(y, q, classes=[0, 1])["LogLoss"])
-        if ll < best_ll - 1e-12 or (abs(ll - best_ll) <= 1e-12 and abs(float(t)-1.0) < abs(best_t-1.0)):
-            best_ll = ll
-            best_t = float(t)
-    return best_t
+    return float(fit_temperature(p, y).temperature)
 
 
 def _fit_with_half_life(bt: BaseballBacktest, name: str, X, y, half_life: int | None):
