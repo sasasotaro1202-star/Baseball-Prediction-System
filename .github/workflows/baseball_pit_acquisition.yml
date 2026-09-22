@@ -20,7 +20,9 @@ permissions:
 
 concurrency:
   group: baseball-pit-acquisition
-  cancel-in-progress: true
+  # PIT acquisition is append-only evidence collection. Never interrupt a live
+  # acquisition; keep at most one pending run for the next collection cycle.
+  cancel-in-progress: false
 
 env:
   PYTHONPATH: .
