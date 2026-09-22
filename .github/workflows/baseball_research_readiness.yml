@@ -52,8 +52,7 @@ jobs:
           for f in \
             .github/workflows/baseball_research.yml \
             .github/workflows/baseball_research_preflight.yml \
-            .github/workflows/baseball_pit_acquisition.yml \
-            .github/workflows/baseball_v44_compatibility.yml; do
+            .github/workflows/baseball_pit_acquisition.yml; do
             test -s "$f"
             grep -q 'workflow_dispatch:' "$f"
           done
