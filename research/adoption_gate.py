@@ -33,6 +33,9 @@ class GatePolicy:
     require_no_future_target_data: bool = True
     require_reproducible_candidate: bool = True
     require_pit_starter_evidence: bool = False
+    require_uncertainty_check: bool = False
+    min_logloss_improvement_ci_lower: float = 0.0
+    min_positive_improvement_probability: float = 0.95
 
 
 def _finite_metric(mapping: Mapping[str, float], key: str) -> float | None:
@@ -90,6 +93,7 @@ def evaluate_locked_holdout(
     baseline_hilo: Mapping[str, float] | None = None,
     candidate_hilo: Mapping[str, float] | None = None,
     league: str | None = None,
+    holdout_uncertainty: Mapping[str, object] | None = None,
 ) -> dict:
     """Compare a locked candidate against unseen holdout data only.
 
@@ -125,6 +129,30 @@ def evaluate_locked_holdout(
         reasons.append("candidate_not_reproducible")
     if policy.require_pit_starter_evidence and not pit_starter_evidence_ok:
         reasons.append("starter_pit_evidence_not_verified")
+
+    uncertainty_result: dict[str, object] = {}
+    if policy.require_uncertainty_check:
+        if not isinstance(holdout_uncertainty, Mapping):
+            reasons.append("uncertainty_check_missing")
+        else:
+            ci = holdout_uncertainty.get("improvement_ci95")
+            positive = holdout_uncertainty.get("p_improvement_positive")
+            try:
+                ll_ci = ci["LogLoss"]
+                lower = float(ll_ci[0])
+                upper = float(ll_ci[1])
+                positive_ll = float(positive["LogLoss"])
+            except (KeyError, TypeError, ValueError):
+                reasons.append("uncertainty_check_malformed")
+            else:
+                uncertainty_result = {
+                    "LogLoss_ci95": [lower, upper],
+                    "LogLoss_positive_probability": positive_ll,
+                }
+                if lower <= float(policy.min_logloss_improvement_ci_lower):
+                    reasons.append("logloss_improvement_uncertainty_ci_failed")
+                if positive_ll < float(policy.min_positive_improvement_probability):
+                    reasons.append("logloss_improvement_probability_failed")
 
     required_primary = ("LogLoss", "Brier", "Accuracy")
     missing_primary = [k for k in required_primary if _finite_metric(baseline, k) is None or _finite_metric(candidate, k) is None]
@@ -202,5 +230,6 @@ def evaluate_locked_holdout(
         "stage": "locked_holdout_evaluated", "adopt": not reasons,
         "decision": "ADOPT" if not reasons else "REJECT", "reasons": reasons,
         "baseline": dict(baseline), "candidate": dict(candidate), "targets": target_results,
+        "uncertainty": uncertainty_result,
         "improvement": {"LogLoss": ll_improvement, "Brier": br_improvement, "Accuracy": acc_improvement, "relative_LogLoss": relative_ll},
     }
