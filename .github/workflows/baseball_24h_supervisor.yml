@@ -110,6 +110,7 @@ jobs:
           # are handled by the dedicated recovery workflow instead of entering
           # an infinite retry loop.
           # Deterministic failures must not enter an unbounded retry loop.
+          # baseball_actions_recovery.yml owns transient failed-job retries.
           latest="$(printf '%s' "${runs_json}" | jq -r 'sort_by(.createdAt) | last // empty')"
           latest_id=''
           latest_conclusion=''
