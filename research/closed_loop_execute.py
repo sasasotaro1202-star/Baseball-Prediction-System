@@ -149,7 +149,7 @@ def metrics(y: np.ndarray, p: np.ndarray) -> dict[str, float]:
 
 
 def fit_temperature_grid(logits: np.ndarray, y: np.ndarray) -> float:
-    """Use the shared calibration implementation with the legacy grid."""
+    """Use the shared calibration implementation and its current default grid."""
     z = np.asarray(logits, dtype=float)
     if z.ndim != 2 or len(z) != len(y) or len(z) == 0:
         raise ValueError("logits and y are incompatible or empty")
@@ -157,11 +157,7 @@ def fit_temperature_grid(logits: np.ndarray, y: np.ndarray) -> float:
     p = np.exp(z)
     p /= p.sum(axis=1, keepdims=True)
     return float(
-        fit_temperature(
-            p,
-            y,
-            grid=np.linspace(0.5, 3.0, 101),
-        ).temperature
+        fit_temperature(p, y).temperature
     )
 
 
