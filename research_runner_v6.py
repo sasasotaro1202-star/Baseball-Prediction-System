@@ -17,6 +17,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from core.atomic_io import atomic_write_json
 
 REQUIRED_MODULES = (
     "baseball_backtest",
@@ -322,7 +323,7 @@ def main() -> int:
     }
     path = Path(args.manifest)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_json(path, manifest)
     print(json.dumps(manifest, ensure_ascii=False, indent=2))
     return 0 if manifest["overall_status"] == "SUCCESS" else 2
 
