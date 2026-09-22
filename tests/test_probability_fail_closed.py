@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import pytest
 
 from baseball_backtest import clip_prob
@@ -17,3 +18,26 @@ def test_clip_prob_normalizes_valid_values():
     p = clip_prob([0.2, 0.3, 0.5])
     assert np.allclose(p.sum(), 1.0)
     assert np.all(p > 0)
+
+from research.closed_loop_execute import build_probabilities
+
+
+def test_closed_loop_probability_artifact_fails_closed_on_invalid_rows():
+    frame = pd.DataFrame({
+        "pred_home": [0.7, float("nan")],
+        "pred_draw": [0.1, 0.2],
+        "pred_away": [0.2, 0.8],
+    })
+    with pytest.raises(RuntimeError, match="probability artifact contains 1 invalid rows"):
+        build_probabilities(frame, "NPB")
+
+
+def test_closed_loop_probability_artifact_accepts_valid_rows():
+    frame = pd.DataFrame({
+        "pred_home": [0.7],
+        "pred_draw": [0.1],
+        "pred_away": [0.2],
+    })
+    p, source = build_probabilities(frame, "NPB")
+    assert source == "raw_classifier_strict"
+    assert np.allclose(p[0], [0.7, 0.1, 0.2])
