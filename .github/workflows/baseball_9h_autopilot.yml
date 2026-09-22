@@ -236,6 +236,48 @@ jobs:
           cache-dependency-path: requirements.txt
       - name: Install
         run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
+      - name: Restore Phase 2 OOS evidence
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
+        with:
+          name: baseball-9h-phase2-${{ github.run_id }}
+          path: phase2-evidence
+
+      - name: Restore Phase 3 candidate evidence
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
+        with:
+          pattern: baseball-9h-phase3-*
+          path: phase3-evidence
+          merge-multiple: false
+
+      - name: Verify evidence handoff before final governance
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s phase2-evidence/results/research_execution_manifest.json
+          test -s phase2-evidence/results/checkpoints/npb_walkforward.csv
+          test -s phase2-evidence/results/checkpoints/mlb_walkforward.csv
+
+          npb_dir="phase3-evidence/baseball-9h-phase3-NPB-${GITHUB_RUN_ID}"
+          mlb_dir="phase3-evidence/baseball-9h-phase3-MLB-${GITHUB_RUN_ID}"
+          test -s "${npb_dir}/results/npb_candidate_development.json"
+          test -s "${npb_dir}/results/npb_locked_holdout.json"
+          test -s "${mlb_dir}/results/mlb_candidate_development.json"
+          test -s "${mlb_dir}/results/mlb_locked_holdout.json"
+
+          mkdir -p results/checkpoints results/phase3
+          cp phase2-evidence/results/checkpoints/npb_walkforward.csv results/checkpoints/
+          cp phase2-evidence/results/checkpoints/mlb_walkforward.csv results/checkpoints/
+          test -s phase2-evidence/results/checkpoints/npb_walkforward.version
+          test -s phase2-evidence/results/checkpoints/mlb_walkforward.version
+          cp phase2-evidence/results/checkpoints/npb_walkforward.version results/checkpoints/
+          cp phase2-evidence/results/checkpoints/mlb_walkforward.version results/checkpoints/
+          cp "${npb_dir}/results/npb_candidate_development.json" results/phase3/
+          cp "${npb_dir}/results/npb_locked_holdout.json" results/phase3/
+          cp "${mlb_dir}/results/mlb_candidate_development.json" results/phase3/
+          cp "${mlb_dir}/results/mlb_locked_holdout.json" results/phase3/
+
+          echo 'Phase 2 OOS and Phase 3 candidate evidence handoff verified.'
+
       - name: Full regression and production gates
         run: |
           set -euo pipefail
