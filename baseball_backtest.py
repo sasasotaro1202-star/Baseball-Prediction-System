@@ -559,17 +559,23 @@ class BaseballBacktest:
 
         home_name = out["home_starter"].fillna("").astype(str).str.strip()
         away_name = out["away_starter"].fillna("").astype(str).str.strip()
+        # Compare normalized UTC instants as int64 nanoseconds. This avoids
+        # pandas timezone-array comparison edge cases while keeping NaT guarded
+        # separately by the explicit notna() predicates below.
+        cutoff_ns = out["prediction_cutoff"].astype("int64", copy=False).to_numpy()
+        home_ann_ns = out["home_starter_announced_at"].astype("int64", copy=False).to_numpy()
+        away_ann_ns = out["away_starter_announced_at"].astype("int64", copy=False).to_numpy()
         home_ok = (
             home_name.ne("")
             & out["home_starter_announced_at"].notna()
             & out["prediction_cutoff"].notna()
-            & (out["home_starter_announced_at"] <= out["prediction_cutoff"])
+            & (home_ann_ns <= cutoff_ns)
         )
         away_ok = (
             away_name.ne("")
             & out["away_starter_announced_at"].notna()
             & out["prediction_cutoff"].notna()
-            & (out["away_starter_announced_at"] <= out["prediction_cutoff"])
+            & (away_ann_ns <= cutoff_ns)
         )
         out["starter_evidence_status"] = np.select(
             [home_ok & away_ok, home_ok ^ away_ok],
@@ -1719,7 +1725,17 @@ class BaseballBacktest:
                 print(f"[{league}] resume skip block {bstart}:{bend} ({len(block_ids)} games already checkpointed)")
                 continue
             if time.time() - self.started_at >= self.time_budget_sec:
+                completed_oos = int(len(completed_ids))
+                expected_oos = int(max(0, len(X) - start))
                 self.audit.append({"type":"time_budget","league":league,"bstart":int(bstart),"budget_sec":self.time_budget_sec})
+                self.audit.append({
+                    "type": "walkforward_incomplete",
+                    "league": league,
+                    "expected_games": expected_oos,
+                    "completed_games": completed_oos,
+                    "missing_games": max(0, expected_oos - completed_oos),
+                    "reason": "time_budget_before_block",
+                })
                 print(f"[{league}] time budget reached; stopping walk-forward with resumable checkpoint")
                 raise TimeoutError(
                     f"walk-forward incomplete: {league} time budget reached before block {bstart}:{bend}"
@@ -1735,12 +1751,22 @@ class BaseballBacktest:
                 raise
             except Exception as e:
                 print(f"[{league}] block {bstart}: model failure {e}")
+                completed_oos = int(len(completed_ids))
+                expected_oos = int(max(0, len(X) - start))
                 self.audit.append({
                     "type": "walkforward_block_failure",
                     "league": league,
                     "bstart": int(bstart),
                     "bend": int(bend),
                     "error": f"{type(e).__name__}: {e}",
+                })
+                self.audit.append({
+                    "type": "walkforward_incomplete",
+                    "league": league,
+                    "expected_games": expected_oos,
+                    "completed_games": completed_oos,
+                    "missing_games": max(0, expected_oos - completed_oos),
+                    "reason": "model_block_failure",
                 })
                 raise RuntimeError(
                     f"walk-forward incomplete: {league} block {bstart}:{bend} failed"
