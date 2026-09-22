@@ -97,6 +97,13 @@ jobs:
             done
           fi
 
+          if [ "${stale_found}" -eq 1 ]; then
+            # Refresh after cancellation so the dispatch decision uses the live
+            # workflow ledger rather than the pre-cancellation snapshot.
+            runs_json="$(gh run list             --repo "${GH_REPO}"             --workflow "${TARGET_WORKFLOW}"             --limit 30             --json databaseId,status,conclusion,createdAt,updatedAt)"
+            echo "Run ledger refreshed after stale recovery."
+          fi
+
           active_count="$(gh run list             --repo "${GH_REPO}"             --workflow "${TARGET_WORKFLOW}"             --limit 30             --json status             --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
           echo "Active canonical closed-loop runs after stale recovery: ${active_count}"
 
