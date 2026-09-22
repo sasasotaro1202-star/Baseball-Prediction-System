@@ -1113,6 +1113,9 @@ class BaseballBacktest:
             }
             for regime, by_model in regime_losses.items()
         }
+        # The deployment router is fit on the complete current training prefix
+        # only after validation evidence has been collected.
+        router=RegimeRouter().fit(X)
         self._regime_router=router
         self._regime_weights=router.weights(
             global_losses,
