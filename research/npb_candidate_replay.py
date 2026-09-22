@@ -474,7 +474,12 @@ def run_npb_candidate_cycle(
         holdout_hilo_baseline=base_hilo,
         holdout_hilo_candidate=cand_hilo,
         league="NPB",
-        policy=GatePolicy(require_pit_starter_evidence=True),
+        # This replay deliberately disables historical starter features
+        # because authoritative announcement timestamps are unavailable.
+        # Do not let an unused starter feature block calibration/recency/DrawScale
+        # candidates; the production prediction lane retains the separate strict
+        # official-starter gate.
+        policy=GatePolicy(require_pit_starter_evidence=False),
     )
 
     holdout = {
