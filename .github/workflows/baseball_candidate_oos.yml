@@ -17,6 +17,8 @@ on:
       - 'research/real_data_validation.py'
       - 'research/validation_pipeline.py'
       - 'research/candidates.py'
+      - 'research/regime_router.py'
+      - 'research/correlated_score.py'
       - 'baseball_backtest.py'
       - 'core/**'
       - 'evaluation/**'
