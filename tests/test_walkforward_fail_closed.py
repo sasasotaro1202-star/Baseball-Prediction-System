@@ -106,3 +106,11 @@ def test_build_features_freezes_state_within_same_timestamp(tmp_path, monkeypatc
     assert list(X["state_count"]) == [0.0, 0.0, 2.0]
     assert seen == [("g0", 0), ("g1", 0), ("g2", 2)]
     assert any(row.get("type") == "same_timestamp_state_freeze" for row in bt.audit)
+
+
+def test_time_budget_fails_closed_at_safe_boundary(tmp_path):
+    bt = BaseballBacktest(tmp_path)
+    bt.time_budget_sec = 0.0
+    with pytest.raises(TimeoutError, match="computation budget reached"):
+        bt._check_time_budget("unit-test")
+    assert any(row.get("type") == "time_budget_exceeded" for row in bt.audit)
