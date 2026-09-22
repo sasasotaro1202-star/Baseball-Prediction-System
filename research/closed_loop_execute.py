@@ -76,8 +76,7 @@ def build_probabilities(df: pd.DataFrame, league: str) -> tuple[np.ndarray, str]
     nonnegative = (raw >= 0).all(axis=1)
     sums = raw.sum(axis=1)
     normalized = (sums > 0.999) & (sums < 1.001)
-    nondegenerate = raw.max(axis=1) < 0.999999
-    valid = finite & nonnegative & normalized & nondegenerate
+    valid = finite & nonnegative & normalized
     if not bool(valid.all()):
         bad = int((~valid).sum())
         raise RuntimeError(
