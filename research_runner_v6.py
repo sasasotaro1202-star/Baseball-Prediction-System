@@ -162,6 +162,30 @@ def _canonicalize_walkforward(bt, league: str, frame: pd.DataFrame) -> pd.DataFr
     return canonical
 
 
+def _is_deterministic_research_error(exc: BaseException) -> bool:
+    """Return True when retrying cannot add evidence in the current run.
+
+    Chronological OOS incompleteness, target/PIT contract failures, and output
+    contract violations are deterministic for a fixed commit/data snapshot.
+    Immediate retries only waste Actions time; durable checkpoints are handed
+    to the next scheduled/supervisor cycle instead.
+    """
+    message = str(exc)
+    markers = (
+        "walk-forward incomplete",
+        "target integrity failure",
+        "starter availability columns are missing",
+        "starter coverage too low",
+        "has no games with both announced starters",
+        "produced zero predictions",
+        "canonical output",
+        "canonical score probabilities",
+        "NPB canonical Top Draw",
+        "NPB OOS frame has insufficient realized score targets",
+    )
+    return any(marker in message for marker in markers)
+
+
 def run_one(league: str, data_dir: Path, *, mlb_start: int, mlb_end: int, retries: int = 2) -> dict:
     started = time.time()
     from baseball_backtest import BaseballBacktest
@@ -214,9 +238,14 @@ def run_one(league: str, data_dir: Path, *, mlb_start: int, mlb_end: int, retrie
             result["error"] = last_error
             result["runtime_seconds"] = round(time.time() - started, 2)
             result["audit_rows"] = int(len(bt.audit))
+            if _is_deterministic_research_error(exc):
+                result["retryable"] = False
+                return result
             if attempt < retries:
+                result["retryable"] = True
                 time.sleep(2 * (attempt + 1))
             else:
+                result["retryable"] = True
                 return result
     raise RuntimeError(last_error or "research failed")
 
