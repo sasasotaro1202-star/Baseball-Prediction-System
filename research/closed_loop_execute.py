@@ -15,8 +15,8 @@ import pandas as pd
 
 from evaluation.calibration import fit_temperature
 from core.atomic_io import atomic_write_json, file_sha256
-from research.adoption_gate import GatePolicy, candidate_lock, evaluate_locked_holdout
-from research.candidates import CandidateSpec, candidate_fingerprint
+from research.adoption_gate import GatePolicy, evaluate_locked_holdout
+from research.candidates import CandidateSpec, candidate_fingerprint, lock_candidate as persist_candidate_lock
 from evaluation.uncertainty import paired_block_bootstrap, to_dict as uncertainty_to_dict
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -332,15 +332,32 @@ def process_league(league: str, path: Path) -> dict[str, Any]:
         temperature=temperature,
         probability_source=probability_source,
     )
-    lock = candidate_lock(
-        development_metrics={
-            "rows": int(len(development)),
-            "validation_window_1_LogLoss": cand_v1["LogLoss"],
-            "validation_window_2_LogLoss": cand_v2["LogLoss"],
-            "temperature": temperature,
-        },
+    development_payload = {
+        "rows": int(len(development)),
+        "validation_window_1_LogLoss": cand_v1["LogLoss"],
+        "validation_window_2_LogLoss": cand_v2["LogLoss"],
+        "temperature": temperature,
+    }
+    development_hash = hashlib.sha256(
+        development.to_json(
+            orient="split", date_format="iso", double_precision=15
+        ).encode("utf-8")
+    ).hexdigest()
+    lock_spec = CandidateSpec(
         candidate_id=candidate_id,
+        league=league,
+        objective="win",
+        model_version="temperature_scaled_raw",
+        feature_version="closed-loop-output-v2",
+        development_metrics=development_payload,
+        selection_reason=(
+            "Development OOS only; temperature selected on the selection window "
+            "and checked on two chronological validation windows."
+        ),
+        git_commit=_git_commit(),
+        dataset_hash=development_hash,
     )
+    lock = persist_candidate_lock(lock_spec)
     starter_pit_evidence_ok = (
         "confirmed_starters" in development.columns
         and bool(development["confirmed_starters"].all())
