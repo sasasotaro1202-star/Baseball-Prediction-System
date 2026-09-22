@@ -190,6 +190,26 @@ def holdout_stage(holdout_artifact: str | Path = "results/independent_holdout.js
                         blockers.append(f"holdout_row_mismatch:{league}")
                 except (KeyError, TypeError, ValueError):
                     pass
+
+            # Newer closed-loop artifacts carry paired chronological bootstrap
+            # uncertainty. Validate it when present without breaking older
+            # historical fixtures that legitimately predate the field.
+            uncertainty = payload.get("uncertainty")
+            if uncertainty is not None:
+                if not isinstance(uncertainty, dict) or uncertainty.get("status") != "EVALUATED":
+                    blockers.append(f"invalid_holdout_uncertainty:{league}")
+                else:
+                    try:
+                        reps = int(uncertainty["replications"])
+                        if reps < 100:
+                            blockers.append(f"invalid_holdout_uncertainty_replications:{league}")
+                        for metric in ("LogLoss", "Brier", "Accuracy"):
+                            lo, hi = uncertainty["improvement_ci95"][metric]
+                            lo, hi = float(lo), float(hi)
+                            if not math.isfinite(lo) or not math.isfinite(hi) or lo > hi:
+                                blockers.append(f"invalid_holdout_uncertainty_ci:{league}:{metric}")
+                    except (KeyError, TypeError, ValueError):
+                        blockers.append(f"invalid_holdout_uncertainty:{league}")
         return Stage("Independent Holdout", "READY" if not blockers else "BLOCKED", tuple(blockers))
     except Exception as exc:
         return Stage("Independent Holdout", "BLOCKED", (f"invalid_holdout:{type(exc).__name__}",))
