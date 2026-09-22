@@ -237,6 +237,9 @@ class BaseballBacktest:
         self.time_budget_sec = min(float(os.getenv("BASEBALL_TIME_BUDGET_SEC", "1500")), 5400.0)
         # Keep long OOS fits visibly alive without materially increasing compute.
         self.heartbeat_sec = max(10.0, float(os.getenv("BASEBALL_HEARTBEAT_SEC", "45")))
+        # NPB and MLB run concurrently in the research wrapper. Limit inner
+        # tree/boosting parallelism to avoid CPU oversubscription on free runners.
+        self.inner_jobs = max(1, int(os.getenv("BASEBALL_INNER_JOBS", "2")))
         self.audit: List[Dict[str, Any]] = []
         self.checkpoint_dir = RESULTS / "checkpoints"
         self.checkpoint_version = "npb-massive-resume-v5-input-fingerprint"
@@ -1051,15 +1054,15 @@ class BaseballBacktest:
         m: Dict[str, Any] = {
             "Logistic": Pipeline([("scale", StandardScaler()), ("m", LogisticRegression(C=0.5, max_iter=2500, class_weight="balanced", random_state=RANDOM_STATE))]),
             "HistGB": HistGradientBoostingClassifier(max_iter=280, learning_rate=0.035, max_leaf_nodes=15, min_samples_leaf=12, l2_regularization=2.0, random_state=RANDOM_STATE),
-            "RandomForest": RandomForestClassifier(n_estimators=320, max_depth=10, min_samples_leaf=6, max_features=0.55, class_weight="balanced_subsample", random_state=RANDOM_STATE, n_jobs=-1),
-            "ExtraTrees": ExtraTreesClassifier(n_estimators=320, max_depth=12, min_samples_leaf=5, max_features=0.65, class_weight="balanced", random_state=RANDOM_STATE, n_jobs=-1),
+            "RandomForest": RandomForestClassifier(n_estimators=320, max_depth=10, min_samples_leaf=6, max_features=0.55, class_weight="balanced_subsample", random_state=RANDOM_STATE, n_jobs=self.inner_jobs),
+            "ExtraTrees": ExtraTreesClassifier(n_estimators=320, max_depth=12, min_samples_leaf=5, max_features=0.65, class_weight="balanced", random_state=RANDOM_STATE, n_jobs=self.inner_jobs),
         }
         if LGBMClassifier is not None:
-            m["LightGBM"] = LGBMClassifier(n_estimators=300, learning_rate=0.025, num_leaves=15, max_depth=6, min_child_samples=18, subsample=0.85, colsample_bytree=0.8, reg_alpha=0.2, reg_lambda=2.0, objective="multiclass" if k==3 else "binary", num_class=k if k==3 else None, verbosity=-1, random_state=RANDOM_STATE, n_jobs=-1)
+            m["LightGBM"] = LGBMClassifier(n_estimators=300, learning_rate=0.025, num_leaves=15, max_depth=6, min_child_samples=18, subsample=0.85, colsample_bytree=0.8, reg_alpha=0.2, reg_lambda=2.0, objective="multiclass" if k==3 else "binary", num_class=k if k==3 else None, verbosity=-1, random_state=RANDOM_STATE, n_jobs=self.inner_jobs)
         if XGBClassifier is not None:
-            m["XGBoost"] = XGBClassifier(n_estimators=300, max_depth=4, learning_rate=0.025, min_child_weight=8, subsample=0.85, colsample_bytree=0.8, reg_alpha=0.2, reg_lambda=3.0, objective="multi:softprob" if k==3 else "binary:logistic", num_class=k if k==3 else None, eval_metric="mlogloss" if k==3 else "logloss", tree_method="hist", random_state=RANDOM_STATE, n_jobs=-1)
+            m["XGBoost"] = XGBClassifier(n_estimators=300, max_depth=4, learning_rate=0.025, min_child_weight=8, subsample=0.85, colsample_bytree=0.8, reg_alpha=0.2, reg_lambda=3.0, objective="multi:softprob" if k==3 else "binary:logistic", num_class=k if k==3 else None, eval_metric="mlogloss" if k==3 else "logloss", tree_method="hist", random_state=RANDOM_STATE, n_jobs=self.inner_jobs)
         if CatBoostClassifier is not None:
-            m["CatBoost"] = CatBoostClassifier(iterations=300, depth=6, learning_rate=0.03, loss_function="MultiClass" if k==3 else "Logloss", verbose=False, random_seed=RANDOM_STATE, thread_count=-1, l2_leaf_reg=5.0)
+            m["CatBoost"] = CatBoostClassifier(iterations=300, depth=6, learning_rate=0.03, loss_function="MultiClass" if k==3 else "Logloss", verbose=False, random_seed=RANDOM_STATE, thread_count=self.inner_jobs, l2_leaf_reg=5.0)
         return m
 
     def _validation_splits(self, n: int) -> List[Tuple[int,int]]:
@@ -1417,8 +1420,8 @@ class BaseballBacktest:
                 power=1.5, alpha=0.08, link="log", max_iter=1000
             )),
             ("HistPoisson", lambda: HistGradientBoostingRegressor(loss="poisson", max_iter=180, learning_rate=0.035, max_leaf_nodes=15, l2_regularization=1.5, random_state=42)),
-            ("RFReg", lambda: RandomForestRegressor(n_estimators=180, min_samples_leaf=5, max_features=0.75, random_state=42, n_jobs=-1)),
-            ("ExtraTreesReg", lambda: ExtraTreesRegressor(n_estimators=180, min_samples_leaf=4, max_features=0.8, random_state=42, n_jobs=-1)),
+            ("RFReg", lambda: RandomForestRegressor(n_estimators=180, min_samples_leaf=5, max_features=0.75, random_state=42, n_jobs=self.inner_jobs)),
+            ("ExtraTreesReg", lambda: ExtraTreesRegressor(n_estimators=180, min_samples_leaf=4, max_features=0.8, random_state=42, n_jobs=self.inner_jobs)),
         ]
         scored=[]
         residuals_by_model={}
