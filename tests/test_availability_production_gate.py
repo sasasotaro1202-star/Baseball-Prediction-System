@@ -29,3 +29,23 @@ def test_production_gate_preserves_research_only_competition_block():
     ok, reasons = production_prediction_eligible(_record("https://mlb.com/"))
     assert not ok
     assert "competition_not_production_eligible" in reasons
+
+
+def test_production_gate_rejects_missing_event_start_time():
+    record = _record("https://mlb.com/")
+    ok, reasons = production_prediction_eligible(record)
+    assert not ok
+    assert "event_start_time_missing" in reasons
+
+
+def test_production_gate_rejects_already_started_event():
+    base = _record("https://mlb.com/")
+    record = AvailabilityRecord(
+        **{
+            **base.__dict__,
+            "event_start_at": "2026-09-23T11:00:00+00:00",
+        }
+    )
+    ok, reasons = production_prediction_eligible(record)
+    assert not ok
+    assert "event_already_started_or_not_future" in reasons
