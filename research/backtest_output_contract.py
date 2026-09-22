@@ -20,16 +20,21 @@ from prediction.score_distribution import build_score_outputs
 
 def _repair_scores(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
-    required = {"lambda_home", "lambda_away"}
+    required = {"lambda_home", "lambda_away", "shared_lambda"}
     if not required.issubset(out.columns):
         raise ValueError(f"missing run-distribution columns: {sorted(required - set(out.columns))}")
+    numeric = out[sorted(required)].apply(pd.to_numeric, errors="coerce")
+    if not numeric.applymap(pd.notna).all().all():
+        raise ValueError("run-distribution columns contain non-numeric or missing values")
+    if not (numeric >= 0).all().all():
+        raise ValueError("run-distribution columns must be non-negative")
 
     score_rows: list[dict[str, Any]] = []
     for _, row in out.iterrows():
         generated = build_score_outputs(
             float(row["lambda_home"]),
             float(row["lambda_away"]),
-            shared_lambda=float(row.get("shared_lambda", 0.0)),
+            shared_lambda=float(row["shared_lambda"]),
         )
         score_rows.append(generated)
     out["score1"] = [x["score_candidates"][0]["score"] for x in score_rows]
