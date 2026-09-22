@@ -18,7 +18,8 @@ permissions:
 
 concurrency:
   group: npb-production-prediction
-  cancel-in-progress: false
+  # Only the newest code/data contract should consume the production runner.
+  cancel-in-progress: true
 
 jobs:
   predict:
