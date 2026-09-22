@@ -28,7 +28,14 @@ def test_parser_extracts_six_official_games_without_network():
 
 def test_20260920_has_six_pit_safe_games(monkeypatch):
     import production_npb as p
+    import pandas as pd
     monkeypatch.setattr(p, "fetch_text", lambda url: fixture_html())
+    # The production builder intentionally filters games that have already
+    # started. Freeze the clock before the first fixture game so this
+    # historical fixture tests the PIT/starter contract rather than time gating.
+    monkeypatch.setattr(
+        p, "_utc_now", lambda: pd.Timestamp("2026-09-20 03:00:00+00:00")
+    )
     d=build_target_rows("2026-09-20")
     assert len(d)==6
     assert d["confirmed_starters"].all()
