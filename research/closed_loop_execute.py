@@ -304,7 +304,10 @@ def process_league(league: str, path: Path) -> dict[str, Any]:
     gate = evaluate_locked_holdout(
         base_holdout,
         cand_holdout,
-        policy=GatePolicy(require_uncertainty_check=True),
+        policy=GatePolicy(
+            require_uncertainty_check=True,
+            require_pit_starter_evidence=True,
+        ),
         validation_windows=2,
         calibration_ok=calibration_ok,
         no_future_target_data=True,
