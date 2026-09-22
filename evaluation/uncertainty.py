@@ -11,7 +11,7 @@ seed and reports percentile intervals rather than a single point estimate.
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
-from typing import Mapping
+from typing import Mapping, Sequence
 
 import numpy as np
 
@@ -60,6 +60,7 @@ class PairedBootstrapResult:
     seed: int
     replications: int
     block_size: int
+    block_scheme: str
     baseline: dict[str, float]
     candidate: dict[str, float]
     improvement: dict[str, float]
@@ -75,6 +76,7 @@ def paired_block_bootstrap(
     block_size: int = 30,
     replications: int = 400,
     seed: int = 42,
+    block_labels: Array | Sequence[object] | None = None,
 ) -> PairedBootstrapResult:
     """Estimate uncertainty of candidate-vs-baseline metric differences.
 
@@ -99,8 +101,29 @@ def paired_block_bootstrap(
         "Accuracy": float(candidate["Accuracy"] - baseline["Accuracy"]),
     }
 
-    starts = _block_starts(len(y), block_size)
-    blocks = [np.arange(s, min(s + block_size, len(y)), dtype=int) for s in starts]
+    block_scheme = "fixed_contiguous"
+    if block_labels is None:
+        starts = _block_starts(len(y), block_size)
+        blocks = [np.arange(s, min(s + block_size, len(y)), dtype=int) for s in starts]
+    else:
+        labels = np.asarray(block_labels, dtype=object)
+        if labels.ndim != 1 or len(labels) != len(y):
+            raise ValueError("block_labels must be one-dimensional and match y length")
+        if any(value is None or str(value).strip() == "" or str(value).lower() == "nan" for value in labels):
+            raise ValueError("block_labels must be complete")
+        blocks = []
+        start = 0
+        while start < len(labels):
+            end = start + 1
+            while end < len(labels) and labels[end] == labels[start]:
+                end += 1
+            for sub_start in range(start, end, block_size):
+                sub_end = min(end, sub_start + block_size)
+                blocks.append(np.arange(sub_start, sub_end, dtype=int))
+            start = end
+        if len(blocks) < 2:
+            raise ValueError("block_labels must yield at least two bootstrap blocks")
+        block_scheme = "labeled_contiguous"
     rng = np.random.default_rng(seed)
     samples = {key: [] for key in improvement}
     full_blocks = len(blocks)
@@ -130,6 +153,7 @@ def paired_block_bootstrap(
         seed=int(seed),
         replications=int(replications),
         block_size=int(block_size),
+        block_scheme=block_scheme,
         baseline=baseline,
         candidate=candidate,
         improvement=improvement,
