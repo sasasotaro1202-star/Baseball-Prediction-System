@@ -1,0 +1,49 @@
+name: Baseball CI Continuity Hardening
+
+on:
+  push:
+    branches:
+      - hardening/ci-continuity-and-missing-data-fail-closed
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baseball-ci-continuity-hardening
+  cancel-in-progress: true
+
+jobs:
+  hardening-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install test dependencies
+        run: python -m pip install --disable-pip-version-check --retries 5 --timeout 120 --prefer-binary -r requirements.txt
+      - name: Compile
+        run: python -m compileall -q .
+      - name: Run hardening regression
+        run: |
+          set -euo pipefail
+          python -m pytest -q tests/test_feature_nan_fail_closed.py tests/test_walkforward_fail_closed.py tests/test_probability_fail_closed.py
+      - name: Verify closed-loop trigger policy
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          text = Path(".github/workflows/baseball_closed_loop.yml").read_text(encoding="utf-8")
+          block = text.split("\non:", 1)[1]
+          if "\n  push:" in block:
+              raise SystemExit("closed-loop must not be push-triggered; code pushes must not cancel active OOS")
+          if "cancel-in-progress: false" not in text:
+              raise SystemExit("closed-loop concurrency must preserve active evidence runs")
+          print("closed-loop trigger continuity guard: PASS")
+          PY
