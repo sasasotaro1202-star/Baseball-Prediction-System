@@ -496,17 +496,24 @@ def predict(target_date: str, data_dir: str) -> dict:
     try:
         games=build_target_rows(target_date)
     except RuntimeError as exc:
-        # A missing official date section means NPB has not published the
-        # target day's announced starters yet. Fail closed, but persist a
-        # machine-readable blocked state so scheduled retries can continue.
-        if "Official NPB starter page does not contain" not in str(exc):
+        # Missing/insufficient official starter evidence is a valid fail-closed
+        # production state. Persist it as BLOCKED_STARTERS so schedulers can
+        # retry later without converting expected data unavailability into an
+        # application failure. Ambiguity/corruption still raises below.
+        message = str(exc)
+        blocked_markers = (
+            "Official NPB starter page does not contain",
+            "PIT starter gate failed: expected at least",
+            "PIT starter gate failed: no official game times found.",
+        )
+        if not any(marker in message for marker in blocked_markers):
             raise
         result={
             "schema_version":"npb-production-v1", "target_date":target_date,
             "execution_status":"BLOCKED_STARTERS", "pit_status":"NOT_RUN",
             "starter_gate":"BLOCKED", "model_status":"NOT_RUN",
             "git_commit":__import__("os").environ.get("GITHUB_SHA","unknown"),
-            "predictions":[], "block_reason":str(exc),
+            "predictions":[], "block_reason":message,
             "prediction_generated_at":datetime.now(timezone.utc).isoformat(),
         }
         out=ROOT/"results"/f"npb_production_{target_date}.json"; out.parent.mkdir(exist_ok=True)
