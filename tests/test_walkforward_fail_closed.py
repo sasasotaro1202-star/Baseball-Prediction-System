@@ -73,3 +73,36 @@ def test_walkforward_invalidates_checkpoint_on_input_fingerprint_mismatch(tmp_pa
         bt.run_walkforward(games, "MLB")
 
     assert any(row.get("type") == "walkforward_incomplete" for row in bt.audit)
+
+
+def test_build_features_freezes_state_within_same_timestamp(tmp_path, monkeypatch):
+    bt = BaseballBacktest(tmp_path)
+    t0 = pd.Timestamp("2026-03-01T12:00:00Z")
+    games = pd.DataFrame({
+        "league": ["MLB", "MLB", "MLB"],
+        "game_id": ["g0", "g1", "g2"],
+        "datetime": [t0, t0, t0 + pd.Timedelta(hours=1)],
+        "home": ["H0", "H1", "H2"],
+        "away": ["A0", "A1", "A2"],
+        "home_score": [1.0, 2.0, 3.0],
+        "away_score": [0.0, 1.0, 0.0],
+    })
+    seen = []
+
+    monkeypatch.setattr(bt, "load_npb_player_features", lambda: pd.DataFrame())
+
+    def fake_match_features(row):
+        seen.append((str(row["game_id"]), len(bt.states)))
+        return {"state_count": float(len(bt.states))}
+
+    def fake_update_after_game(row):
+        bt.states[(str(row["league"]), str(row["game_id"]))] = object()
+
+    monkeypatch.setattr(bt, "match_features", fake_match_features)
+    monkeypatch.setattr(bt, "update_after_game", fake_update_after_game)
+
+    X, y, meta = bt.build_features(games)
+
+    assert list(X["state_count"]) == [0.0, 0.0, 2.0]
+    assert seen == [("g0", 0), ("g1", 0), ("g2", 2)]
+    assert any(row.get("type") == "same_timestamp_state_freeze" for row in bt.audit)
