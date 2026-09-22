@@ -341,6 +341,10 @@ def run_npb_candidate_cycle(
     else:
         selected_model_name, selected_half_life = raw_variant
 
+    # Development OOS rows are the only data used to fit challenger
+    # calibration/stacking parameters.
+    y_dev = y[dev_start:holdout_start]
+
     # Apply temperature calibration only after the model/recency variant has
     # been selected on Development OOS. Calibration itself never sees holdout.
     calibrated_specs: dict[str, tuple[str, float]] = {}
@@ -374,7 +378,6 @@ def run_npb_candidate_cycle(
                 "models": base_stack_names,
                 "error": f"{type(exc).__name__}: {exc}",
             })
-    y_dev = y[dev_start:holdout_start]
     calibration_candidates = candidates[:max(5, config.recency_variant_top_k + 1)]
     for name, _metrics0 in calibration_candidates:
         pred = development_predictions.get(name)
