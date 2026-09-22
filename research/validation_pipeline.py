@@ -33,6 +33,7 @@ def run_validation_pipeline(
     holdout_hilo_candidate: Mapping[str, float] | None = None,
     league: str | None = None,
     policy: GatePolicy = GatePolicy(),
+    holdout_uncertainty: Mapping[str, object] | None = None,
 ) -> ValidationRecord:
     """Run the full promotion state machine.
 
@@ -42,10 +43,23 @@ def run_validation_pipeline(
     configured in GatePolicy.
     """
     locked = candidate_lock(development_metrics=development_metrics, candidate_id=candidate_id)
+
+    # Production-style validation cannot weaken uncertainty checking. MLB also
+    # always requires authoritative starter PIT evidence regardless of caller
+    # defaults.
+    effective_policy = GatePolicy(
+        **{
+            **asdict(policy),
+            "require_uncertainty_check": True,
+            "require_pit_starter_evidence": bool(
+                policy.require_pit_starter_evidence or league == "MLB"
+            ),
+        }
+    )
     result = evaluate_locked_holdout(
         holdout_baseline,
         holdout_candidate,
-        policy=policy,
+        policy=effective_policy,
         validation_windows=validation_windows,
         calibration_ok=calibration_ok,
         no_future_target_data=no_future_target_data,
@@ -56,6 +70,7 @@ def run_validation_pipeline(
         baseline_hilo=holdout_hilo_baseline,
         candidate_hilo=holdout_hilo_candidate,
         league=league,
+        holdout_uncertainty=holdout_uncertainty,
     )
     return ValidationRecord(
         candidate_id=candidate_id,
