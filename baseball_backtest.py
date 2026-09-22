@@ -1038,6 +1038,16 @@ class BaseballBacktest:
         self._fit_model(best,X,y,self._sample_weights(len(X)),league)
         return best_name,best,{name:float(sc) for sc,name in scores}
 
+    def _chronological_regime_labels(self, X: pd.DataFrame, splits):
+        """Build validation regime labels from each split's training prefix only."""
+        labels = {}
+        for cut, val in splits:
+            if cut <= 0 or val <= 0 or cut + val > len(X):
+                raise ValueError("invalid chronological regime split")
+            router = RegimeRouter().fit(X.iloc[:cut])
+            labels[(cut, val)] = router.labels(X.iloc[cut:cut + val])
+        return labels
+
     def fit_ensemble(self, X: pd.DataFrame, y: np.ndarray, league: str, *, fast_oos: bool = False):
         """Fit an ensemble with leakage-safe regime-specific routing.
 
@@ -1055,11 +1065,7 @@ class BaseballBacktest:
         # walk-forward training window. This router never sees the eventual
         # prediction target, and its labels are used consistently across all
         # validation models.
-        router=RegimeRouter().fit(X)
-        validation_regime_labels = {
-            (cut, val): router.labels(X.iloc[cut:cut+val])
-            for cut, val in splits
-        }
+        validation_regime_labels = self._chronological_regime_labels(X, splits)
         regime_losses={}
         regime_counts={}
         for cut, val in splits:
@@ -1220,20 +1226,16 @@ class BaseballBacktest:
             fitted.append((name,mh,ma)); weights.append(w)
         weights=np.asarray(weights,float); weights/=weights.sum()
 
-        # Freeze one router from the complete training prefix. Its quantile
-        # boundaries never use validation targets and are the same definition
-        # used for every validation window and the final target prediction.
-        router=RegimeRouter().fit(X)
-        frozen_labels=router.labels(X)
+        # Validation regime boundaries are fitted independently from each
+        # chronological training prefix. The final router for deployment is
+        # fitted on the complete training prefix only after validation.
+        validation_regime_labels = self._chronological_regime_labels(X, splits)
         regime_losses={}
         regime_counts={}
         for tr, va in splits:
             if time.time() - self.started_at >= self.time_budget_sec:
                 break
-            # Validation splits are represented as (cut, length), so slice by
-            # their actual row interval. The router was fit only on the current
-            # training prefix X, not on future target rows.
-            labels=frozen_labels[tr:tr+va]
+            labels=validation_regime_labels[(tr, va)]
             for regime in np.unique(labels):
                 idx=np.flatnonzero(labels==regime)
                 if len(idx) == 0:
@@ -1258,9 +1260,10 @@ class BaseballBacktest:
         residual_h,residual_a=residuals_by_model.get(best_score_model,([],[]))
         shared_lambda=estimate_shared_lambda(residual_h,residual_a)
         filtered={r:{n:float(np.mean(v)) for n,v in by.items() if n in top_names and v} for r,by in regime_losses.items()}
-        regime_weights=router.weights(global_losses,filtered,regime_counts) if filtered else {}
+        final_router=RegimeRouter().fit(X)
+        regime_weights=final_router.weights(global_losses,filtered,regime_counts) if filtered else {}
         return {"models":fitted,"weights":weights,"scores":global_losses,
-                "regime_router":router,"regime_weights":regime_weights,"shared_lambda":shared_lambda}
+                "regime_router":final_router,"regime_weights":regime_weights,"shared_lambda":shared_lambda}
 
     def predict_scores(self, fitted, xrow: pd.DataFrame, league: str) -> Tuple[float,float,float]:
         if fitted is None:
