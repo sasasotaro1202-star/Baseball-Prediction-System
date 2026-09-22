@@ -212,7 +212,31 @@ def run_one(league: str, data_dir: Path, *, mlb_start: int, mlb_end: int, retrie
                 games = bt.load_mlb(mlb_start, mlb_end)
                 if games.empty:
                     raise RuntimeError("MLB loader produced zero games")
-                games, starter_audit = _filter_confirmed_starters(games, league)
+                # Historical MLB starter identities are excluded unless explicit
+                # announcement-time PIT evidence exists. Research OOS must still
+                # be able to run on the full chronological game set; production
+                # prediction/adoption separately fails closed on missing starter PIT.
+                pit_safe = (
+                    "starter_evidence_status" in games.columns
+                    and bool((games["starter_evidence_status"] == "pit_safe").all())
+                    and bool(games.get("confirmed_starters", False).all())
+                )
+                if pit_safe:
+                    games, starter_audit = _filter_confirmed_starters(games, league)
+                else:
+                    games = games.copy()
+                    starter_audit = {
+                        "before": int(len(games)),
+                        "after": int(len(games)),
+                        "excluded": 0,
+                        "coverage": 0.0,
+                        "status": "research_without_starter_pit",
+                    }
+                    for c in ("home_starter", "away_starter"):
+                        if c in games.columns:
+                            games[c] = ""
+                    if "confirmed_starters" in games.columns:
+                        games["confirmed_starters"] = False
                 result["starter_filter"] = starter_audit
                 target_quality = _validate_targets(games, "MLB")
                 frame = bt.run_walkforward(games, "MLB")
