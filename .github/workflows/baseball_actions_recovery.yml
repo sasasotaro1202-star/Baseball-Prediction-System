@@ -49,8 +49,9 @@ jobs:
           echo "Run=${RUN_ID} attempt=${RUN_ATTEMPT} conclusion=${{ github.event.workflow_run.conclusion }}"
 
           if [ "${RUN_ATTEMPT}" -ge 3 ]; then
-            echo 'Recovery limit reached; refusing another automatic rerun.'
-            exit 0
+            echo 'Recovery limit reached; refusing another automatic rerun.' >&2
+            echo 'Recovery terminal state: FAILED_WITH_LIMIT; parent failure remains authoritative.' >&2
+            exit 1
           fi
 
           failed_steps=''
@@ -97,13 +98,15 @@ jobs:
           done <<< "${failed_steps}"
 
           if [ "${retryable}" -eq 0 ]; then
-            echo 'No retryable transient failure detected; preserving the failure for diagnosis.'
-            exit 0
+            echo 'No retryable transient failure detected; preserving the failure for diagnosis.' >&2
+            echo 'Recovery terminal state: FAILED_NO_RETRYABLE_STEP; parent failure remains authoritative.' >&2
+            exit 1
           fi
 
           if [ "${non_retryable}" -ne 0 ]; then
             echo 'Mixed transient and deterministic failures detected; refusing automatic rerun.' >&2
-            exit 0
+            echo 'Recovery terminal state: FAILED_MIXED_FAILURES; parent failure remains authoritative.' >&2
+            exit 1
           fi
 
           # The recovery API call itself can fail transiently. Retry the
@@ -115,7 +118,8 @@ jobs:
             fi
             if [ "${recovery_attempt}" -eq 3 ]; then
               echo 'Recovery request failed after 3 attempts; preserving the original failure signal.' >&2
-              exit 0
+              echo 'Recovery terminal state: FAILED_RERUN_REQUEST; parent failure remains authoritative.' >&2
+              exit 1
             fi
             sleep_seconds=$((recovery_attempt * 10))
             echo "Recovery API request failed; retrying in ${sleep_seconds}s..." >&2
