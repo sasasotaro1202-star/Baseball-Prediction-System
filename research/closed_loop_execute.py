@@ -138,9 +138,21 @@ def fit_temperature_grid(logits: np.ndarray, y: np.ndarray) -> float:
 
 
 def apply_temperature(p: np.ndarray, temperature: float) -> np.ndarray:
-    z = np.log(clip_probs(p))
+    temperature = float(temperature)
+    if not np.isfinite(temperature) or temperature <= 0.0:
+        raise ValueError("temperature must be finite and strictly positive")
+    arr = np.asarray(p, dtype=float)
+    if arr.ndim != 2 or len(arr) == 0:
+        raise ValueError("probability matrix must be a non-empty 2D array")
+    if not np.isfinite(arr).all() or (arr < 0.0).any():
+        raise ValueError("probability matrix contains invalid values")
+    row_sums = arr.sum(axis=1)
+    if not np.isfinite(row_sums).all() or (row_sums <= 0.0).any():
+        raise ValueError("probability matrix contains non-positive row sums")
+    arr = arr / row_sums[:, None]
+    z = np.log(clip_probs(arr))
     z -= z.max(axis=1, keepdims=True)
-    return clip_probs(np.exp(z / max(float(temperature), 1e-6)))
+    return clip_probs(np.exp(z / temperature))
 
 
 def score_metrics(df: pd.DataFrame, y: np.ndarray, p: np.ndarray, league: str) -> dict[str, float]:
