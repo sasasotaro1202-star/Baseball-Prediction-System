@@ -6,6 +6,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CLOSED_LOOP = ROOT / ".github" / "workflows" / "baseball_closed_loop.yml"
 RECOVERY = ROOT / ".github" / "workflows" / "baseball_actions_recovery.yml"
 X_RESEARCH = ROOT / ".github" / "workflows" / "baseball_x_research.yml"
+AUTOPILOT = ROOT / ".github" / "workflows" / "baseball_9h_autopilot.yml"
+SUPERVISOR = ROOT / ".github" / "workflows" / "baseball_24h_supervisor.yml"
 
 
 def _assert_official_actions_are_immutable(text: str) -> None:
@@ -100,3 +102,33 @@ def test_closed_loop_uses_shared_temporal_calibration_contract():
     assert "fit_temperature(" in text
     assert "atomic_write_json" in text
     assert "source_fingerprints" in text
+
+
+def test_9h_autopilot_hands_off_evidence_to_final_phase_and_hides_no_failures():
+    text = AUTOPILOT.read_text(encoding="utf-8")
+    _assert_official_actions_are_immutable(text)
+
+    assert "actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16" in text
+    assert "Restore Phase 2 OOS evidence" in text
+    assert "Restore Phase 3 candidate evidence" in text
+    assert "Verify evidence handoff before final governance" in text
+    assert "test -s phase2-evidence/results/checkpoints/npb_walkforward.csv" in text
+    assert "test -s phase2-evidence/results/checkpoints/mlb_walkforward.csv" in text
+    assert 'test -s phase2-evidence/results/checkpoints/npb_walkforward.version' in text
+    assert 'test -s phase2-evidence/results/checkpoints/mlb_walkforward.version' in text
+    assert "Phase 2 OOS and Phase 3 candidate evidence handoff verified." in text
+    assert "|| true" not in text
+    assert "continue-on-error" not in text
+
+
+def test_24h_supervisor_avoids_deterministic_failure_retry_loop():
+    text = SUPERVISOR.read_text(encoding="utf-8")
+    _assert_official_actions_are_immutable(text)
+
+    assert "Deterministic failures must not enter an unbounded retry loop." in text
+    assert "cooldown active" in text
+    assert "baseball_actions_recovery.yml owns transient failed-job retries" in text
+    assert "gh run rerun" not in text
+    assert "gh workflow run" in text
+    assert "dispatch verification" in text
+    assert "latest_age_minutes" in text
