@@ -14,6 +14,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
+from core.atomic_io import atomic_write_json
 from typing import Any
 
 from core.pit_revision import detect_revisions
@@ -319,7 +320,7 @@ def main() -> int:
     report = lifecycle_report()
     path = Path("results/lifecycle_governance.json")
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_json(path, report)
     print(json.dumps(report, ensure_ascii=False, indent=2))
     # Governance is intentionally non-destructive: it reports blockers but does
     # not pretend that missing evidence is success.
