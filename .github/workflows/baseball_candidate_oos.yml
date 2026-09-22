@@ -3,6 +3,7 @@ name: Baseball Candidate OOS Validation
 # Trusted-main workflow: candidate selection is OOS-only; holdout is locked before evaluation.
 # Candidate calibration uses the same shared evaluation.calibration contract as closed-loop governance.
 # Shared calibration grid and multi-fold ensemble calibration were refreshed on 2026-09-22; candidate OOS is re-run from this commit.
+# Candidate screening must follow the newest main calibration/model contract before any holdout evidence is considered.
 
 on:
   workflow_dispatch:
