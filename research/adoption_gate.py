@@ -127,7 +127,13 @@ def evaluate_locked_holdout(
         reasons.append("future_target_data_not_excluded")
     if policy.require_reproducible_candidate and not reproducible:
         reasons.append("candidate_not_reproducible")
-    if policy.require_pit_starter_evidence and not pit_starter_evidence_ok:
+    # Production adoption for MLB must always prove prediction-time starter
+    # evidence. Callers cannot weaken this requirement through a permissive
+    # default GatePolicy.
+    effective_pit_required = bool(
+        policy.require_pit_starter_evidence or league == "MLB"
+    )
+    if effective_pit_required and not pit_starter_evidence_ok:
         reasons.append("starter_pit_evidence_not_verified")
 
     uncertainty_result: dict[str, object] = {}
