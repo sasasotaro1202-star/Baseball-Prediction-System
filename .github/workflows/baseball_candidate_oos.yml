@@ -2,6 +2,7 @@ name: Baseball Candidate OOS Validation
 # Phase 1 screening: NPB and MLB run concurrently; production defaults remain unchanged.
 # Trusted-main workflow: candidate selection is OOS-only; holdout is locked before evaluation.
 # Candidate calibration uses the same shared evaluation.calibration contract as closed-loop governance.
+# Shared calibration grid and multi-fold ensemble calibration were refreshed on 2026-09-22; candidate OOS is re-run from this commit.
 
 on:
   workflow_dispatch:
