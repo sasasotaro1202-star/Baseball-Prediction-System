@@ -75,3 +75,21 @@ def test_router_rejects_invalid_loss_evidence():
         router.weights({"a": 1.0}, {"r": {"a": float("nan")}}, {"r": 40})
     with pytest.raises(ValueError):
         router.weights({"a": 1.0}, {"r": {"a": 1.0}}, {"r": -1})
+
+
+
+def test_weight_power_changes_concentration_without_breaking_probability_contract():
+    import numpy as np
+    from research.regime_router import RegimeRouter
+
+    router = RegimeRouter(min_regime_rows=1, shrinkage=0.0, min_relative_edge=0.0)
+    global_losses = {"A": 0.5, "B": 1.0}
+    regime_losses = {"s0_e0": {"A": 0.5, "B": 1.0}}
+    counts = {"s0_e0": 100}
+
+    w1 = router.weights(global_losses, regime_losses, counts, power=1.0)["s0_e0"]
+    w2 = router.weights(global_losses, regime_losses, counts, power=2.0)["s0_e0"]
+
+    assert np.isclose(sum(w1.values()), 1.0)
+    assert np.isclose(sum(w2.values()), 1.0)
+    assert w2["A"] > w1["A"] > w1["B"] > w2["B"]
