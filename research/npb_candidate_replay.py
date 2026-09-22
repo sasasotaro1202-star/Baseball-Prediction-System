@@ -117,15 +117,15 @@ def _target_metrics(
     low_high_prob: list[float] = []
 
     for i in range(len(games_holdout)):
-        lam_h, lam_a, _shared = bt.predict_scores(score_fit, X_holdout.iloc[[i]], "NPB")
+        lam_h, lam_a, shared = bt.predict_scores(score_fit, X_holdout.iloc[[i]], "NPB")
         split = float(np.clip(p[i, 0] - p[i, 2], -0.35, 0.35))
         lam_h *= 1.0 + 0.08 * split
         lam_a *= 1.0 - 0.08 * split
         expected_home.append(lam_h)
         expected_away.append(lam_a)
-        choices = score_candidates(lam_h, lam_a, 4)
+        choices = score_candidates(lam_h, lam_a, shared)
         score_choices.append(choices)
-        low, high = low_high_probs(lam_h, lam_a)
+        low, high = low_high_probs(lam_h, lam_a, shared)
         low_high_prob.append(high)
         low_high_actual.append(int(home_true[i] + away_true[i] >= 7))
 
