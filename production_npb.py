@@ -596,6 +596,7 @@ def robust_target_lambdas(bt: BaseballBacktest, hist: pd.DataFrame, row: pd.Seri
     lh=max(0.8,min(6.0,lh)); la=max(0.8,min(6.0,la))
     return lh,la,0.0
 
+# Production starter ingestion hardening is regression-tested; preserve strict PIT blocking.
 def predict(target_date: str, data_dir: str) -> dict:
     try:
         games=build_target_rows(target_date)
