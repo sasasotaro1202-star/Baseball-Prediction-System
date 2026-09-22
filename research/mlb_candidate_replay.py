@@ -172,8 +172,16 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
                             config: MLBReplayConfig = MLBReplayConfig()) -> dict[str, Any]:
     bt = BaseballBacktest(Path(data_dir))
     games = bt.load_mlb(mlb_start, mlb_end)
-    if __import__("os").getenv("PIT_SAFE_STARTER_DATA", "0") != "1":
-        games = games.copy()
+    games = games.copy()
+    starter_pit_safe = (
+        __import__("os").getenv("PIT_SAFE_STARTER_DATA", "0") == "1"
+        and "starter_evidence_status" in games.columns
+        and bool((games["starter_evidence_status"] == "pit_safe").all())
+        and "confirmed_starters" in games.columns
+        and bool(games["confirmed_starters"].all())
+    )
+    if not starter_pit_safe:
+        # Candidate selection must never use hindsight starter identities.
         games["home_starter"] = ""
         games["away_starter"] = ""
         games["confirmed_starters"] = False
