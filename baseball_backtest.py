@@ -1101,6 +1101,58 @@ class BaseballBacktest:
             labels[(cut, val)] = router.labels(X.iloc[cut:cut + val])
         return labels
 
+    def _validation_error_redundancy(self, validation_predictions, y: np.ndarray, model_names) -> Dict[str, float]:
+        """Estimate OOS model redundancy from per-row negative log-loss.
+
+        All inputs come from chronological validation folds whose models were
+        fitted strictly before the evaluated rows. The result is diagnostic
+        and is used only in the low-dimensional ensemble-weight search.
+        """
+        names = tuple(sorted(set(str(x) for x in model_names)))
+        if len(names) < 2:
+            return {name: 0.0 for name in names}
+        chunks = {name: [] for name in names}
+        for (cut, val) in sorted(validation_predictions):
+            by_model = validation_predictions[(cut, val)]
+            yv = np.asarray(y[cut:cut + val], dtype=int)
+            for name in names:
+                p = by_model.get(name)
+                if p is None:
+                    continue
+                p = np.asarray(p, dtype=float)
+                if p.ndim != 2 or len(p) != len(yv) or not np.isfinite(p).all():
+                    continue
+                if (p < 0).any() or np.any(p.sum(axis=1) <= 0):
+                    continue
+                p = p / p.sum(axis=1, keepdims=True)
+                row_loss = -np.log(np.clip(p[np.arange(len(yv)), yv], 1e-12, 1.0))
+                if np.isfinite(row_loss).all():
+                    chunks[name].append(row_loss)
+        usable = [name for name in names if chunks[name]]
+        if len(usable) < 2:
+            return {name: 0.0 for name in names}
+        matrix = []
+        usable_names = []
+        for name in usable:
+            values = np.concatenate(chunks[name])
+            matrix.append(values)
+            usable_names.append(name)
+        try:
+            corr = np.corrcoef(np.vstack(matrix))
+            if corr.ndim != 2 or corr.shape[0] != len(usable_names):
+                raise ValueError("invalid redundancy correlation matrix")
+        except Exception:
+            return {name: 0.0 for name in names}
+        redundancy = {name: 0.0 for name in names}
+        for i, name in enumerate(usable_names):
+            others = [float(corr[i, j]) for j in range(len(usable_names)) if j != i and np.isfinite(corr[i, j])]
+            if others:
+                # Positive correlation means similar row-level failure
+                # patterns. Negative/undefined correlation is not treated as
+                # evidence to reward a model beyond its OOS loss.
+                redundancy[name] = float(np.clip(np.mean(others), 0.0, 1.0))
+        return redundancy
+
     def fit_ensemble(self, X: pd.DataFrame, y: np.ndarray, league: str, *, fast_oos: bool = False):
         """Fit an ensemble with leakage-safe regime-specific routing.
 
@@ -1156,74 +1208,105 @@ class BaseballBacktest:
         # strongly on lower-loss models. The power is selected only from
         # chronological validation predictions, never from the future target.
         weight_power=1.0
+        diversity_lambda=0.0
         power_grid=(0.50,0.75,1.00,1.25,1.50,2.00)
-        if not fast_oos and validation_predictions:
-            best_key=(float("inf"), abs(weight_power-1.0))
-            for power in power_grid:
-                try:
-                    trial_weights=RegimeRouter().fit(X)
-                    # Keep the same regime-loss evidence and regime sample-size
-                    # shrinkage; only vary the inverse-loss concentration.
-                    wmap=trial_weights.weights(
-                        global_losses,
-                        {
-                            str(regime): {
-                                name: float(np.mean(vals))
-                                for name, vals in by_model.items()
-                                if name in top_names and vals
-                            }
-                            for regime, by_model in regime_losses.items()
-                        },
-                        regime_counts,
-                        power=float(power),
-                    )
-                    trial_ll_parts=[]
-                    # Each validation fold has model predictions trained strictly
-                    # before that fold. Evaluate the candidate weighting on exactly
-                    # those OOS rows.
-                    for (cut,val), by_model_pred in validation_predictions.items():
-                        labels=validation_regime_labels[(cut,val)]
-                        yv=np.asarray(y[cut:cut+val],dtype=int)
-                        q=np.zeros((len(yv),k))
-                        for label in np.unique(labels):
-                            idx=np.flatnonzero(labels==label)
-                            regime_w=wmap.get(str(label), {})
-                            for name in top_names:
-                                pred=by_model_pred.get(name)
-                                if pred is not None:
-                                    w=float(regime_w.get(name,0.0))
-                                    if w:
-                                        q[idx] += w*pred[idx]
-                        q=np.apply_along_axis(clip_prob,1,q)
-                        trial_ll_parts.append(log_loss(yv,q,labels=list(range(k))))
-                    if trial_ll_parts:
-                        key=(float(np.mean(trial_ll_parts)), abs(float(power)-1.0))
-                        if key < best_key:
-                            best_key=key
-                            weight_power=float(power)
-                except Exception as exc:
-                    self.audit.append({
-                        "type":"ensemble_weight_power_error",
-                        "power":float(power),
-                        "error":str(exc),
-                    })
+        diversity_grid=(0.0,0.05,0.10,0.15)
+        top_names_sorted=tuple(sorted(top_names))
+        redundancy=self._validation_error_redundancy(
+            validation_predictions, y, top_names_sorted
+        ) if validation_predictions else {name: 0.0 for name in top_names_sorted}
 
+        def _adjust_losses(loss_map, lam):
+            return {
+                name: float(loss) * (
+                    1.0 + float(lam) * float(redundancy.get(name, 0.0))
+                )
+                for name, loss in loss_map.items()
+            }
+
+        if not fast_oos and validation_predictions:
+            best_key=(float("inf"), abs(weight_power-1.0), abs(diversity_lambda))
+            for power in power_grid:
+                for lam in diversity_grid:
+                    try:
+                        adjusted_global_losses=_adjust_losses(global_losses, lam)
+                        adjusted_regime_losses={
+                            str(regime): _adjust_losses(
+                                {
+                                    name: float(np.mean(vals))
+                                    for name, vals in by_model.items()
+                                    if name in top_names and vals
+                                },
+                                lam,
+                            )
+                            for regime, by_model in regime_losses.items()
+                        }
+                        trial_weights=RegimeRouter().fit(X)
+                        wmap=trial_weights.weights(
+                            adjusted_global_losses,
+                            adjusted_regime_losses,
+                            regime_counts,
+                            power=float(power),
+                        )
+                        trial_ll_parts=[]
+                        for (cut,val), by_model_pred in validation_predictions.items():
+                            labels=validation_regime_labels[(cut,val)]
+                            yv=np.asarray(y[cut:cut+val],dtype=int)
+                            q=np.zeros((len(yv),k))
+                            for label in np.unique(labels):
+                                idx=np.flatnonzero(labels==label)
+                                regime_w=wmap.get(str(label), {})
+                                for name in top_names_sorted:
+                                    pred=by_model_pred.get(name)
+                                    if pred is not None:
+                                        w=float(regime_w.get(name,0.0))
+                                        if w:
+                                            q[idx] += w*pred[idx]
+                            q=np.apply_along_axis(clip_prob,1,q)
+                            trial_ll_parts.append(log_loss(yv,q,labels=list(range(k))))
+                        if trial_ll_parts:
+                            key=(float(np.mean(trial_ll_parts)), abs(float(power)-1.0), abs(float(lam)))
+                            if key < best_key:
+                                best_key=key
+                                weight_power=float(power)
+                                diversity_lambda=float(lam)
+                    except Exception as exc:
+                        self.audit.append({
+                            "type":"ensemble_weight_search_error",
+                            "power":float(power),
+                            "diversity_lambda":float(lam),
+                            "error":str(exc),
+                        })
+        effective_global_losses=_adjust_losses(global_losses, diversity_lambda)
         fitted=[]
         for (loss,name) in top:
             model=models[name]
             self._fit_model(model,X,y,self._sample_weights(len(X)),league)
-            fitted.append((model,float(1.0/max(loss,1e-6)**weight_power),name))
+            eff_loss=float(effective_global_losses.get(name,loss))
+            fitted.append((model,float(1.0/max(eff_loss,1e-6)**weight_power),name))
+        self._ensemble_diversity_lambda=float(diversity_lambda)
+        self._ensemble_model_redundancy=dict(redundancy)
+        self.audit.append({
+            "type":"ensemble_diversity_selection",
+            "lambda":float(diversity_lambda),
+            "model_redundancy":{k:float(v) for k,v in sorted(redundancy.items())},
+            "weight_power":float(weight_power),
+            "validation_rows":int(sum(len(v) for by in validation_predictions.values() for v in by.values()) / max(len(top_names),1)) if validation_predictions else 0,
+        })
         inv=np.asarray([w for _,w,_ in fitted],dtype=float); inv/=max(inv.sum(),1e-12)
         fitted=[(m,float(w),n) for (m,_,n),w in zip(fitted,inv)]
         # Regime-specific routing uses only prefix-trained OOS predictions
         # collected above. Never re-evaluate validation rows with models fitted
         # on the complete X window, which would contaminate the routing signal.
         filtered_regime_losses={
-            str(regime): {
-                name: float(np.mean(vals))
-                for name, vals in by_model.items()
-                if name in top_names and vals
-            }
+            str(regime): _adjust_losses(
+                {
+                    name: float(np.mean(vals))
+                    for name, vals in by_model.items()
+                    if name in top_names and vals
+                },
+                diversity_lambda,
+            )
             for regime, by_model in regime_losses.items()
         }
         # The deployment router is fit on the complete current training prefix
@@ -1231,7 +1314,7 @@ class BaseballBacktest:
         router=RegimeRouter().fit(X)
         self._regime_router=router
         self._regime_weights=router.weights(
-            global_losses,
+            effective_global_losses,
             filtered_regime_losses,
             regime_counts,
             power=float(weight_power),
