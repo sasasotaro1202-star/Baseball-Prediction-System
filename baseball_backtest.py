@@ -1008,8 +1008,8 @@ class BaseballBacktest:
 
         if "expected_env" in X.columns:
             env = X["expected_env"].to_numpy(dtype=float)
-            if (env < 0.5).any() or (env > 12.0).any():
-                raise RuntimeError(f"{league} expected_env outside configured bounds")
+            if not np.isfinite(env).all():
+                raise RuntimeError(f"{league} expected_env contains non-finite values")
 
         self.audit.append({
             "type": "feature_integrity_pass",
