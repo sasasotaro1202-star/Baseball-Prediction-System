@@ -252,7 +252,7 @@ jobs:
           BASEBALL_TIME_BUDGET_SEC: '3600'
           NPB_RETRAIN_EVERY: '150'
           MLB_ENRICH_STARTERS: '0'
-        run: python -u research_runner_v6.py --league BOTH --mlb-start 2020 --mlb-end 2026 --retries 3
+        run: python -u research_runner_v6.py --league BOTH --mlb-start 2020 --mlb-end 2026 --retries 0
 
       - name: Save chronological OOS checkpoints
         if: always()
