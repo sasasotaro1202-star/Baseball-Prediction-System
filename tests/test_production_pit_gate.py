@@ -37,3 +37,18 @@ def test_missing_starter_is_rejected():
     r["away_starter"] = ""
     ok, reason = check_game(r, CUTOFF)
     assert not ok and reason == "away_starter_missing"
+
+
+def test_cli_rejects_empty_evidence(tmp_path):
+    import json
+    import subprocess
+    import sys
+    src = tmp_path / "empty.json"
+    src.write_text(json.dumps({"games": []}), encoding="utf-8")
+    proc = subprocess.run(
+        [sys.executable, "production_pit_gate.py", str(src), "--cutoff", CUTOFF],
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode != 0
+    assert "zero games" in (proc.stderr + proc.stdout).lower()
