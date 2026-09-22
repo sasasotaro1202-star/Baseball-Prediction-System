@@ -56,7 +56,7 @@ try:
     from catboost import CatBoostClassifier
 except Exception:
     CatBoostClassifier = None
-from sklearn.linear_model import LogisticRegression, PoissonRegressor
+from sklearn.linear_model import LogisticRegression, PoissonRegressor, TweedieRegressor
 from sklearn.metrics import accuracy_score, brier_score_loss, log_loss, mean_absolute_error, roc_auc_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -1189,6 +1189,12 @@ class BaseballBacktest:
         splits = self._validation_splits(len(X))
         specs = [
             ("Poisson", lambda: PoissonRegressor(alpha=0.15, max_iter=1000)),
+            # Tweedie adds a flexible mean-variance relationship for run counts.
+            # It is a challenger only; validation and the locked holdout decide
+            # whether it contributes to the deployed score ensemble.
+            ("Tweedie", lambda: TweedieRegressor(
+                power=1.5, alpha=0.08, link="log", max_iter=1000
+            )),
             ("HistPoisson", lambda: HistGradientBoostingRegressor(loss="poisson", max_iter=180, learning_rate=0.035, max_leaf_nodes=15, l2_regularization=1.5, random_state=42)),
             ("RFReg", lambda: RandomForestRegressor(n_estimators=180, min_samples_leaf=5, max_features=0.75, random_state=42, n_jobs=-1)),
             ("ExtraTreesReg", lambda: ExtraTreesRegressor(n_estimators=180, min_samples_leaf=4, max_features=0.8, random_state=42, n_jobs=-1)),
