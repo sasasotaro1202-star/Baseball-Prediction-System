@@ -30,6 +30,16 @@ class RegimeRouter:
             )) and ("diff" in c.lower() or c.lower().startswith("d_") or "proxy" in c.lower())]
             if not preferred:
                 preferred = [c for c in cols if "diff" in c.lower()]
+        elif kind == "maturity":
+            # Early-season / sparse-history games behave differently from
+            # established teams. Route by information maturity without using
+            # targets: lower team match counts imply higher parameter uncertainty.
+            preferred = [c for c in cols if c.lower() in {"h_matches", "a_matches"}]
+            if not preferred:
+                preferred = [c for c in cols if "matches" in c.lower() and c.lower().startswith(("h_", "a_"))]
+            if preferred:
+                vals = X[preferred].apply(pd.to_numeric, errors="coerce")
+                return vals.min(axis=1).fillna(0.0)
         else:
             preferred = [c for c in cols if any(k in c.lower() for k in (
                 "expected_env", "gf_10", "ga_10", "run_volatility", "weather_run_signal"
@@ -43,18 +53,23 @@ class RegimeRouter:
     def fit(self, X: pd.DataFrame) -> "RegimeRouter":
         strength = self._signal(X, "strength")
         env = self._signal(X, "environment")
+        maturity = self._signal(X, "maturity")
         self.strength_q = tuple(float(x) for x in strength.quantile([0.33, 0.67]).values)
         self.env_q = tuple(float(x) for x in env.quantile([0.33, 0.67]).values)
+        self.maturity_q = tuple(float(x) for x in maturity.quantile([0.33, 0.67]).values)
         return self
 
     def labels(self, X: pd.DataFrame) -> np.ndarray:
         strength = self._signal(X, "strength").to_numpy()
         env = self._signal(X, "environment").to_numpy()
+        maturity = self._signal(X, "maturity").to_numpy()
         sq = getattr(self, "strength_q", (-np.inf, np.inf))
         eq = getattr(self, "env_q", (-np.inf, np.inf))
+        mq = getattr(self, "maturity_q", (-np.inf, np.inf))
         s = np.digitize(strength, sq, right=False)
         e = np.digitize(env, eq, right=False)
-        return np.asarray([f"s{s[i]}_e{e[i]}" for i in range(len(X))], dtype=object)
+        m = np.digitize(maturity, mq, right=False)
+        return np.asarray([f"s{s[i]}_e{e[i]}_m{m[i]}" for i in range(len(X))], dtype=object)
 
     def weights(
         self,
