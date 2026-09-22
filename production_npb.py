@@ -333,6 +333,95 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
         })
     return out
 
+def parse_official_league_starters_html(page_html: str, target_date: str, source_url: str) -> list[dict]:
+    """Parse one official NPB league page when the dedicated starter page has rolled forward.
+
+    The league pages are first-party NPB pages and expose the target-date
+    announced starters in the same game-card order. This fallback is used only
+    when the dedicated starter page lacks the target-date heading; it never
+    fills missing starters with third-party or probable-pitcher data.
+    """
+    month_day = f"{int(target_date[5:7])}月{int(target_date[8:10])}日"
+    heading = re.search(
+        rf"<h[3-6][^>]*>[^<]*{re.escape(month_day)}[^<]*予告先発[^<]*</h[3-6]>",
+        page_html, re.I,
+    )
+    if not heading:
+        raise RuntimeError(
+            f"Official NPB league page does not contain {month_day} announced starters."
+        )
+
+    tail = page_html[heading.end():]
+    parser = _VisibleTextParser()
+    parser.feed(tail[:120000])
+    tokens = [_clean_name(x) for x in parser.parts if _clean_name(x)]
+
+    league_teams = {
+        "https://npb.jp/cl/": [
+            "読売ジャイアンツ","東京ヤクルトスワローズ","中日ドラゴンズ",
+            "広島東洋カープ","阪神タイガース","横浜DeNAベイスターズ",
+        ],
+        "https://npb.jp/pl/": [
+            "北海道日本ハムファイターズ","オリックス・バファローズ",
+            "東北楽天ゴールデンイーグルス","福岡ソフトバンクホークス",
+            "千葉ロッテマリーンズ","埼玉西武ライオンズ",
+        ],
+    }
+    teams = league_teams.get(source_url, [])
+    if not teams:
+        raise RuntimeError("Unsupported official NPB league source.")
+
+    found: list[tuple[int, str, str]] = []
+    seen: set[str] = set()
+    for i, token in enumerate(tokens):
+        matched = next((team for team in teams if token == team or team in token), None)
+        if matched is None:
+            continue
+        if matched in seen:
+            raise RuntimeError(
+                "PIT starter gate failed: duplicate team tokens in official league starter order."
+            )
+        pitcher = ""
+        for j in range(i + 1, min(i + 8, len(tokens))):
+            candidate = tokens[j]
+            if not candidate or candidate in teams:
+                continue
+            if re.fullmatch(r"\d{1,2}:\d{2}", candidate):
+                continue
+            if "予告先発" in candidate or "公式戦" in candidate:
+                continue
+            pitcher = candidate
+            break
+        if not pitcher:
+            raise RuntimeError(
+                f"PIT starter gate failed: no starter found for official team {matched}."
+            )
+        found.append((i, matched, pitcher))
+        seen.add(matched)
+        if len(found) == 6:
+            break
+
+    time_values = [x for x in tokens if re.fullmatch(r"\d{1,2}:\d{2}", x)]
+    if len(found) < 6 or len(time_values) < 3:
+        raise RuntimeError(
+            f"PIT starter gate failed: official league page resolved {len(found)} "
+            f"team/starter records and {len(time_values)} times; expected 6 records and 3 games."
+        )
+
+    out = []
+    for game_idx in range(3):
+        a = found[2 * game_idx]
+        b = found[2 * game_idx + 1]
+        out.append({
+            "home": a[1], "away": b[1],
+            "home_starter": a[2], "away_starter": b[2],
+            "confirmed_starters": True,
+            "starter_evidence_status": "official_announced",
+            "starter_source": source_url,
+            "official_start_time": time_values[game_idx],
+        })
+    return out
+
 def _load_official_starter_snapshot(target_date: str) -> list[dict] | None:
     path = ROOT / "data" / "official_starters" / f"{target_date}.json"
     if not path.exists():
@@ -372,13 +461,28 @@ def official_starters(target_date: str) -> list[dict]:
             fetch_text(NPB_STARTER_URL + "?_ts=" + str(int(time.time()))), target_date
         )
     except RuntimeError as exc:
-        # Correctness anomalies in the live official slate must never be masked
-        # by a cached snapshot. A snapshot may rescue a structural page change,
-        # but not duplicate/ambiguous team evidence that could indicate a wrong
-        # game-to-starter association.
+        # If the dedicated announcement page has already rolled forward, try
+        # the first-party Central/Pacific League pages. These are still official
+        # NPB sources and must independently resolve all six teams/three games.
+        # Duplicate or ambiguous evidence never falls through to a weaker source.
         message = str(exc)
         if "duplicate team tokens" in message or "ambiguous official time" in message:
             raise
+        if "does not contain" in message:
+            league_rows = []
+            for source_url in ("https://npb.jp/cl/", "https://npb.jp/pl/"):
+                try:
+                    league_rows.extend(
+                        parse_official_league_starters_html(
+                            fetch_text(source_url + "?_ts=" + str(int(time.time()))),
+                            target_date, source_url,
+                        )
+                    )
+                except RuntimeError:
+                    league_rows = []
+                    break
+            if len(league_rows) == 6:
+                return league_rows
         if snapshot is not None:
             return snapshot
         raise
