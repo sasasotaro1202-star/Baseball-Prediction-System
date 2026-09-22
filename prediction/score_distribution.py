@@ -19,11 +19,6 @@ import numpy as np
 from research.correlated_score import grid as correlated_grid
 
 
-def _poisson_pmf(k: int, lam: float) -> float:
-    lam = max(float(lam), 1e-9)
-    return math.exp(-lam + k * math.log(lam) - math.lgamma(k + 1))
-
-
 def score_distribution(
     home_lambda: float,
     away_lambda: float,
