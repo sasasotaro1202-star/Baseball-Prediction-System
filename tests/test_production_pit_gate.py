@@ -7,6 +7,7 @@ def row(level="OFFICIAL_ANNOUNCEMENT", ts="2026-09-19T10:00:00+00:00"):
     return {
         "event_id": "MLB:1",
         "league": "MLB",
+        "event_start_at": "2026-09-19T15:00:00+00:00",
         "home_starter": "Home Pitcher",
         "away_starter": "Away Pitcher",
         "home_starter_evidence_level": level,
@@ -52,3 +53,18 @@ def test_cli_rejects_empty_evidence(tmp_path):
     )
     assert proc.returncode != 0
     assert "zero games" in (proc.stderr + proc.stdout).lower()
+
+
+def test_started_game_is_rejected_even_with_official_starters():
+    r = row()
+    r["event_start_at"] = "2026-09-19T11:00:00+00:00"
+    ok, reason = check_game(r, CUTOFF)
+    assert not ok and reason == "game_already_started_or_not_future_at_cutoff"
+
+
+def test_missing_event_start_is_rejected():
+    r = row()
+    r.pop("event_start_at")
+    ok, reason = check_game(r, CUTOFF)
+    assert not ok and reason == "event_start_invalid"
+
