@@ -37,7 +37,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m py_compile research/target_permutation_oos.py research/feature_influence_stability.py
-          python -m py_compile tests/test_target_permutation_oos.py tests/test_feature_influence_stability.py tests/test_walkforward_fail_closed.py
+          python -m py_compile tests/test_target_permutation_oos.py tests/test_feature_influence_stability.py tests/test_walkforward_fail_closed.py tests/test_current_target_feature_invariance.py
 
       - name: Run new audit regression tests
         run: |
