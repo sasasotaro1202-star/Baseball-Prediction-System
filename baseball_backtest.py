@@ -248,6 +248,9 @@ class BaseballBacktest:
             Path(__file__),
             ROOT / "research_runner_v6.py",
             ROOT / "research" / "regime_router.py",
+            ROOT / "research" / "correlated_score.py",
+            ROOT / "prediction" / "score_distribution.py",
+            ROOT / "research" / "backtest_output_contract.py",
             ROOT / "data" / "npb_pbp_adapter.py",
         )
         digest = hashlib.sha256()
@@ -1990,6 +1993,9 @@ class BaseballBacktest:
                     print(f"[{league}] checkpoint saved: {len(completed_ids)} games", flush=True)
                 except Exception as e:
                     self.audit.append({"type":"checkpoint_write_error","league":league,"error":str(e)})
+                    raise RuntimeError(
+                        f"{league} checkpoint persistence failed; refusing to report completed OOS: {e}"
+                    ) from e
         expected_ids = set(meta.iloc[start:]["game_id"].astype(str))
         completed_current_ids = completed_ids & expected_ids
         missing_ids = expected_ids - completed_current_ids
