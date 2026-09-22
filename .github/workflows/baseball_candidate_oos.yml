@@ -116,6 +116,10 @@ jobs:
           obj=json.loads(Path('results/real_data_validation.json').read_text(encoding='utf-8'))
           if obj.get('status') != 'COMPLETED_WITH_FAIL_CLOSED_DECISION':
               raise SystemExit('candidate lifecycle did not complete under the explicit fail-closed contract')
+          if obj.get('execution_status') != 'EXECUTED':
+              raise SystemExit('candidate lifecycle execution failed; HOLD is reserved for a completed gate decision')
+          if any(run.get('execution_status') == 'FAILED' or run.get('stage') == 'error' for run in obj.get('runs', [])):
+              raise SystemExit('candidate lifecycle contains an execution failure; refusing false-green verification')
           if obj.get('overall_decision') not in {'ADOPT','HOLD'}:
               raise SystemExit('candidate lifecycle returned an invalid decision')
           print(json.dumps(obj, ensure_ascii=False, indent=2))
