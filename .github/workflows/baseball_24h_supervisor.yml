@@ -134,7 +134,7 @@ jobs:
               dispatch=1
               reason="latest run ended ${latest_conclusion}"
             fi
-          elif [ "${latest_conclusion}" = "success" ] && [ "${latest_age_minutes}" -ge 150 ]; then
+          elif [ "${latest_conclusion}" = "success" ] && [ "${latest_age_minutes}" -ge 15 ]; then
             dispatch=1
             reason="successful cycle is stale at ${latest_age_minutes}m"
           elif [ "${latest_conclusion}" = "failure" ] && [ "${latest_age_minutes}" -ge 10 ] && [ -n "${latest_id}" ]; then
