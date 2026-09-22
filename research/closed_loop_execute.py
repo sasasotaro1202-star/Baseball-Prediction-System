@@ -15,7 +15,7 @@ import pandas as pd
 
 from evaluation.calibration import fit_temperature
 from core.atomic_io import atomic_write_json, file_sha256
-from research.adoption_gate import candidate_lock, evaluate_locked_holdout
+from research.adoption_gate import GatePolicy, candidate_lock, evaluate_locked_holdout
 from evaluation.uncertainty import paired_block_bootstrap, to_dict as uncertainty_to_dict
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -327,6 +327,7 @@ def process_league(league: str, path: Path) -> dict[str, Any]:
     gate = evaluate_locked_holdout(
         base_holdout,
         cand_holdout,
+        policy=GatePolicy(require_uncertainty_check=True),
         validation_windows=2,
         calibration_ok=calibration_ok,
         no_future_target_data=True,
@@ -336,6 +337,7 @@ def process_league(league: str, path: Path) -> dict[str, Any]:
         baseline_hilo=base_hilo,
         candidate_hilo=cand_hilo,
         league=league,
+        holdout_uncertainty=uncertainty,
     )
     return {
         "league": league,
