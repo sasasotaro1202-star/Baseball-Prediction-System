@@ -1,17 +1,16 @@
-"""Leakage diagnostic via deterministic target-permutation OOS retraining.
+"""Target-permutation OOS null diagnostic.
 
 This module is research-only. It does not modify production models or select
-candidates. The strongest form of the audit keeps evaluation features fixed
-and retrains the same estimator after shuffling only the training target.
+candidates. The strongest form of the diagnostic keeps evaluation features
+fixed and retrains the same estimator after shuffling only the training target.
 
 Interpretation:
-- SEPARATED: real-target model clearly separates from shuffled-target null.
-- NO_SEPARATION: real and shuffled-target models overlap; this is inconclusive
-  for leakage and should trigger investigation, not automatic promotion.
+- SEPARATED: the real-target model clearly separates from the shuffled null.
+- NO_SEPARATION: the real model does not clearly separate from the null;
+  investigate signal strength, feature quality, or methodology.
 - INCONCLUSIVE: insufficient valid permutations or malformed evidence.
 
-A suspiciously strong shuffled-target result can expose target-bearing features.
-It is a diagnostic, not a mathematical proof of zero leakage.
+This diagnostic is not a leakage detector and cannot establish zero leakage.
 """
 from __future__ import annotations
 
@@ -130,7 +129,6 @@ def audit_target_permutation(
     if len(null_metrics) < min_permutations:
         return TargetPermutationAudit(
             status="INCONCLUSIVE",
-            risk_flag=False,
             seeds=seed_list,
             real=real,
             null_summary={},
@@ -172,21 +170,18 @@ def audit_target_permutation(
         "Accuracy_real_minus_null_mean": float(real["Accuracy"] - null_acc.mean()),
     }
 
-    competitive_ll = real["LogLoss"] >= null_ll.mean() - float(logloss_tolerance)
-    competitive_acc = real["Accuracy"] <= null_acc.mean() + float(accuracy_tolerance)
-    competitive_brier = real["Brier"] >= null_brier.mean() - float(logloss_tolerance)
-    risk_flag = bool(sum((competitive_ll, competitive_acc, competitive_brier)) >= 2)
-
+    # The tolerance arguments are retained for API stability. They are not
+    # converted into a leak flag because target permutation is a null test,
+    # not a proof of PIT safety or a direct detector of target leakage.
     strong_ll = real["LogLoss"] < _percentile(null_ll, 0.05)
     strong_acc = real["Accuracy"] > _percentile(null_acc, 0.95)
     strong_brier = real["Brier"] < _percentile(null_brier, 0.05)
     strong_signals = int(sum((strong_ll, strong_acc, strong_brier)))
 
-    status = "SUSPICIOUS" if risk_flag else ("SEPARATED" if strong_signals >= 2 else "NO_SEPARATION")
+    status = "SEPARATED" if strong_signals >= 2 else "NO_SEPARATION"
 
     return TargetPermutationAudit(
         status=status,
-        risk_flag=risk_flag,
         seeds=seed_list,
         real=real,
         null_summary=null_summary,
