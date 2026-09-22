@@ -1272,7 +1272,13 @@ class BaseballBacktest:
                     losses.append(float((nll_h+nll_a)/2))
                     residuals_by_model.setdefault(name,[[],[]])[0].extend((y_home[va]-ph).tolist())
                     residuals_by_model.setdefault(name,[[],[]])[1].extend((y_away[va]-pa).tolist())
-                except Exception:
+                except Exception as exc:
+                    self.audit.append({
+                        "type": "score_model_error",
+                        "model": name,
+                        "stage": "score_validation",
+                        "error": f"{type(exc).__name__}: {exc}",
+                    })
                     continue
             if losses: scored.append((float(np.mean(losses)), name, factory))
         if not scored: return None
@@ -1319,7 +1325,13 @@ class BaseballBacktest:
                         idx=np.flatnonzero(labels==regime)
                         if len(idx):
                             regime_losses.setdefault(str(regime),{}).setdefault(name,[]).extend((nll[idx]/2).tolist())
-                except Exception:
+                except Exception as exc:
+                    self.audit.append({
+                        "type": "score_model_error",
+                        "model": name,
+                        "stage": "score_regime_validation",
+                        "error": f"{type(exc).__name__}: {exc}",
+                    })
                     continue
         best_score_model=top[0][1]
         residual_h,residual_a=residuals_by_model.get(best_score_model,([],[]))
