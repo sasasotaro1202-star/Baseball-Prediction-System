@@ -323,7 +323,10 @@ def process_league(league: str, path: Path) -> dict[str, Any]:
             "reason": f"{type(exc).__name__}: {exc}",
             "rows": int(len(y_holdout)),
         }
-    cand_hilo = hilo_metrics(holdout, apply_temperature(hilo_probs(holdout), temperature))
+    # Win-probability temperature is calibrated for the classifier only.
+    # Do not apply it to the independent score/Low-High distribution: doing so
+    # would reuse a classifier calibration parameter for a different target.
+    cand_hilo = hilo_metrics(holdout, hilo_probs(holdout))
 
     development = pd.concat([selection, val1, val2], ignore_index=True)
     candidate_id = development_candidate_id(
