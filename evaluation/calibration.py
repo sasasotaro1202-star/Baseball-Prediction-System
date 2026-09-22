@@ -12,6 +12,12 @@ from typing import Any
 import numpy as np
 
 
+# Shared low-dimensional calibration search used by research and production.
+# The previous upper bound (T=3.0) was reached by the latest MLB development
+# artifact, so the default range is widened without increasing model complexity.
+DEFAULT_TEMPERATURE_GRID = np.geomspace(0.35, 6.0, 81)
+
+
 @dataclass(frozen=True)
 class TemperatureCalibration:
     temperature: float = 1.0
@@ -53,7 +59,7 @@ def fit_temperature(probabilities: Any, y_true: Any, *, grid: np.ndarray | None 
         raise ValueError("each probability row must have positive mass")
     if np.any(y < 0) or np.any(y >= p.shape[1]):
         raise ValueError("y_true contains an invalid class")
-    candidates = np.asarray(grid if grid is not None else np.geomspace(0.5, 3.0, 61), dtype=float)
+    candidates = np.asarray(grid if grid is not None else DEFAULT_TEMPERATURE_GRID, dtype=float)
     candidates = candidates[np.isfinite(candidates) & (candidates > 0)]
     if candidates.size == 0:
         raise ValueError("temperature grid must contain at least one positive finite value")
