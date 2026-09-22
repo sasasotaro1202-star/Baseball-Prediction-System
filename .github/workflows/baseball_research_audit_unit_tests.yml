@@ -3,7 +3,7 @@ name: Baseball Research Audit Unit Tests
 on:
   push:
     branches:
-      - hardening/permutation-and-feature-stability-audit
+      - hardening/permutation-and-feature-stability-audit-v2
   workflow_dispatch:
 
 permissions:
