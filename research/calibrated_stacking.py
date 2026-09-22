@@ -54,10 +54,13 @@ def _metrics(y: Array, p: Array) -> dict[str, float]:
 def temperature_transform(p: Array, temperature: float) -> Array:
     if not np.isfinite(float(temperature)) or float(temperature) <= 0:
         raise ValueError("temperature must be finite and positive")
-    q = np.log(np.clip(_normalize(p), 1e-12, 1.0)) / float(temperature)
-    q -= q.max(axis=1, keepdims=True)
-    q = np.exp(q)
-    return _normalize(q)
+    logits = np.log(np.clip(_normalize(p), 1e-12, 1.0)) / float(temperature)
+    logits -= logits.max(axis=1, keepdims=True)
+    q = np.exp(logits)
+    q_sum = q.sum(axis=1, keepdims=True)
+    if not np.isfinite(q_sum).all() or np.any(q_sum <= 0):
+        raise ValueError("temperature transform produced invalid probability rows")
+    return q / q_sum
 
 
 def _simplex_weights(n_components: int, step: float) -> list[tuple[float, ...]]:
