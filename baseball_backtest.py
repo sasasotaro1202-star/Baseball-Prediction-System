@@ -1562,6 +1562,25 @@ class BaseballBacktest:
                     print(f"[{league}] checkpoint saved: {len(completed_ids)} games")
                 except Exception as e:
                     self.audit.append({"type":"checkpoint_write_error","league":league,"error":str(e)})
+        expected_ids = set(meta.iloc[start:]["game_id"].astype(str))
+        completed_current_ids = completed_ids & expected_ids
+        missing_ids = expected_ids - completed_current_ids
+        if missing_ids:
+            # A partial walk-forward is not valid OOS evidence. This catches
+            # both block-level model failures and time-budget exhaustion.
+            # Checkpoints remain durable so the next bounded retry can resume.
+            self.audit.append({
+                "type": "walkforward_incomplete",
+                "league": league,
+                "expected_games": int(len(expected_ids)),
+                "completed_games": int(len(completed_current_ids)),
+                "missing_games": int(len(missing_ids)),
+            })
+            raise RuntimeError(
+                f"{league} walk-forward incomplete: "
+                f"completed={len(completed_current_ids)}/{len(expected_ids)}; "
+                "refusing partial OOS evidence."
+            )
         return pd.DataFrame(all_rows)
 
     def evaluate(self, df: pd.DataFrame, league: str) -> Dict[str, Any]:
