@@ -85,11 +85,13 @@ def _development(bt, X, y, start, end, names, block, retrain_every):
         raise RuntimeError("MLB Development OOS produced no valid windows")
     yy = np.concatenate(actual)
     metrics = {}
+    predictions = {}
     for name, chunks in outputs.items():
         if chunks:
             pp = np.vstack(chunks)
             metrics[name] = classification_metrics(yy[:len(pp)], pp, classes=[0, 1])
-    return metrics, windows
+            predictions[name] = pp
+    return metrics, windows, predictions
 
 
 def _target_metrics(bt: BaseballBacktest, X_train, games_train, games_holdout, X_holdout, p: np.ndarray, score_fit=None) -> tuple[dict[str, float], dict[str, float]]:
@@ -186,7 +188,9 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
         raise RuntimeError("MLB replay does not have enough rows for an independent holdout")
 
     names = list(bt.models("MLB").keys())
-    development, windows = _development(bt, X, y, dev_start, holdout_start, names, config.block_size, config.retrain_every)
+    development, windows, development_predictions = _development(
+        bt, X, y, dev_start, holdout_start, names, config.block_size, config.retrain_every
+    )
     baseline = development["ProductionEnsemble"]
     candidates = [(k,v) for k,v in development.items() if k!="ProductionEnsemble"]
     candidates.sort(key=lambda kv:(kv[1]["LogLoss"],kv[1]["Brier"],-kv[1]["Accuracy"],kv[0]))
@@ -195,29 +199,10 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
 
     base_half_life=int(os.getenv("BASEBALL_RECENCY_HALF_LIFE_GAMES","1800"))
     variant_specs={}
-    development_predictions={}
-    # Re-run the strict Development OOS once to retain raw predictions for
-    # low-complexity calibration and recency challengers.
-    actual_dev=[]; fitted_base={}; last_fit=-10**9
-    for cut in range(dev_start,holdout_start,config.block_size):
-        stop=min(holdout_start,cut+config.block_size)
-        if not fitted_base or cut-last_fit>=config.retrain_every:
-            for name in ["ProductionEnsemble"] + [k for k,_ in candidates[:max(1,config.recency_variant_top_k)]]:
-                if name=="ProductionEnsemble":
-                    fitted_base[name]=None
-                else:
-                    fitted_base[name]=_fit_with_half_life(bt,name,X.iloc[:cut],y[:cut],None)
-            last_fit=cut
-        actual_dev.append(y[cut:stop])
-        if fitted_base:
-            for name,model in list(fitted_base.items()):
-                if name=="ProductionEnsemble":
-                    continue
-                development_predictions.setdefault(name,[]).append(_proba(bt,model,X.iloc[cut:stop]))
-    y_dev=np.concatenate(actual_dev) if actual_dev else np.empty(0,dtype=int)
-    for name in list(development_predictions):
-        if development_predictions[name]:
-            development_predictions[name]=np.vstack(development_predictions[name])
+    # _development already retained strict chronological OOS predictions for
+    # every base candidate. Reusing them avoids a second full development pass
+    # without changing the candidate evidence or the holdout boundary.
+    y_dev=y[dev_start:holdout_start]
 
     for base_name,_m in candidates[:max(1,config.recency_variant_top_k)]:
         for half_life in config.recency_half_lives:
