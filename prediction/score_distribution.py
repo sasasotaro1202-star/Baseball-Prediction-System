@@ -16,6 +16,8 @@ from typing import Any
 
 import numpy as np
 
+from research.correlated_score import grid as correlated_grid
+
 
 def _poisson_pmf(k: int, lam: float) -> float:
     lam = max(float(lam), 1e-9)
@@ -27,6 +29,7 @@ def score_distribution(
     away_lambda: float,
     *,
     max_runs: int = 20,
+    shared_lambda: float = 0.0,
 ) -> np.ndarray:
     """Return a normalized joint exact-score matrix for 0..max_runs each."""
     if not math.isfinite(float(home_lambda)) or not math.isfinite(float(away_lambda)):
@@ -36,13 +39,15 @@ def score_distribution(
     if int(max_runs) < 7:
         raise ValueError("max_runs must be at least 7")
 
-    h = np.asarray([_poisson_pmf(k, home_lambda) for k in range(max_runs + 1)], dtype=float)
-    a = np.asarray([_poisson_pmf(k, away_lambda) for k in range(max_runs + 1)], dtype=float)
-    matrix = np.outer(h, a)
-    total = float(matrix.sum())
-    if not math.isfinite(total) or total <= 0:
+    matrix = correlated_grid(
+        float(home_lambda),
+        float(away_lambda),
+        float(shared_lambda),
+        max_runs=int(max_runs),
+    )
+    if not np.isfinite(matrix).all() or matrix.sum() <= 0:
         raise ValueError("invalid score distribution")
-    return matrix / total
+    return matrix
 
 
 def _outputs_from_matrix(matrix: np.ndarray, *, n: int = 4) -> tuple[list[dict[str, Any]], float, float]:
@@ -71,11 +76,14 @@ def top_score_candidates(
     *,
     n: int = 4,
     max_runs: int = 20,
+    shared_lambda: float = 0.0,
 ) -> list[dict[str, Any]]:
     """Return exactly the n most probable exact scorelines, descending."""
     if int(n) != 4:
         raise ValueError("production score contract requires exactly four candidates")
-    matrix = score_distribution(home_lambda, away_lambda, max_runs=max_runs)
+    matrix = score_distribution(
+        home_lambda, away_lambda, max_runs=max_runs, shared_lambda=shared_lambda
+    )
     candidates, _, _ = _outputs_from_matrix(matrix, n=n)
     return candidates
 
@@ -85,9 +93,12 @@ def low_high_probabilities(
     away_lambda: float,
     *,
     max_runs: int = 20,
+    shared_lambda: float = 0.0,
 ) -> tuple[float, float]:
     """Return P(total<=6), P(total>=7) from the full score distribution."""
-    matrix = score_distribution(home_lambda, away_lambda, max_runs=max_runs)
+    matrix = score_distribution(
+        home_lambda, away_lambda, max_runs=max_runs, shared_lambda=shared_lambda
+    )
     _, low, high = _outputs_from_matrix(matrix)
     return low, high
 
@@ -97,9 +108,12 @@ def build_score_outputs(
     away_lambda: float,
     *,
     max_runs: int = 20,
+    shared_lambda: float = 0.0,
 ) -> dict[str, Any]:
     """Build the canonical score + Low/High output contract."""
-    matrix = score_distribution(home_lambda, away_lambda, max_runs=max_runs)
+    matrix = score_distribution(
+        home_lambda, away_lambda, max_runs=max_runs, shared_lambda=shared_lambda
+    )
     candidates, low, high = _outputs_from_matrix(matrix)
     return {
         "score_candidates": candidates,
