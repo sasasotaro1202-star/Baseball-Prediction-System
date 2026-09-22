@@ -42,6 +42,10 @@ jobs:
       - name: Compile
         run: python -m compileall -q .
 
+      - name: Action preflight
+        timeout-minutes: 3
+        run: python research/action_preflight.py
+
       - name: Regression tests
         run: python -m pytest -q tests
 
