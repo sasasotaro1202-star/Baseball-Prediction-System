@@ -62,8 +62,6 @@ jobs:
           # exceeded a generous multiple of the canonical 120-minute job budget
           # is considered genuinely stale.
           stale_found=0
-          printf '%s' "${runs_json}" |
-          jq -c '.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")' |
           while IFS= read -r row; do
             [ -n "${row}" ] || continue
             id="$(printf '%s' "${row}" | jq -r '.databaseId')"
@@ -85,7 +83,8 @@ jobs:
               gh run cancel "${id}" --repo "${GH_REPO}"
               stale_found=1
             fi
-          done
+          done < <(printf '%s' "${runs_json}" |
+            jq -c '.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")')
 
           if [ "${stale_found}" -eq 1 ]; then
             for attempt in 1 2 3 4 5 6 7 8 9 10; do
