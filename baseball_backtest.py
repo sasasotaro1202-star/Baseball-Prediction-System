@@ -1143,62 +1143,91 @@ class BaseballBacktest:
         top_names={name for _,name in top}
         global_losses={name:float(loss) for loss,name in top}
 
-        # Low-dimensional ensemble concentration is itself an OOS challenger.
-        # A power <1 spreads mass across similar models; >1 concentrates more
-        # strongly on lower-loss models. The power is selected only from
-        # chronological validation predictions, never from the future target.
+        # Low-dimensional routing and ensemble concentration are jointly tuned
+        # on chronological OOS predictions. No additional model fits are required:
+        # only the already-generated validation predictions are re-weighted.
         weight_power=1.0
+        router_params={
+            "min_regime_rows":35,
+            "shrinkage":80.0,
+            "min_relative_edge":0.03,
+        }
         power_grid=(0.50,0.75,1.00,1.25,1.50,2.00)
+        router_grid=(
+            (25,40.0,0.02),(25,80.0,0.03),(25,120.0,0.05),
+            (35,40.0,0.02),(35,80.0,0.03),(35,120.0,0.05),
+            (50,40.0,0.02),(50,80.0,0.03),(50,120.0,0.05),
+        )
         if not fast_oos and validation_predictions:
-            best_key=(float("inf"), abs(weight_power-1.0))
-            for power in power_grid:
-                try:
-                    trial_weights=RegimeRouter().fit(X)
-                    # Keep the same regime-loss evidence and regime sample-size
-                    # shrinkage; only vary the inverse-loss concentration.
-                    wmap=trial_weights.weights(
-                        global_losses,
-                        {
-                            str(regime): {
-                                name: float(np.mean(vals))
-                                for name, vals in by_model.items()
-                                if name in top_names and vals
-                            }
-                            for regime, by_model in regime_losses.items()
-                        },
-                        regime_counts,
-                        power=float(power),
-                    )
-                    trial_ll_parts=[]
-                    # Each validation fold has model predictions trained strictly
-                    # before that fold. Evaluate the candidate weighting on exactly
-                    # those OOS rows.
-                    for (cut,val), by_model_pred in validation_predictions.items():
-                        labels=validation_regime_labels[(cut,val)]
-                        yv=np.asarray(y[cut:cut+val],dtype=int)
-                        q=np.zeros((len(yv),k))
-                        for label in np.unique(labels):
-                            idx=np.flatnonzero(labels==label)
-                            regime_w=wmap.get(str(label), {})
-                            for name in top_names:
-                                pred=by_model_pred.get(name)
-                                if pred is not None:
-                                    w=float(regime_w.get(name,0.0))
-                                    if w:
-                                        q[idx] += w*pred[idx]
-                        q=np.apply_along_axis(clip_prob,1,q)
-                        trial_ll_parts.append(log_loss(yv,q,labels=list(range(k))))
-                    if trial_ll_parts:
-                        key=(float(np.mean(trial_ll_parts)), abs(float(power)-1.0))
+            best_key=(float("inf"), float("inf"), float("inf"), float("inf"))
+            for min_rows,shrinkage,min_edge in router_grid:
+                for power in power_grid:
+                    try:
+                        trial_router=RegimeRouter(
+                            min_regime_rows=int(min_rows),
+                            shrinkage=float(shrinkage),
+                            min_relative_edge=float(min_edge),
+                        )
+                        wmap=trial_router.weights(
+                            global_losses,
+                            {
+                                str(regime): {
+                                    name: float(np.mean(vals))
+                                    for name, vals in by_model.items()
+                                    if name in top_names and vals
+                                }
+                                for regime, by_model in regime_losses.items()
+                            },
+                            regime_counts,
+                            power=float(power),
+                        )
+                        trial_ll_parts=[]
+                        for (cut,val), by_model_pred in validation_predictions.items():
+                            labels=validation_regime_labels[(cut,val)]
+                            yv=np.asarray(y[cut:cut+val],dtype=int)
+                            q=np.zeros((len(yv),k))
+                            for label in np.unique(labels):
+                                idx=np.flatnonzero(labels==label)
+                                regime_w=wmap.get(str(label), {})
+                                for name in top_names:
+                                    pred=by_model_pred.get(name)
+                                    if pred is not None:
+                                        w=float(regime_w.get(name,0.0))
+                                        if w:
+                                            q[idx] += w*pred[idx]
+                            q=np.apply_along_axis(clip_prob,1,q)
+                            trial_ll_parts.append(log_loss(yv,q,labels=list(range(k))))
+                        if not trial_ll_parts:
+                            continue
+                        mean_ll=float(np.mean(trial_ll_parts))
+                        key=(
+                            mean_ll,
+                            abs(float(power)-1.0),
+                            abs(float(shrinkage)-80.0),
+                            abs(float(min_rows)-35.0)+abs(float(min_edge)-0.03)*100.0,
+                        )
                         if key < best_key:
                             best_key=key
                             weight_power=float(power)
-                except Exception as exc:
-                    self.audit.append({
-                        "type":"ensemble_weight_power_error",
-                        "power":float(power),
-                        "error":str(exc),
-                    })
+                            router_params={
+                                "min_regime_rows":int(min_rows),
+                                "shrinkage":float(shrinkage),
+                                "min_relative_edge":float(min_edge),
+                            }
+                    except Exception as exc:
+                        self.audit.append({
+                            "type":"ensemble_routing_search_error",
+                            "min_regime_rows":int(min_rows),
+                            "shrinkage":float(shrinkage),
+                            "min_relative_edge":float(min_edge),
+                            "power":float(power),
+                            "error":f"{type(exc).__name__}: {exc}",
+                        })
+            self.audit.append({
+                "type":"ensemble_routing_selection",
+                "weight_power":float(weight_power),
+                "router_params":dict(router_params),
+            })
 
         fitted=[]
         for (loss,name) in top:
@@ -1220,7 +1249,7 @@ class BaseballBacktest:
         }
         # The deployment router is fit on the complete current training prefix
         # only after validation evidence has been collected.
-        router=RegimeRouter().fit(X)
+        router=RegimeRouter(**router_params).fit(X)
         self._regime_router=router
         self._regime_weights=router.weights(
             global_losses,
