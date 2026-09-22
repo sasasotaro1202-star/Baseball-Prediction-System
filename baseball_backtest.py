@@ -967,6 +967,61 @@ class BaseballBacktest:
             prefix + "recent_k9_sd": std("k9",0.0), prefix + "recent_pitches_sd": std("pitches",0.0),
         }
 
+    def _validate_feature_matrix(self, X: pd.DataFrame, league: str) -> None:
+        """Fail closed on structural feature corruption before OOS fitting."""
+        if X.empty:
+            raise RuntimeError(f"{league} feature matrix is empty")
+        if X.columns.duplicated().any():
+            duplicates = X.columns[X.columns.duplicated()].astype(str).tolist()
+            raise RuntimeError(f"{league} feature matrix has duplicate columns: {duplicates[:20]}")
+        values = X.to_numpy(dtype=float)
+        if not np.isfinite(values).all():
+            bad_columns = X.columns[~np.isfinite(values).all(axis=0)].astype(str).tolist()
+            raise RuntimeError(
+                f"{league} feature matrix has non-finite values: {bad_columns[:20]}"
+            )
+
+        # Differential features must be exactly home-minus-away. This catches
+        # silent column swaps and feature assembly regressions without using y.
+        failures = []
+        for col in X.columns:
+            name = str(col)
+            if not name.startswith("d_"):
+                continue
+            base = name[2:]
+            hcol, acol = f"h_{base}", f"a_{base}"
+            if hcol not in X.columns or acol not in X.columns:
+                continue
+            expected = X[hcol].to_numpy(dtype=float) - X[acol].to_numpy(dtype=float)
+            actual = X[name].to_numpy(dtype=float)
+            if not np.allclose(actual, expected, rtol=0.0, atol=1e-10):
+                failures.append(name)
+        if failures:
+            raise RuntimeError(
+                f"{league} differential feature invariant failed: {failures[:20]}"
+            )
+
+        if "home_adv" in X.columns and not np.allclose(
+            X["home_adv"].to_numpy(dtype=float), 1.0, rtol=0.0, atol=0.0
+        ):
+            raise RuntimeError(f"{league} home_adv invariant failed")
+
+        if "expected_env" in X.columns:
+            env = X["expected_env"].to_numpy(dtype=float)
+            if (env < 0.5).any() or (env > 12.0).any():
+                raise RuntimeError(f"{league} expected_env outside configured bounds")
+
+        self.audit.append({
+            "type": "feature_integrity_pass",
+            "league": league,
+            "rows": int(len(X)),
+            "columns": int(X.shape[1]),
+            "differential_columns_checked": int(sum(
+                str(c).startswith("d_") and f"h_{str(c)[2:]}" in X.columns and f"a_{str(c)[2:]}" in X.columns
+                for c in X.columns
+            )),
+        })
+
     def build_features(self, games: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, pd.DataFrame]:
         self.states.clear(); self.elo_ratings.clear(); self.pitcher_history = defaultdict(list); self.player_history = defaultdict(list)
         if self.player_game.empty:
@@ -1036,6 +1091,7 @@ class BaseballBacktest:
                 + ", ".join(f"{k}={v}" for k, v in missing.items())
             )
         X = X.astype(float)
+        self._validate_feature_matrix(X, str(games["league"].iloc[0]) if len(games) else "UNKNOWN")
         return X, np.asarray(y, dtype=int), pd.DataFrame(meta)
 
     def update_after_game(self, row: pd.Series):
