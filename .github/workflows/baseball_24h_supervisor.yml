@@ -141,8 +141,16 @@ jobs:
             # Cooperative time-budget stops are deliberately failed runs so
             # partial OOS can never be misreported as success. Resume only when
             # the failed log proves that exact resumable stop condition.
-            failed_log="$(gh run view "${latest_id}" --repo "${GH_REPO}" --log-failed 2>/dev/null || true)"
-            if printf "%s" "${failed_log}" | grep -Fq "walk-forward incomplete:" &&                printf "%s" "${failed_log}" | grep -Fq "time budget reached before block"; then
+            set +e
+            failed_log="$(gh run view "${latest_id}" --repo "${GH_REPO}" --log-failed 2>/dev/null)"
+            log_status=$?
+            set -e
+            if [ "${log_status}" -ne 0 ]; then
+              echo "Unable to inspect failed run ${latest_id}; refusing automatic restart without evidence." >&2
+              exit 1
+            fi
+            if printf "%s" "${failed_log}" | grep -Fq "walk-forward incomplete:" && \
+               printf "%s" "${failed_log}" | grep -Fq "time budget reached before block"; then
               dispatch=1
               reason="latest run ${latest_id} stopped at cooperative OOS time budget"
             fi
