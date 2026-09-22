@@ -12,6 +12,7 @@ import argparse
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from prediction.game_ranking import rank_games
@@ -24,9 +25,10 @@ def _repair_scores(df: pd.DataFrame) -> pd.DataFrame:
     if not required.issubset(out.columns):
         raise ValueError(f"missing run-distribution columns: {sorted(required - set(out.columns))}")
     numeric = out[sorted(required)].apply(pd.to_numeric, errors="coerce")
-    if not numeric.applymap(pd.notna).all().all():
-        raise ValueError("run-distribution columns contain non-numeric or missing values")
-    if not (numeric >= 0).all().all():
+    values = numeric.to_numpy(dtype=float)
+    if not np.isfinite(values).all():
+        raise ValueError("run-distribution columns contain non-finite or missing values")
+    if (values < 0).any():
         raise ValueError("run-distribution columns must be non-negative")
 
     score_rows: list[dict[str, Any]] = []
