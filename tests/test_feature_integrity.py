@@ -35,7 +35,7 @@ def test_feature_integrity_rejects_broken_differential():
         bt._validate_feature_matrix(X, "MLB")
 
 
-def test_feature_integrity_rejects_invalid_environment():
+def test_feature_integrity_allows_finite_environment_without_arbitrary_bounds():
     bt = _bt()
     X = pd.DataFrame({
         "home_adv": [1.0],
@@ -46,3 +46,16 @@ def test_feature_integrity_rejects_invalid_environment():
     })
     bt._validate_feature_matrix(X, "MLB")
     assert any(x.get("type") == "feature_integrity_pass" for x in bt.audit)
+
+
+def test_feature_integrity_rejects_nonfinite_environment():
+    bt = _bt()
+    X = pd.DataFrame({
+        "home_adv": [1.0],
+        "h_elo": [1500.0],
+        "a_elo": [1490.0],
+        "d_elo": [10.0],
+        "expected_env": [np.nan],
+    })
+    with pytest.raises(RuntimeError, match="non-finite"):
+        bt._validate_feature_matrix(X, "MLB")
