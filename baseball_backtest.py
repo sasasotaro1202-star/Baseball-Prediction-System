@@ -242,10 +242,22 @@ class BaseballBacktest:
         self.inner_jobs = max(1, int(os.getenv("BASEBALL_INNER_JOBS", "2")))
         self.audit: List[Dict[str, Any]] = []
         self.checkpoint_dir = RESULTS / "checkpoints"
-        self.checkpoint_version = "npb-massive-resume-v6-code-input-fingerprint"
-        self.checkpoint_code_fingerprint = hashlib.sha256(
-            Path(__file__).read_bytes()
-        ).hexdigest()
+        self.checkpoint_version = "npb-massive-resume-v7-code-input-fingerprint"
+        fingerprint_paths = (
+            Path(__file__),
+            ROOT / "research_runner_v6.py",
+            ROOT / "research" / "regime_router.py",
+            ROOT / "data" / "npb_pbp_adapter.py",
+        )
+        digest = hashlib.sha256()
+        for fingerprint_path in fingerprint_paths:
+            if not fingerprint_path.exists():
+                raise RuntimeError(
+                    f"checkpoint fingerprint dependency missing: {fingerprint_path}"
+                )
+            digest.update(str(fingerprint_path.relative_to(ROOT)).encode("utf-8"))
+            digest.update(fingerprint_path.read_bytes())
+        self.checkpoint_code_fingerprint = digest.hexdigest()
         self._last_temperature = 1.0
         self._ensemble_weight_power = 1.0
         self._model_temperatures = {}
