@@ -43,3 +43,10 @@ def lock_candidate(spec: CandidateSpec) -> dict[str, Any]:
         encoding="utf-8",
     )
     return payload
+
+
+def candidate_fingerprint(spec: CandidateSpec) -> str:
+    """Deterministic identity for a locked candidate specification."""
+    raw = json.dumps(asdict(spec), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    import hashlib
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
