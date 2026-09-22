@@ -32,9 +32,9 @@ permissions:
 
 concurrency:
   group: baseball-candidate-oos
-  # Candidate results are code/data-version specific. Keep only the newest
-  # validation so stale runs cannot consume the free runner queue.
-  cancel-in-progress: true
+  # Candidate OOS is expensive evidence generation. Never interrupt a running
+  # validation; a newer pending cycle can take the next slot.
+  cancel-in-progress: false
 
 env:
   PYTHONPATH: .
