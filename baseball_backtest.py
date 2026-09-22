@@ -63,7 +63,7 @@ from sklearn.preprocessing import StandardScaler
 
 from research.regime_router import RegimeRouter
 from research.correlated_score import estimate_shared_lambda, low_high as correlated_low_high, top_scores as correlated_top_scores
-from evaluation.calibration import fit_temperature
+from evaluation.calibration import fit_temperature, TemperatureCalibration
 
 RANDOM_STATE = 42
 ROOT = Path(__file__).resolve().parent
@@ -230,6 +230,8 @@ class BaseballBacktest:
         self.checkpoint_dir = RESULTS / "checkpoints"
         self.checkpoint_version = "npb-massive-resume-v4-100target"
         self._last_temperature = 1.0
+        self._model_temperatures = {}
+        self._calibration_mode = "ensemble"
         self._regime_router = None
         self._regime_weights = {}
         self.player_game = pd.DataFrame()
@@ -1122,32 +1124,82 @@ class BaseballBacktest:
             filtered_regime_losses,
             regime_counts,
         ) if filtered_regime_losses else {}
+        # Calibration is itself a candidate. Compare two low-dimensional,
+        # strictly chronological contracts on the same validation folds:
+        # (A) calibrate the ensemble after blending, or
+        # (B) calibrate each member before regime-aware blending.
+        # The lower validation LogLoss wins; the locked holdout remains the
+        # independent adoption gate.
         temperature=1.0
+        self._model_temperatures = {}
+        self._calibration_mode = "ensemble"
         if not fast_oos and splits and fitted:
             try:
-                # Fit the low-dimensional calibrator on multiple chronological
-                # validation folds. Each fold prediction is produced by models
-                # trained strictly before that fold; the future target block is
-                # never observed by this calibration fit.
                 raw_parts=[]
                 y_parts=[]
-                inv=np.array([1/max(loss,1e-6) for _,loss in top])
+                model_parts={name: [] for _,name in top}
+                inv=np.array([1/max(loss,1e-6) for _,loss in top],dtype=float)
                 inv/=max(inv.sum(),1e-12)
                 for cut,val in splits:
                     raw=np.zeros((val,k))
+                    yv=np.asarray(y[cut:cut+val],dtype=int)
                     for (name,_loss),w in zip(top,inv):
                         mm=models[name]
                         self._fit_model(mm,X.iloc[:cut],y[:cut],self._sample_weights(cut),league)
-                        raw += float(w)*self.align_proba(
+                        mp=self.align_proba(
                             mm.predict_proba(X.iloc[cut:cut+val]),
                             mm.classes_,league
                         )
+                        model_parts[name].append(mp)
+                        raw += float(w)*mp
                     raw_parts.append(raw)
-                    y_parts.append(np.asarray(y[cut:cut+val],dtype=int))
+                    y_parts.append(yv)
+
                 if raw_parts:
-                    temperature=self._temperature_from_probs(
-                        np.vstack(raw_parts),np.concatenate(y_parts)
-                    )
+                    raw_all=np.vstack(raw_parts)
+                    y_all=np.concatenate(y_parts)
+                    ensemble_cal=self._temperature_from_probs(raw_all,y_all)
+                    ensemble_q=np.clip(raw_all,1e-7,1.0) ** (1.0/ensemble_cal)
+                    ensemble_q/=ensemble_q.sum(axis=1,keepdims=True)
+                    ensemble_ll=float(log_loss(y_all,ensemble_q,labels=list(range(k))))
+
+                    member_temps={}
+                    member_q_parts={}
+                    for (name,_loss),w in zip(top,inv):
+                        mp=np.vstack(model_parts[name])
+                        cal=fit_temperature(mp,y_all)
+                        member_temps[name]=float(cal.temperature)
+                        member_q_parts[name]=cal.transform(mp)
+                    member_q=np.zeros_like(raw_all)
+                    cursor=0
+                    for (name,_loss),w in zip(top,inv):
+                        mq=member_q_parts[name]
+                        member_q += float(w)*mq
+                    member_q=np.apply_along_axis(clip_prob,1,member_q)
+                    member_ll=float(log_loss(y_all,member_q,labels=list(range(k))))
+
+                    if member_ll < ensemble_ll - 1e-6:
+                        self._calibration_mode="individual"
+                        self._model_temperatures=member_temps
+                        temperature=1.0
+                        self.audit.append({
+                            "type":"calibration_selection",
+                            "mode":"individual",
+                            "ensemble_logloss":ensemble_ll,
+                            "individual_logloss":member_ll,
+                            "model_temperatures":member_temps,
+                            "rows":int(len(y_all)),
+                        })
+                    else:
+                        temperature=float(ensemble_cal)
+                        self.audit.append({
+                            "type":"calibration_selection",
+                            "mode":"ensemble",
+                            "ensemble_logloss":ensemble_ll,
+                            "individual_logloss":member_ll,
+                            "model_temperatures":member_temps,
+                            "rows":int(len(y_all)),
+                        })
             except Exception as e:
                 self.audit.append({"type":"calibration_error","error":str(e)})
         self._last_temperature = temperature
@@ -1167,6 +1219,10 @@ class BaseballBacktest:
             for model,global_w,name in fitted:
                 w=float(weights.get(name,global_w)) if weights else float(global_w)
                 raw=self.align_proba(model.predict_proba(sub),model.classes_,league)
+                if self._calibration_mode == "individual":
+                    t=float(self._model_temperatures.get(name,1.0))
+                    if abs(t-1.0)>1e-9:
+                        raw=TemperatureCalibration(t).transform(raw)
                 p[idx] += w*raw
             p[idx]=np.apply_along_axis(clip_prob,1,p[idx])
         t=float(getattr(self,"_last_temperature",1.0))
