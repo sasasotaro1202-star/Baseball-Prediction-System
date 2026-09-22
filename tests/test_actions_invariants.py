@@ -96,7 +96,7 @@ def test_x_research_isolated_and_artifact_fail_closed():
 def test_closed_loop_uses_shared_temporal_calibration_contract():
     text = (ROOT / "research" / "closed_loop_execute.py").read_text(encoding="utf-8")
     assert "from evaluation.calibration import fit_temperature" in text
-    assert "grid=np.linspace(0.5, 3.0, 101)" in text
+    assert "fit_temperature(p, y).temperature" in text
     assert "fit_temperature(" in text
     assert "atomic_write_json" in text
     assert "source_fingerprints" in text
