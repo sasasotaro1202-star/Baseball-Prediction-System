@@ -20,8 +20,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: baseball-regression-tests
-  cancel-in-progress: true
+  # Scope cancellation to the same ref only; a new PR/main run must not cancel another ref.\n  group: baseball-regression-tests-${{ github.ref }}\n  cancel-in-progress: true
 
 env:
   PYTHONPATH: .
