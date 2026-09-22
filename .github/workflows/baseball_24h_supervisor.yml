@@ -94,17 +94,25 @@ jobs:
 
           if [ -n "${EVENT_RUN_ID}" ] && [ "${EVENT_CONCLUSION}" != "success" ]; then
             # Deterministic failures must not enter an unbounded retry loop.
-            # baseball_actions_recovery.yml owns transient failed-job retries;
-            # this supervisor only enforces a cooldown before starting a fresh
-            # independent cycle.
-            latest_age_minutes=$(gh run view "${EVENT_RUN_ID}" --repo "${GH_REPO}" --json updatedAt --jq '.updatedAt' | xargs -I{} date -d "{}" +%s)
+            # Transient/time-budget failures are handled more quickly so the
+            # 24h backbone does not lose a whole hour after a long OOS timeout.
+            # Deterministic failures retain the conservative cooldown.
+            failure_classes=$(gh run view "${EVENT_RUN_ID}" --repo "${GH_REPO}" --json jobs --jq '[.jobs[] | select(.conclusion != null and .conclusion != "success" and .conclusion != "skipped") | .conclusion] | unique | join(",")')
+            cooldown_minutes=60
+            if [[ "${failure_classes}" == *"timed_out"* ]]; then
+              cooldown_minutes=10
+            elif [[ "${failure_classes}" == *"cancelled"* ]]; then
+              cooldown_minutes=15
+            fi
+            latest_epoch=$(gh run view "${EVENT_RUN_ID}" --repo "${GH_REPO}" --json updatedAt --jq '.updatedAt' | xargs -I{} date -d "{}" +%s)
             now_epoch=$(date +%s)
-            latest_age_minutes=$(( (now_epoch - latest_age_minutes) / 60 ))
-            if [ "${latest_age_minutes}" -lt 60 ]; then
-              echo "Previous 9h run ${EVENT_RUN_ID} concluded ${EVENT_CONCLUSION}; cooldown active (${latest_age_minutes}m < 60m)."
+            latest_age_minutes=$(( (now_epoch - latest_epoch) / 60 ))
+            echo "Previous 9h run ${EVENT_RUN_ID}: conclusion=${EVENT_CONCLUSION}, failed_jobs=${failure_classes:-none}, cooldown=${cooldown_minutes}m, age=${latest_age_minutes}m"
+            if [ "${latest_age_minutes}" -lt "${cooldown_minutes}" ]; then
+              echo "Cooldown active; preserving the failed evidence and not overlapping a fresh cycle."
               exit 0
             fi
-            echo "Previous 9h run ${EVENT_RUN_ID} failed and cooldown expired; starting a fresh main-branch cycle."
+            echo "Cooldown expired; starting a fresh independent main-branch cycle."
           fi
 
           echo 'No active 9h run; dispatching a fresh main-branch cycle.'
