@@ -30,3 +30,36 @@ def test_paired_block_bootstrap_rejects_small_holdout():
             y=y, baseline_proba=p, candidate_proba=p,
             block_size=10, replications=120,
         )
+
+
+def test_paired_block_bootstrap_respects_labeled_boundaries():
+    y = np.array([0, 1] * 75)
+    base = np.column_stack([np.full(len(y), 0.55), np.full(len(y), 0.45)])
+    cand = base.copy()
+    labels = np.array(["2025"] * 75 + ["2026"] * 75, dtype=object)
+    result = paired_block_bootstrap(
+        y=y,
+        baseline_proba=base,
+        candidate_proba=cand,
+        block_size=10,
+        replications=120,
+        seed=11,
+        block_labels=labels,
+    )
+    assert result.block_scheme == "labeled_contiguous"
+    assert result.replications == 120
+
+
+def test_paired_block_bootstrap_rejects_incomplete_labels():
+    y = np.array([0, 1] * 40)
+    p = np.column_stack([np.full(len(y), 0.55), np.full(len(y), 0.45)])
+    labels = np.array(["2025"] * (len(y) - 1) + [None], dtype=object)
+    with pytest.raises(ValueError):
+        paired_block_bootstrap(
+            y=y,
+            baseline_proba=p,
+            candidate_proba=p,
+            block_size=10,
+            replications=120,
+            block_labels=labels,
+        )
