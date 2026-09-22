@@ -123,10 +123,18 @@ def num(x: Any, default=np.nan) -> float:
 
 
 def clip_prob(p: Sequence[float]) -> np.ndarray:
+    """Normalize a valid probability vector; fail closed on invalid values."""
     a = np.asarray(p, dtype=float)
-    a = np.nan_to_num(a, nan=1/len(a), posinf=1/len(a), neginf=1/len(a))
+    if a.ndim != 1 or len(a) < 2:
+        raise ValueError("probability vector must be one-dimensional with >=2 classes")
+    if not np.isfinite(a).all() or (a < 0).any():
+        raise ValueError("probability vector contains non-finite or negative values")
+    total = float(a.sum())
+    if not np.isfinite(total) or total <= 0:
+        raise ValueError("probability vector must have a positive finite sum")
     a = np.maximum(a, 1e-9)
-    return a / a.sum()
+    total = float(a.sum())
+    return a / total
 
 
 def parse_dt(x: Any) -> pd.Timestamp:
@@ -1562,6 +1570,25 @@ class BaseballBacktest:
                     print(f"[{league}] checkpoint saved: {len(completed_ids)} games")
                 except Exception as e:
                     self.audit.append({"type":"checkpoint_write_error","league":league,"error":str(e)})
+        expected_ids = set(meta.iloc[start:]["game_id"].astype(str))
+        completed_current_ids = completed_ids & expected_ids
+        missing_ids = expected_ids - completed_current_ids
+        if missing_ids:
+            # A partial walk-forward is not valid OOS evidence. This catches
+            # both block-level model failures and time-budget exhaustion.
+            # Checkpoints remain durable so the next bounded retry can resume.
+            self.audit.append({
+                "type": "walkforward_incomplete",
+                "league": league,
+                "expected_games": int(len(expected_ids)),
+                "completed_games": int(len(completed_current_ids)),
+                "missing_games": int(len(missing_ids)),
+            })
+            raise RuntimeError(
+                f"{league} walk-forward incomplete: "
+                f"completed={len(completed_current_ids)}/{len(expected_ids)}; "
+                "refusing partial OOS evidence."
+            )
         return pd.DataFrame(all_rows)
 
     def evaluate(self, df: pd.DataFrame, league: str) -> Dict[str, Any]:
