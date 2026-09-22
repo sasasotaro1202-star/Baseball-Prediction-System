@@ -88,6 +88,7 @@ def evaluate_locked_holdout(
     no_future_target_data: bool = False,
     reproducible: bool = False,
     pit_starter_evidence_ok: bool = False,
+    holdout_pit_starter_evidence_ok: bool = False,
     baseline_score: Mapping[str, float] | None = None,
     candidate_score: Mapping[str, float] | None = None,
     baseline_hilo: Mapping[str, float] | None = None,
@@ -133,8 +134,11 @@ def evaluate_locked_holdout(
     effective_pit_required = bool(
         policy.require_pit_starter_evidence or league == "MLB"
     )
-    if effective_pit_required and not pit_starter_evidence_ok:
-        reasons.append("starter_pit_evidence_not_verified")
+    if effective_pit_required:
+        if not pit_starter_evidence_ok:
+            reasons.append("development_starter_pit_evidence_not_verified")
+        if not holdout_pit_starter_evidence_ok:
+            reasons.append("holdout_starter_pit_evidence_not_verified")
 
     uncertainty_result: dict[str, object] = {}
     if policy.require_uncertainty_check:
