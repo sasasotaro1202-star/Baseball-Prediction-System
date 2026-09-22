@@ -50,20 +50,10 @@ jobs:
             fi
           done
 
-          # If nothing is running or scheduler-blocked and the latest completed
-          # run is older than 150 minutes, start a safety-net run from main.
+          # Dispatch is intentionally owned by baseball_24h_supervisor.yml.
+          # Keeping a single dispatcher prevents two 15-minute watchdogs from
+          # racing and creating redundant pending OOS runs. This watchdog only
+          # drains stale scheduler-blocked entries.
           if [ "${active}" -eq 0 ] && [ "${blocked}" -eq 0 ]; then
-            latest_created="$(printf '%s' "${runs_json}" | jq -r '[.[] | select(.status == "completed") | .createdAt] | max // empty')"
-            if [ -n "${latest_created}" ]; then
-              latest_epoch="$(date -d "${latest_created}" +%s)"
-              age=$((now - latest_epoch))
-            else
-              age=999999
-            fi
-            if [ "${age}" -ge 9000 ]; then
-              echo "No recent closed-loop run; dispatching a recovery run."
-              gh workflow run baseball_closed_loop.yml --repo "${REPO}" --ref main
-            else
-              echo "Recent completed run exists; no dispatch needed (age=${age}s)."
-            fi
+            echo 'No active or blocked canonical run; 24h supervisor owns dispatch.'
           fi
