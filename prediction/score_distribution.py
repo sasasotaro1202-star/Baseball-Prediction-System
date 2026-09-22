@@ -72,7 +72,7 @@ def top_score_candidates(
     away_lambda: float,
     *,
     n: int = 4,
-    max_runs: int = 20,
+    max_runs: int = 14,
     shared_lambda: float = 0.0,
 ) -> list[dict[str, Any]]:
     """Return exactly the n most probable exact scorelines, descending."""
@@ -89,7 +89,7 @@ def low_high_probabilities(
     home_lambda: float,
     away_lambda: float,
     *,
-    max_runs: int = 20,
+    max_runs: int = 14,
     shared_lambda: float = 0.0,
 ) -> tuple[float, float]:
     """Return P(total<=6), P(total>=7) from the full score distribution."""
@@ -104,7 +104,7 @@ def build_score_outputs(
     home_lambda: float,
     away_lambda: float,
     *,
-    max_runs: int = 20,
+    max_runs: int = 14,
     shared_lambda: float = 0.0,
 ) -> dict[str, Any]:
     """Build the canonical score + Low/High output contract."""
