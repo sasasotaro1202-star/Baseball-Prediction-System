@@ -191,6 +191,23 @@ def holdout_stage(holdout_artifact: str | Path = "results/independent_holdout.js
                 except (KeyError, TypeError, ValueError):
                     pass
 
+            uncertainty = payload.get("uncertainty")
+            if not isinstance(uncertainty, dict) or uncertainty.get("status") != "EVALUATED":
+                blockers.append(f"holdout_uncertainty_missing_or_unavailable:{league}")
+            else:
+                try:
+                    ci = uncertainty["improvement_ci95"]["LogLoss"]
+                    lower = float(ci[0])
+                    positive = float(uncertainty["p_improvement_positive"]["LogLoss"])
+                    if not math.isfinite(lower) or not math.isfinite(positive):
+                        raise ValueError("non-finite uncertainty")
+                    if lower <= 0:
+                        blockers.append(f"holdout_logloss_ci_not_positive:{league}")
+                    if positive < 0.95:
+                        blockers.append(f"holdout_logloss_positive_probability_low:{league}")
+                except (KeyError, TypeError, ValueError):
+                    blockers.append(f"invalid_holdout_uncertainty:{league}")
+
             # Newer closed-loop artifacts carry paired chronological bootstrap
             # uncertainty. Validate it when present without breaking older
             # historical fixtures that legitimately predate the field.
