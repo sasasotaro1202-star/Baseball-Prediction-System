@@ -28,4 +28,5 @@ def test_shrinkage_never_uses_future_and_draw_feature_is_npb_only():
     bt.elo_ratings = {}
     f = bt._team_features("NPB", "X", "home", np.datetime64("2026-09-22"))
     assert "draw_shrunk_10" in f
-    assert "draw_shrunk_10" not in bt._team_features("MLB", "X", "home", np.datetime64("2026-09-22")) if False else True
+    mlb = bt._team_features("MLB", "X", "home", np.datetime64("2026-09-22"))
+    assert "draw_shrunk_10" not in mlb
