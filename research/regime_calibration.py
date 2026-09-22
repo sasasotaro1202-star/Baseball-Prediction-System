@@ -9,10 +9,23 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
-from sklearn.metrics import log_loss
 
 from evaluation.calibration import fit_temperature
 
+
+
+def _log_loss(y: np.ndarray, p: np.ndarray) -> float:
+    """Small dependency-free multiclass log-loss used by the calibration helper."""
+    labels = np.asarray(y, dtype=int)
+    probs = np.asarray(p, dtype=float)
+    if probs.ndim != 2 or len(labels) != len(probs) or len(labels) == 0:
+        raise ValueError("invalid target/probability shapes")
+    if (labels < 0).any() or (labels >= probs.shape[1]).any():
+        raise ValueError("target labels are outside probability columns")
+    if not np.isfinite(probs).all() or (probs < 0).any():
+        raise ValueError("probabilities must be finite and non-negative")
+    rows = np.arange(len(labels))
+    return float(-np.mean(np.log(np.clip(probs[rows, labels], 1e-15, 1.0))))
 
 def _apply_temperature(p: np.ndarray, temperature: float) -> np.ndarray:
     if not np.isfinite(temperature) or temperature <= 0:
@@ -67,7 +80,7 @@ def fit_regime_relative_temperatures(
             temperatures[str(regime)] = 1.0
             continue
 
-        base_ll = float(log_loss(y[mask], base[mask], labels=list(range(base.shape[1]))))
+        base_ll = float(_log_loss(y[mask], base[mask]))
         fitted = fit_temperature(base[mask], y[mask])
         raw_t = float(fitted.temperature)
 
@@ -75,7 +88,7 @@ def fit_regime_relative_temperatures(
         alpha = float(n / (n + prior_strength))
         shrunk_t = float(np.exp(alpha * np.log(raw_t)))
         candidate = _apply_temperature(base[mask], shrunk_t)
-        candidate_ll = float(log_loss(y[mask], candidate, labels=list(range(base.shape[1]))))
+        candidate_ll = float(_log_loss(y[mask], candidate))
 
         if candidate_ll < base_ll - 1e-9:
             temperatures[str(regime)] = shrunk_t
