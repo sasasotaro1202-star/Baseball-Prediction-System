@@ -10,17 +10,16 @@ on:
       - '.github/workflows/baseball_24h_supervisor.yml'
   schedule:
     # Bounded cadence: enough independent OOS evidence to keep the lifecycle moving.
-    - cron: '17 0,3,6,9,12,15,18,21 * * *'
+    - cron: '17 0,2,4,6,8,10,12,14,16,18,20,22 * * *'
 
 permissions:
   contents: read
 
 concurrency:
   group: baseball-closed-loop
-  # Never interrupt an in-progress lifecycle. GitHub keeps at most one running
-  # job plus one pending job for this concurrency group; with cancellation off,
-  # a long OOS run can finish and the newest pending run takes the next slot.
-  cancel-in-progress: false
+  # Closed-loop evidence must correspond to the current main commit. Stale
+  # queued runs are discarded so the free runner queue stays available.
+  cancel-in-progress: true
 
 env:
   PYTHONPATH: .
@@ -249,12 +248,29 @@ jobs:
           key: baseball-npb-historical-v6-${{ runner.os }}-${{ hashFiles('requirements.txt', 'research/npb_official_results.py') }}
 
       - name: Run chronological Baseball OOS research
-        timeout-minutes: 90
+        id: chronological-oos
+        timeout-minutes: 50
         env:
-          BASEBALL_TIME_BUDGET_SEC: '3600'
+          # Bounded incremental pass. A clean self-stop preserves checkpoints;
+          # the next scheduled/supervisor run resumes from cache instead of
+          # losing a long in-flight OOS job to a runner cancellation.
+          BASEBALL_TIME_BUDGET_SEC: '2700'
           NPB_RETRAIN_EVERY: '150'
           MLB_ENRICH_STARTERS: '0'
-        run: python -u research_runner_v6.py --league BOTH --mlb-start 2020 --mlb-end 2026 --retries 3
+        run: python -u research_runner_v6.py --league BOTH --mlb-start 2020 --mlb-end 2026 --retries 0
+
+      - name: Audit incomplete OOS checkpoint state
+        if: always() && steps.chronological-oos.outcome != 'success'
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          echo 'Chronological OOS did not finish in this bounded pass; fail-closed state is expected.'
+          files=$(find results/checkpoints -maxdepth 1 -type f -name '*_walkforward.csv' -size +0c -print 2>/dev/null | sort || true)
+          if [ -z "$files" ]; then
+            echo 'No non-empty OOS checkpoint was produced; refusing a false continuation signal.' >&2
+            exit 1
+          fi
+          printf '%s\n' "$files"
 
       - name: Save chronological OOS checkpoints
         if: always() && !cancelled()
