@@ -48,7 +48,7 @@ def test_recovery_is_bounded_and_only_retries_transient_steps():
     # resolves the parent run through the current checkout. Keep that setup
     # immutable and credential-free after checkout.
     assert "- name: Checkout recovery repository context" in text
-    assert "actions/checkout@11d5960a326750d5838078e36cf38b85af677262" in text
+    assert "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" in text
     assert "persist-credentials: false" in text
     assert "fetch-depth: 1" in text
 
