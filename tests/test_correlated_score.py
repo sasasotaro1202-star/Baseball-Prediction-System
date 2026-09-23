@@ -124,3 +124,15 @@ def test_canonical_output_contract_uses_shared_component(monkeypatch, tmp_path):
     expected = grid(4.5, 3.2, 0.75, 14)
     assert np.isclose(out.loc[0, "low"], expected[np.indices(expected.shape).sum(axis=0) <= 6].sum())
     assert out.loc[0, "score1"] == top_scores(4.5, 3.2, 0.75, 4)[0][0]
+
+
+def test_zero_shared_component_is_valid_and_normalized():
+    matrix = grid(3.0, 2.5, 0.0)
+    assert np.isfinite(matrix).all()
+    assert np.all(matrix >= 0.0)
+    assert abs(float(matrix.sum()) - 1.0) < 1e-12
+
+    low, high = low_high(3.0, 2.5, 0.0)
+    assert 0.0 <= low <= 1.0
+    assert 0.0 <= high <= 1.0
+    assert abs(low + high - 1.0) < 1e-12
