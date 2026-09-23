@@ -50,7 +50,24 @@ jobs:
           test -s ".github/workflows/${TARGET_WORKFLOW}"
           now_epoch=$(date +%s)
 
-          runs_json="$(gh run list             --repo "${GH_REPO}"             --workflow "${TARGET_WORKFLOW}"             --limit 30             --json databaseId,status,conclusion,createdAt,updatedAt,headSha)"
+          gh_retry() {
+            local attempt output rc
+            for attempt in 1 2 3 4; do
+              if output="$(gh "$@" 2>&1)"; then
+                printf '%s\n' "$output"
+                return 0
+              fi
+              rc=$?
+              echo "gh retry $attempt/4 failed: $output" >&2
+              if [ "$attempt" -lt 4 ]; then
+                sleep $((attempt * 2))
+              else
+                return "$rc"
+              fi
+            done
+          }
+
+          runs_json="$(gh_retry run list             --repo "${GH_REPO}"             --workflow "${TARGET_WORKFLOW}"             --limit 30             --json databaseId,status,conclusion,createdAt,updatedAt,headSha)"
 
           echo "Recent canonical closed-loop runs:"
           echo "${runs_json}" | jq '.[0:8]'
@@ -76,11 +93,11 @@ jobs:
 
             if { [ "${status}" = "queued" ] || [ "${status}" = "pending" ] || [ "${status}" = "waiting" ] || [ "${status}" = "requested" ]; } && [ "${created_age_minutes}" -ge 30 ]; then
               echo "Cancelling stale scheduler-blocked run ${id} after ${created_age_minutes}m."
-              gh run cancel "${id}" --repo "${GH_REPO}"
+              gh_retry run cancel "${id}" --repo "${GH_REPO}"
               stale_found=1
             elif [ "${status}" = "in_progress" ] && [ "${updated_age_minutes}" -ge 150 ]; then
               echo "Cancelling stale in-progress run ${id} after ${updated_age_minutes}m."
-              gh run cancel "${id}" --repo "${GH_REPO}"
+              gh_retry run cancel "${id}" --repo "${GH_REPO}"
               stale_found=1
             fi
           done < <(printf '%s' "${runs_json}" |
@@ -88,7 +105,7 @@ jobs:
 
           if [ "${stale_found}" -eq 1 ]; then
             for attempt in 1 2 3 4 5 6 7 8 9 10; do
-              active_after_cancel="$(gh run list                 --repo "${GH_REPO}"                 --workflow "${TARGET_WORKFLOW}"                 --limit 30                 --json status                 --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+              active_after_cancel="$(gh_retry run list                 --repo "${GH_REPO}"                 --workflow "${TARGET_WORKFLOW}"                 --limit 30                 --json status                 --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
               echo "Stale-cancel drain ${attempt}/10: active=${active_after_cancel}"
               if [ "${active_after_cancel}" -eq 0 ]; then
                 break
@@ -100,11 +117,11 @@ jobs:
           if [ "${stale_found}" -eq 1 ]; then
             # Refresh after cancellation so the dispatch decision uses the live
             # workflow ledger rather than the pre-cancellation snapshot.
-            runs_json="$(gh run list             --repo "${GH_REPO}"             --workflow "${TARGET_WORKFLOW}"             --limit 30             --json databaseId,status,conclusion,createdAt,updatedAt,headSha)"
+            runs_json="$(gh_retry run list             --repo "${GH_REPO}"             --workflow "${TARGET_WORKFLOW}"             --limit 30             --json databaseId,status,conclusion,createdAt,updatedAt,headSha)"
             echo "Run ledger refreshed after stale recovery."
           fi
 
-          active_count="$(gh run list             --repo "${GH_REPO}"             --workflow "${TARGET_WORKFLOW}"             --limit 30             --json status             --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+          active_count="$(gh_retry run list             --repo "${GH_REPO}"             --workflow "${TARGET_WORKFLOW}"             --limit 30             --json status             --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
           echo "Active canonical closed-loop runs after stale recovery: ${active_count}"
 
           if [ "${active_count}" -gt 0 ]; then
@@ -133,7 +150,7 @@ jobs:
             fi
           fi
 
-          current_main_sha="$(gh api "repos/${GH_REPO}/git/ref/heads/main" --jq ".object.sha")"
+          current_main_sha="$(gh_retry api "repos/${GH_REPO}/git/ref/heads/main" --jq ".object.sha")"
           latest_sha="$(printf '%s' "${latest}" | jq -r '.headSha // empty')"
 
           dispatch=0
@@ -146,7 +163,7 @@ jobs:
             # repeatedly restart the expensive canonical OOS cycle. Compare the
             # exact SHA range and dispatch only when something outside data/pit/
             # changed. Any compare/API failure fails closed.
-            compare_json="$(gh api "repos/${GH_REPO}/compare/${latest_sha}...${current_main_sha}")"
+            compare_json="$(gh_retry api "repos/${GH_REPO}/compare/${latest_sha}...${current_main_sha}")"
             compare_status="$(printf '%s' "${compare_json}" | jq -r '.status // empty')"
             if [ "${compare_status}" != "ahead" ] && [ "${compare_status}" != "behind" ] && [ "${compare_status}" != "identical" ]; then
               echo "Unable to establish a valid main SHA comparison (${latest_sha}...${current_main_sha}); refusing automatic dispatch." >&2
@@ -177,7 +194,7 @@ jobs:
             # Same-SHA deterministic failures must not loop forever. Only a
             # proven cooperative OOS stop may resume without a new SHA.
             set +e
-            failed_log="$(gh run view "${latest_id}" --repo "${GH_REPO}" --log-failed 2>/dev/null)"
+            failed_log="$(gh_retry run view "${latest_id}" --repo "${GH_REPO}" --log-failed 2>/dev/null)"
             log_status=$?
             set -e
             if [ "${log_status}" -ne 0 ]; then
@@ -199,12 +216,12 @@ jobs:
           fi
 
           echo "Dispatching canonical closed loop: ${reason}"
-          gh workflow run "${TARGET_WORKFLOW}" --repo "${GH_REPO}" --ref main
+          gh_retry workflow run "${TARGET_WORKFLOW}" --repo "${GH_REPO}" --ref main
 
           verified=0
           for attempt in 1 2 3 4 5; do
             sleep 3
-            active_after="$(gh run list               --repo "${GH_REPO}"               --workflow "${TARGET_WORKFLOW}"               --limit 10               --json status               --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+            active_after="$(gh_retry run list               --repo "${GH_REPO}"               --workflow "${TARGET_WORKFLOW}"               --limit 10               --json status               --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
             echo "Dispatch verification ${attempt}/5: active=${active_after}"
             if [ "${active_after}" -gt 0 ]; then
               verified=1
