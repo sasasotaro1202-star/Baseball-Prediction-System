@@ -29,6 +29,12 @@ ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
 
 
+# Candidate-only calibration search. The production calibration contract remains
+# unchanged; this wider Development-OOS grid probes whether a highly diffuse
+# MLB posterior is genuinely supported before any possible promotion.
+RESEARCH_TEMPERATURE_GRID = np.geomspace(0.35, 12.0, 97)
+
+
 @dataclass(frozen=True)
 class MLBReplayConfig:
     holdout_fraction: float = 0.20
@@ -132,7 +138,7 @@ def _temperature_scale(p: np.ndarray, temperature: float) -> np.ndarray:
 
 
 def _fit_temperature(y: np.ndarray, p: np.ndarray) -> float:
-    return float(fit_temperature(p, y).temperature)
+    return float(fit_temperature(p, y, grid=RESEARCH_TEMPERATURE_GRID).temperature)
 
 
 def _fit_with_half_life(bt: BaseballBacktest, name: str, X, y, half_life: int | None):
