@@ -147,7 +147,8 @@ def test_24h_supervisor_avoids_deterministic_failure_retry_loop():
     assert "cooldown active" in text
     assert "baseball_actions_recovery.yml owns transient failed-job retries" in text
     assert "gh run rerun" not in text
-    assert "gh workflow run" in text
+    # The dispatch is wrapped by gh_retry for transient GitHub API resilience.
+    assert "gh_retry workflow run" in text
     assert "Dispatch verification" in text
     assert "latest_age_minutes" in text
     assert "paths-ignore:" in text
