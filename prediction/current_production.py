@@ -15,6 +15,7 @@ import os
 import subprocess
 import sys
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -107,7 +108,7 @@ def predict_current(
 
         date_value = (
             target_date
-            or datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d")
+            or datetime.now(timezone.utc).astimezone(ZoneInfo("Asia/Tokyo")).strftime("%Y-%m-%d")
         )
         result = predict(date_value, data_dir)
         if not isinstance(result, Mapping):
