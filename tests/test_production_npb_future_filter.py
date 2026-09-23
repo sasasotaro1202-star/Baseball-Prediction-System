@@ -31,6 +31,14 @@ def test_build_target_rows_excludes_started_games(monkeypatch):
         "_utc_now",
         lambda: pd.Timestamp("2026-09-22T00:00:00Z"),
     )
+    monkeypatch.setattr(
+        production_npb,
+        "_official_daily_start_times",
+        lambda target_date: {
+            ("A", "B"): "08:00",
+            ("C", "D"): "18:00",
+        },
+    )
 
     out = production_npb.build_target_rows("2026-09-22")
     assert out["home"].tolist() == ["C"]
