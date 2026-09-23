@@ -657,17 +657,16 @@ def official_starters(target_date: str) -> list[dict]:
 
 def _official_daily_start_times(target_date: str) -> dict[tuple[str, str], str]:
     """Read official game start times from NPB's date-specific schedule page.
-    
-    This is an independent cross-check for the dedicated starter page. A game
-    time is accepted only when exactly one team-pair/time association is found.
+
+    The English daily page publishes each game as team -> venue/time -> team.
+    Parsing is bounded to team-pair segments and rejects ambiguous evidence.
     """
     url = NPB_DAY_URL.format(date=target_date.replace("-", ""))
     page_html = fetch_text(url)
     parser = _DailyScheduleTextParser()
     parser.feed(page_html)
     parts = [_clean_name(x) for x in parser.parts if _clean_name(x)]
-    # The official English daily page uses English team labels, while
-    # Japanese pages/tests use Japanese labels. Normalize both deterministically.
+
     aliases = {
         **TEAM_MAP,
         "広島": "広島東洋カープ",
@@ -687,53 +686,53 @@ def _official_daily_start_times(target_date: str) -> dict[tuple[str, str], str]:
         "西武": "埼玉西武ライオンズ",
     }
     team_names = set(aliases) | set(aliases.values())
-    candidates: dict[tuple[str, str], set[str]] = {}
+    time_re = re.compile(r"^\d{1,2}:\d{2}$")
 
     def canon(value: str) -> str:
         return aliases.get(value, value)
 
+    candidates: dict[tuple[str, str], set[str]] = {}
     for i, token in enumerate(parts):
         if token not in team_names:
             continue
         home = canon(token)
-        for j in range(i + 1, min(i + 10, len(parts))):
-            candidate_time = parts[j]
-            if re.fullmatch(r"\d{1,2}:\d{2}", candidate_time):
-                continue
-            if candidate_time in team_names:
-                away = canon(candidate_time)
-                between = parts[i + 1:j]
-                times = [x for x in between if re.fullmatch(r"\d{1,2}:\d{2}", x)]
-                if len(times) == 1:
-                    candidates.setdefault((home, away), set()).add(times[0])
-                break
-
-    # Also accept the common NPB daily-page ordering where the venue/time comes
-    # before the away-team image.
-    for i, token in enumerate(parts):
-        if token not in team_names:
-            continue
-        home = canon(token)
-        for j in range(i + 1, min(i + 12, len(parts))):
+        # The opponent is the next team label; venue and time may occur in
+        # either order, so only the intervening time token is semantically used.
+        for j in range(i + 1, min(i + 16, len(parts))):
             candidate = parts[j]
-            if candidate in team_names:
-                away = canon(candidate)
-                between = parts[i + 1:j]
-                times = [x for x in between if re.fullmatch(r"\d{1,2}:\d{2}", x)]
-                if len(times) == 1:
-                    candidates.setdefault((home, away), set()).add(times[0])
-                break
+            if candidate not in team_names:
+                continue
+            away = canon(candidate)
+            between = parts[i + 1:j]
+            times = [x for x in between if time_re.fullmatch(x)]
+            if len(times) == 1:
+                candidates.setdefault((home, away), set()).add(times[0])
+            # Once the next team is reached, do not skip it to another slate.
+            break
 
     if not candidates:
-        raise RuntimeError(f"Official NPB daily schedule did not yield game times for {target_date}.")
+        raise RuntimeError(
+            f"Official NPB daily schedule did not yield game times for {target_date}."
+        )
 
-    resolved = {}
+    resolved: dict[tuple[str, str], str] = {}
     for pair, values in candidates.items():
         if len(values) != 1:
             raise RuntimeError(
-                f"Official NPB daily schedule has ambiguous start time for {pair[0]} vs {pair[1]}: {sorted(values)}"
+                f"Official NPB daily schedule has ambiguous start time for "
+                f"{pair[0]} vs {pair[1]}: {sorted(values)}"
             )
         resolved[pair] = next(iter(values))
+
+    # A duplicate reverse pairing with a different time is contradictory
+    # evidence; fail closed rather than choosing one.
+    for (home, away), value in resolved.items():
+        reverse = (away, home)
+        if reverse in resolved and resolved[reverse] != value:
+            raise RuntimeError(
+                f"Official NPB daily schedule contains contradictory home/away "
+                f"pairs for {home} vs {away}."
+            )
     return resolved
 
 
