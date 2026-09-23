@@ -33,3 +33,8 @@ def test_mlb_probe_cadence_reads_latest_successful_snapshot(tmp_path, monkeypatc
         datetime(2026, 9, 23, 13, 20, tzinfo=timezone.utc),
     )
     assert pit._probe_due(None, datetime(2026, 9, 23, 12, 45, tzinfo=timezone.utc))
+
+
+def test_mlb_game_start_requires_timezone():
+    assert pit._mlb_game_start({"gameDate": "2026-09-23T13:00:00Z"}) == datetime(2026, 9, 23, 13, tzinfo=timezone.utc)
+    assert pit._mlb_game_start({"gameDate": "2026-09-23T13:00:00"}) is None

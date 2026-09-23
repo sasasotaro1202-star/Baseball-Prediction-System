@@ -113,6 +113,8 @@ jobs:
           set -euo pipefail
           export PIT_ENABLE_MLB_GAME_PROBES=1
           export PIT_MLB_PROBE_MIN_INTERVAL_MINUTES=60
+          export PIT_MLB_PROBE_LOOKAHEAD_HOURS=48
+          export PIT_MLB_PROBE_MAX_GAMES=24
           last_error=''
           for attempt in 1 2 3; do
             echo "PIT acquisition attempt ${attempt}/3"

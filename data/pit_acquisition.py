@@ -40,6 +40,8 @@ LOOKBACK_DAYS = int(os.getenv("PIT_LOOKBACK_DAYS", "1"))
 # Expensive per-game MLB probes are optional; schedule acquisition is the PIT-critical path.
 ENABLE_MLB_GAME_PROBES = os.getenv("PIT_ENABLE_MLB_GAME_PROBES", "0").strip().lower() in {"1", "true", "yes"}
 PROBE_MIN_INTERVAL_MINUTES = max(1, int(os.getenv("PIT_MLB_PROBE_MIN_INTERVAL_MINUTES", "60")))
+PROBE_LOOKAHEAD_HOURS = max(1, int(os.getenv("PIT_MLB_PROBE_LOOKAHEAD_HOURS", "48")))
+PROBE_MAX_GAMES = max(1, int(os.getenv("PIT_MLB_PROBE_MAX_GAMES", "24")))
 PROBE_ENTITY_TYPES = {"game_feed_timestamps", "game_content"}
 
 SESSION = requests.Session()
@@ -125,6 +127,22 @@ def _mlb_game_id(g: dict[str, Any]) -> str | None:
     for k in ("gamePk", "gamepk", "gameId", "game_id", "id"):
         if g.get(k) not in (None, ""):
             return str(g[k])
+    return None
+
+
+def _mlb_game_start(g: dict[str, Any]) -> datetime | None:
+    """Parse the first-party schedule start time without guessing a timezone."""
+    for key in ("gameDate", "game_date", "gameDateTime", "game_datetime", "startTime", "start_time"):
+        value = g.get(key)
+        if value in (None, ""):
+            continue
+        try:
+            dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if dt.tzinfo is None:
+            continue
+        return dt.astimezone(timezone.utc)
     return None
 
 
@@ -251,7 +269,9 @@ def acquire_mlb() -> int:
                      payload=payload, retrieved_at=retrieved, available_at=retrieved)
     count = 0
     probe_now = datetime.fromisoformat(retrieved)
+    probe_deadline = probe_now + timedelta(hours=PROBE_LOOKAHEAD_HOURS)
     last_probe_at = _load_last_probe_times() if ENABLE_MLB_GAME_PROBES else {}
+    probe_games = 0
     seen: set[str] = set()
     for g in _candidate_games(payload):
         gid = _mlb_game_id(g)
@@ -288,6 +308,13 @@ def acquire_mlb() -> int:
                          entity_id=gid, source="MLB_STATS_API", payload=g,
                          retrieved_at=retrieved, available_at=retrieved)
         if ENABLE_MLB_GAME_PROBES:
+            game_start = _mlb_game_start(g)
+            probe_window_ok = game_start is not None and probe_now <= game_start <= probe_deadline
+            probe_budget_ok = probe_games < PROBE_MAX_GAMES
+            if not (probe_window_ok and probe_budget_ok):
+                count += 1
+                continue
+            probe_games += 1
             timestamp_key = ("game_feed_timestamps", gid)
             if _probe_due(last_probe_at.get(timestamp_key), probe_now):
                 timestamp_probe = acquire_mlb_game_timestamps(gid)
