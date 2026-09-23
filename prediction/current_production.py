@@ -68,8 +68,18 @@ def current_runtime(league: str) -> dict[str, Any]:
             "git_commit": _git_commit(),
         }
 
+    status = str(runtime.get("formal_adoption_status", "")).strip().upper()
     required = ("entrypoint", "model_version", "contract")
     missing = [key for key in required if not str(runtime.get(key, "")).strip()]
+    if status.startswith("BLOCKED_") or status.startswith("GOVERNED_"):
+        return {
+            "available": False,
+            "league": league,
+            "status": "BLOCKED_NO_CURRENT_PRODUCTION_RUNTIME",
+            "reason": f"runtime registration is not currently callable: {status or 'UNSPECIFIED'}",
+            **runtime,
+            "git_commit": _git_commit(),
+        }
     if missing:
         raise RuntimeError(
             "current production runtime registry is incomplete: " + ", ".join(missing)

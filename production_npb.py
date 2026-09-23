@@ -312,12 +312,22 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
     # Prefer the number of structurally resolved official game cards. This
     # prevents unrelated clock-like text later in the page (e.g. average game
     # duration) from becoming a phantom game start time.
+    team_bounded_games = (
+        len(occurrences) // 2
+        if occurrences and len(occurrences) % 2 == 0
+        else 0
+    )
     structural_games = (
         len(structural_occurrences) // 2
         if structural_occurrences and len(structural_occurrences) % 2 == 0
         else 0
     )
-    expected_games = structural_games or len(time_matches)
+    # The starter team/starter pairs are the authoritative cardinality. Clock
+    # tokens are only usable as an upper bound because the page may contain
+    # unrelated statistics such as average game duration ("3:05").
+    expected_games = min(
+        game_count for game_count in (team_bounded_games, len(time_matches)) if game_count > 0
+    )
     if len(time_matches) < expected_games:
         raise RuntimeError(
             f"PIT starter gate failed: expected {expected_games} official game times, "

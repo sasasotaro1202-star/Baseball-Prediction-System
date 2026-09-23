@@ -201,7 +201,7 @@ def test_daily_schedule_time_parser_accepts_pair_time_stream(monkeypatch):
     assert got[("北海道日本ハムファイターズ", "東北楽天ゴールデンイーグルス")] == "18:00"
 
 
-def test_target_rows_reject_official_page_time_mismatch(monkeypatch):
+def test_target_rows_uses_official_daily_schedule_time_as_authoritative(monkeypatch):
     import production_npb as p
     import pandas as pd
 
@@ -229,12 +229,10 @@ def test_target_rows_reject_official_page_time_mismatch(monkeypatch):
         "_utc_now",
         lambda: pd.Timestamp("2026-09-23 12:00:00+00:00"),
     )
-    try:
-        p.build_target_rows("2026-09-24")
-    except RuntimeError as exc:
-        assert "time mismatch" in str(exc)
-    else:
-        raise AssertionError("mismatched official game time was accepted")
+    rows = p.build_target_rows("2026-09-24")
+    assert len(rows) == 1
+    assert rows.iloc[0]["official_start_time"] == "18:00"
+    assert str(rows.iloc[0]["start_time_source"]).startswith("https://npb.jp/bis/eng/2026/games/")
 
 
 
