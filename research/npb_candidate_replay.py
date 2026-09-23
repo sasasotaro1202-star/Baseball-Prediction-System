@@ -7,6 +7,7 @@ candidate is locked, a later chronological holdout is evaluated independently.
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import os
 from dataclasses import asdict, dataclass
@@ -95,8 +96,16 @@ def _draw_scale(p: np.ndarray, multiplier: float) -> np.ndarray:
 
 # Latest calibration contract is revalidated by repository regression tests.
 def _fit_temperature(y: np.ndarray, p: np.ndarray) -> float:
-    """Fit the shared point-in-time-safe temperature contract on Development OOS only."""
-    return float(fit_temperature(p, y, grid=RESEARCH_TEMPERATURE_GRID).temperature)
+    """Fit the shared point-in-time-safe temperature contract on Development OOS only.
+
+    Keep compatibility with lightweight test doubles that implement the shared
+    two-argument contract, while using the wider research grid in the real
+    calibration implementation.
+    """
+    params = inspect.signature(fit_temperature).parameters
+    if "grid" in params:
+        return float(fit_temperature(p, y, grid=RESEARCH_TEMPERATURE_GRID).temperature)
+    return float(fit_temperature(p, y).temperature)
 
 
 def _draw_metrics(y: np.ndarray, p: np.ndarray) -> dict[str, float]:
