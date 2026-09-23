@@ -61,7 +61,13 @@ def check_game(row: dict[str, Any], cutoff: str) -> tuple[bool, str]:
             )
         except (KeyError, TypeError, ValueError):
             return False, f"{side}_starter_evidence_invalid"
-        if not strict_eligible(evidence, cutoff):
+        try:
+            eligible = strict_eligible(evidence, cutoff)
+        except (KeyError, TypeError, ValueError):
+            # Invalid or non-official evidence is a deterministic fail-closed
+            # gate result, not an uncaught exception that breaks the runner.
+            return False, f"{side}_starter_not_strictly_eligible"
+        if not eligible:
             return False, f"{side}_starter_not_strictly_eligible"
     return True, "eligible"
 
