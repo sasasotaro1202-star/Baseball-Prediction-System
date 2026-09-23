@@ -44,7 +44,7 @@ jobs:
           current_sha="$(gh api "repos/${GH_REPO}/git/ref/heads/main" --jq '.object.sha')"
           echo "current_main_sha=${current_sha}"
 
-          runs="$(gh run list --repo "${GH_REPO}" --workflow "${CANDIDATE_WORKFLOW}" --limit 50             --json databaseId,status,conclusion,createdAt,headSha,runNumber)"
+          runs="$(gh run list --repo "${GH_REPO}" --workflow "${CANDIDATE_WORKFLOW}" --limit 50             --json databaseId,status,conclusion,createdAt,headSha,number)"
           echo "${runs}" | jq '.[0:12]'
 
           # A newer main commit supersedes any queued/pending candidate run,
@@ -57,14 +57,17 @@ jobs:
             sha="$(jq -r '.headSha // empty' <<<"${row}")"
             if [[ "${status}" =~ ^(queued|pending|waiting|requested)$ ]] && [[ -n "${sha}" ]] && [[ "${sha}" != "${current_sha}" ]]; then
               echo "Cancelling superseded queued candidate run ${id} (${sha})."
-              gh run cancel "${id}" --repo "${GH_REPO}" || true
+              if ! gh run cancel "${id}" --repo "${GH_REPO}"; then
+                echo "Failed to cancel superseded candidate run ${id}; refusing to continue with stale queue state." >&2
+                exit 1
+              fi
               stale_cancelled=1
             fi
           done < <(jq -c '.[]' <<<"${runs}")
 
           if [[ "${stale_cancelled}" -eq 1 ]]; then
             sleep 3
-            runs="$(gh run list --repo "${GH_REPO}" --workflow "${CANDIDATE_WORKFLOW}" --limit 50               --json databaseId,status,conclusion,createdAt,headSha,runNumber)"
+            runs="$(gh run list --repo "${GH_REPO}" --workflow "${CANDIDATE_WORKFLOW}" --limit 50               --json databaseId,status,conclusion,createdAt,headSha,number)"
           fi
 
           active_count="$(jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length' <<<"${runs}")"
