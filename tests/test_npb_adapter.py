@@ -51,3 +51,25 @@ def test_ambiguous_starter_text_does_not_guess():
 
     assert out.iloc[0]["home_pitcher"] == ""
     assert out.iloc[0]["away_pitcher"] == ""
+
+
+def test_compact_pitch_metadata_is_preserved_for_safe_postgame_usage():
+    raw = pd.DataFrame(
+        {
+            "game_id": ["g3", "g3", "g3", "g3"],
+            "PlayInfo_SeqNo": [1, 2, 3, 4],
+            "game_date": ["2025-04-01T09:00:00Z"] * 4,
+            "home_team_name": ["西武"] * 4,
+            "away_team_name": ["オリックス"] * 4,
+            "home_total_runs": [1, 1, 1, 1],
+            "away_total_runs": [0, 0, 0, 0],
+            "game_type_name": ["公式戦"] * 4,
+            "description_jap": [""] * 4,
+            "pitcher": [101, 101, 202, 303],
+            "TB": ["T", "T", "B", "B"],
+        }
+    )
+    out = normalize_pbp_frame(raw)
+    assert {"pitcher_id", "half_inning"}.issubset(out.columns)
+    assert out["pitcher_id"].tolist() == ["101", "101", "202", "303"]
+    assert out["half_inning"].tolist() == ["T", "T", "B", "B"]
