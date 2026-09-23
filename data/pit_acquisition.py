@@ -39,6 +39,8 @@ LOOKAHEAD_DAYS = int(os.getenv("PIT_LOOKAHEAD_DAYS", "3"))
 LOOKBACK_DAYS = int(os.getenv("PIT_LOOKBACK_DAYS", "1"))
 # Expensive per-game MLB probes are optional; schedule acquisition is the PIT-critical path.
 ENABLE_MLB_GAME_PROBES = os.getenv("PIT_ENABLE_MLB_GAME_PROBES", "0").strip().lower() in {"1", "true", "yes"}
+PROBE_MIN_INTERVAL_MINUTES = max(1, int(os.getenv("PIT_MLB_PROBE_MIN_INTERVAL_MINUTES", "60")))
+PROBE_ENTITY_TYPES = {"game_feed_timestamps", "game_content"}
 
 SESSION = requests.Session()
 SESSION.headers.update({
@@ -158,6 +160,45 @@ def _explicit_announcement(g: dict[str, Any], side: str) -> str | None:
         return None
 
 
+def _load_last_probe_times() -> dict[tuple[str, str], datetime]:
+    """Return the latest successful supporting-probe time per MLB game/entity."""
+    latest: dict[tuple[str, str], datetime] = {}
+    if not SNAPSHOT_LOG.exists():
+        return latest
+    for line in SNAPSHOT_LOG.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if row.get("league") != "MLB" or row.get("entity_type") not in PROBE_ENTITY_TYPES:
+            continue
+        if row.get("status", "KNOWN") != "KNOWN":
+            continue
+        value = row.get("retrieved_at")
+        if not value:
+            continue
+        try:
+            dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if dt.tzinfo is None:
+            continue
+        key = (str(row.get("entity_type")), str(row.get("entity_id")))
+        previous = latest.get(key)
+        if previous is None or dt > previous:
+            latest[key] = dt.astimezone(timezone.utc)
+    return latest
+
+
+def _probe_due(last_seen: datetime | None, now: datetime) -> bool:
+    """Check cadence without treating future observations as due."""
+    if last_seen is None:
+        return True
+    return (now - last_seen).total_seconds() >= PROBE_MIN_INTERVAL_MINUTES * 60
+
+
 def _record_snapshot(*, event_id: str, league: str, entity_type: str,
                      entity_id: str, source: str, payload: Any,
                      retrieved_at: str, available_at: str | None,
@@ -209,6 +250,8 @@ def acquire_mlb() -> int:
                      entity_id=f"{start}:{end}", source=MLB_SCHEDULE_URL,
                      payload=payload, retrieved_at=retrieved, available_at=retrieved)
     count = 0
+    probe_now = datetime.fromisoformat(retrieved)
+    last_probe_at = _load_last_probe_times() if ENABLE_MLB_GAME_PROBES else {}
     seen: set[str] = set()
     for g in _candidate_games(payload):
         gid = _mlb_game_id(g)
@@ -245,22 +288,29 @@ def acquire_mlb() -> int:
                          entity_id=gid, source="MLB_STATS_API", payload=g,
                          retrieved_at=retrieved, available_at=retrieved)
         if ENABLE_MLB_GAME_PROBES:
-            timestamp_probe = acquire_mlb_game_timestamps(gid)
-            if timestamp_probe is not None:
-                ts_payload, ts_retrieved = timestamp_probe
-                _record_snapshot(
-                    event_id=f"MLB:{gid}", league="MLB", entity_type="game_feed_timestamps",
-                    entity_id=gid, source="MLB_STATS_API_GAME_TIMESTAMPS",
-                    payload=ts_payload, retrieved_at=ts_retrieved, available_at=ts_retrieved,
-                )
-            content_probe = acquire_mlb_game_content(gid)
-            if content_probe is not None:
-                content_payload, content_retrieved = content_probe
-                _record_snapshot(
-                    event_id=f"MLB:{gid}", league="MLB", entity_type="game_content",
-                    entity_id=gid, source="MLB_STATS_API_GAME_CONTENT",
-                    payload=content_payload, retrieved_at=content_retrieved, available_at=content_retrieved,
-                )
+            timestamp_key = ("game_feed_timestamps", gid)
+            if _probe_due(last_probe_at.get(timestamp_key), probe_now):
+                timestamp_probe = acquire_mlb_game_timestamps(gid)
+                if timestamp_probe is not None:
+                    ts_payload, ts_retrieved = timestamp_probe
+                    _record_snapshot(
+                        event_id=f"MLB:{gid}", league="MLB", entity_type="game_feed_timestamps",
+                        entity_id=gid, source=f"{MLB_API}/game/{gid}/feed/live/timestamps",
+                        payload=ts_payload, retrieved_at=ts_retrieved, available_at=ts_retrieved,
+                    )
+                    last_probe_at[timestamp_key] = datetime.fromisoformat(ts_retrieved)
+
+            content_key = ("game_content", gid)
+            if _probe_due(last_probe_at.get(content_key), probe_now):
+                content_probe = acquire_mlb_game_content(gid)
+                if content_probe is not None:
+                    content_payload, content_retrieved = content_probe
+                    _record_snapshot(
+                        event_id=f"MLB:{gid}", league="MLB", entity_type="game_content",
+                        entity_id=gid, source=f"{MLB_API}/game/{gid}/content",
+                        payload=content_payload, retrieved_at=content_retrieved, available_at=content_retrieved,
+                    )
+                    last_probe_at[content_key] = datetime.fromisoformat(content_retrieved)
         count += 1
     return count
 

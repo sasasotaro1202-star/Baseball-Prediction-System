@@ -27,6 +27,8 @@ concurrency:
 env:
   PYTHONPATH: .
   PYTHONUNBUFFERED: 1
+  PIT_ENABLE_MLB_GAME_PROBES: "1"
+  PIT_MLB_PROBE_MIN_INTERVAL_MINUTES: "60"
 
 jobs:
   acquire:
