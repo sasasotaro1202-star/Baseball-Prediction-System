@@ -338,9 +338,16 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
     # The starter team/starter pairs are the authoritative cardinality. Clock
     # tokens are only usable as an upper bound because the page may contain
     # unrelated statistics such as average game duration ("3:05").
-    expected_games = min(
-        game_count for game_count in (team_bounded_games, len(time_matches)) if game_count > 0
-    )
+    available_game_counts = [
+        game_count for game_count in (team_bounded_games, structural_games)
+        if game_count > 0
+    ]
+    if not available_game_counts or not time_matches:
+        raise RuntimeError("PIT starter gate failed: could not deterministically resolve official game cardinality.")
+    # Use the strongest deterministic team/starter structure available, bounded
+    # by the number of visible clock tokens. A partial per-team fallback must
+    # never reduce a complete structural extraction from six games to three.
+    expected_games = min(max(available_game_counts), len(time_matches))
     if len(time_matches) < expected_games:
         raise RuntimeError(
             f"PIT starter gate failed: expected {expected_games} official game times, "
