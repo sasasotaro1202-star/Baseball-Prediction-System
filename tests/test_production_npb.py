@@ -237,3 +237,22 @@ def test_target_rows_reject_official_page_time_mismatch(monkeypatch):
         raise AssertionError("mismatched official game time was accepted")
 
 
+
+
+def test_starter_time_parser_prefers_structural_game_card_over_average_duration():
+    import production_npb as p
+
+    html = """
+    <div class="unit">
+      <img alt="広島東洋カープ"><div class="team_left"><span>森下 暢仁</span></div>
+      <img alt="読売ジャイアンツ"><div class="team_left"><span>西舘 勇陽</span></div>
+      <span>（マツダスタジアム）18:00</span>
+    </div>
+    <div>2026年 平均試合時間（9/22） 3:05 （9回試合のみ）</div>
+    """
+    rows = p.parse_official_starters_html(
+        '<h4>9月24日の予告先発投手</h4>' + html,
+        "2026-09-24",
+    )
+    assert len(rows) == 1
+    assert rows[0]["official_start_time"] == "18:00"

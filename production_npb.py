@@ -90,6 +90,57 @@ class _DailyScheduleTextParser(HTMLParser):
         if value:
             self.parts.append(value)
 
+class _StarterGameCardParser(HTMLParser):
+    """Extract one official start time only from a structural NPB game card."""
+    def __init__(self, aliases: dict[str, str]):
+        super().__init__()
+        self.aliases = aliases
+        self.depth = 0
+        self.unit_depth = None
+        self.teams = []
+        self.times = []
+        self.cards = []
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.lower()
+        attrs_dict = {k: v or "" for k, v in attrs}
+        if tag == "div" and "unit" in set((attrs_dict.get("class") or "").split()) and self.unit_depth is None:
+            self.unit_depth = self.depth
+            self.teams = []
+            self.times = []
+        if self.unit_depth is None:
+            self.depth += 1
+            return
+        if tag == "img":
+            alt = _clean_name(attrs_dict.get("alt", ""))
+            if alt in self.aliases:
+                canon = self.aliases[alt]
+                if canon not in self.teams:
+                    self.teams.append(canon)
+        self.depth += 1
+
+    def handle_data(self, data):
+        if self.unit_depth is None:
+            return
+        value = _clean_name(data)
+        if value and re.fullmatch(r"\d{1,2}:\d{2}", value):
+            self.times.append(value)
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        if self.unit_depth is None:
+            return
+        self.depth = max(0, self.depth - 1)
+        if tag == "div" and self.depth == self.unit_depth:
+            if len(self.teams) == 2 and len(self.times) == 1:
+                self.cards.append((list(self.teams), list(self.times)))
+            self.unit_depth = None
+            self.teams = []
+            self.times = []
+
+    def parsed_times(self):
+        return [(teams[0], teams[1], times[0]) for teams, times in self.cards]
+
 class _UnitStarterParser(HTMLParser):
     """Extract team/starter pairs only from official game-card .unit containers.
 
@@ -249,6 +300,12 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
 
     occurrences.sort()
     structural_occurrences = _parse_starters_by_units(section, teams)
+
+    aliases_for_cards = {team: team for team in teams}
+    card_parser = _StarterGameCardParser(aliases_for_cards)
+    card_parser.feed(section)
+    card_times = card_parser.parsed_times()
+
     time_matches = list(re.finditer(r"(?<!\d)(\d{1,2}:\d{2})(?!\d)", section))
     if not time_matches:
         raise RuntimeError("PIT starter gate failed: no official game times found.")
@@ -316,7 +373,7 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
     # are rendered in a footer-like block after the starter cards).
     if len(pair_candidates) == expected_games:
         timed_pairs = {
-            i: (pair_candidates[i][1], pair_candidates[i][2], time_matches[i].group(1))
+            i: (pair_candidates[i][1], pair_candidates[i][2], card_times[i][2] if len(card_times) == expected_games else time_matches[i].group(1))
             for i in range(expected_games)
         }
     else:
