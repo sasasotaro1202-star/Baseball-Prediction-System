@@ -131,11 +131,20 @@ jobs:
             fi
           fi
 
+          current_main_sha="$(gh api "repos/${GH_REPO}/git/ref/heads/main" --jq ".object.sha")"
+          latest_sha="$(printf '%s' "${latest}" | jq -r '.headSha // empty')"
+
           dispatch=0
           reason=''
           if [ -z "${latest_created}" ]; then
             dispatch=1
             reason='no canonical closed-loop history'
+          elif [ -n "${latest_sha}" ] && [ "${latest_sha}" != "${current_main_sha}" ]; then
+            # Any new main commit is new executable/research evidence. Start a
+            # fresh canonical cycle immediately instead of waiting for the
+            # generic stale-run cooldown.
+            dispatch=1
+            reason="latest cycle is on superseded SHA ${latest_sha}; current main is ${current_main_sha}"
           elif [ "${latest_conclusion}" = "cancelled" ] || [ "${latest_conclusion}" = "timed_out" ] || [ "${latest_conclusion}" = "startup_failure" ]; then
             if [ "${latest_age_minutes}" -ge 10 ]; then
               dispatch=1
@@ -145,37 +154,25 @@ jobs:
             dispatch=1
             reason="successful cycle is stale at ${latest_age_minutes}m"
           elif [ "${latest_conclusion}" = "failure" ] && [ "${latest_age_minutes}" -ge 10 ] && [ -n "${latest_id}" ]; then
-            # Do not retry a deterministic failure forever on the same commit.
-            # A newer main commit is new evidence/code, so one fresh cycle is
-            # allowed; otherwise retain the existing bounded time-budget resume.
-            latest_sha="$(printf "%s" "${latest}" | jq -r ".headSha // empty")"
-            current_main_sha="$(gh api "repos/${GH_REPO}/git/ref/heads/main" --jq ".object.sha")"
-            if [ -n "${latest_sha}" ] && [ "${latest_sha}" != "${current_main_sha}" ]; then
-              dispatch=1
-              reason="latest failure superseded by new main commit ${current_main_sha}"
-            else
-              # Cooperative time-budget stops are deliberately failed runs so
-              # partial OOS can never be misreported as success. Resume only when
-              # the failed log proves that exact resumable stop condition.
-              set +e
-              failed_log="$(gh run view "${latest_id}" --repo "${GH_REPO}" --log-failed 2>/dev/null)"
-              log_status=$?
-              set -e
-              if [ "${log_status}" -ne 0 ]; then
-                echo "Unable to inspect failed run ${latest_id}; refusing automatic restart without evidence." >&2
-                exit 1
-              fi
-              if printf "%s" "${failed_log}" | grep -Fq "walk-forward incomplete:" && \
-                 printf "%s" "${failed_log}" | grep -Fq "time budget reached before block"; then
-                dispatch=1
-                reason="latest run ${latest_id} stopped at cooperative OOS time budget"
-              fi
+            # Same-SHA deterministic failures must not loop forever. Only a
+            # proven cooperative OOS stop may resume without a new SHA.
+            set +e
+            failed_log="$(gh run view "${latest_id}" --repo "${GH_REPO}" --log-failed 2>/dev/null)"
+            log_status=$?
+            set -e
+            if [ "${log_status}" -ne 0 ]; then
+              echo "Unable to inspect failed run ${latest_id}; refusing automatic restart without evidence." >&2
+              exit 1
             fi
-          elif [ "${EVENT_RUN_ID}" != '' ] && [ "${EVENT_CONCLUSION}" = "cancelled" ]; then
+            if printf "%s" "${failed_log}" | grep -Fq "walk-forward incomplete:" && \
+               printf "%s" "${failed_log}" | grep -Fq "time budget reached before block"; then
+              dispatch=1
+              reason="latest run ${latest_id} stopped at cooperative OOS time budget"
+            fi
+          elif [ "${EVENT_RUN_ID}" != "" ] && [ "${EVENT_CONCLUSION}" = "cancelled" ]; then
             dispatch=1
             reason="event run ${EVENT_RUN_ID} was cancelled"
           fi
-
           if [ "${dispatch}" -ne 1 ]; then
             echo "cooldown active: no dispatch needed. latest_conclusion=${latest_conclusion:-<none>} latest_age_minutes=${latest_age_minutes}"
             exit 0
