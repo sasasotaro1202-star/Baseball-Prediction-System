@@ -51,3 +51,23 @@ def test_official_starter_parser_rejects_identical_starters_in_one_game():
         assert "identical starter" in str(exc)
     else:
         raise AssertionError("identical starters for both teams must fail closed")
+
+
+def test_predict_persists_blocked_state_for_impossible_starter_pair(monkeypatch, tmp_path):
+    import production_npb
+
+    monkeypatch.setattr(
+        production_npb,
+        "build_target_rows",
+        lambda target_date: (_ for _ in ()).throw(
+            RuntimeError(
+                "PIT starter gate failed: identical starter assigned to both teams "
+                "in one official game (A vs B): '投手A'."
+            )
+        ),
+    )
+    result = production_npb.predict("2026-09-24", str(tmp_path))
+    assert result["execution_status"] == "BLOCKED_STARTERS"
+    assert result["predictions"] == []
+    assert "identical starter" in result["block_reason"]
+    assert (tmp_path / "results" / "npb_production_2026-09-24.json").exists() is False

@@ -646,6 +646,7 @@ def predict(target_date: str, data_dir: str) -> dict:
             "Official NPB starter page does not contain",
             "PIT starter gate failed: expected at least",
             "PIT starter gate failed: no official game times found.",
+            "PIT starter gate failed: identical starter assigned to both teams",
         )
         if not any(marker in message for marker in blocked_markers):
             raise
