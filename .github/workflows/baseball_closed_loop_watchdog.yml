@@ -22,16 +22,20 @@ jobs:
           set -euo pipefail
 
           now=$(date -u +%s)
+          current_sha="$(gh api "repos/${REPO}/git/ref/heads/main" --jq '.object.sha')"
           runs_json="$(gh run list --repo "${REPO}" --workflow baseball_closed_loop.yml --limit 20 --json databaseId,status,conclusion,createdAt,headSha)"
 
           active="$(printf '%s' "${runs_json}" | jq '[.[] | select(.status == "in_progress")] | length')"
           blocked="$(printf '%s' "${runs_json}" | jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested")] | length')"
 
+          echo "current_main_sha=${current_sha}"
           echo "active=${active} blocked=${blocked}"
 
           # GitHub can expose a run that is waiting for capacity/concurrency as
           # pending rather than queued. Treat all non-running scheduler states
           # as blocked, but never cancel an actively executing research run.
+          # Scheduler-blocked runs on an older SHA are cancelled immediately so
+          # the newest executable contract is not buried behind stale queue items.
           printf '%s' "${runs_json}" |
           jq -c '.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested")' |
           while IFS= read -r row; do
@@ -39,9 +43,20 @@ jobs:
             id="$(printf '%s' "${row}" | jq -r '.databaseId')"
             status="$(printf '%s' "${row}" | jq -r '.status')"
             created="$(printf '%s' "${row}" | jq -r '.createdAt')"
+            head_sha="$(printf '%s' "${row}" | jq -r '.headSha // empty')"
             created_epoch="$(date -d "${created}" +%s)"
             age=$((now - created_epoch))
-            if [ "${age}" -ge 2700 ]; then
+
+            # A newer main SHA supersedes scheduler-blocked runs immediately.
+            # Never cancel an in-progress run here: expensive chronological OOS
+            # may be resumable and must not be interrupted by a newer commit.
+            if [ -n "${head_sha}" ] && [ "${head_sha}" != "${current_sha}" ]; then
+              echo "Cancelling superseded ${status} closed-loop run ${id} (${head_sha})"
+              if ! gh run cancel "${id}" --repo "${REPO}"; then
+                echo "Failed to cancel superseded run ${id}; watchdog must remain visibly failed." >&2
+                exit 1
+              fi
+            elif [ "${age}" -ge 2700 ]; then
               echo "Cancelling stale ${status} closed-loop run ${id} (age=${age}s)"
               if ! gh run cancel "${id}" --repo "${REPO}"; then
                 echo "Failed to cancel stale run ${id}; watchdog must remain visibly failed." >&2
