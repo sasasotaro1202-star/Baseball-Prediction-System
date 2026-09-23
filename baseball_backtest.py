@@ -1207,20 +1207,45 @@ class BaseballBacktest:
                 cols["starts"] = 1.0
                 self.pitcher_history[(row["league"], p)].append(cols)
 
+    @staticmethod
+    def _env_int(name: str, default: int, *, minimum: int = 0) -> int:
+        raw = os.getenv(name)
+        if raw in (None, ""):
+            return int(default)
+        try:
+            value = int(raw)
+        except Exception as exc:
+            raise ValueError(f"{name} must be an integer") from exc
+        if value < minimum:
+            raise ValueError(f"{name} must be >= {minimum}")
+        return value
+
     def models(self, league: str) -> Dict[str, Any]:
         k = 3 if league == "NPB" else 2
+        fast = os.getenv("BASEBALL_FAST_OOS", "0") == "1"
+
+        # The full research portfolio stays available by default. Scheduled
+        # closed-loop runs opt into a bounded free-run profile so one expensive
+        # booster cannot consume the complete OOS budget before predictions.
+        hist_max_iter = self._env_int("BASEBALL_HISTGB_MAX_ITER", 180 if fast else 280, minimum=1)
+        rf_estimators = self._env_int("BASEBALL_RF_ESTIMATORS", 180 if fast else 320, minimum=1)
+        et_estimators = self._env_int("BASEBALL_ET_ESTIMATORS", 180 if fast else 320, minimum=1)
+        lgbm_estimators = self._env_int("BASEBALL_LGBM_ESTIMATORS", 180 if fast else 300, minimum=1)
+        xgb_estimators = self._env_int("BASEBALL_XGB_ESTIMATORS", 120 if fast else 300, minimum=1)
+        cat_iterations = self._env_int("BASEBALL_CATBOOST_ITERATIONS", 120 if fast else 300, minimum=1)
+
         m: Dict[str, Any] = {
             "Logistic": Pipeline([("scale", StandardScaler()), ("m", LogisticRegression(C=0.5, max_iter=2500, class_weight="balanced", random_state=RANDOM_STATE))]),
-            "HistGB": HistGradientBoostingClassifier(max_iter=280, learning_rate=0.035, max_leaf_nodes=15, min_samples_leaf=12, l2_regularization=2.0, random_state=RANDOM_STATE),
-            "RandomForest": RandomForestClassifier(n_estimators=320, max_depth=10, min_samples_leaf=6, max_features=0.55, class_weight="balanced_subsample", random_state=RANDOM_STATE, n_jobs=self.inner_jobs),
-            "ExtraTrees": ExtraTreesClassifier(n_estimators=320, max_depth=12, min_samples_leaf=5, max_features=0.65, class_weight="balanced", random_state=RANDOM_STATE, n_jobs=self.inner_jobs),
+            "HistGB": HistGradientBoostingClassifier(max_iter=hist_max_iter, learning_rate=0.035, max_leaf_nodes=15, min_samples_leaf=12, l2_regularization=2.0, random_state=RANDOM_STATE),
+            "RandomForest": RandomForestClassifier(n_estimators=rf_estimators, max_depth=10, min_samples_leaf=6, max_features=0.55, class_weight="balanced_subsample", random_state=RANDOM_STATE, n_jobs=self.inner_jobs),
+            "ExtraTrees": ExtraTreesClassifier(n_estimators=et_estimators, max_depth=12, min_samples_leaf=5, max_features=0.65, class_weight="balanced", random_state=RANDOM_STATE, n_jobs=self.inner_jobs),
         }
         if LGBMClassifier is not None:
-            m["LightGBM"] = LGBMClassifier(n_estimators=300, learning_rate=0.025, num_leaves=15, max_depth=6, min_child_samples=18, subsample=0.85, colsample_bytree=0.8, reg_alpha=0.2, reg_lambda=2.0, objective="multiclass" if k==3 else "binary", num_class=k if k==3 else None, verbosity=-1, random_state=RANDOM_STATE, n_jobs=self.inner_jobs)
+            m["LightGBM"] = LGBMClassifier(n_estimators=lgbm_estimators, learning_rate=0.025, num_leaves=15, max_depth=6, min_child_samples=18, subsample=0.85, colsample_bytree=0.8, reg_alpha=0.2, reg_lambda=2.0, objective="multiclass" if k==3 else "binary", num_class=k if k==3 else None, verbosity=-1, random_state=RANDOM_STATE, n_jobs=self.inner_jobs)
         if XGBClassifier is not None:
-            m["XGBoost"] = XGBClassifier(n_estimators=300, max_depth=4, learning_rate=0.025, min_child_weight=8, subsample=0.85, colsample_bytree=0.8, reg_alpha=0.2, reg_lambda=3.0, objective="multi:softprob" if k==3 else "binary:logistic", num_class=k if k==3 else None, eval_metric="mlogloss" if k==3 else "logloss", tree_method="hist", random_state=RANDOM_STATE, n_jobs=self.inner_jobs)
+            m["XGBoost"] = XGBClassifier(n_estimators=xgb_estimators, max_depth=4, learning_rate=0.025, min_child_weight=8, subsample=0.85, colsample_bytree=0.8, reg_alpha=0.2, reg_lambda=3.0, objective="multi:softprob" if k==3 else "binary:logistic", num_class=k if k==3 else None, eval_metric="mlogloss" if k==3 else "logloss", tree_method="hist", random_state=RANDOM_STATE, n_jobs=self.inner_jobs)
         if CatBoostClassifier is not None:
-            m["CatBoost"] = CatBoostClassifier(iterations=300, depth=6, learning_rate=0.03, loss_function="MultiClass" if k==3 else "Logloss", verbose=False, random_seed=RANDOM_STATE, thread_count=self.inner_jobs, l2_leaf_reg=5.0)
+            m["CatBoost"] = CatBoostClassifier(iterations=cat_iterations, depth=6, learning_rate=0.03, loss_function="MultiClass" if k==3 else "Logloss", verbose=False, random_seed=RANDOM_STATE, thread_count=self.inner_jobs, l2_leaf_reg=5.0)
         return m
 
     def _validation_splits(self, n: int) -> List[Tuple[int,int]]:
@@ -1256,6 +1281,23 @@ class BaseballBacktest:
         return np.clip(w, 0.20, 1.0)
 
     def _fit_model(self, model, X, y, weights=None, league="NPB"):
+        # A bounded recent-prefix window controls runtime while preserving
+        # chronology: every retained row is still earlier than the OOS target.
+        rows_in = int(len(X))
+        max_fit_rows = self._env_int("BASEBALL_MAX_FIT_ROWS", 0, minimum=0)
+        if max_fit_rows and len(X) > max_fit_rows:
+            start = len(X) - max_fit_rows
+            X = X.iloc[start:]
+            y = np.asarray(y)[start:]
+            if weights is not None:
+                weights = np.asarray(weights)[start:]
+            self.audit.append({
+                "type": "fit_window_cap",
+                "league": str(league),
+                "rows_in": rows_in,
+                "rows_used": int(len(X)),
+                "max_fit_rows": int(max_fit_rows),
+            })
         if weights is None:
             return model.fit(X, y)
         try:
@@ -1570,13 +1612,20 @@ class BaseballBacktest:
                     self._check_time_budget(f"fit_ensemble:{league}:calibration:{cut}")
                     raw=np.zeros((val,k))
                     yv=np.asarray(y[cut:cut+val],dtype=int)
+                    stored=validation_predictions.get((cut,val), {})
                     for (name,_loss),w in zip(top,inv):
-                        mm=models[name]
-                        self._fit_model(mm,X.iloc[:cut],y[:cut],self._sample_weights(cut),league)
-                        mp=self.align_proba(
-                            mm.predict_proba(X.iloc[cut:cut+val]),
-                            mm.classes_,league
-                        )
+                        mp=stored.get(name)
+                        if mp is None:
+                            raise RuntimeError(
+                                f"missing stored validation prediction for calibration: "
+                                f"{league} {name} cut={cut} val={val}"
+                            )
+                        mp=np.asarray(mp,dtype=float)
+                        if mp.shape != (val,k) or not np.isfinite(mp).all():
+                            raise RuntimeError(
+                                f"invalid stored validation prediction for calibration: "
+                                f"{league} {name} cut={cut} val={val}"
+                            )
                         model_parts[name].append(mp)
                         raw += float(w)*mp
                     raw_parts.append(raw)
@@ -1630,11 +1679,10 @@ class BaseballBacktest:
             except Exception as e:
                 self.audit.append({"type":"calibration_error","error":str(e)})
         self._last_temperature = temperature
-        # Restore full-data fitted models after the calibration fit above.
-        for model,_,name in fitted:
-            self._check_time_budget(f"fit_ensemble:{league}:{name}:restore_full_fit")
-            self._fit_model(model,X,y,self._sample_weights(len(X)),league)
-        return fitted,{name:float(loss) for loss,name in scored},top[0][0]
+        # Final-fit members are already trained on the complete current
+        # chronological prefix. Calibration reuses stored OOS predictions, so
+        # a second full-data refit is unnecessary and would waste the budget.
+return fitted,{name:float(loss) for loss,name in scored},top[0][0]
 
     def ensemble_proba(self, fitted, X: pd.DataFrame, league: str) -> np.ndarray:
         k=3 if league=="NPB" else 2
@@ -1670,7 +1718,16 @@ class BaseballBacktest:
     def fit_score_ensemble(self, X: pd.DataFrame, y_home: np.ndarray, y_away: np.ndarray, league: str):
         if len(X) < max(80, MIN_TRAIN // 2):
             return None
+        fast = os.getenv("BASEBALL_FAST_OOS", "0") == "1"
         splits = self._validation_splits(len(X))
+        if fast and splits:
+            splits = splits[-1:]
+        score_tree_estimators = self._env_int(
+            "BASEBALL_SCORE_TREE_ESTIMATORS", 90 if fast else 180, minimum=1
+        )
+        score_hist_iter = self._env_int(
+            "BASEBALL_SCORE_HIST_MAX_ITER", 120 if fast else 180, minimum=1
+        )
         specs = [
             ("Poisson", lambda: PoissonRegressor(alpha=0.15, max_iter=1000)),
             # Tweedie adds a flexible mean-variance relationship for run counts.
@@ -1912,7 +1969,10 @@ class BaseballBacktest:
                 )
             try:
                 print(f"[{league} HEARTBEAT] fitting block={block_number}/{total_blocks} train={bstart} eval={bend-bstart}", flush=True)
-                fitted, val_scores, best_name = self.fit_ensemble(X.iloc[:bstart], y[:bstart], league)
+                fast_oos = os.getenv("BASEBALL_FAST_OOS", "0") == "1"
+                fitted, val_scores, best_name = self.fit_ensemble(
+                    X.iloc[:bstart], y[:bstart], league, fast_oos=fast_oos
+                )
                 if not fitted: raise RuntimeError("ensemble fitting failed")
                 name = "Ensemble(" + "+".join(x[2] for x in fitted) + ")"
                 p = self.ensemble_proba(fitted, X.iloc[bstart:bend], league)

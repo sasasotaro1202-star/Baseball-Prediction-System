@@ -24,6 +24,9 @@ env:
   PYTHONUNBUFFERED: '1'
   # Two leagues run concurrently; keep inner model parallelism bounded.
   BASEBALL_INNER_JOBS: '2'
+  # Scheduled OOS uses a bounded profile; production-facing defaults remain full.
+  BASEBALL_FAST_OOS: '1'
+  BASEBALL_MAX_FIT_ROWS: '6000'
 
 jobs:
   lifecycle:
