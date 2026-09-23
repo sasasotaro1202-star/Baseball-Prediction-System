@@ -50,7 +50,7 @@ jobs:
           test -s ".github/workflows/${TARGET_WORKFLOW}"
           now_epoch=$(date +%s)
 
-          runs_json="$(gh run list             --repo "${GH_REPO}"             --workflow "${TARGET_WORKFLOW}"             --limit 30             --json databaseId,status,conclusion,createdAt,updatedAt)"
+          runs_json="$(gh run list             --repo "${GH_REPO}"             --workflow "${TARGET_WORKFLOW}"             --limit 30             --json databaseId,status,conclusion,createdAt,updatedAt,headSha)"
 
           echo "Recent canonical closed-loop runs:"
           echo "${runs_json}" | jq '.[0:8]'
@@ -100,7 +100,7 @@ jobs:
           if [ "${stale_found}" -eq 1 ]; then
             # Refresh after cancellation so the dispatch decision uses the live
             # workflow ledger rather than the pre-cancellation snapshot.
-            runs_json="$(gh run list             --repo "${GH_REPO}"             --workflow "${TARGET_WORKFLOW}"             --limit 30             --json databaseId,status,conclusion,createdAt,updatedAt)"
+            runs_json="$(gh run list             --repo "${GH_REPO}"             --workflow "${TARGET_WORKFLOW}"             --limit 30             --json databaseId,status,conclusion,createdAt,updatedAt,headSha)"
             echo "Run ledger refreshed after stale recovery."
           fi
 
@@ -147,21 +147,31 @@ jobs:
             dispatch=1
             reason="successful cycle is stale at ${latest_age_minutes}m"
           elif [ "${latest_conclusion}" = "failure" ] && [ "${latest_age_minutes}" -ge 10 ] && [ -n "${latest_id}" ]; then
-            # Cooperative time-budget stops are deliberately failed runs so
-            # partial OOS can never be misreported as success. Resume only when
-            # the failed log proves that exact resumable stop condition.
-            set +e
-            failed_log="$(gh run view "${latest_id}" --repo "${GH_REPO}" --log-failed 2>/dev/null)"
-            log_status=$?
-            set -e
-            if [ "${log_status}" -ne 0 ]; then
-              echo "Unable to inspect failed run ${latest_id}; refusing automatic restart without evidence." >&2
-              exit 1
-            fi
-            if printf "%s" "${failed_log}" | grep -Fq "walk-forward incomplete:" && \
-               printf "%s" "${failed_log}" | grep -Fq "time budget reached before block"; then
+            # Do not retry a deterministic failure forever on the same commit.
+            # A newer main commit is new evidence/code, so one fresh cycle is
+            # allowed; otherwise retain the existing bounded time-budget resume.
+            latest_sha="$(printf "%s" "${latest}" | jq -r ".headSha // empty")"
+            current_main_sha="$(gh api "repos/${GH_REPO}/git/ref/heads/main" --jq ".object.sha")"
+            if [ -n "${latest_sha}" ] && [ "${latest_sha}" != "${current_main_sha}" ]; then
               dispatch=1
-              reason="latest run ${latest_id} stopped at cooperative OOS time budget"
+              reason="latest failure superseded by new main commit ${current_main_sha}"
+            else
+              # Cooperative time-budget stops are deliberately failed runs so
+              # partial OOS can never be misreported as success. Resume only when
+              # the failed log proves that exact resumable stop condition.
+              set +e
+              failed_log="$(gh run view "${latest_id}" --repo "${GH_REPO}" --log-failed 2>/dev/null)"
+              log_status=$?
+              set -e
+              if [ "${log_status}" -ne 0 ]; then
+                echo "Unable to inspect failed run ${latest_id}; refusing automatic restart without evidence." >&2
+                exit 1
+              fi
+              if printf "%s" "${failed_log}" | grep -Fq "walk-forward incomplete:" && \
+                 printf "%s" "${failed_log}" | grep -Fq "time budget reached before block"; then
+                dispatch=1
+                reason="latest run ${latest_id} stopped at cooperative OOS time budget"
+              fi
             fi
           elif [ "${EVENT_RUN_ID}" != '' ] && [ "${EVENT_CONCLUSION}" = "cancelled" ]; then
             dispatch=1
