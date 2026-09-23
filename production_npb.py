@@ -177,7 +177,7 @@ class _UnitStarterParser(HTMLParser):
         if tag == "div" and "team_left" in classes and self.current_team is not None and self.team_left_depth is None:
             self.team_left_depth = self.depth
             self.current_name = []
-        elif tag in {"p", "a", "span"} and self.current_team is not None and self.team_left_depth is None and self.fallback_depth is None:
+        elif tag in {"p", "a"} and self.current_team is not None and self.team_left_depth is None and self.fallback_depth is None:
             self.fallback_depth = self.depth
             self.current_name = []
         self.depth += 1
