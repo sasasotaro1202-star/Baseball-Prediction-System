@@ -252,7 +252,20 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
     time_matches = list(re.finditer(r"(?<!\d)(\d{1,2}:\d{2})(?!\d)", section))
     if not time_matches:
         raise RuntimeError("PIT starter gate failed: no official game times found.")
-    expected_games = len(time_matches)
+    # Prefer the number of structurally resolved official game cards. This
+    # prevents unrelated clock-like text later in the page (e.g. average game
+    # duration) from becoming a phantom game start time.
+    structural_games = (
+        len(structural_occurrences) // 2
+        if structural_occurrences and len(structural_occurrences) % 2 == 0
+        else 0
+    )
+    expected_games = structural_games or len(time_matches)
+    if len(time_matches) < expected_games:
+        raise RuntimeError(
+            f"PIT starter gate failed: expected {expected_games} official game times, "
+            f"found {len(time_matches)}."
+        )
     # Some official NPB revisions use one .unit per team rather than one .unit
     # per game. Do not let a structurally valid-but-cardinality-incomplete
     # extraction erase the broader team-bounded extraction above. Structural
