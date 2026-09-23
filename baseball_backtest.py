@@ -64,6 +64,7 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import StandardScaler
 
 from research.regime_router import RegimeRouter
+from research.hierarchical_result_model import HierarchicalNPBClassifier
 from research.correlated_score import estimate_shared_lambda, low_high as correlated_low_high, top_scores as correlated_top_scores
 from evaluation.calibration import fit_temperature, TemperatureCalibration
 from core.atomic_io import atomic_write_text
@@ -1255,6 +1256,15 @@ class BaseballBacktest:
             # evaluated only on chronological validation and therefore cannot
             # bypass the existing promotion/OOS gates.
             "KNNAnalog": Pipeline([("scale", StandardScaler()), ("m", KNeighborsClassifier(n_neighbors=45, weights="distance", p=2, leaf_size=30, n_jobs=self.inner_jobs))]),
+            if league == "NPB":
+                # Hierarchical result challenger: learn the rare-draw event
+                # separately, then the home/away outcome conditional on a
+                # non-draw. This is evaluated by the same chronological OOS
+                # selector and cannot bypass the locked promotion gate.
+                m["HierarchicalDrawResult"] = HierarchicalNPBClassifier(
+                    hgb_max_iter=hist_max_iter,
+                    random_state=RANDOM_STATE,
+                )
         }
         if LGBMClassifier is not None:
             m["LightGBM"] = LGBMClassifier(n_estimators=lgbm_estimators, learning_rate=0.025, num_leaves=15, max_depth=6, min_child_samples=18, subsample=0.85, colsample_bytree=0.8, reg_alpha=0.2, reg_lambda=2.0, objective="multiclass" if k==3 else "binary", num_class=k if k==3 else None, verbosity=-1, random_state=RANDOM_STATE, n_jobs=self.inner_jobs)
