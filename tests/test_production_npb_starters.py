@@ -98,8 +98,8 @@ def test_official_league_starter_parser_supports_single_game_league_page():
     assert cl == [{
         "home": "広島東洋カープ",
         "away": "読売ジャイアンツ",
-        "home_starter": "森下　暢仁",
-        "away_starter": "西舘　勇陽",
+        "home_starter": "森下 暢仁",
+        "away_starter": "西舘 勇陽",
         "confirmed_starters": True,
         "starter_evidence_status": "official_announced",
         "starter_source": "https://npb.jp/cl/",
@@ -133,6 +133,8 @@ def test_official_starters_reconciles_suspect_dedicated_page_with_first_party_le
     )
 
     def fake_fetch(url):
+        if "npb.jp/announcement/starter/" in url:
+            return "<html><body>fixture</body></html>"
         if "npb.jp/cl/" in url:
             return cl
         if "npb.jp/pl/" in url:
@@ -142,6 +144,6 @@ def test_official_starters_reconciles_suspect_dedicated_page_with_first_party_le
     monkeypatch.setattr(production_npb, "fetch_text", fake_fetch)
     rows = production_npb.official_starters("2026-09-24")
     assert [(x["home"], x["home_starter"], x["away"], x["away_starter"]) for x in rows] == [
-        ("広島東洋カープ", "森下　暢仁", "読売ジャイアンツ", "西舘　勇陽"),
-        ("北海道日本ハムファイターズ", "達　孝太", "東北楽天ゴールデンイーグルス", "前田　健太"),
+        ("広島東洋カープ", "森下 暢仁", "読売ジャイアンツ", "西舘 勇陽"),
+        ("北海道日本ハムファイターズ", "達 孝太", "東北楽天ゴールデンイーグルス", "前田 健太"),
     ]

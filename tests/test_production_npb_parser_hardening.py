@@ -87,6 +87,6 @@ def test_official_league_fallback_rejects_incomplete_slate():
     try:
         parse_official_league_starters_html(html, "2026-09-23", "https://npb.jp/cl/")
     except RuntimeError as exc:
-        assert "resolved 4" in str(exc)
+        assert "minimum required is 3" in str(exc)
     else:
         raise AssertionError("incomplete official league slate must fail closed")

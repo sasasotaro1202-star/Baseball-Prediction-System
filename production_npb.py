@@ -341,7 +341,13 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
         })
     return out
 
-def parse_official_league_starters_html(page_html: str, target_date: str, source_url: str) -> list[dict]:
+def parse_official_league_starters_html(
+    page_html: str,
+    target_date: str,
+    source_url: str,
+    *,
+    min_games: int = 3,
+) -> list[dict]:
     """Parse one official NPB league page when the dedicated starter page has rolled forward.
 
     The league pages are first-party NPB pages and expose the target-date
@@ -414,6 +420,11 @@ def parse_official_league_starters_html(page_html: str, target_date: str, source
     time_values = [x for x in tokens if re.fullmatch(r"\d{1,2}:\d{2}", x)]
     expected_games = len(time_values)
     required_records = 2 * expected_games
+    if expected_games < int(min_games):
+        raise RuntimeError(
+            f"PIT starter gate failed: official league page resolved only {expected_games} "
+            f"games; minimum required is {int(min_games)}."
+        )
     if expected_games <= 0 or len(found) < required_records:
         raise RuntimeError(
             f"PIT starter gate failed: official league page resolved {len(found)} "
@@ -528,7 +539,9 @@ def official_starters(target_date: str) -> list[dict]:
                 league_rows.extend(
                     parse_official_league_starters_html(
                         fetch_text(source_url + "?_ts=" + str(int(time.time()))),
-                        target_date, source_url,
+                        target_date,
+                        source_url,
+                        min_games=1,
                     )
                 )
             if _starter_rows_sane(league_rows):
