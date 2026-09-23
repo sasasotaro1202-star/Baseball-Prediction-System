@@ -652,10 +652,7 @@ def official_starters(target_date: str) -> list[dict]:
     except RuntimeError as exc:
         dedicated_error = exc
     try:
-        if dedicated_error is not None and (
-            "does not contain" not in str(dedicated_error)
-            or True
-        ):
+        if dedicated_error is not None:
             # First-party Central/Pacific pages are an independent official
             # reconciliation path. Use them whenever dedicated-page extraction
             # is suspect, not only when the page has rolled forward.
