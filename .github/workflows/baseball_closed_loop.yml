@@ -252,7 +252,9 @@ jobs:
       - name: Run chronological Baseball OOS research
         timeout-minutes: 90
         env:
-          BASEBALL_TIME_BUDGET_SEC: '3600'
+          # Leave enough wall-clock for the resumable MLB tail while still
+          # staying inside the 120-minute lifecycle/job safety envelope.
+          BASEBALL_TIME_BUDGET_SEC: '4800'
           NPB_RETRAIN_EVERY: '150'
           MLB_ENRICH_STARTERS: '0'
         run: python -u research_runner_v6.py --league BOTH --mlb-start 2020 --mlb-end 2026 --retries 0
