@@ -67,6 +67,13 @@ def _temperature_scale(p: np.ndarray, temperature: float) -> np.ndarray:
     return scaled / np.sum(scaled, axis=1, keepdims=True)
 
 
+# Multiplicative draw-prior search is intentionally low-dimensional and
+# evaluated only on chronological Development OOS. The wider upper tail is
+# justified by the observed zero DrawRecall on the locked holdout: the prior
+# must be able to test materially stronger draw mass without touching holdout.
+NPB_DRAW_SCALE_GRID = np.geomspace(0.50, 6.00, 48)
+
+
 def _draw_scale(p: np.ndarray, multiplier: float) -> np.ndarray:
     if not np.isfinite(multiplier) or multiplier <= 0:
         raise ValueError("draw multiplier must be positive and finite")
@@ -395,7 +402,7 @@ def run_npb_candidate_cycle(
         best_q = selected_dev_pred
         best_m = _metrics(y_dev, best_q)
         best_mae = float(np.mean(np.abs(best_q[:, 1] - (y_dev == 1).astype(float))))
-        for multiplier in np.linspace(0.75, 2.50, 36):
+        for multiplier in NPB_DRAW_SCALE_GRID:
             q = _draw_scale(selected_dev_pred, float(multiplier))
             qm = _metrics(y_dev, q)
             qmae = float(np.mean(np.abs(q[:, 1] - (y_dev == 1).astype(float))))
