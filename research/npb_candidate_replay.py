@@ -30,6 +30,12 @@ ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
 
 
+# Candidate-only calibration search. This does not alter the production
+# calibration grid; it is evaluated strictly on chronological Development OOS
+# and must survive the locked holdout before any downstream adoption decision.
+RESEARCH_TEMPERATURE_GRID = np.geomspace(0.35, 12.0, 97)
+
+
 @dataclass(frozen=True)
 class ReplayConfig:
     holdout_fraction: float = 0.20
@@ -90,7 +96,7 @@ def _draw_scale(p: np.ndarray, multiplier: float) -> np.ndarray:
 # Latest calibration contract is revalidated by repository regression tests.
 def _fit_temperature(y: np.ndarray, p: np.ndarray) -> float:
     """Fit the shared point-in-time-safe temperature contract on Development OOS only."""
-    return float(fit_temperature(p, y).temperature)
+    return float(fit_temperature(p, y, grid=RESEARCH_TEMPERATURE_GRID).temperature)
 
 
 def _draw_metrics(y: np.ndarray, p: np.ndarray) -> dict[str, float]:
