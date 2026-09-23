@@ -12,7 +12,7 @@
       "entrypoint": "production_npb",
       "model_version": "npb-production-v1",
       "contract": "NPB_HOME_DRAW_AWAY_SCORE_LOW_HIGH_TOP4_V1",
-      "formal_adoption_status": "GOVERNED_SEPARATELY"
+      "formal_adoption_status": "CURRENT_PRODUCTION"
     },
     "MLB": {
       "entrypoint": "",
