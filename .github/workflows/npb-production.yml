@@ -40,7 +40,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install production dependencies
-        run: python -m pip install --disable-pip-version-check -r requirements.txt
+        run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
       - name: PIT and syntax gate
         run: |
           python -m py_compile baseball_backtest.py production_npb.py
