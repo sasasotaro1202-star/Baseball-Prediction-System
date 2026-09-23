@@ -4,8 +4,6 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths:
-      - '.github/workflows/baseball_24h_supervisor.yml'
   workflow_run:
     workflows: ["Baseball Closed Loop Research"]
     types: [completed]
