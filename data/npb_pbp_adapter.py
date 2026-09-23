@@ -325,6 +325,12 @@ def normalize_pbp_frame(raw: pd.DataFrame, *, data_dir: str | Path | None = None
     out["home_score"] = pd.to_numeric(_first_existing(raw, ["home_total_runs", "H_R"]), errors="coerce")
     out["away_score"] = pd.to_numeric(_first_existing(raw, ["away_total_runs", "V_R"]), errors="coerce")
     out["game_type"] = _first_existing(raw, ["game_type_name", "GameKindName"], "").astype(str)
+    # Preserve only compact pitch-owner metadata needed to derive postgame
+    # bullpen workload. This is historical realized data and is never exposed
+    # as a same-game predictive feature unless it belongs to games strictly
+    # before the prediction timestamp.
+    out["pitcher_id"] = _first_existing(raw, ["pitcher", "PitID"]).astype(str)
+    out["half_inning"] = _first_existing(raw, ["TB", "half", "Half"], "").astype(str)
     starter_df = _starter_from_descriptions(raw)
     out = out.merge(starter_df, on="game_id", how="left")
     out["home_pitcher"] = out["home_pitcher"].fillna("").astype(str)
