@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+    paths-ignore:
+      - 'data/pit/**'
   workflow_run:
     workflows: ["Baseball Closed Loop Research"]
     types: [completed]
@@ -140,11 +142,29 @@ jobs:
             dispatch=1
             reason='no canonical closed-loop history'
           elif [ -n "${latest_sha}" ] && [ "${latest_sha}" != "${current_main_sha}" ]; then
-            # Any new main commit is new executable/research evidence. Start a
-            # fresh canonical cycle immediately instead of waiting for the
-            # generic stale-run cooldown.
-            dispatch=1
-            reason="latest cycle is on superseded SHA ${latest_sha}; current main is ${current_main_sha}"
+            # PIT acquisition commits are append-only evidence. They must not
+            # repeatedly restart the expensive canonical OOS cycle. Compare the
+            # exact SHA range and dispatch only when something outside data/pit/
+            # changed. Any compare/API failure fails closed.
+            compare_json="$(gh api "repos/${GH_REPO}/compare/${latest_sha}...${current_main_sha}")"
+            compare_status="$(printf '%s' "${compare_json}" | jq -r '.status // empty')"
+            if [ "${compare_status}" != "ahead" ] && [ "${compare_status}" != "behind" ] && [ "${compare_status}" != "identical" ]; then
+              echo "Unable to establish a valid main SHA comparison (${latest_sha}...${current_main_sha}); refusing automatic dispatch." >&2
+              exit 1
+            fi
+            non_pit_changes="$(printf '%s' "${compare_json}" | jq '[.files[]?.filename | select(startswith("data/pit/") | not)] | length')"
+            total_changes="$(printf '%s' "${compare_json}" | jq '[.files[]?.filename] | length')"
+            echo "SHA comparison ${latest_sha}...${current_main_sha}: total_changes=${total_changes} non_pit_changes=${non_pit_changes}"
+            if [ "${total_changes}" -eq 0 ]; then
+              dispatch=0
+              reason='main differs only by an identical commit state'
+            elif [ "${non_pit_changes}" -eq 0 ]; then
+              dispatch=0
+              reason='main advanced only through PIT evidence commits'
+            else
+              dispatch=1
+              reason="latest cycle is on superseded SHA ${latest_sha}; executable changes detected on current main ${current_main_sha}"
+            fi
           elif [ "${latest_conclusion}" = "cancelled" ] || [ "${latest_conclusion}" = "timed_out" ] || [ "${latest_conclusion}" = "startup_failure" ]; then
             if [ "${latest_age_minutes}" -ge 10 ]; then
               dispatch=1

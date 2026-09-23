@@ -29,6 +29,7 @@ AVAILABILITY_LOG = PIT_DIR / "availability_observations.jsonl"
 RUN_LOG = PIT_DIR / "acquisition_runs.jsonl"
 
 MLB_API = "https://statsapi.mlb.com/api/v1"
+MLB_SCHEDULE_URL = f"{MLB_API}/schedule"
 NPB_URLS = (
     "https://npb.jp/",
     "https://spaia.jp/baseball/npb/api/weekly_schedule",
@@ -205,7 +206,7 @@ def acquire_mlb() -> int:
          "hydrate": "probablePitcher,linescore,venue"},
     )
     _record_snapshot(event_id="MLB-SCHEDULE", league="MLB", entity_type="schedule",
-                     entity_id=f"{start}:{end}", source="MLB_STATS_API",
+                     entity_id=f"{start}:{end}", source=MLB_SCHEDULE_URL,
                      payload=payload, retrieved_at=retrieved, available_at=retrieved)
     count = 0
     seen: set[str] = set()
@@ -225,7 +226,14 @@ def acquire_mlb() -> int:
             "home_starter_evidence_level": "OFFICIAL_ANNOUNCEMENT" if _explicit_announcement(g, "home") else "RETRIEVAL_ONLY",
             "away_starter_evidence_level": "OFFICIAL_ANNOUNCEMENT" if _explicit_announcement(g, "away") else "RETRIEVAL_ONLY",
             "observed_at": retrieved, "prediction_cutoff": retrieved,
-            "source": "MLB_STATS_API", "payload_hash": payload_hash(g),
+            # Use the canonical first-party MLB URL rather than a symbolic
+            # provider label so the production PIT gate can independently
+            # verify the source hostname. Side-specific fields avoid ambiguity
+            # when starter evidence is consumed downstream.
+            "source": MLB_SCHEDULE_URL,
+            "home_starter_source": MLB_SCHEDULE_URL,
+            "away_starter_source": MLB_SCHEDULE_URL,
+            "payload_hash": payload_hash(g),
         }
         _append_jsonl(EVENT_LOG, row)
         _append_jsonl(AVAILABILITY_LOG, {

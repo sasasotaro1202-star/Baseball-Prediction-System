@@ -150,3 +150,8 @@ def test_24h_supervisor_avoids_deterministic_failure_retry_loop():
     assert "gh workflow run" in text
     assert "Dispatch verification" in text
     assert "latest_age_minutes" in text
+    assert "paths-ignore:" in text
+    assert "'data/pit/**'" in text
+    assert "compare/${latest_sha}...${current_main_sha}" in text
+    assert 'startswith("data/pit/")' in text
+    assert "main advanced only through PIT evidence commits" in text
