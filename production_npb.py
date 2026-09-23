@@ -328,6 +328,11 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
     for i in range(0, len(occurrences), 2):
         home_team, home_starter = occurrences[i][1], occurrences[i][2]
         away_team, away_starter = occurrences[i+1][1], occurrences[i+1][2]
+        if home_starter == away_starter:
+            raise RuntimeError(
+                "PIT starter gate failed: identical starter assigned to both teams "
+                f"in one official game ({home_team} vs {away_team}): {home_starter!r}."
+            )
         out.append({
             "home": home_team, "away": away_team,
             "home_starter": home_starter, "away_starter": away_starter,

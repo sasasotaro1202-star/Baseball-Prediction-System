@@ -35,3 +35,19 @@ def test_official_starter_parser_fails_when_game_time_is_missing():
         assert "no official game times" in str(exc)
     else:
         raise AssertionError("missing official game time must fail closed")
+
+
+def test_official_starter_parser_rejects_identical_starters_in_one_game():
+    html = (
+        "<h4>9月21日の予告先発投手</h4>"
+        '<div class="unit"><span>18:00</span>'
+        '<img alt="広島東洋カープ"><div class="team_left"><span>投手A</span></div>'
+        '<img alt="読売ジャイアンツ"><div class="team_left"><span>投手A</span></div></div>'
+        "<h4>9月22日の予告先発投手</h4>"
+    )
+    try:
+        parse_official_starters_html(html, "2026-09-21")
+    except RuntimeError as exc:
+        assert "identical starter" in str(exc)
+    else:
+        raise AssertionError("identical starters for both teams must fail closed")
