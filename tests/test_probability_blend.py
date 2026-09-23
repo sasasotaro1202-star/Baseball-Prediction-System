@@ -31,3 +31,24 @@ def test_probability_blend_rejects_zero_total_weight():
         assert "positive finite sum" in str(exc)
     else:
         raise AssertionError("zero-total probability blend weights must fail closed")
+
+
+def test_stack_features_preserve_member_order_and_normalize():
+    members = {
+        "a": np.array([[0.8, 0.1, 0.1]]),
+        "b": np.array([[2.0, 1.0, 1.0]]),
+    }
+    features = BaseballBacktest._stack_features(members, ("a", "b"))
+    assert features.shape == (1, 6)
+    assert np.allclose(features[0, :3], [0.8, 0.1, 0.1])
+    assert np.allclose(features[0, 3:], [0.5, 0.25, 0.25])
+
+
+def test_stack_features_reject_missing_member():
+    members = {"a": np.array([[0.7, 0.2, 0.1]])}
+    try:
+        BaseballBacktest._stack_features(members, ("a", "b"))
+    except ValueError as exc:
+        assert "missing stacker member" in str(exc)
+    else:
+        raise AssertionError("missing stacker members must fail closed")
