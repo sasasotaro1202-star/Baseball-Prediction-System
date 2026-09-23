@@ -108,7 +108,11 @@ jobs:
               if bad.returncode == 0:
                   raise SystemExit("production PIT gate accepted a non-official starter source")
 
-          print("PIT/probability contract smoke: PASS")
+          from research.correlated_score import grid
+          score = grid(3.0, 2.5, 0.0)
+          if not np.isfinite(score).all() or abs(float(score.sum()) - 1.0) > 1e-12:
+              raise SystemExit("zero shared-intensity score distribution failed")
+          print("PIT/probability/score contract smoke: PASS")
           PY
 
       - name: Automation contract scan
