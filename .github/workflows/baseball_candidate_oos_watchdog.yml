@@ -2,8 +2,21 @@ name: Baseball Candidate OOS Watchdog
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/baseball_candidate_oos.yml'
+      - '.github/workflows/baseball_candidate_oos_watchdog.yml'
+      - 'research/real_data_validation.py'
+      - 'research/validation_pipeline.py'
+      - 'research/candidates.py'
+      - 'research/regime_router.py'
+      - 'research/correlated_score.py'
+      - 'baseball_backtest.py'
+      - 'core/**'
+      - 'evaluation/**'
   schedule:
-    - cron: '17 */6 * * *'
+    - cron: '*/15 * * * *'
 
 permissions:
   contents: read
@@ -21,41 +34,96 @@ jobs:
       GH_REPO: sasasotaro1202-star/Baseball-Prediction-System
       CANDIDATE_WORKFLOW: baseball_candidate_oos.yml
     steps:
-      - name: Inspect latest candidate OOS run
-        id: inspect
+      - name: Inspect, reconcile, and refresh candidate OOS
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          runs="$(gh run list --repo "$GH_REPO" --workflow "$CANDIDATE_WORKFLOW" --limit 1 --json status,conclusion,createdAt,databaseId)"
-          echo "$runs"
-          if [[ "$runs" == "[]" ]]; then
-            echo "action=dispatch" >> "$GITHUB_OUTPUT"
+
+          current_sha="$(gh api "repos/${GH_REPO}/git/ref/heads/main" --jq '.object.sha')"
+          echo "current_main_sha=${current_sha}"
+
+          runs="$(gh run list --repo "${GH_REPO}" --workflow "${CANDIDATE_WORKFLOW}" --limit 50             --json databaseId,status,conclusion,createdAt,headSha,runNumber)"
+          echo "${runs}" | jq '.[0:12]'
+
+          # A newer main commit supersedes any queued/pending candidate run,
+          # but never interrupts an already-running OOS lifecycle.
+          stale_cancelled=0
+          while IFS= read -r row; do
+            [ -n "${row}" ] || continue
+            id="$(jq -r '.databaseId' <<<"${row}")"
+            status="$(jq -r '.status' <<<"${row}")"
+            sha="$(jq -r '.headSha // empty' <<<"${row}")"
+            if [[ "${status}" =~ ^(queued|pending|waiting|requested)$ ]] && [[ -n "${sha}" ]] && [[ "${sha}" != "${current_sha}" ]]; then
+              echo "Cancelling superseded queued candidate run ${id} (${sha})."
+              gh run cancel "${id}" --repo "${GH_REPO}" || true
+              stale_cancelled=1
+            fi
+          done < <(jq -c '.[]' <<<"${runs}")
+
+          if [[ "${stale_cancelled}" -eq 1 ]]; then
+            sleep 3
+            runs="$(gh run list --repo "${GH_REPO}" --workflow "${CANDIDATE_WORKFLOW}" --limit 50               --json databaseId,status,conclusion,createdAt,headSha,runNumber)"
+          fi
+
+          active_count="$(jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length' <<<"${runs}")"
+          echo "active_count=${active_count}"
+
+          if [[ "${active_count}" -gt 0 ]]; then
+            echo "Candidate OOS already active; do not interrupt expensive research."
             exit 0
           fi
 
-          status="$(jq -r '.[0].status' <<<"$runs")"
-          conclusion="$(jq -r '.[0].conclusion // empty' <<<"$runs")"
-          created_at="$(jq -r '.[0].createdAt' <<<"$runs")"
-
-          if [[ "$status" == "in_progress" || "$status" == "queued" || "$status" == "requested" || "$status" == "waiting" || "$status" == "pending" ]]; then
-            echo "action=none" >> "$GITHUB_OUTPUT"
-            echo "Candidate OOS is already active."
-            exit 0
-          fi
-
-          age_seconds=$(( $(date +%s) - $(date -d "$created_at" +%s) ))
-          if [[ "$conclusion" != "success" || "$age_seconds" -ge 604800 ]]; then
-            echo "action=dispatch" >> "$GITHUB_OUTPUT"
+          latest_completed="$(jq -c '[.[] | select(.status == "completed")] | sort_by(.createdAt) | last // empty' <<<"${runs}")"
+          if [[ -z "${latest_completed}" ]]; then
+            reason="no completed candidate OOS history"
+            dispatch=1
           else
-            echo "action=none" >> "$GITHUB_OUTPUT"
+            latest_sha="$(jq -r '.headSha // empty' <<<"${latest_completed}")"
+            latest_conclusion="$(jq -r '.conclusion // empty' <<<"${latest_completed}")"
+            latest_created="$(jq -r '.createdAt // empty' <<<"${latest_completed}")"
+            age_seconds=$(( $(date +%s) - $(date -d "${latest_created}" +%s) ))
+            dispatch=0
+            reason="latest candidate is current and recent"
+
+            if [[ -n "${latest_sha}" && "${latest_sha}" != "${current_sha}" ]]; then
+              dispatch=1
+              reason="latest completed candidate is on superseded SHA ${latest_sha}"
+            elif [[ "${latest_conclusion}" == "success" && "${age_seconds}" -ge 604800 ]]; then
+              dispatch=1
+              reason="current candidate success is older than 7 days"
+            elif [[ "${latest_conclusion}" == "cancelled" || "${latest_conclusion}" == "timed_out" || "${latest_conclusion}" == "startup_failure" ]] && [[ "${age_seconds}" -ge 900 ]]; then
+              dispatch=1
+              reason="current candidate ended with ${latest_conclusion}"
+            elif [[ "${latest_conclusion}" == "failure" && "${age_seconds}" -ge 604800 ]]; then
+              dispatch=1
+              reason="current candidate failure is older than 7 days"
+            fi
           fi
 
-      - name: Dispatch candidate OOS when stale or unhealthy
-        if: steps.inspect.outputs.action == 'dispatch'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          gh workflow run "$CANDIDATE_WORKFLOW" --repo "$GH_REPO" --ref main
+          if [[ "${dispatch}" -ne 1 ]]; then
+            echo "No candidate dispatch needed: ${reason}"
+            exit 0
+          fi
+
+          echo "Dispatching candidate OOS on current main: ${reason}"
+          gh workflow run "${CANDIDATE_WORKFLOW}" --repo "${GH_REPO}" --ref main
+
+          verified=0
+          for attempt in 1 2 3 4 5 6; do
+            sleep 3
+            active_after="$(gh run list --repo "${GH_REPO}" --workflow "${CANDIDATE_WORKFLOW}" --limit 20               --json status,headSha --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")]')"
+            current_active="$(jq --arg sha "${current_sha}" '[.[] | select(.headSha == $sha)] | length' <<<"${active_after}")"
+            echo "Dispatch verification ${attempt}/6: current_sha_active=${current_active}"
+            if [[ "${current_active}" -gt 0 ]]; then
+              verified=1
+              break
+            fi
+          done
+
+          if [[ "${verified}" -ne 1 ]]; then
+            echo "Candidate workflow dispatch completed but current-main active run was not observed." >&2
+            exit 1
+          fi
+          echo "Candidate OOS dispatch verified on current main SHA."
