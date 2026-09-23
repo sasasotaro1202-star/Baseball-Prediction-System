@@ -166,3 +166,60 @@ def test_existing_malformed_official_snapshot_is_not_silently_ignored(monkeypatc
         assert "schema mismatch" in str(exc)
     else:
         raise AssertionError("malformed existing official snapshot was silently ignored")
+
+
+def test_daily_schedule_time_parser_accepts_pair_time_stream(monkeypatch):
+    import production_npb as p
+
+    html = """
+    <html><body>
+      <img alt="広島東洋カープ">
+      <span>（マツダスタジアム）</span><span>18:00</span>
+      <img alt="読売ジャイアンツ">
+      <img alt="北海道日本ハムファイターズ">
+      <span>（エスコンＦ）</span><span>18:00</span>
+      <img alt="東北楽天ゴールデンイーグルス">
+    </body></html>
+    """
+    monkeypatch.setattr(p, "fetch_text", lambda url: html)
+    got = p._official_daily_start_times("2026-09-24")
+    assert got[("広島東洋カープ", "読売ジャイアンツ")] == "18:00"
+    assert got[("北海道日本ハムファイターズ", "東北楽天ゴールデンイーグルス")] == "18:00"
+
+
+def test_target_rows_reject_official_page_time_mismatch(monkeypatch):
+    import production_npb as p
+    import pandas as pd
+
+    monkeypatch.setattr(
+        p,
+        "official_starters",
+        lambda target_date: [{
+            "home": "広島東洋カープ",
+            "away": "読売ジャイアンツ",
+            "home_starter": "投手A",
+            "away_starter": "投手B",
+            "confirmed_starters": True,
+            "starter_evidence_status": "official_announced",
+            "starter_source": "https://npb.jp/announcement/starter/",
+            "official_start_time": "03:05",
+        }],
+    )
+    monkeypatch.setattr(
+        p,
+        "_official_daily_start_times",
+        lambda target_date: {("広島東洋カープ", "読売ジャイアンツ"): "18:00"},
+    )
+    monkeypatch.setattr(
+        p,
+        "_utc_now",
+        lambda: pd.Timestamp("2026-09-23 12:00:00+00:00"),
+    )
+    try:
+        p.build_target_rows("2026-09-24")
+    except RuntimeError as exc:
+        assert "time mismatch" in str(exc)
+    else:
+        raise AssertionError("mismatched official game time was accepted")
+
+

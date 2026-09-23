@@ -555,19 +555,94 @@ def official_starters(target_date: str) -> list[dict]:
             return snapshot
         raise dedicated_error
 
+def _official_daily_start_times(target_date: str) -> dict[tuple[str, str], str]:
+    """Read official game start times from NPB's date-specific schedule page.
+    
+    This is an independent cross-check for the dedicated starter page. A game
+    time is accepted only when exactly one team-pair/time association is found.
+    """
+    url = NPB_DAY_URL.format(date=target_date.replace("-", ""))
+    page_html = fetch_text(url)
+    parser = _VisibleTextParser()
+    parser.feed(page_html)
+    parts = [_clean_name(x) for x in parser.parts if _clean_name(x)]
+    team_names = set(TEAM_MAP)
+    candidates: dict[tuple[str, str], set[str]] = {}
+
+    def canon(value: str) -> str:
+        return TEAM_MAP.get(value, value)
+
+    for i, token in enumerate(parts):
+        if token not in team_names:
+            continue
+        home = canon(token)
+        for j in range(i + 1, min(i + 10, len(parts))):
+            candidate_time = parts[j]
+            if re.fullmatch(r"\d{1,2}:\d{2}", candidate_time):
+                continue
+            if candidate_time in team_names:
+                away = canon(candidate_time)
+                between = parts[i + 1:j]
+                times = [x for x in between if re.fullmatch(r"\d{1,2}:\d{2}", x)]
+                if len(times) == 1:
+                    candidates.setdefault((home, away), set()).add(times[0])
+                break
+
+    # Also accept the common NPB daily-page ordering where the venue/time comes
+    # before the away-team image.
+    for i, token in enumerate(parts):
+        if token not in team_names:
+            continue
+        home = canon(token)
+        for j in range(i + 1, min(i + 12, len(parts))):
+            candidate = parts[j]
+            if candidate in team_names:
+                away = canon(candidate)
+                between = parts[i + 1:j]
+                times = [x for x in between if re.fullmatch(r"\d{1,2}:\d{2}", x)]
+                if len(times) == 1:
+                    candidates.setdefault((home, away), set()).add(times[0])
+                break
+
+    if not candidates:
+        raise RuntimeError(f"Official NPB daily schedule did not yield game times for {target_date}.")
+
+    resolved = {}
+    for pair, values in candidates.items():
+        if len(values) != 1:
+            raise RuntimeError(
+                f"Official NPB daily schedule has ambiguous start time for {pair[0]} vs {pair[1]}: {sorted(values)}"
+            )
+        resolved[pair] = next(iter(values))
+    return resolved
+
+
 def _utc_now() -> pd.Timestamp:
     return pd.Timestamp.now(tz="UTC")
 
 
 def build_target_rows(target_date: str) -> pd.DataFrame:
     rows=official_starters(target_date)
+    daily_times = _official_daily_start_times(target_date)
     now_utc=_utc_now()
     output=[]
     for i,r in enumerate(rows):
         r["league"]="NPB"; r["game_id"]=f"NPB-{target_date}-{i+1}"
-        start_time=r.get("official_start_time")
-        if not start_time:
-            raise RuntimeError("Official NPB schedule time missing; refusing prediction.")
+        starter_time = str(r.get("official_start_time") or "").strip()
+        pair = (str(r.get("home") or "").strip(), str(r.get("away") or "").strip())
+        schedule_time = daily_times.get(pair)
+        if not schedule_time:
+            raise RuntimeError(
+                f"Official NPB daily schedule has no exact time for {pair[0]} vs {pair[1]}; refusing prediction."
+            )
+        if starter_time and starter_time != schedule_time:
+            raise RuntimeError(
+                f"Official NPB time mismatch for {pair[0]} vs {pair[1]}: "
+                f"starter_page={starter_time}, daily_schedule={schedule_time}; refusing prediction."
+            )
+        start_time = schedule_time
+        r["official_start_time"] = start_time
+        r["start_time_source"] = NPB_DAY_URL.format(date=target_date.replace("-", ""))
         r["datetime"]=pd.Timestamp(f"{target_date} {start_time}").tz_localize("Asia/Tokyo").tz_convert("UTC")
         # A completed or already-started game is never a valid future prediction
         # target. Keeping it in the production set would turn a day-of schedule
