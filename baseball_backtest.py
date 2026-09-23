@@ -278,6 +278,7 @@ class BaseballBacktest:
         self._ensemble_weight_power = 1.0
         self._model_temperatures = {}
         self._calibration_mode = "ensemble"
+        self._ensemble_blend_mode = "linear"
         self._regime_router = None
         self._regime_weights = {}
         self.player_game = pd.DataFrame()
@@ -1526,38 +1527,44 @@ class BaseballBacktest:
                                 regime_counts,
                                 power=float(power),
                             )
-                            trial_ll=[]
-                            for (cut,val), by_model_pred in sorted(validation_predictions.items()):
-                                labels=validation_regime_labels[(cut,val)]
-                                yv=np.asarray(y[cut:cut+val],dtype=int)
-                                q=np.zeros((len(yv),k))
-                                for label in np.unique(labels):
-                                    idx=np.flatnonzero(labels==label)
-                                    regime_w=wmap.get(str(label),{})
-                                    for name in top_names_sorted:
-                                        pred=by_model_pred.get(name)
-                                        if pred is not None:
-                                            w=float(regime_w.get(name,0.0))
-                                            if w:
-                                                q[idx] += w*pred[idx]
-                                q=np.apply_along_axis(clip_prob,1,q)
-                                trial_ll.append(log_loss(yv,q,labels=list(range(k))))
-                            if trial_ll:
-                                key=(
-                                    float(np.mean(trial_ll)),
-                                    abs(float(power)-1.0),
-                                    abs(float(shrinkage)-80.0),
-                                    abs(float(min_rows)-35.0)+abs(float(min_edge)-0.03)*100.0,
-                                )
-                                if key < best_key:
-                                    best_key=key
-                                    weight_power=float(power)
-                                    diversity_lambda=float(lam)
-                                    router_params={
-                                        "min_regime_rows":int(min_rows),
-                                        "shrinkage":float(shrinkage),
-                                        "min_relative_edge":float(min_edge),
-                                    }
+                            for blend_candidate in ("linear", "log_pool"):
+                                trial_ll=[]
+                                for (cut,val), by_model_pred in sorted(validation_predictions.items()):
+                                    labels=validation_regime_labels[(cut,val)]
+                                    yv=np.asarray(y[cut:cut+val],dtype=int)
+                                    q=np.zeros((len(yv),k))
+                                    for label in np.unique(labels):
+                                        idx=np.flatnonzero(labels==label)
+                                        regime_w=wmap.get(str(label),{})
+                                        members={
+                                            name: np.asarray(by_model_pred[name])[idx]
+                                            for name in top_names_sorted
+                                            if by_model_pred.get(name) is not None and float(regime_w.get(name,0.0)) > 0.0
+                                        }
+                                        if not members:
+                                            raise RuntimeError(f"regime routing produced no positive-weight members for {label}")
+                                        member_weights={name: float(regime_w.get(name,0.0)) for name in members}
+                                        q[idx] = self._blend_probability_members(members, member_weights, mode=blend_candidate)
+                                    q=np.apply_along_axis(clip_prob,1,q)
+                                    trial_ll.append(log_loss(yv,q,labels=list(range(k))))
+                                if trial_ll:
+                                    key=(
+                                        float(np.mean(trial_ll)),
+                                        0 if blend_candidate == "linear" else 1,
+                                        abs(float(power)-1.0),
+                                        abs(float(shrinkage)-80.0),
+                                        abs(float(min_rows)-35.0)+abs(float(min_edge)-0.03)*100.0,
+                                    )
+                                    if key < best_key:
+                                        best_key=key
+                                        weight_power=float(power)
+                                        diversity_lambda=float(lam)
+                                        self._ensemble_blend_mode=blend_candidate
+                                        router_params={
+                                            "min_regime_rows":int(min_rows),
+                                            "shrinkage":float(shrinkage),
+                                            "min_relative_edge":float(min_edge),
+                                        }
                         except Exception as exc:
                             self.audit.append({
                                 "type":"ensemble_routing_search_error",
@@ -1577,6 +1584,7 @@ class BaseballBacktest:
             "router_params":dict(router_params),
             "weight_power":float(weight_power),
             "diversity_lambda":float(diversity_lambda),
+            "blend_mode":str(self._ensemble_blend_mode),
             "model_redundancy":{k:float(v) for k,v in sorted(redundancy.items())},
         })
 
@@ -1635,9 +1643,14 @@ class BaseballBacktest:
                 inv/=max(inv.sum(),1e-12)
                 for cut,val in splits:
                     self._check_time_budget(f"fit_ensemble:{league}:calibration:{cut}")
-                    raw=np.zeros((val,k))
                     yv=np.asarray(y[cut:cut+val],dtype=int)
                     stored=validation_predictions.get((cut,val), {})
+                    calibration_inputs={name: np.asarray(stored[name], dtype=float) for name,_loss in top if name in stored}
+                    raw=self._blend_probability_members(
+                        calibration_inputs,
+                        {name: float(w) for (name,_loss),w in zip(top,inv)},
+                        mode=self._ensemble_blend_mode,
+                    )
                     for (name,_loss),w in zip(top,inv):
                         mp=stored.get(name)
                         if mp is None:
@@ -1652,7 +1665,6 @@ class BaseballBacktest:
                                 f"{league} {name} cut={cut} val={val}"
                             )
                         model_parts[name].append(mp)
-                        raw += float(w)*mp
                     raw_parts.append(raw)
                     y_parts.append(yv)
 
@@ -1709,6 +1721,62 @@ class BaseballBacktest:
         # a second full-data refit is unnecessary and would waste the budget.
         return fitted,{name:float(loss) for loss,name in scored},top[0][0]
 
+    @staticmethod
+    def _blend_probability_members(
+        predictions: Dict[str, np.ndarray],
+        weights: Dict[str, float],
+        mode: str = "linear",
+    ) -> np.ndarray:
+        """Blend positive class-probability matrices in linear or log-opinion space.
+
+        ``log_pool`` is a geometric opinion pool. It uses only the supplied
+        OOS/model probabilities and is therefore safe to select on chronological
+        validation evidence without introducing new data leakage.
+        """
+        if not predictions:
+            raise ValueError("probability blend requires at least one model")
+        mode = str(mode)
+        if mode not in {"linear", "log_pool"}:
+            raise ValueError(f"unsupported probability blend mode: {mode}")
+        shapes = {np.asarray(p, dtype=float).shape for p in predictions.values()}
+        if len(shapes) != 1:
+            raise ValueError("probability blend inputs have inconsistent shapes")
+        shape = next(iter(shapes))
+        if len(shape) != 2 or shape[0] <= 0 or shape[1] <= 1:
+            raise ValueError("probability blend inputs must be non-empty 2D matrices")
+        n, k = shape
+        positive_weights = {name: max(0.0, float(weights.get(name, 0.0))) for name in predictions}
+        total_weight = float(sum(positive_weights.values()))
+        if not np.isfinite(total_weight) or total_weight <= 0.0:
+            raise ValueError("probability blend weights must have a positive finite sum")
+        positive_weights = {name: w / total_weight for name, w in positive_weights.items()}
+        normalized = {}
+        for name, pred in predictions.items():
+            p = np.asarray(pred, dtype=float)
+            if not np.isfinite(p).all() or (p < 0.0).any():
+                raise ValueError(f"invalid probability matrix for {name}")
+            p = np.maximum(p, 1e-12)
+            row_sum = p.sum(axis=1, keepdims=True)
+            if np.any(~np.isfinite(row_sum)) or np.any(row_sum <= 0.0):
+                raise ValueError(f"invalid probability row sum for {name}")
+            normalized[name] = p / row_sum
+        if mode == "linear":
+            out = np.zeros((n, k), dtype=float)
+            for name, p in normalized.items():
+                out += float(positive_weights[name]) * p
+        else:
+            log_out = np.zeros((n, k), dtype=float)
+            for name, p in normalized.items():
+                w = float(positive_weights[name])
+                if w > 0.0:
+                    log_out += w * np.log(p)
+            shift = np.max(log_out, axis=1, keepdims=True)
+            out = np.exp(log_out - shift)
+        out_sum = out.sum(axis=1, keepdims=True)
+        if np.any(~np.isfinite(out_sum)) or np.any(out_sum <= 0.0):
+            raise ValueError("probability blend produced invalid normalization")
+        return out / out_sum
+
     def ensemble_proba(self, fitted, X: pd.DataFrame, league: str) -> np.ndarray:
         k=3 if league=="NPB" else 2
         p=np.zeros((len(X),k))
@@ -1717,15 +1785,24 @@ class BaseballBacktest:
             idx=np.flatnonzero(labels==label)
             sub=X.iloc[idx]
             weights=self._regime_weights.get(str(label))
+            members={}
+            member_weights={}
             for model,global_w,name in fitted:
                 w=float(weights.get(name,global_w)) if weights else float(global_w)
+                if w <= 0.0:
+                    continue
                 raw=self.align_proba(model.predict_proba(sub),model.classes_,league)
                 if self._calibration_mode == "individual":
                     t=float(self._model_temperatures.get(name,1.0))
                     if abs(t-1.0)>1e-9:
                         raw=TemperatureCalibration(t).transform(raw)
-                p[idx] += w*raw
-            p[idx]=np.apply_along_axis(clip_prob,1,p[idx])
+                members[name]=raw
+                member_weights[name]=w
+            if not members:
+                raise RuntimeError(f"ensemble produced no positive-weight models for regime {label}")
+            blend_mode = "linear" if self._calibration_mode == "individual" else self._ensemble_blend_mode
+            p[idx]=self._blend_probability_members(members, member_weights, mode=blend_mode)
+
         t=float(getattr(self,"_last_temperature",1.0))
         if abs(t-1.0)>1e-9:
             p=np.clip(p,1e-7,1.0) ** (1.0/t)
