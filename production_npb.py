@@ -154,6 +154,7 @@ class _UnitStarterParser(HTMLParser):
         self.depth = 0
         self.unit_depth = None
         self.team_left_depth = None
+        self.fallback_depth = None
         self.current_team = None
         self.current_name = []
         self.results = []
@@ -176,10 +177,13 @@ class _UnitStarterParser(HTMLParser):
         if tag == "div" and "team_left" in classes and self.current_team is not None and self.team_left_depth is None:
             self.team_left_depth = self.depth
             self.current_name = []
+        elif tag in {"p", "a", "span"} and self.current_team is not None and self.team_left_depth is None and self.fallback_depth is None:
+            self.fallback_depth = self.depth
+            self.current_name = []
         self.depth += 1
 
     def handle_data(self, data):
-        if self.unit_depth is not None and self.team_left_depth is not None:
+        if self.unit_depth is not None and (self.team_left_depth is not None or self.fallback_depth is not None):
             value = _clean_name(data)
             if value:
                 self.current_name.append(value)
@@ -189,7 +193,7 @@ class _UnitStarterParser(HTMLParser):
         self.depth = max(0, self.depth - 1)
         if self.unit_depth is None:
             return
-        if tag == "div" and self.team_left_depth is not None and self.depth == self.team_left_depth:
+        if self.team_left_depth is not None and self.depth == self.team_left_depth:
             name = _clean_name(" ".join(self.current_name))
             if self.current_team and name:
                 self.results.append((self.position, self.current_team, name))
@@ -197,9 +201,18 @@ class _UnitStarterParser(HTMLParser):
             self.current_team = None
             self.current_name = []
             self.team_left_depth = None
+        if self.fallback_depth is not None and self.depth == self.fallback_depth:
+            name = _clean_name(" ".join(self.current_name))
+            if self.current_team and name:
+                self.results.append((self.position, self.current_team, name))
+                self.position += 1
+            self.current_team = None
+            self.current_name = []
+            self.fallback_depth = None
         if tag == "div" and self.depth == self.unit_depth:
             self.unit_depth = None
             self.team_left_depth = None
+            self.fallback_depth = None
             self.current_team = None
             self.current_name = []
 
