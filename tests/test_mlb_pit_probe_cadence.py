@@ -33,6 +33,9 @@ def test_mlb_probe_cadence_reads_latest_successful_snapshot(tmp_path, monkeypatc
         datetime(2026, 9, 23, 13, 20, tzinfo=timezone.utc),
     )
     assert pit._probe_due(None, datetime(2026, 9, 23, 12, 45, tzinfo=timezone.utc))
+    assert pit.PROBE_TIMEOUT_SECONDS >= 3
+    assert pit.PROBE_RETRIES >= 1
+    assert pit.PROBE_MAX_GAMES <= 16
 
 
 def test_mlb_game_start_requires_timezone():

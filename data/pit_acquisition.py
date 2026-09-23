@@ -41,7 +41,9 @@ LOOKBACK_DAYS = int(os.getenv("PIT_LOOKBACK_DAYS", "1"))
 ENABLE_MLB_GAME_PROBES = os.getenv("PIT_ENABLE_MLB_GAME_PROBES", "0").strip().lower() in {"1", "true", "yes"}
 PROBE_MIN_INTERVAL_MINUTES = max(1, int(os.getenv("PIT_MLB_PROBE_MIN_INTERVAL_MINUTES", "60")))
 PROBE_LOOKAHEAD_HOURS = max(1, int(os.getenv("PIT_MLB_PROBE_LOOKAHEAD_HOURS", "48")))
-PROBE_MAX_GAMES = max(1, int(os.getenv("PIT_MLB_PROBE_MAX_GAMES", "24")))
+PROBE_MAX_GAMES = max(1, int(os.getenv("PIT_MLB_PROBE_MAX_GAMES", "16")))
+PROBE_TIMEOUT_SECONDS = max(3, int(os.getenv("PIT_MLB_PROBE_TIMEOUT_SECONDS", "8")))
+PROBE_RETRIES = max(1, int(os.getenv("PIT_MLB_PROBE_RETRIES", "2")))
 PROBE_ENTITY_TYPES = {"game_feed_timestamps", "game_content"}
 
 SESSION = requests.Session()
@@ -73,6 +75,26 @@ def get_json(url: str, params: dict[str, Any] | None = None) -> tuple[Any, str]:
             if attempt < 3:
                 time.sleep(min(1.5 * (attempt + 1), 5))
     raise RuntimeError(f"request failed: {url}: {last}")
+
+
+def get_json_probe(url: str) -> tuple[Any, str] | None:
+    """Fetch optional MLB supporting evidence with a strict time budget.
+    
+    Probe failures are deliberately non-fatal; the main schedule acquisition
+    remains authoritative and the next cadence cycle retries the evidence.
+    """
+    last: Exception | None = None
+    for attempt in range(PROBE_RETRIES):
+        try:
+            r = SESSION.get(url, timeout=PROBE_TIMEOUT_SECONDS)
+            r.raise_for_status()
+            return r.json(), now_utc()
+        except Exception as exc:
+            last = exc
+            if attempt + 1 < PROBE_RETRIES:
+                time.sleep(0.5)
+    print(f"[PIT][MLB][PROBE] unavailable: {url}: {last}")
+    return None
 
 
 def get_text(url: str) -> tuple[str, str]:
@@ -240,7 +262,7 @@ def acquire_mlb_game_timestamps(game_id: str) -> tuple[Any, str] | None:
     themselves, prove when a probable starter was officially announced.
     """
     try:
-        return get_json(f"{MLB_API}/game/{game_id}/feed/live/timestamps")
+        return get_json_probe(f"{MLB_API}/game/{game_id}/feed/live/timestamps")
     except Exception:
         return None
 def acquire_mlb_game_content(game_id: str) -> tuple[Any, str] | None:
@@ -251,7 +273,7 @@ def acquire_mlb_game_content(game_id: str) -> tuple[Any, str] | None:
     timestamp unless the payload explicitly identifies the starter announcement.
     """
     try:
-        return get_json(f"{MLB_API}/game/{game_id}/content")
+        return get_json_probe(f"{MLB_API}/game/{game_id}/content")
     except Exception:
         return None
 
