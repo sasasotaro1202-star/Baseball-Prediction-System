@@ -16,9 +16,10 @@ def availability(league="NPB"):
         away_starter_announced_at="2026-01-01T00:00:00+00:00",
         lineup_status="UNVERIFIABLE",
         lineup_announced_at=None,
-        source="test",
+        source="https://npb.jp/",
         retrieved_at="2026-01-01T00:05:00+00:00",
         prediction_cutoff="2026-01-01T00:05:00+00:00",
+        event_start_at="2026-01-01T01:00:00+00:00",
     )
 
 
@@ -98,6 +99,7 @@ def test_explicit_production_entry_point_cannot_fall_back_to_research_mode():
                 source="test",
                 retrieved_at=future,
                 prediction_cutoff=future,
+                event_start_at="2999-01-01T01:00:00+00:00",
             ),
             probability_fn=lambda row: {"home": 0.5, "draw": 0.2, "away": 0.3},
             model_version="test",

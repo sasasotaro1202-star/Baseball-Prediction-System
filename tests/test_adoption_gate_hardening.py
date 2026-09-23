@@ -92,6 +92,8 @@ def test_uncertainty_gate_requires_positive_robust_logloss_improvement():
         baseline_hilo={"LogLoss": 0.6, "Brier": 0.4, "Accuracy": 0.6},
         candidate_hilo={"LogLoss": 0.59, "Brier": 0.39, "Accuracy": 0.61},
         league="MLB",
+        pit_starter_evidence_ok=True,
+        holdout_pit_starter_evidence_ok=True,
         holdout_uncertainty={
             "improvement_ci95": {"LogLoss": [-0.01, 0.04]},
             "p_improvement_positive": {"LogLoss": 0.90},
@@ -121,6 +123,8 @@ def test_uncertainty_gate_accepts_robust_holdout_signal_when_other_gates_pass():
         baseline_hilo={"LogLoss": 0.6, "Brier": 0.4, "Accuracy": 0.6},
         candidate_hilo={"LogLoss": 0.59, "Brier": 0.39, "Accuracy": 0.61},
         league="MLB",
+        pit_starter_evidence_ok=True,
+        holdout_pit_starter_evidence_ok=True,
         holdout_uncertainty={
             "improvement_ci95": {"LogLoss": [0.005, 0.04]},
             "p_improvement_positive": {"LogLoss": 0.97},

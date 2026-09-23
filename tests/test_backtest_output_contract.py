@@ -14,6 +14,7 @@ def test_repair_uses_exact_top_four_and_total_run_boundary():
                 "pred_away": 0.35,
                 "lambda_home": 6.0,
                 "lambda_away": 6.0,
+                "shared_lambda": 0.0,
                 "score1": "2-2",
                 "score2": "2-1",
                 "score3": "1-2",

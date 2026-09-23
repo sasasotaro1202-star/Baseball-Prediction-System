@@ -34,14 +34,23 @@ def write_json(name: str, obj: Any) -> None:
 
 
 def clip_probs(p: np.ndarray) -> np.ndarray:
+    """Normalize a 1D probability vector or 2D probability matrix without changing rank."""
     p = np.asarray(p, dtype=float)
     if p.ndim == 1:
-        p = p.reshape(-1, 1)
+        if not np.isfinite(p).all():
+            raise RuntimeError("probability vector contains non-finite values")
+        p = np.maximum(p, 1e-9)
+        total = float(p.sum())
+        if not np.isfinite(total) or total <= 0.0:
+            raise RuntimeError("probability vector has non-positive sum")
+        return p / total
+    if p.ndim != 2 or p.shape[0] == 0:
+        raise RuntimeError("probability matrix must be a non-empty 2D array")
     if not np.isfinite(p).all():
         raise RuntimeError("probability matrix contains non-finite values")
     p = np.maximum(p, 1e-9)
     sums = p.sum(axis=1, keepdims=True)
-    if np.any(sums <= 0):
+    if np.any(~np.isfinite(sums)) or np.any(sums <= 0):
         raise RuntimeError("probability row has non-positive sum")
     return p / sums
 
@@ -58,7 +67,7 @@ def poisson_result_probs(lh: float, la: float, league: str) -> np.ndarray:
     draw = float(sum(matrix[i, j] for i in range(16) for j in range(16) if i == j))
     away = float(sum(matrix[i, j] for i in range(16) for j in range(16) if i < j))
     values = [home, draw, away] if league == "NPB" else [home, away]
-    return clip_probs(np.asarray(values))[0]
+    return clip_probs(np.asarray(values, dtype=float))
 
 
 def build_probabilities(df: pd.DataFrame, league: str) -> tuple[np.ndarray, str]:

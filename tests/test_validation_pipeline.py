@@ -57,6 +57,19 @@ def test_pipeline_forces_mlb_starter_pit_evidence():
     }
     kw["league"] = "MLB"
     kw["pit_starter_evidence_ok"] = False
+    kw["holdout_pit_starter_evidence_ok"] = False
     record = run_validation_pipeline(**kw)
     assert record.decision == "REJECT"
-    assert "starter_pit_evidence_not_verified" in record.locked_holdout["reasons"]
+    assert "development_starter_pit_evidence_not_verified" in record.locked_holdout["reasons"]
+    assert "holdout_starter_pit_evidence_not_verified" in record.locked_holdout["reasons"]
+
+
+def test_pipeline_accepts_mlb_when_both_starter_pit_evidence_are_verified():
+    kw = _kwargs()
+    kw["candidate_id"] = "mlb-candidate-pit-verified"
+    kw["league"] = "MLB"
+    kw["pit_starter_evidence_ok"] = True
+    kw["holdout_pit_starter_evidence_ok"] = True
+    record = run_validation_pipeline(**kw)
+    assert record.decision == "ADOPT"
+    assert can_promote(record)

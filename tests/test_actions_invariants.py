@@ -66,8 +66,8 @@ def test_recovery_is_bounded_and_only_retries_transient_steps():
     # workflow failure remains authoritative and is preserved for diagnosis.
     assert "failed_steps=''" in text
     assert "for inspect_attempt in 1 2 3; do" in text
-    assert "Recovery could not inspect the parent run after 3 attempts; preserving the original failure signal." in text
-    assert 'exit 0' in text
+    assert "Recovery could not inspect the parent run after 3 attempts; recovery itself is FAILED and the original failure signal remains authoritative." in text
+    assert 'exit 1' in text
 
     # Keep data/model quality failures out of automatic reruns.
     assert "Install research dependencies" in text

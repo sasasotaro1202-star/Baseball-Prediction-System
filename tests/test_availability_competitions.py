@@ -17,9 +17,10 @@ BASE = dict(
     away_starter_announced_at="2026-01-01T00:00:00+00:00",
     lineup_status="UNVERIFIABLE",
     lineup_announced_at=None,
-    source="test",
+    source="https://npb.jp/",
     retrieved_at="2026-01-01T00:05:00+00:00",
     prediction_cutoff="2026-01-01T00:05:00+00:00",
+    event_start_at="2026-01-01T01:00:00+00:00",
 )
 
 

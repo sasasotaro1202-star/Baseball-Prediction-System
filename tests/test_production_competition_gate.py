@@ -16,9 +16,10 @@ def _record(league: str) -> AvailabilityRecord:
         away_starter_announced_at="2026-09-15T07:00:00+09:00",
         lineup_status="UNCONFIRMED",
         lineup_announced_at=None,
-        source="test",
+        source="https://npb.jp/",
         retrieved_at="2026-09-15T08:00:00+09:00",
         prediction_cutoff="2026-09-15T08:30:00+09:00",
+        event_start_at="2026-09-15T09:00:00+09:00",
     )
 
 

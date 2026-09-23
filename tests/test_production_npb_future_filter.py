@@ -14,6 +14,7 @@ def test_build_target_rows_excludes_started_games(monkeypatch):
                 "confirmed_starters": True,
                 "starter_evidence_status": "official_announced",
                 "official_start_time": "08:00",
+                "starter_source": "https://npb.jp/",
             },
             {
                 "home": "C", "away": "D",
@@ -21,6 +22,7 @@ def test_build_target_rows_excludes_started_games(monkeypatch):
                 "confirmed_starters": True,
                 "starter_evidence_status": "official_announced",
                 "official_start_time": "18:00",
+                "starter_source": "https://npb.jp/",
             },
         ],
     )
