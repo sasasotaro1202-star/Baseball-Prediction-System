@@ -586,7 +586,7 @@ def _official_daily_start_times(target_date: str) -> dict[tuple[str, str], str]:
         "ロッテ": "千葉ロッテマリーンズ",
         "西武": "埼玉西武ライオンズ",
     }
-    team_names = set(aliases)
+    team_names = set(aliases) | set(aliases.values())
     candidates: dict[tuple[str, str], set[str]] = {}
 
     def canon(value: str) -> str:
