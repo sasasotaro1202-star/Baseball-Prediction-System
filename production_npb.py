@@ -52,16 +52,32 @@ class _VisibleTextParser(__import__("html.parser", fromlist=["HTMLParser"]).HTML
     def __init__(self):
         super().__init__()
         self.parts = []
+        self._hidden_depth = 0
+
     def handle_starttag(self, tag, attrs):
-        if tag.lower() == "img":
+        tag = tag.lower()
+        if tag in {"script", "style", "noscript", "template"}:
+            self._hidden_depth += 1
+            return
+        if self._hidden_depth:
+            return
+        if tag == "img":
             alt = dict(attrs).get("alt", "")
             value = _clean_name(alt)
             if value:
                 self.parts.append(value)
+
+    def handle_endtag(self, tag):
+        if tag.lower() in {"script", "style", "noscript", "template"}:
+            self._hidden_depth = max(0, self._hidden_depth - 1)
+
     def handle_data(self, data):
+        if self._hidden_depth:
+            return
         value = _clean_name(data)
         if value:
             self.parts.append(value)
+
 
 class _UnitStarterParser(HTMLParser):
     """Extract team/starter pairs only from official game-card .unit containers.
@@ -222,10 +238,16 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
 
     occurrences.sort()
     structural_occurrences = _parse_starters_by_units(section, teams)
-    time_matches = list(re.finditer(r"(?<!\d)(\d{1,2}:\d{2})(?!\d)", section))
-    if not time_matches:
-        raise RuntimeError("PIT starter gate failed: no official game times found.")
-    expected_games = len(time_matches)
+    # Count only visible schedule times. Raw HTML can contain hidden script/CSS
+    # clock-like values that are not game start times and must never affect PIT
+    # cardinality or pairing.
+    visible_time_parser = _VisibleTextParser()
+    visible_time_parser.feed(section)
+    time_values = [_clean_name(x) for x in visible_time_parser.parts
+                   if re.fullmatch(r"\d{1,2}:\d{2}", _clean_name(x))]
+    if not time_values:
+        raise RuntimeError("PIT starter gate failed: no visible official game times found.")
+    expected_games = len(time_values)
     # Some official NPB revisions use one .unit per team rather than one .unit
     # per game. Do not let a structurally valid-but-cardinality-incomplete
     # extraction erase the broader team-bounded extraction above. Structural
@@ -276,43 +298,16 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
     # are rendered in a footer-like block after the starter cards).
     if len(pair_candidates) == expected_games:
         timed_pairs = {
-            i: (pair_candidates[i][1], pair_candidates[i][2], time_matches[i].group(1))
+            i: (pair_candidates[i][1], pair_candidates[i][2], time_values[i])
             for i in range(expected_games)
         }
     else:
-        # There are extra announced-starter pairs without official times
-        # (e.g. postponed/untimed fixtures). Only accept a one-to-one nearest
-        # association when it is unambiguous; otherwise fail closed.
-        timed_pairs = {}
-        available = list(pair_candidates)
-        for tm in time_matches:
-            ranked = sorted(
-                available,
-                key=lambda p: abs(((p[1][0] + p[2][0]) / 2.0) - tm.start()),
-            )
-            if not ranked:
-                raise RuntimeError("PIT starter gate failed: no candidate pair remains.")
-            nearest = ranked[0]
-            distance = abs(((nearest[1][0] + nearest[2][0]) / 2.0) - tm.start())
-            if distance > 5000:
-                raise RuntimeError(
-                    f"PIT starter gate failed: official time {tm.group(1)} could not be "
-                    f"reliably associated with a starter pair (distance={distance:.0f})."
-                )
-            if len(ranked) > 1:
-                d0 = abs(((ranked[0][1][0] + ranked[0][2][0]) / 2.0) - tm.start())
-                d1 = abs(((ranked[1][1][0] + ranked[1][2][0]) / 2.0) - tm.start())
-                if d1 - d0 < 200:
-                    raise RuntimeError(
-                        f"PIT starter gate failed: ambiguous official time {tm.group(1)} association."
-                    )
-            timed_pairs[nearest[0]] = (nearest[1], nearest[2], tm.group(1))
-            available.remove(nearest)
-
-    if len(timed_pairs) != expected_games:
+        # Do not use raw character-distance heuristics to pair game times with
+        # starters. An unexpected cardinality means the official page structure
+        # is not deterministically understood, so fail closed.
         raise RuntimeError(
-            f"PIT starter gate failed: expected {expected_games} timed starter pairs, "
-            f"resolved {len(timed_pairs)}."
+            f"PIT starter gate failed: resolved {len(pair_candidates)} starter pairs "
+            f"for {expected_games} visible official game times."
         )
 
     selected_pairs = [timed_pairs[i] for i in sorted(timed_pairs)]

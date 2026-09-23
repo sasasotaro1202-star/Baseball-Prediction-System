@@ -186,6 +186,7 @@ def test_daily_schedule_time_parser_accepts_pair_time_stream(monkeypatch):
 
     html = """
     <html><body>
+      <script>var hiddenClock = "3:05";</script>
       <img alt="広島東洋カープ">
       <span>（マツダスタジアム）</span><span>18:00</span>
       <img alt="読売ジャイアンツ">
