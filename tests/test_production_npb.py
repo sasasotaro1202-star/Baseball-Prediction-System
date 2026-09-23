@@ -30,6 +30,14 @@ def test_20260920_has_six_pit_safe_games(monkeypatch):
     import production_npb as p
     import pandas as pd
     monkeypatch.setattr(p, "fetch_text", lambda url: fixture_html())
+    monkeypatch.setattr(p, "_official_daily_start_times", lambda target_date: {
+        ("読売ジャイアンツ", "東京ヤクルトスワローズ"): "14:00",
+        ("中日ドラゴンズ", "広島東洋カープ"): "18:00",
+        ("阪神タイガース", "横浜DeNAベイスターズ"): "18:00",
+        ("北海道日本ハムファイターズ", "オリックス・バファローズ"): "14:00",
+        ("東北楽天ゴールデンイーグルス", "福岡ソフトバンクホークス"): "14:00",
+        ("千葉ロッテマリーンズ", "埼玉西武ライオンズ"): "18:00",
+    })
     # The production builder intentionally filters games that have already
     # started. Freeze the clock before the first fixture game so this
     # historical fixture tests the PIT/starter contract rather than time gating.
@@ -84,6 +92,11 @@ def test_target_rows_reject_non_official_starter_source(monkeypatch):
     import production_npb as p
     import pandas as pd
 
+    monkeypatch.setattr(
+        p,
+        "_official_daily_start_times",
+        lambda target_date: {("読売ジャイアンツ", "阪神タイガース"): "18:00"},
+    )
     monkeypatch.setattr(
         p,
         "official_starters",
