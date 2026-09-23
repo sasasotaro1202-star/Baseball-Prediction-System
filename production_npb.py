@@ -52,32 +52,43 @@ class _VisibleTextParser(__import__("html.parser", fromlist=["HTMLParser"]).HTML
     def __init__(self):
         super().__init__()
         self.parts = []
-        self._hidden_depth = 0
+    def handle_starttag(self, tag, attrs):
+        if tag.lower() == "img":
+            alt = dict(attrs).get("alt", "")
+            value = _clean_name(alt)
+            if value:
+                self.parts.append(value)
+    def handle_data(self, data):
+        value = _clean_name(data)
+        if value:
+            self.parts.append(value)
 
+
+class _DailyScheduleTextParser(HTMLParser):
+    """Collect visible daily-schedule text while excluding script/style payloads."""
+    def __init__(self):
+        super().__init__()
+        self.parts = []
+        self._hidden_depth = 0
     def handle_starttag(self, tag, attrs):
         tag = tag.lower()
         if tag in {"script", "style", "noscript", "template"}:
             self._hidden_depth += 1
             return
-        if self._hidden_depth:
+        if self._hidden_depth or tag != "img":
             return
-        if tag == "img":
-            alt = dict(attrs).get("alt", "")
-            value = _clean_name(alt)
-            if value:
-                self.parts.append(value)
-
+        value = _clean_name(dict(attrs).get("alt", ""))
+        if value:
+            self.parts.append(value)
     def handle_endtag(self, tag):
         if tag.lower() in {"script", "style", "noscript", "template"}:
             self._hidden_depth = max(0, self._hidden_depth - 1)
-
     def handle_data(self, data):
         if self._hidden_depth:
             return
         value = _clean_name(data)
         if value:
             self.parts.append(value)
-
 
 class _UnitStarterParser(HTMLParser):
     """Extract team/starter pairs only from official game-card .unit containers.
@@ -238,16 +249,10 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
 
     occurrences.sort()
     structural_occurrences = _parse_starters_by_units(section, teams)
-    # Count only visible schedule times. Raw HTML can contain hidden script/CSS
-    # clock-like values that are not game start times and must never affect PIT
-    # cardinality or pairing.
-    visible_time_parser = _VisibleTextParser()
-    visible_time_parser.feed(section)
-    time_values = [_clean_name(x) for x in visible_time_parser.parts
-                   if re.fullmatch(r"\d{1,2}:\d{2}", _clean_name(x))]
-    if not time_values:
-        raise RuntimeError("PIT starter gate failed: no visible official game times found.")
-    expected_games = len(time_values)
+    time_matches = list(re.finditer(r"(?<!\d)(\d{1,2}:\d{2})(?!\d)", section))
+    if not time_matches:
+        raise RuntimeError("PIT starter gate failed: no official game times found.")
+    expected_games = len(time_matches)
     # Some official NPB revisions use one .unit per team rather than one .unit
     # per game. Do not let a structurally valid-but-cardinality-incomplete
     # extraction erase the broader team-bounded extraction above. Structural
@@ -298,7 +303,7 @@ def parse_official_starters_html(page_html: str, target_date: str) -> list[dict]
     # are rendered in a footer-like block after the starter cards).
     if len(pair_candidates) == expected_games:
         timed_pairs = {
-            i: (pair_candidates[i][1], pair_candidates[i][2], time_values[i])
+            i: (pair_candidates[i][1], pair_candidates[i][2], time_matches[i].group(1))
             for i in range(expected_games)
         }
     else:
@@ -558,7 +563,7 @@ def _official_daily_start_times(target_date: str) -> dict[tuple[str, str], str]:
     """
     url = NPB_DAY_URL.format(date=target_date.replace("-", ""))
     page_html = fetch_text(url)
-    parser = _VisibleTextParser()
+    parser = _DailyScheduleTextParser()
     parser.feed(page_html)
     parts = [_clean_name(x) for x in parser.parts if _clean_name(x)]
     # The official English daily page uses English team labels, while
