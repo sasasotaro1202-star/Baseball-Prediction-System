@@ -108,14 +108,17 @@ jobs:
             echo 'No PIT changes to commit.'
           else
             git commit -m 'Update Baseball PIT observations'
-            for attempt in 1 2 3; do
+            for attempt in 1 2 3 4 5 6 7 8; do
               if git push; then exit 0; fi
-              if [ "$attempt" -lt 3 ]; then
+              if [ "$attempt" -lt 8 ]; then
                 git fetch origin main
                 git rebase origin/main
-                sleep $((attempt * 3))
+                sleep_seconds=$((attempt * 5))
+                echo "PIT push race detected; retrying in ${sleep_seconds}s (attempt ${attempt}/8)."
+                sleep "${sleep_seconds}"
               fi
             done
+            echo 'PIT observation commit failed after 8 bounded push/rebase attempts.' >&2
             exit 1
           fi
 
