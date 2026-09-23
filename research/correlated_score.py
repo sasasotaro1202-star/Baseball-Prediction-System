@@ -13,11 +13,14 @@ import numpy as np
 
 def poisson_pmf(k: int, lam: float) -> float:
     value = float(lam)
-    if not math.isfinite(value) or value <= 0:
-        raise ValueError("Poisson intensity must be finite and positive")
     if int(k) < 0 or int(k) != k:
         raise ValueError("Poisson count must be a non-negative integer")
-    return math.exp(-value + int(k) * math.log(value) - math.lgamma(int(k) + 1))
+    count = int(k)
+    if not math.isfinite(value) or value < 0:
+        raise ValueError("Poisson intensity must be finite and non-negative")
+    if value == 0.0:
+        return 1.0 if count == 0 else 0.0
+    return math.exp(-value + count * math.log(value) - math.lgamma(count + 1))
 
 
 def grid(lam_home: float, lam_away: float, shared: float = 0.0, max_runs: int = 14) -> np.ndarray:
