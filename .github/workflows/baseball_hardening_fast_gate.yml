@@ -129,7 +129,7 @@ jobs:
           grep -Fq "cancel-in-progress: false" "$closed"
           grep -Fq "cron: '17 0,3,6,9,12,15,18,21 * * *'" "$closed"
           grep -Fq "retries 0" "$closed"
-          grep -Fq "BASEBALL_TIME_BUDGET_SEC: '3600'" "$closed"
+          grep -Fq "BASEBALL_TIME_BUDGET_SEC: '4800'" "$closed"
 
           grep -Fq "cron: '*/15 * * * *'" "$supervisor"
           grep -Fq "gh workflow run" "$supervisor"
