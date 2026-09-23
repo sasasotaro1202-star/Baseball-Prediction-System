@@ -381,6 +381,26 @@ class BaseballBacktest:
                 hscore, ascore = self._reconstruct_npb_score(g)
             if np.isnan(hscore) or np.isnan(ascore):
                 continue
+            # Derive a strictly lagged bullpen-usage proxy from historical PBP.
+            # Only pitcher identities/inning sides from the completed game are used;
+            # this metadata is consumed after the game and therefore cannot leak
+            # into the same game's feature row. The research flag controls whether
+            # the resulting workload feature is enabled in model fitting.
+            home_bullpen_apps = 0.0
+            away_bullpen_apps = 0.0
+            if "pitcher_id" in g.columns:
+                for side, half_value in (("home", "B"), ("away", "T")):
+                    vals = g.loc[
+                        g["half_inning"].astype(str).str.upper().str.startswith(half_value),
+                        "pitcher_id",
+                    ].astype(str).str.strip()
+                    vals = [v for v in vals if v and v.lower() not in {"nan", "none"}]
+                    unique_pitchers = list(dict.fromkeys(vals))
+                    apps = max(0, len(unique_pitchers) - 1)
+                    if side == "home":
+                        home_bullpen_apps = float(apps)
+                    else:
+                        away_bullpen_apps = float(apps)
             gt = " ".join(g["game_type"].dropna().astype(str).tolist())
             if any(k in gt for k in NPB_EXCLUDE_KEYWORDS):
                 continue
@@ -408,6 +428,8 @@ class BaseballBacktest:
                 "venue": "unknown",
                 "confirmed_starters": bool(h_safe and a_safe),
                 "starter_evidence_status": "pit_safe" if (h_safe and a_safe) else "unknown",
+                "home_bullpen_apps": float(home_bullpen_apps),
+                "away_bullpen_apps": float(away_bullpen_apps),
             })
         out = pd.DataFrame(rows)
         if out.empty:
@@ -1172,7 +1194,8 @@ class BaseballBacktest:
         bp_bb_explicit = fv_any((f"{prefix}_bullpen_bb", f"{prefix}_relief_bb"))
         bp_so_explicit = fv_any((f"{prefix}_bullpen_so", f"{prefix}_relief_so"))
         bp_hr_explicit = fv_any((f"{prefix}_bullpen_hr", f"{prefix}_relief_hr"))
-        bp_app=fv(f"{prefix}_bullpen_apps", 0.0)
+        enable_safe_bp = os.getenv("BASEBALL_ENABLE_PIT_SAFE_BULLPEN_USAGE", "0") == "1"
+        bp_app=fv(f"{prefix}_bullpen_apps", 0.0) if enable_safe_bp else 0.0
 
         bp_er = bp_er_explicit if np.isfinite(bp_er_explicit) else max(0.0, ga - 3.0)
         bp_runs = bp_runs_explicit if np.isfinite(bp_runs_explicit) else bp_er
