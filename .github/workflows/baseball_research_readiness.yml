@@ -3,6 +3,8 @@ name: Baseball Research Readiness
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'data/pit/**'
   pull_request:
     branches: [main]
   workflow_dispatch:

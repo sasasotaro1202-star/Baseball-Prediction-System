@@ -3,6 +3,8 @@ name: Baseball Hardening Fast Gate
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'data/pit/**'
   workflow_dispatch:
 
 permissions:
