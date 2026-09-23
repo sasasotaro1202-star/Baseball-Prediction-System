@@ -725,11 +725,12 @@ def build_target_rows(target_date: str) -> pd.DataFrame:
             raise RuntimeError(
                 f"Official NPB daily schedule has no exact time for {pair[0]} vs {pair[1]}; refusing prediction."
             )
-        if starter_time and starter_time != schedule_time:
-            raise RuntimeError(
-                f"Official NPB time mismatch for {pair[0]} vs {pair[1]}: "
-                f"starter_page={starter_time}, daily_schedule={schedule_time}; refusing prediction."
-            )
+        # The dedicated NPB starter page can contain non-game clock values
+        # (for example the displayed average game duration). Treat the
+        # official date-specific schedule as the sole authoritative source for
+        # the target game's start time. The starter page remains authoritative
+        # for starter identity/evidence, but its auxiliary time field is not
+        # used as a competing clock signal.
         start_time = schedule_time
         r["official_start_time"] = start_time
         r["start_time_source"] = NPB_DAY_URL.format(date=target_date.replace("-", ""))
