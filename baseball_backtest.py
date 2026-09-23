@@ -60,6 +60,7 @@ except Exception:
 from sklearn.linear_model import LogisticRegression, PoissonRegressor, TweedieRegressor
 from sklearn.metrics import accuracy_score, brier_score_loss, log_loss, mean_absolute_error, roc_auc_score
 from sklearn.pipeline import Pipeline
+from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import StandardScaler
 
 from research.regime_router import RegimeRouter
@@ -1249,6 +1250,11 @@ class BaseballBacktest:
             "HistGB": HistGradientBoostingClassifier(max_iter=hist_max_iter, learning_rate=0.035, max_leaf_nodes=15, min_samples_leaf=12, l2_regularization=2.0, random_state=RANDOM_STATE),
             "RandomForest": RandomForestClassifier(n_estimators=rf_estimators, max_depth=10, min_samples_leaf=6, max_features=0.55, class_weight="balanced_subsample", random_state=RANDOM_STATE, n_jobs=self.inner_jobs),
             "ExtraTrees": ExtraTreesClassifier(n_estimators=et_estimators, max_depth=12, min_samples_leaf=5, max_features=0.65, class_weight="balanced", random_state=RANDOM_STATE, n_jobs=self.inner_jobs),
+            # Analog/nearest-neighbor challenger: a deliberately local model that
+            # can capture matchup states that tree ensembles smooth away. It is
+            # evaluated only on chronological validation and therefore cannot
+            # bypass the existing promotion/OOS gates.
+            "KNNAnalog": Pipeline([("scale", StandardScaler()), ("m", KNeighborsClassifier(n_neighbors=45, weights="distance", p=2, leaf_size=30, n_jobs=self.inner_jobs))]),
         }
         if LGBMClassifier is not None:
             m["LightGBM"] = LGBMClassifier(n_estimators=lgbm_estimators, learning_rate=0.025, num_leaves=15, max_depth=6, min_child_samples=18, subsample=0.85, colsample_bytree=0.8, reg_alpha=0.2, reg_lambda=2.0, objective="multiclass" if k==3 else "binary", num_class=k if k==3 else None, verbosity=-1, random_state=RANDOM_STATE, n_jobs=self.inner_jobs)
