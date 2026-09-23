@@ -71,7 +71,9 @@ def current_runtime(league: str) -> dict[str, Any]:
     status = str(runtime.get("formal_adoption_status", "")).strip().upper()
     required = ("entrypoint", "model_version", "contract")
     missing = [key for key in required if not str(runtime.get(key, "")).strip()]
-    if status.startswith("BLOCKED_") or status.startswith("GOVERNED_"):
+    if status.startswith("BLOCKED_"):
+        # GOVERNED_* means the runtime is callable, while formal adoption is
+        # still controlled by the independent promotion gate.
         return {
             "available": False,
             "league": league,
