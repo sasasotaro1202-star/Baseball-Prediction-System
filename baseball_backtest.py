@@ -126,32 +126,6 @@ def num(x: Any, default=np.nan) -> float:
         return default
 
 
-    def _stack_features(
-        predictions: Dict[str, np.ndarray],
-        model_names: Sequence[str],
-    ) -> np.ndarray:
-        """Build deterministic second-level features from base-model probabilities."""
-        blocks = []
-        expected_n = None
-        expected_k = None
-        for name in model_names:
-            if name not in predictions:
-                raise ValueError(f"missing stacker member prediction: {name}")
-            p = np.asarray(predictions[name], dtype=float)
-            if p.ndim != 2 or p.shape[1] < 2:
-                raise ValueError(f"invalid stacker member shape for {name}: {p.shape}")
-            if not np.isfinite(p).all():
-                raise ValueError(f"non-finite stacker member probabilities for {name}")
-            p = np.apply_along_axis(clip_prob, 1, p)
-            if expected_n is None:
-                expected_n, expected_k = p.shape
-            if p.shape != (expected_n, expected_k):
-                raise ValueError("stacker member probability shapes differ")
-            blocks.append(p)
-        if not blocks:
-            raise ValueError("stacker requires at least one member")
-        return np.concatenate(blocks, axis=1)
-
 def clip_prob(p: Sequence[float]) -> np.ndarray:
     """Normalize a valid probability vector; fail closed on invalid values."""
     a = np.asarray(p, dtype=float)
@@ -1449,6 +1423,32 @@ class BaseballBacktest:
             if vals:
                 out[name] = float(np.clip(np.mean(vals), 0.0, 1.0))
         return out
+
+    def _stack_features(
+        predictions: Dict[str, np.ndarray],
+        model_names: Sequence[str],
+    ) -> np.ndarray:
+        """Build deterministic second-level features from base-model probabilities."""
+        blocks = []
+        expected_n = None
+        expected_k = None
+        for name in model_names:
+            if name not in predictions:
+                raise ValueError(f"missing stacker member prediction: {name}")
+            p = np.asarray(predictions[name], dtype=float)
+            if p.ndim != 2 or p.shape[1] < 2:
+                raise ValueError(f"invalid stacker member shape for {name}: {p.shape}")
+            if not np.isfinite(p).all():
+                raise ValueError(f"non-finite stacker member probabilities for {name}")
+            p = np.apply_along_axis(clip_prob, 1, p)
+            if expected_n is None:
+                expected_n, expected_k = p.shape
+            if p.shape != (expected_n, expected_k):
+                raise ValueError("stacker member probability shapes differ")
+            blocks.append(p)
+        if not blocks:
+            raise ValueError("stacker requires at least one member")
+        return np.concatenate(blocks, axis=1)
 
     def fit_ensemble(self, X: pd.DataFrame, y: np.ndarray, league: str, *, fast_oos: bool = False):
         """Fit an ensemble with leakage-safe regime-specific routing.
