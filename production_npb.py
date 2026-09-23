@@ -360,8 +360,10 @@ def parse_official_league_starters_html(page_html: str, target_date: str, source
         )
 
     tail = page_html[heading.end():]
+    next_heading = re.search(r"<h[3-6]\b", tail, re.I)
+    section = tail[:next_heading.start()] if next_heading else tail
     parser = _VisibleTextParser()
-    parser.feed(tail[:120000])
+    parser.feed(section)
     tokens = [_clean_name(x) for x in parser.parts if _clean_name(x)]
 
     league_teams = {
@@ -410,16 +412,25 @@ def parse_official_league_starters_html(page_html: str, target_date: str, source
             break
 
     time_values = [x for x in tokens if re.fullmatch(r"\d{1,2}:\d{2}", x)]
-    if len(found) < 6 or len(time_values) < 3:
+    expected_games = len(time_values)
+    required_records = 2 * expected_games
+    if expected_games <= 0 or len(found) < required_records:
         raise RuntimeError(
             f"PIT starter gate failed: official league page resolved {len(found)} "
-            f"team/starter records and {len(time_values)} times; expected 6 records and 3 games."
+            f"team/starter records and {expected_games} times; expected at least "
+            f"{required_records} records for {expected_games} games."
         )
 
+    found = found[:required_records]
     out = []
-    for game_idx in range(3):
+    for game_idx in range(expected_games):
         a = found[2 * game_idx]
         b = found[2 * game_idx + 1]
+        if a[2] == b[2]:
+            raise RuntimeError(
+                "PIT starter gate failed: identical starter assigned to both teams "
+                f"in league-page evidence ({a[1]} vs {b[1]}): {a[2]!r}."
+            )
         out.append({
             "home": a[1], "away": b[1],
             "home_starter": a[2], "away_starter": b[2],
@@ -462,39 +473,76 @@ def _load_official_starter_snapshot(target_date: str) -> list[dict] | None:
         g["starter_source"] = payload["source_url"]
     return games
 
+def _starter_rows_sane(rows: list[dict]) -> bool:
+    """Validate target-day starter rows before trusting parser output."""
+    if not rows:
+        return False
+    teams = []
+    starters = []
+    for row in rows:
+        home = _clean_name(str(row.get("home", "")))
+        away = _clean_name(str(row.get("away", "")))
+        hs = _clean_name(str(row.get("home_starter", "")))
+        aws = _clean_name(str(row.get("away_starter", "")))
+        if not home or not away or not hs or not aws:
+            return False
+        if home == away or hs == aws:
+            return False
+        teams.extend((home, away))
+        starters.extend((hs, aws))
+    if len(set(teams)) != len(teams):
+        return False
+    if len(set(starters)) != len(starters):
+        return False
+    return True
+
+
 def official_starters(target_date: str) -> list[dict]:
     # An existing immutable snapshot is evidence, not an optional cache.
     # If it exists but is malformed, refuse prediction rather than silently
     # replacing a provenance problem with a live fetch.
     snapshot = _load_official_starter_snapshot(target_date)
+    dedicated_error = None
     try:
-        return parse_official_starters_html(
+        dedicated_rows = parse_official_starters_html(
             fetch_text(NPB_STARTER_URL + "?_ts=" + str(int(time.time()))), target_date
         )
+        if _starter_rows_sane(dedicated_rows):
+            return dedicated_rows
+        dedicated_error = RuntimeError(
+            "PIT starter gate failed: dedicated official starter parser produced "
+            "structurally suspect target-day pairs."
+        )
     except RuntimeError as exc:
+        dedicated_error = exc
+    try:
+        if dedicated_error is not None and (
+            "does not contain" not in str(dedicated_error)
+            or True
+        ):
+            # First-party Central/Pacific pages are an independent official
+            # reconciliation path. Use them whenever dedicated-page extraction
+            # is suspect, not only when the page has rolled forward.
+            league_rows = []
+            for source_url in ("https://npb.jp/cl/", "https://npb.jp/pl/"):
+                league_rows.extend(
+                    parse_official_league_starters_html(
+                        fetch_text(source_url + "?_ts=" + str(int(time.time()))),
+                        target_date, source_url,
+                    )
+                )
+            if _starter_rows_sane(league_rows):
+                return league_rows
+    except RuntimeError:
+        league_rows = []
+    if dedicated_error is not None:
+        exc = dedicated_error
         # If the dedicated announcement page has already rolled forward, try
         # the first-party Central/Pacific League pages. These are still official
         # NPB sources and must independently resolve all six teams/three games.
         # Duplicate or ambiguous evidence never falls through to a weaker source.
         message = str(exc)
-        if "duplicate team tokens" in message or "ambiguous official time" in message:
-            raise
-        if "does not contain" in message:
-            league_rows = []
-            for source_url in ("https://npb.jp/cl/", "https://npb.jp/pl/"):
-                try:
-                    league_rows.extend(
-                        parse_official_league_starters_html(
-                            fetch_text(source_url + "?_ts=" + str(int(time.time()))),
-                            target_date, source_url,
-                        )
-                    )
-                except RuntimeError:
-                    league_rows = []
-                    break
-            if len(league_rows) == 6:
-                return league_rows
-        if snapshot is not None:
+        if snapshot is not None and _starter_rows_sane(snapshot):
             return snapshot
         raise
 

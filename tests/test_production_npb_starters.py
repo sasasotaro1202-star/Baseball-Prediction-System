@@ -71,3 +71,77 @@ def test_predict_persists_blocked_state_for_impossible_starter_pair(monkeypatch,
     assert result["predictions"] == []
     assert "identical starter" in result["block_reason"]
     assert (tmp_path / "results" / "npb_production_2026-09-24.json").exists() is False
+
+
+def _league_fixture(source_url: str, home: str, hs: str, away: str, as_: str) -> str:
+    return (
+        f'<h4>9月24日の予告先発</h4>'
+        f'<div><span>18:00</span>'
+        f'<img alt="{home}"><span>{hs}</span>'
+        f'<img alt="{away}"><span>{as_}</span></div>'
+        f'<h4>9月25日の予告先発</h4>'
+    )
+
+
+def test_official_league_starter_parser_supports_single_game_league_page():
+    from production_npb import parse_official_league_starters_html
+
+    cl = parse_official_league_starters_html(
+        _league_fixture(
+            "https://npb.jp/cl/",
+            "広島東洋カープ", "森下　暢仁",
+            "読売ジャイアンツ", "西舘　勇陽",
+        ),
+        "2026-09-24",
+        "https://npb.jp/cl/",
+    )
+    assert cl == [{
+        "home": "広島東洋カープ",
+        "away": "読売ジャイアンツ",
+        "home_starter": "森下　暢仁",
+        "away_starter": "西舘　勇陽",
+        "confirmed_starters": True,
+        "starter_evidence_status": "official_announced",
+        "starter_source": "https://npb.jp/cl/",
+        "official_start_time": "18:00",
+    }]
+
+
+def test_official_starters_reconciles_suspect_dedicated_page_with_first_party_league_pages(monkeypatch):
+    import production_npb
+
+    cl = _league_fixture(
+        "https://npb.jp/cl/",
+        "広島東洋カープ", "森下　暢仁",
+        "読売ジャイアンツ", "西舘　勇陽",
+    )
+    pl = _league_fixture(
+        "https://npb.jp/pl/",
+        "北海道日本ハムファイターズ", "達　孝太",
+        "東北楽天ゴールデンイーグルス", "前田　健太",
+    )
+
+    monkeypatch.setattr(production_npb, "_load_official_starter_snapshot", lambda _: None)
+    monkeypatch.setattr(
+        production_npb,
+        "parse_official_starters_html",
+        lambda *_args, **_kwargs: [{
+            "home": "広島東洋カープ", "away": "読売ジャイアンツ",
+            "home_starter": "達　孝太", "away_starter": "達　孝太",
+            "official_start_time": "18:00",
+        }],
+    )
+
+    def fake_fetch(url):
+        if "npb.jp/cl/" in url:
+            return cl
+        if "npb.jp/pl/" in url:
+            return pl
+        raise AssertionError(f"unexpected URL: {url}")
+
+    monkeypatch.setattr(production_npb, "fetch_text", fake_fetch)
+    rows = production_npb.official_starters("2026-09-24")
+    assert [(x["home"], x["home_starter"], x["away"], x["away_starter"]) for x in rows] == [
+        ("広島東洋カープ", "森下　暢仁", "読売ジャイアンツ", "西舘　勇陽"),
+        ("北海道日本ハムファイターズ", "達　孝太", "東北楽天ゴールデンイーグルス", "前田　健太"),
+    ]
