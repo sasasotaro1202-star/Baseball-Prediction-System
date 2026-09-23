@@ -51,8 +51,7 @@ jobs:
           if [ "${RUN_ATTEMPT}" -ge 3 ]; then
             echo 'Recovery limit reached; refusing another automatic rerun.' >&2
             echo 'Recovery terminal state: FAILED_WITH_LIMIT; parent failure remains authoritative.' >&2
-            printf '%s
-' 'Recovery terminal state: FAILED_WITH_LIMIT (parent failure remains authoritative).' >> "$GITHUB_STEP_SUMMARY"
+            printf '%s\\n' 'Recovery terminal state: FAILED_WITH_LIMIT (parent failure remains authoritative).' >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
@@ -75,8 +74,7 @@ jobs:
           # authoritative; if inspection is unavailable, preserve it and stop.
           if [ "${inspect_ok}" -ne 1 ]; then
             echo 'Recovery could not inspect the parent run after 3 attempts; recovery itself is FAILED and the original failure signal remains authoritative.' >&2
-            printf '%s
-' 'Recovery terminal state: FAILED_INSPECTION (parent failure remains authoritative).' >> "$GITHUB_STEP_SUMMARY"
+            printf '%s\\n' 'Recovery terminal state: FAILED_INSPECTION (parent failure remains authoritative).' >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
@@ -104,16 +102,14 @@ jobs:
           if [ "${retryable}" -eq 0 ]; then
             echo 'No retryable transient failure detected; preserving the failure for diagnosis.' >&2
             echo 'Recovery terminal state: FAILED_NO_RETRYABLE_STEP; parent failure remains authoritative.' >&2
-            printf '%s
-' 'Recovery terminal state: FAILED_NO_RETRYABLE_STEP (parent failure remains authoritative).' >> "$GITHUB_STEP_SUMMARY"
+            printf '%s\\n' 'Recovery terminal state: FAILED_NO_RETRYABLE_STEP (parent failure remains authoritative).' >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
           if [ "${non_retryable}" -ne 0 ]; then
             echo 'Mixed transient and deterministic failures detected; refusing automatic rerun.' >&2
             echo 'Recovery terminal state: FAILED_MIXED_FAILURES; parent failure remains authoritative.' >&2
-            printf '%s
-' 'Recovery terminal state: FAILED_MIXED_FAILURES (parent failure remains authoritative).' >> "$GITHUB_STEP_SUMMARY"
+            printf '%s\\n' 'Recovery terminal state: FAILED_MIXED_FAILURES (parent failure remains authoritative).' >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
@@ -127,8 +123,7 @@ jobs:
             if [ "${recovery_attempt}" -eq 3 ]; then
               echo 'Recovery request failed after 3 attempts; preserving the original failure signal.' >&2
               echo 'Recovery terminal state: FAILED_RERUN_REQUEST; parent failure remains authoritative.' >&2
-              printf '%s
-' 'Recovery terminal state: FAILED_RERUN_REQUEST (parent failure remains authoritative).' >> "$GITHUB_STEP_SUMMARY"
+              printf '%s\\n' 'Recovery terminal state: FAILED_RERUN_REQUEST (parent failure remains authoritative).' >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
             sleep_seconds=$((recovery_attempt * 10))
