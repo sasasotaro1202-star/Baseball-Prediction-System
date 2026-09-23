@@ -134,6 +134,8 @@ jobs:
           grep -Fq "cron: '*/15 * * * *'" "$supervisor"
           grep -Fq "gh workflow run" "$supervisor"
           grep -Fq "gh run view" "$supervisor"
+          grep -Fq "headSha" "$supervisor"
+          grep -Fq 'git/ref/heads/main' "$supervisor"
 
           grep -Fq "Re-run failed jobs with bounded recovery" "$recovery"
           grep -Fq "RUN_ATTEMPT" "$recovery"
