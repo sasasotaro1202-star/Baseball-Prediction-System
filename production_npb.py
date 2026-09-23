@@ -566,11 +566,31 @@ def _official_daily_start_times(target_date: str) -> dict[tuple[str, str], str]:
     parser = _VisibleTextParser()
     parser.feed(page_html)
     parts = [_clean_name(x) for x in parser.parts if _clean_name(x)]
-    team_names = set(TEAM_MAP)
+    # The official English daily page uses English team labels, while
+    # Japanese pages/tests use Japanese labels. Normalize both deterministically.
+    aliases = {
+        **TEAM_MAP,
+        "広島": "広島東洋カープ",
+        "広島東洋カープ": "広島東洋カープ",
+        "巨人": "読売ジャイアンツ",
+        "読売": "読売ジャイアンツ",
+        "ヤクルト": "東京ヤクルトスワローズ",
+        "中日": "中日ドラゴンズ",
+        "阪神": "阪神タイガース",
+        "DeNA": "横浜DeNAベイスターズ",
+        "横浜DeNAベイスターズ": "横浜DeNAベイスターズ",
+        "日本ハム": "北海道日本ハムファイターズ",
+        "オリックス": "オリックス・バファローズ",
+        "楽天": "東北楽天ゴールデンイーグルス",
+        "ソフトバンク": "福岡ソフトバンクホークス",
+        "ロッテ": "千葉ロッテマリーンズ",
+        "西武": "埼玉西武ライオンズ",
+    }
+    team_names = set(aliases)
     candidates: dict[tuple[str, str], set[str]] = {}
 
     def canon(value: str) -> str:
-        return TEAM_MAP.get(value, value)
+        return aliases.get(value, value)
 
     for i, token in enumerate(parts):
         if token not in team_names:
