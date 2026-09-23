@@ -28,9 +28,18 @@ def cmd_research(args):
 
 
 def cmd_predict(args):
-    """Placeholder - staged model training not yet implemented, does not fail the pipeline"""
-    print("predict: no trained model yet, nothing to do (exit 0)")
-    return 0
+    """Run the current production runtime; never fall back to research."""
+    from prediction.current_production import predict_current
+    result = predict_current(
+        league=args.league,
+        target_date=args.date,
+        data_dir=args.data_dir,
+    )
+    print(__import__("json").dumps(result, ensure_ascii=False, indent=2, default=str))
+    return 0 if result.get("execution_status") not in {
+        "BLOCKED_NO_CURRENT_PRODUCTION_RUNTIME",
+        "BLOCKED_STARTERS",
+    } else 0
 
 
 def cmd_verify(args):
@@ -72,7 +81,10 @@ def build_parser():
     sp = sub.add_parser("research")
     sp.set_defaults(func=cmd_research)
 
-    sp = sub.add_parser("predict")
+    sp = sub.add_parser("predict", help="run the current production runtime")
+    sp.add_argument("--league", choices=("NPB", "MLB"), required=True)
+    sp.add_argument("--date", default=None)
+    sp.add_argument("--data-dir", default="data")
     sp.set_defaults(func=cmd_predict)
 
     sp = sub.add_parser("verify")

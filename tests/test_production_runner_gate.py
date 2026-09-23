@@ -112,3 +112,25 @@ def test_explicit_production_entry_point_cannot_fall_back_to_research_mode():
         )
     assert result["eligible"] is False
     assert result["reasons"] == ["competition_not_production_eligible"]
+
+
+def test_current_production_runtime_registry_is_stable():
+    from prediction.current_production import current_runtime
+
+    npb = current_runtime("NPB")
+    assert npb["available"] is True
+    assert npb["entrypoint"] == "production_npb"
+    assert npb["model_version"] == "npb-production-v1"
+
+    mlb = current_runtime("MLB")
+    assert mlb["available"] is False
+    assert mlb["status"] == "BLOCKED_NO_CURRENT_PRODUCTION_RUNTIME"
+
+
+def test_current_production_never_uses_research_fallback(monkeypatch):
+    import prediction.current_production as cp
+
+    monkeypatch.setattr(cp, "CONFIG", cp.ROOT / "config" / "current_production_runtime.json")
+    result = cp.predict_current(league="MLB", target_date="2026-09-24")
+    assert result["execution_status"] == "BLOCKED_NO_CURRENT_PRODUCTION_RUNTIME"
+    assert result["predictions"] == []

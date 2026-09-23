@@ -1,0 +1,24 @@
+{
+  "schema_version": "current-production-runtime-v1",
+  "policy": {
+    "selection": "checked_in_production_runtime_only",
+    "research_fallback": false,
+    "auto_promotion": false,
+    "fail_closed": true,
+    "runtime_identity_is_recorded": true
+  },
+  "runtimes": {
+    "NPB": {
+      "entrypoint": "production_npb",
+      "model_version": "npb-production-v1",
+      "contract": "NPB_HOME_DRAW_AWAY_SCORE_LOW_HIGH_TOP4_V1",
+      "formal_adoption_status": "GOVERNED_SEPARATELY"
+    },
+    "MLB": {
+      "entrypoint": "",
+      "model_version": "",
+      "contract": "",
+      "formal_adoption_status": "BLOCKED_UNTIL_REGISTERED"
+    }
+  }
+}
