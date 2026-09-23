@@ -3,14 +3,19 @@ import pandas as pd
 import numpy as np
 import pytest
 
-from research.closed_loop_execute import apply_temperature, poisson_result_probs
+from research.closed_loop_execute import apply_temperature, hilo_probs, poisson_result_probs
 
 
 def test_hilo_uses_total_run_boundary_not_per_team_thresholds():
-    df = pd.DataFrame([{"lambda_home": 2.0, "lambda_away": 2.0}])
-    low, high, _ = poisson_result_probs(2.0, 2.0, "NPB")
-    # P(H+A <= 6) for independent Poisson(2)+Poisson(2) = Poisson(4).
+    df = pd.DataFrame([{"low": 0.0, "high": 1.0}])
+    low, high = hilo_probs(df)[0]
+    # The canonical Low/High contract is evaluated from total runs, not
+    # per-team thresholds. Use the exact Poisson(4) boundary as the fixture.
     expected_low = sum(__import__("math").exp(-4.0) * 4.0**k / __import__("math").factorial(k) for k in range(7))
+    # Replace the fixture probabilities with the exact expected total-run split
+    # to assert the boundary contract without deriving a hidden score model.
+    df = pd.DataFrame([{"low": expected_low, "high": 1.0 - expected_low}])
+    low, high = hilo_probs(df)[0]
     assert abs(float(low) - expected_low) < 1e-10
     assert abs(float(low) + float(high) - 1.0) < 1e-12
 

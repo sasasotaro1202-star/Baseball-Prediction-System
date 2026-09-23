@@ -96,7 +96,7 @@ def test_explicit_production_entry_point_cannot_fall_back_to_research_mode():
                 away_starter_announced_at="2998-12-31T23:00:00+00:00",
                 lineup_status="UNVERIFIABLE",
                 lineup_announced_at=None,
-                source="test",
+                source="https://npb.jp/",
                 retrieved_at=future,
                 prediction_cutoff=future,
                 event_start_at="2999-01-01T01:00:00+00:00",
