@@ -88,7 +88,7 @@ jobs:
           while IFS= read -r step; do
             [ -n "${step}" ] || continue
             case "${step}" in
-              'Install research dependencies'|'Install dependencies'|'Install production dependencies'|'Acquire current PIT observations'|'Install acquisition dependencies'|'Run PIT acquisition'|'Acquire PIT-safe public NPB PBP data'|'Stage historical NPB PBP release data'|'Restore immutable historical NPB PBP and official-result cache'|'Restore chronological OOS checkpoints')
+              'Install research dependencies'|'Install dependencies'|'Install production dependencies'|'Acquire current PIT observations'|'Install acquisition dependencies'|'Run PIT acquisition'|'Commit PIT observations'|'Acquire PIT-safe public NPB PBP data'|'Stage historical NPB PBP release data'|'Restore immutable historical NPB PBP and official-result cache'|'Restore chronological OOS checkpoints')
                 retryable=$((retryable + 1))
                 ;;
               *)
