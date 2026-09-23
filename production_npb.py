@@ -38,12 +38,37 @@ TEAM_MAP = {
 }
 
 def fetch_text(url: str) -> str:
-    r = requests.get(url, timeout=TIMEOUT, headers={"User-Agent":"Baseball-Prediction-System/production"})
-    r.raise_for_status()
-    enc = (r.apparent_encoding or r.encoding or "utf-8").lower().replace("-", "_")
-    if "shift_jis" in enc or "cp932" in enc or "shiftjis" in enc:
-        return r.content.decode("cp932", errors="strict")
-    return r.content.decode(r.apparent_encoding or r.encoding or "utf-8", errors="strict")
+    """Fetch an official NPB page with bounded transient-error recovery."""
+    transient_statuses = {429, 502, 503, 504}
+    attempts = 4
+    last_exc = None
+    for attempt in range(attempts):
+        try:
+            r = requests.get(
+                url,
+                timeout=TIMEOUT,
+                headers={"User-Agent":"Baseball-Prediction-System/production"},
+            )
+            if r.status_code in transient_statuses and attempt < attempts - 1:
+                retry_after = r.headers.get("Retry-After")
+                try:
+                    delay = min(8.0, max(1.0, float(retry_after)))
+                except (TypeError, ValueError):
+                    delay = float(2 ** attempt)
+                time.sleep(delay)
+                continue
+            r.raise_for_status()
+            enc = (r.apparent_encoding or r.encoding or "utf-8").lower().replace("-", "_")
+            if "shift_jis" in enc or "cp932" in enc or "shiftjis" in enc:
+                return r.content.decode("cp932", errors="strict")
+            return r.content.decode(r.apparent_encoding or r.encoding or "utf-8", errors="strict")
+        except requests.RequestException as exc:
+            last_exc = exc
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            if status not in transient_statuses or attempt >= attempts - 1:
+                raise
+            time.sleep(float(2 ** attempt))
+    raise RuntimeError(f"official NPB page fetch failed after {attempts} attempts: {url}") from last_exc
 
 def _clean_name(value: str) -> str:
     return re.sub(r"\s+", " ", html_lib.unescape(value)).replace("　", " ").strip()
