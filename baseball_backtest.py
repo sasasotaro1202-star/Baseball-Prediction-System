@@ -1530,7 +1530,7 @@ class BaseballBacktest:
             }
 
         if not fast_oos and validation_predictions:
-            best_key=(float("inf"), float("inf"), float("inf"), float("inf"))
+            best_key=(float("inf"), float("inf"), float("inf"), float("inf"), float("inf"))
             for min_rows, shrinkage, min_edge in router_grid:
                 for power in power_grid:
                     for lam in diversity_grid:
