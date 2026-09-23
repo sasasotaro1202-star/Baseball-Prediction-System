@@ -680,6 +680,26 @@ def official_starters(target_date: str) -> list[dict]:
             return snapshot
         raise dedicated_error
 
+def _situation_tags(xrow: pd.DataFrame, regime_label: str) -> list[str]:
+    """Convert PIT-safe matchup deltas into compact, auditable situation tags."""
+    row = xrow.iloc[0]
+    def side(value: float, margin: float) -> str:
+        if value > margin:
+            return "home"
+        if value < -margin:
+            return "away"
+        return "balanced"
+    tags = [f"regime:{regime_label}"]
+    tags.append(f"starter:{side(float(row.get('starter_x_quality_proxy', 0.0)), 0.20)}")
+    tags.append(f"starter_recent:{side(-float(row.get('starter_recent_form_gap', 0.0)), 0.15)}")
+    tags.append(f"offense:{side(float(row.get('offense_power_gap_10', 0.0)), 0.01)}")
+    tags.append(f"bullpen:{side(-float(row.get('bullpen_quality_era_diff', 0.0)), 0.15)}")
+    tags.append(f"rest:{side(float(row.get('h_rest_days', 0.0)) - float(row.get('a_rest_days', 0.0)), 0.50)}")
+    env = float(row.get('expected_env', 0.0))
+    tags.append("environment:high" if env >= 4.8 else "environment:low" if env <= 3.2 else "environment:neutral")
+    tags.append(f"trend:{side(float(row.get('run_trend_gap_20', 0.0)), 0.12)}")
+    return tags
+
 def _official_daily_start_times(target_date: str) -> dict[tuple[str, str], str]:
     """Read official game start times from NPB's date-specific schedule page.
 
@@ -1031,6 +1051,7 @@ def predict(target_date: str, data_dir: str) -> dict:
           "classification_regime_model_weights":regime_model_weights,
           "score_regime":score_regime_label,
           "score_regime_model_weights":score_regime_weights,
+          "situation_tags":_situation_tags(xrow, regime_label),
           "validation_scores":validation_scores,
           "historical_games_used":int(len(hist)),
           "pit_status":"PASS",
@@ -1085,6 +1106,7 @@ def predict(target_date: str, data_dir: str) -> dict:
                     "classification_regime_model_weights":recovery_regime_weights,
                     "score_regime":"recovery",
                     "score_regime_model_weights":{},
+                    "situation_tags":_situation_tags(xrow, recovery_regime_label),
                 })
                 recovered.append(o)
             outputs=recovered
