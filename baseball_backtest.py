@@ -126,6 +126,32 @@ def num(x: Any, default=np.nan) -> float:
         return default
 
 
+    def _stack_features(
+        predictions: Dict[str, np.ndarray],
+        model_names: Sequence[str],
+    ) -> np.ndarray:
+        """Build deterministic second-level features from base-model probabilities."""
+        blocks = []
+        expected_n = None
+        expected_k = None
+        for name in model_names:
+            if name not in predictions:
+                raise ValueError(f"missing stacker member prediction: {name}")
+            p = np.asarray(predictions[name], dtype=float)
+            if p.ndim != 2 or p.shape[1] < 2:
+                raise ValueError(f"invalid stacker member shape for {name}: {p.shape}")
+            if not np.isfinite(p).all():
+                raise ValueError(f"non-finite stacker member probabilities for {name}")
+            p = np.apply_along_axis(clip_prob, 1, p)
+            if expected_n is None:
+                expected_n, expected_k = p.shape
+            if p.shape != (expected_n, expected_k):
+                raise ValueError("stacker member probability shapes differ")
+            blocks.append(p)
+        if not blocks:
+            raise ValueError("stacker requires at least one member")
+        return np.concatenate(blocks, axis=1)
+
 def clip_prob(p: Sequence[float]) -> np.ndarray:
     """Normalize a valid probability vector; fail closed on invalid values."""
     a = np.asarray(p, dtype=float)
@@ -281,6 +307,10 @@ class BaseballBacktest:
         self._ensemble_blend_mode = "linear"
         self._regime_router = None
         self._regime_weights = {}
+        # OOF-only second-level stacker. It remains disabled unless nested
+        # chronological validation demonstrates a material improvement.
+        self._stacking_model = None
+        self._stacking_model_names = ()
         self.player_game = pd.DataFrame()
         self.player_history = defaultdict(list)
         self.player_index = {}
@@ -1715,6 +1745,147 @@ class BaseballBacktest:
                         })
             except Exception as e:
                 self.audit.append({"type":"calibration_error","error":str(e)})
+        # Conservative second-level stacker: train/evaluate only on
+        # already-generated chronological OOF probabilities. Each evaluation
+        # fold trains the meta-model only on earlier OOF folds, preventing
+        # same-fold meta leakage. It is selected only when it materially beats a
+        # chronology-safe probability pool; otherwise the existing routed blend
+        # remains authoritative.
+        self._stacking_model = None
+        self._stacking_model_names = ()
+        if not fast_oos and self._calibration_mode == "ensemble" and len(splits) >= 2:
+            try:
+                ordered_splits = sorted(splits, key=lambda z: (z[0], z[1]))
+                meta_scores = []
+                base_scores = []
+                for meta_idx in range(1, len(ordered_splits)):
+                    prior = ordered_splits[:meta_idx]
+                    current = ordered_splits[meta_idx]
+                    train_blocks = []
+                    train_y_blocks = []
+                    loss_by_model = {name: [] for name in top_names_sorted}
+                    usable = True
+                    for key in prior:
+                        stored = validation_predictions.get(key, {})
+                        cut, val = key
+                        y_part = np.asarray(y[cut:cut+val], dtype=int)
+                        if any(name not in stored for name in top_names_sorted):
+                            usable = False
+                            break
+                        train_blocks.append(
+                            self._stack_features(
+                                {name: np.asarray(stored[name], dtype=float) for name in top_names_sorted},
+                                top_names_sorted,
+                            )
+                        )
+                        train_y_blocks.append(y_part)
+                        for name in top_names_sorted:
+                            p_part = np.asarray(stored[name], dtype=float)
+                            loss_by_model[name].extend(
+                                -np.log(np.clip(p_part[np.arange(len(y_part)), y_part], 1e-12, 1.0)).tolist()
+                            )
+                    if not usable or not train_blocks:
+                        continue
+                    meta_X_train = np.vstack(train_blocks)
+                    meta_y_train = np.concatenate(train_y_blocks)
+                    if len(meta_y_train) < max(80, k * 30) or np.unique(meta_y_train).size < k:
+                        continue
+                    stored_test = validation_predictions.get(current, {})
+                    cut, val = current
+                    y_test = np.asarray(y[cut:cut+val], dtype=int)
+                    if any(name not in stored_test for name in top_names_sorted):
+                        continue
+                    test_members = {name: np.asarray(stored_test[name], dtype=float) for name in top_names_sorted}
+
+                    inverse = {}
+                    for name in top_names_sorted:
+                        mean_loss = float(np.mean(loss_by_model[name]))
+                        inverse[name] = 1.0 / max(mean_loss, 1e-6)
+                    inv_sum = max(sum(inverse.values()), 1e-12)
+                    inverse = {name: weight / inv_sum for name, weight in inverse.items()}
+                    base_q = self._blend_probability_members(
+                        test_members, inverse, mode=self._ensemble_blend_mode
+                    )
+                    base_scores.append(float(log_loss(y_test, base_q, labels=list(range(k)))))
+
+                    meta = LogisticRegression(
+                        C=0.3,
+                        max_iter=1000,
+                        solver="lbfgs",
+                        random_state=RANDOM_STATE,
+                    )
+                    meta.fit(meta_X_train, meta_y_train)
+                    raw_meta = meta.predict_proba(
+                        self._stack_features(test_members, top_names_sorted)
+                    )
+                    stack_q = np.zeros((len(y_test), k), dtype=float)
+                    for j, cls in enumerate(meta.classes_):
+                        if int(cls) < k:
+                            stack_q[:, int(cls)] = raw_meta[:, j]
+                    stack_q = np.apply_along_axis(clip_prob, 1, stack_q)
+                    meta_scores.append(float(log_loss(y_test, stack_q, labels=list(range(k)))))
+
+                if meta_scores and base_scores and len(meta_scores) == len(base_scores):
+                    meta_mean = float(np.mean(meta_scores))
+                    base_mean = float(np.mean(base_scores))
+                    self.audit.append({
+                        "type": "stacking_selection_test",
+                        "rows": int(sum(s[1] for s in ordered_splits)),
+                        "meta_folds": int(len(meta_scores)),
+                        "stacking_logloss": meta_mean,
+                        "base_logloss": base_mean,
+                    })
+                    if meta_mean < base_mean - 0.005:
+                        all_blocks = []
+                        all_y = []
+                        for key in ordered_splits:
+                            stored = validation_predictions.get(key, {})
+                            cut, val = key
+                            y_part = np.asarray(y[cut:cut+val], dtype=int)
+                            if any(name not in stored for name in top_names_sorted):
+                                raise RuntimeError(f"missing OOF member for final stacking fit: {key}")
+                            all_blocks.append(
+                                self._stack_features(
+                                    {name: np.asarray(stored[name], dtype=float) for name in top_names_sorted},
+                                    top_names_sorted,
+                                )
+                            )
+                            all_y.append(y_part)
+                        stack_X = np.vstack(all_blocks)
+                        stack_y = np.concatenate(all_y)
+                        if np.unique(stack_y).size < k:
+                            raise RuntimeError("final stacker OOF training does not contain every target class")
+                        final_meta = LogisticRegression(
+                            C=0.3,
+                            max_iter=1000,
+                            solver="lbfgs",
+                            random_state=RANDOM_STATE,
+                        )
+                        final_meta.fit(stack_X, stack_y)
+                        raw_all = final_meta.predict_proba(stack_X)
+                        stack_all = np.zeros((len(stack_y), k), dtype=float)
+                        for j, cls in enumerate(final_meta.classes_):
+                            if int(cls) < k:
+                                stack_all[:, int(cls)] = raw_all[:, j]
+                        stack_all = np.apply_along_axis(clip_prob, 1, stack_all)
+                        temperature = self._temperature_from_probs(stack_all, stack_y)
+                        self._stacking_model = final_meta
+                        self._stacking_model_names = top_names_sorted
+                        self.audit.append({
+                            "type": "stacking_selection",
+                            "selected": True,
+                            "stacking_logloss": meta_mean,
+                            "base_logloss": base_mean,
+                            "temperature": float(temperature),
+                            "models": list(top_names_sorted),
+                            "rows": int(len(stack_y)),
+                        })
+            except Exception as exc:
+                self.audit.append({
+                    "type": "stacking_error",
+                    "error": f"{type(exc).__name__}: {exc}",
+                })
+
         self._last_temperature = temperature
         # Final-fit members are already trained on the complete current
         # chronological prefix. Calibration reuses stored OOS predictions, so
@@ -1800,8 +1971,26 @@ class BaseballBacktest:
                 member_weights[name]=w
             if not members:
                 raise RuntimeError(f"ensemble produced no positive-weight models for regime {label}")
-            blend_mode = "linear" if self._calibration_mode == "individual" else self._ensemble_blend_mode
-            p[idx]=self._blend_probability_members(members, member_weights, mode=blend_mode)
+            if (
+                self._stacking_model is not None
+                and self._calibration_mode == "ensemble"
+                and all(name in members for name in self._stacking_model_names)
+            ):
+                stack_members = {
+                    name: members[name]
+                    for name in self._stacking_model_names
+                }
+                raw_meta = self._stacking_model.predict_proba(
+                    self._stack_features(stack_members, self._stacking_model_names)
+                )
+                stack_q = np.zeros((len(sub), k), dtype=float)
+                for j, cls in enumerate(self._stacking_model.classes_):
+                    if int(cls) < k:
+                        stack_q[:, int(cls)] = raw_meta[:, j]
+                p[idx] = np.apply_along_axis(clip_prob, 1, stack_q)
+            else:
+                blend_mode = "linear" if self._calibration_mode == "individual" else self._ensemble_blend_mode
+                p[idx]=self._blend_probability_members(members, member_weights, mode=blend_mode)
 
         t=float(getattr(self,"_last_temperature",1.0))
         if abs(t-1.0)>1e-9:
