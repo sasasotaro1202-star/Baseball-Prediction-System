@@ -1,0 +1,41 @@
+name: Baseball Calibrated Stacking Challenger
+
+on:
+  push:
+    branches:
+      - research/individual-calibrated-stacking
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baseball-calibrated-stacking-challenger
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+      - name: Install lightweight dependencies
+        run: python -m pip install --disable-pip-version-check --retries 5 --timeout 120 --prefer-binary -r requirements-ci.txt
+      - name: Compile challenger
+        run: |
+          set -euo pipefail
+          python -m py_compile research/calibrated_stacking.py tests/test_calibrated_stacking.py
+      - name: Run challenger tests
+        run: |
+          set -euo pipefail
+          python -m pytest -q tests/test_calibrated_stacking.py

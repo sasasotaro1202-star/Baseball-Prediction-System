@@ -24,6 +24,7 @@ from research.candidates import CandidateSpec, candidate_fingerprint, lock_candi
 from research.validation_pipeline import run_validation_pipeline
 from evaluation.uncertainty import paired_block_bootstrap, to_dict as uncertainty_to_dict
 from research.adoption_gate import GatePolicy
+from research.calibrated_stacking import fit_calibrated_stacking, apply_calibrated_stacking, spec_to_dict as stacking_spec_to_dict
 
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
@@ -211,7 +212,7 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
     for cut in range(dev_start,holdout_start,config.block_size):
         stop=min(holdout_start,cut+config.block_size)
         if not fitted_base or cut-last_fit>=config.retrain_every:
-            for name in ["ProductionEnsemble"] + [k for k,_ in candidates[:max(1,config.recency_variant_top_k)]]:
+            for name in ["ProductionEnsemble"] + raw_stack_names[:max(1, config.recency_variant_top_k, 3)]:
                 if name=="ProductionEnsemble":
                     fitted_base[name]=None
                 else:
@@ -256,12 +257,42 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
         development_predictions[cname]=q
         calibration_specs[cname]=(name,t)
 
+    # Individually calibrated constrained stacking over the top-three base
+    # Development-OOS model streams. No holdout data is read here.
+    stacking_spec = None
+    if len(raw_stack_names) >= 2 and all(name in development_predictions for name in raw_stack_names[:3]):
+        try:
+            stack_names = tuple(raw_stack_names[:3])
+            stacking_spec = fit_calibrated_stacking(
+                predictions={name: development_predictions[name] for name in stack_names},
+                y=y_dev,
+                component_names=stack_names,
+                simplex_step=0.25,
+                fit_final_temperature=True,
+            )
+            stack_pred = apply_calibrated_stacking(
+                stacking_spec,
+                {name: development_predictions[name] for name in stack_names},
+            )
+            development["CalibratedStacking"] = stacking_spec.development_metrics
+            development_predictions["CalibratedStacking"] = stack_pred
+        except Exception as exc:
+            bt.audit.append({
+                "type":"calibrated_stacking_error",
+                "league":"MLB",
+                "models":raw_stack_names[:3],
+                "error":f"{type(exc).__name__}: {exc}",
+            })
+
     candidates=[(k,v) for k,v in development.items() if k!="ProductionEnsemble"]
     candidates.sort(key=lambda kv:(kv[1]["LogLoss"],kv[1]["Brier"],-kv[1]["Accuracy"],kv[0]))
     selected_name,selected_metrics=candidates[0]
     selected_temperature=1.0
     base_selected=selected_name
-    if selected_name.startswith("TemperatureScaled:"):
+    if selected_name == "CalibratedStacking":
+        selected_model_name,selected_half_life = "CalibratedStacking", None
+        selected_temperature = 1.0
+    elif selected_name.startswith("TemperatureScaled:"):
         base_selected=selected_name[len("TemperatureScaled:"):]
         selected_temperature=calibration_specs[selected_name][1]
     selected_model_name,selected_half_life=variant_specs.get(base_selected,(base_selected,None))
@@ -279,11 +310,12 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
         orient="split", date_format="iso", double_precision=15
     ).encode("utf-8")
     dataset_hash = hashlib.sha256(dataset_bytes).hexdigest()
+    stack_fingerprint = json.dumps(stacking_spec_to_dict(stacking_spec), sort_keys=True) if stacking_spec is not None else ""
     spec = CandidateSpec(
-        candidate_id="cand-" + hashlib.sha256(f"MLB|{selected_model_name}|HL={selected_half_life or base_half_life}|T={selected_temperature:.4f}|{feature_version}|{git_commit}|{dataset_hash}".encode()).hexdigest()[:20],
+        candidate_id="cand-" + hashlib.sha256(f"MLB|{selected_model_name}|HL={selected_half_life or base_half_life}|T={selected_temperature:.4f}|STACK={stack_fingerprint}|{feature_version}|{git_commit}|{dataset_hash}".encode()).hexdigest()[:20],
         league="MLB", objective="win", model_version=selected_model_name, feature_version=feature_version,
         development_metrics=selected_metrics,
-        selection_reason=f"Development OOS only; selected {selected_model_name} with recency_half_life={selected_half_life or base_half_life} and frozen temperature={selected_temperature:.4f}.",
+        selection_reason=f"Development OOS only; selected {selected_model_name} with recency_half_life={selected_half_life or base_half_life} and frozen temperature={selected_temperature:.4f}; stack={stack_fingerprint}.",
         git_commit=git_commit, dataset_hash=dataset_hash,
     )
     locked = lock_candidate(spec)
@@ -294,9 +326,22 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
     if not base_fit:
         raise RuntimeError("MLB production ensemble could not be fitted for holdout")
     base_p = bt.ensemble_proba(base_fit, X_holdout, "MLB")
-    cand_p = _proba(bt, _fit_with_half_life(bt, selected_model_name, X_train, y_train, selected_half_life), X_holdout)
-    if selected_temperature != 1.0:
-        cand_p = _temperature_scale(cand_p, selected_temperature)
+    if selected_model_name == "CalibratedStacking":
+        if stacking_spec is None:
+            raise RuntimeError("locked calibrated stacking candidate has no frozen specification")
+        component_models = {
+            name: _fit_with_half_life(bt, name, X_train, y_train, None)
+            for name in stacking_spec.component_names
+        }
+        component_pred = {
+            name: _proba(bt, model, X_holdout)
+            for name, model in component_models.items()
+        }
+        cand_p = apply_calibrated_stacking(stacking_spec, component_pred)
+    else:
+        cand_p = _proba(bt, _fit_with_half_life(bt, selected_model_name, X_train, y_train, selected_half_life), X_holdout)
+        if selected_temperature != 1.0:
+            cand_p = _temperature_scale(cand_p, selected_temperature)
     base = classification_metrics(y_holdout, base_p, classes=[0, 1])
     cand = classification_metrics(y_holdout, cand_p, classes=[0, 1])
 
@@ -347,7 +392,8 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
     out = {"stage": "locked_holdout_evaluated", "candidate": locked,
            "holdout": {"baseline": base, "candidate": cand,
                        "baseline_score": base_score, "candidate_score": cand_score,
-                       "baseline_hilo": base_hilo, "candidate_hilo": cand_hilo},
+                       "baseline_hilo": base_hilo, "candidate_hilo": cand_hilo,
+                       "candidate_stacking_spec": stacking_spec_to_dict(stacking_spec) if stacking_spec is not None and selected_model_name == "CalibratedStacking" else None},
            "validation": asdict(lifecycle), "decision": lifecycle.decision,
            "score_hilo_status": "CONNECTED_PIT_SAFE_TRAINING_ONLY",
            "holdout_uncertainty": holdout_uncertainty}

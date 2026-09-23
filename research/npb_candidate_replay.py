@@ -25,6 +25,7 @@ from research.candidates import CandidateSpec, candidate_fingerprint, lock_candi
 from research.validation_pipeline import run_validation_pipeline
 from evaluation.uncertainty import paired_block_bootstrap, to_dict as uncertainty_to_dict
 from research.adoption_gate import GatePolicy
+from research.calibrated_stacking import fit_calibrated_stacking, apply_calibrated_stacking, spec_to_dict as stacking_spec_to_dict
 
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
@@ -349,10 +350,43 @@ def run_npb_candidate_cycle(
     else:
         selected_model_name, selected_half_life = raw_variant
 
+    # Development OOS rows are the only data used to fit challenger
+    # calibration/stacking parameters.
+    y_dev = y[dev_start:holdout_start]
+
     # Apply temperature calibration only after the model/recency variant has
     # been selected on Development OOS. Calibration itself never sees holdout.
     calibrated_specs: dict[str, tuple[str, float]] = {}
-    y_dev = y[dev_start:holdout_start]
+
+    # Individually calibrated constrained stacking challenger. Component
+    # probabilities are strict Development OOS streams already generated above.
+    # The stack is a research candidate only; its frozen parameters are applied
+    # unchanged to the independent holdout after candidate lock.
+    stacking_spec = None
+    base_stack_names = [
+        name for name, _metrics0 in candidates
+        if "@" not in name and not name.startswith("TemperatureScaled:")
+    ][:3]
+    if len(base_stack_names) >= 2 and all(name in development_predictions for name in base_stack_names):
+        try:
+            stacking_spec = fit_calibrated_stacking(
+                predictions={name: development_predictions[name] for name in base_stack_names},
+                y=y_dev,
+                component_names=tuple(base_stack_names),
+                simplex_step=0.25,
+                fit_final_temperature=True,
+            )
+            stack_pred = apply_calibrated_stacking(stacking_spec, {name: development_predictions[name] for name in base_stack_names})
+            development["CalibratedStacking"] = stacking_spec.development_metrics
+            development_predictions["CalibratedStacking"] = stack_pred
+            selected_stack_metrics = dict(stacking_spec.development_metrics)
+        except Exception as exc:
+            bt.audit.append({
+                "type": "calibrated_stacking_error",
+                "league": "NPB",
+                "models": base_stack_names,
+                "error": f"{type(exc).__name__}: {exc}",
+            })
     calibration_candidates = candidates[:max(5, config.recency_variant_top_k + 1)]
     for name, _metrics0 in calibration_candidates:
         pred = development_predictions.get(name)
@@ -371,7 +405,11 @@ def run_npb_candidate_cycle(
     candidates.sort(key=lambda x: (x[1]["LogLoss"], x[1]["Brier"], -x[1]["Accuracy"], x[0]))
     selected_name, selected_metrics = candidates[0]
 
-    if selected_name.startswith("TemperatureScaled:"):
+    if selected_name == "CalibratedStacking":
+        selected_model_name = "CalibratedStacking"
+        selected_half_life = None
+        selected_temperature = 1.0
+    elif selected_name.startswith("TemperatureScaled:"):
         base_selected = selected_name[len("TemperatureScaled:"):]
         base_variant = variant_specs.get(base_selected)
         if base_variant is None:
@@ -422,16 +460,17 @@ def run_npb_candidate_cycle(
         }
 
     dataset_hash = hashlib.sha256(pd.util.hash_pandas_object(games, index=True).values.tobytes()).hexdigest()
+    stack_fingerprint = json.dumps(stacking_spec_to_dict(stacking_spec), sort_keys=True) if stacking_spec is not None else ""
     spec = CandidateSpec(
         candidate_id="cand-" + hashlib.sha256(
-            f"NPB|{selected_model_name}|HL={selected_half_life or base_half_life}|T={selected_temperature:.4f}|DrawScale={selected_draw_scale:.4f}|{feature_version}|{git_commit}|{dataset_hash}".encode("utf-8")
+            f"NPB|{selected_model_name}|HL={selected_half_life or base_half_life}|T={selected_temperature:.4f}|DrawScale={selected_draw_scale:.4f}|STACK={stack_fingerprint}|{feature_version}|{git_commit}|{dataset_hash}".encode("utf-8")
         ).hexdigest()[:20],
         league="NPB",
         objective="win",
         model_version=selected_model_name,
         feature_version=feature_version,
         development_metrics=selected_metrics,
-        selection_reason=f"Development OOS only; selected {selected_model_name} with recency_half_life={selected_half_life or base_half_life}, frozen temperature={selected_temperature:.4f}, and frozen draw scale={selected_draw_scale:.4f}.",
+        selection_reason=f"Development OOS only; selected {selected_model_name} with recency_half_life={selected_half_life or base_half_life}, frozen temperature={selected_temperature:.4f}, and frozen draw scale={selected_draw_scale:.4f}; stack={stack_fingerprint}.",
         git_commit=git_commit,
         dataset_hash=dataset_hash,
     )
@@ -447,13 +486,26 @@ def run_npb_candidate_cycle(
     if not base_fit:
         raise RuntimeError("production ensemble could not be fitted for locked holdout")
     base_p = bt.ensemble_proba(base_fit, X_holdout, "NPB")
-    cand_model = _fit_candidate(
-        bt, selected_model_name, X_train, y_train,
-        recency_half_life=selected_half_life,
-    )
-    cand_p = _candidate_probability(bt, cand_model, X_holdout)
-    if selected_temperature != 1.0:
-        cand_p = _temperature_scale(cand_p, selected_temperature)
+    if selected_model_name == "CalibratedStacking":
+        if stacking_spec is None:
+            raise RuntimeError("locked calibrated stacking candidate has no frozen specification")
+        component_models = {
+            name: _fit_candidate(bt, name, X_train, y_train, recency_half_life=None)
+            for name in stacking_spec.component_names
+        }
+        component_pred = {
+            name: _candidate_probability(bt, model, X_holdout)
+            for name, model in component_models.items()
+        }
+        cand_p = apply_calibrated_stacking(stacking_spec, component_pred)
+    else:
+        cand_model = _fit_candidate(
+            bt, selected_model_name, X_train, y_train,
+            recency_half_life=selected_half_life,
+        )
+        cand_p = _candidate_probability(bt, cand_model, X_holdout)
+        if selected_temperature != 1.0:
+            cand_p = _temperature_scale(cand_p, selected_temperature)
     if selected_draw_scale != 1.0:
         cand_p = _draw_scale(cand_p, selected_draw_scale)
 
@@ -523,6 +575,7 @@ def run_npb_candidate_cycle(
         "candidate_recency_half_life": selected_half_life,
         "candidate_temperature": float(selected_temperature),
         "candidate_draw_scale": float(selected_draw_scale),
+        "candidate_stacking_spec": stacking_spec_to_dict(stacking_spec) if stacking_spec is not None and selected_model_name == "CalibratedStacking" else None,
         "dataset_hash": dataset_hash,
         "selection_locked_before_holdout": True,
         "starter_pit_evidence_ok": False,
