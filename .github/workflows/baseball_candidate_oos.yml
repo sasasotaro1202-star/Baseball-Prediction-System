@@ -103,6 +103,9 @@ jobs:
         timeout-minutes: 240
         env:
           BASEBALL_TIME_BUDGET_SEC: '7200'
+          # 210-minute internal cap leaves ~30 minutes of headroom inside the
+          # 240-minute candidate lifecycle step for final verification/upload.
+          BASEBALL_HARD_CAP_SEC: '12600'
           NPB_RETRAIN_EVERY: '300'
           MLB_ENRICH_STARTERS: '0'
           PIT_SAFE_STARTER_DATA: '0'

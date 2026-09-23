@@ -51,3 +51,17 @@ def test_invalid_model_env_fails_closed(monkeypatch):
         assert "BASEBALL_XGB_ESTIMATORS" in str(exc)
     else:
         raise AssertionError("invalid model configuration was silently accepted")
+
+
+def test_configurable_hard_cap(monkeypatch):
+    monkeypatch.setenv("BASEBALL_TIME_BUDGET_SEC", "7200")
+    monkeypatch.setenv("BASEBALL_HARD_CAP_SEC", "12600")
+    bt = BaseballBacktest()
+    assert bt.time_budget_sec == 7200.0
+
+
+def test_hard_cap_limits_requested_budget(monkeypatch):
+    monkeypatch.setenv("BASEBALL_TIME_BUDGET_SEC", "7200")
+    monkeypatch.setenv("BASEBALL_HARD_CAP_SEC", "5400")
+    bt = BaseballBacktest()
+    assert bt.time_budget_sec == 5400.0

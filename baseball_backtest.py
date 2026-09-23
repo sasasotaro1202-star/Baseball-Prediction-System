@@ -232,10 +232,20 @@ class BaseballBacktest:
         self.results: List[Dict[str, Any]] = []
         self.model_scores: List[Dict[str, Any]] = []
         self.started_at = time.time()
-        # Honor the workflow-configured budget, while keeping a hard safety cap
-        # equal to the 90-minute OOS job timeout. The previous 1500-second clamp
-        # silently ignored larger configured budgets and reduced OOS coverage.
-        self.time_budget_sec = min(float(os.getenv("BASEBALL_TIME_BUDGET_SEC", "1500")), 5400.0)
+        # Honor the workflow-configured budget while keeping an explicit
+        # workflow-selectable hard cap. Closed Loop stays below its default cap;
+        # long candidate/holdout jobs can opt into a larger bounded cap without
+        # changing production defaults.
+        try:
+            requested_budget = float(os.getenv("BASEBALL_TIME_BUDGET_SEC", "1500"))
+            hard_cap = float(os.getenv("BASEBALL_HARD_CAP_SEC", "5400"))
+        except ValueError as exc:
+            raise ValueError("BASEBALL_TIME_BUDGET_SEC and BASEBALL_HARD_CAP_SEC must be numeric") from exc
+        if not np.isfinite(requested_budget) or requested_budget <= 0:
+            raise ValueError("BASEBALL_TIME_BUDGET_SEC must be > 0 and finite")
+        if not np.isfinite(hard_cap) or hard_cap <= 0:
+            raise ValueError("BASEBALL_HARD_CAP_SEC must be > 0 and finite")
+        self.time_budget_sec = min(requested_budget, hard_cap)
         # Keep long OOS fits visibly alive without materially increasing compute.
         self.heartbeat_sec = max(10.0, float(os.getenv("BASEBALL_HEARTBEAT_SEC", "45")))
         # NPB and MLB run concurrently in the research wrapper. Limit inner
