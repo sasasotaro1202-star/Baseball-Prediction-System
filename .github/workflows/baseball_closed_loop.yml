@@ -22,6 +22,7 @@ env:
   PYTHONPATH: .
   PIP_DISABLE_PIP_VERSION_CHECK: '1'
   PYTHONUNBUFFERED: '1'
+  BASEBALL_ENABLE_PIT_SAFE_BULLPEN_USAGE: '1'
   # Two leagues run concurrently; keep inner model parallelism bounded.
   BASEBALL_INNER_JOBS: '2'
   # Scheduled OOS uses a bounded profile; production-facing defaults remain full.
