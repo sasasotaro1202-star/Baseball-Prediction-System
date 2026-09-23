@@ -1,6 +1,6 @@
 import numpy as np
 
-from research.npb_candidate_replay import _draw_scale
+from research.npb_candidate_replay import NPB_DRAW_SCALE_GRID, _draw_scale
 
 
 def test_draw_scale_preserves_probability_contract():
@@ -19,3 +19,11 @@ def test_draw_scale_rejects_invalid_multiplier():
         _draw_scale(p, 0.0)
     with pytest.raises(ValueError):
         _draw_scale(p, float("nan"))
+
+
+def test_draw_scale_grid_is_bounded_and_monotone():
+    assert len(NPB_DRAW_SCALE_GRID) >= 40
+    assert np.isfinite(NPB_DRAW_SCALE_GRID).all()
+    assert float(NPB_DRAW_SCALE_GRID[0]) >= 0.5
+    assert float(NPB_DRAW_SCALE_GRID[-1]) <= 6.0
+    assert np.all(np.diff(NPB_DRAW_SCALE_GRID) > 0)
