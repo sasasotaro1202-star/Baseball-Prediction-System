@@ -94,6 +94,7 @@ def test_official_league_starter_parser_supports_single_game_league_page():
         ),
         "2026-09-24",
         "https://npb.jp/cl/",
+        min_games=1,
     )
     assert cl == [{
         "home": "広島東洋カープ",

@@ -549,15 +549,11 @@ def official_starters(target_date: str) -> list[dict]:
     except RuntimeError:
         league_rows = []
     if dedicated_error is not None:
-        exc = dedicated_error
-        # If the dedicated announcement page has already rolled forward, try
-        # the first-party Central/Pacific League pages. These are still official
-        # NPB sources and must independently resolve all six teams/three games.
-        # Duplicate or ambiguous evidence never falls through to a weaker source.
-        message = str(exc)
+        # A sane immutable official snapshot may be used as an evidence fallback;
+        # otherwise preserve the original dedicated-parser failure explicitly.
         if snapshot is not None and _starter_rows_sane(snapshot):
             return snapshot
-        raise
+        raise dedicated_error
 
 def _utc_now() -> pd.Timestamp:
     return pd.Timestamp.now(tz="UTC")
