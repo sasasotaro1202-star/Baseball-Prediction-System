@@ -1682,7 +1682,7 @@ class BaseballBacktest:
         # Final-fit members are already trained on the complete current
         # chronological prefix. Calibration reuses stored OOS predictions, so
         # a second full-data refit is unnecessary and would waste the budget.
-return fitted,{name:float(loss) for loss,name in scored},top[0][0]
+        return fitted,{name:float(loss) for loss,name in scored},top[0][0]
 
     def ensemble_proba(self, fitted, X: pd.DataFrame, league: str) -> np.ndarray:
         k=3 if league=="NPB" else 2
