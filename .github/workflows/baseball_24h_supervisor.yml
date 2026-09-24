@@ -56,13 +56,14 @@ jobs:
               if output="$(gh "$@" 2>&1)"; then
                 printf '%s\n' "$output"
                 return 0
-              fi
-              rc=$?
-              echo "gh retry $attempt/4 failed: $output" >&2
-              if [ "$attempt" -lt 4 ]; then
-                sleep $((attempt * 2))
               else
-                return "$rc"
+                rc=$?
+                echo "gh retry $attempt/4 failed (rc=${rc}): $output" >&2
+                if [ "$attempt" -lt 4 ]; then
+                  sleep $((attempt * 2))
+                else
+                  return "$rc"
+                fi
               fi
             done
           }
