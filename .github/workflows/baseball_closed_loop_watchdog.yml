@@ -9,6 +9,10 @@ permissions:
   actions: write
   contents: read
 
+concurrency:
+  group: baseball-closed-loop-watchdog
+  cancel-in-progress: true
+
 jobs:
   watchdog:
     runs-on: ubuntu-latest
@@ -18,12 +22,31 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+        shell: bash
         run: |
           set -euo pipefail
 
+          gh_retry() {
+            local attempt output rc
+            for attempt in 1 2 3 4; do
+              if output="$(gh "$@" 2>&1)"; then
+                printf '%s\n' "$output"
+                return 0
+              else
+                rc=$?
+                echo "gh retry $attempt/4 failed (rc=${rc}): $output" >&2
+                if [ "$attempt" -lt 4 ]; then
+                  sleep $((attempt * 2))
+                else
+                  return "$rc"
+                fi
+              fi
+            done
+          }
+
           now=$(date -u +%s)
-          current_sha="$(gh api "repos/${REPO}/git/ref/heads/main" --jq '.object.sha')"
-          runs_json="$(gh run list --repo "${REPO}" --workflow baseball_closed_loop.yml --limit 20 --json databaseId,status,conclusion,createdAt,headSha)"
+          current_sha="$(gh_retry api "repos/${REPO}/git/ref/heads/main" --jq '.object.sha')"
+          runs_json="$(gh_retry run list --repo "${REPO}" --workflow baseball_closed_loop.yml --limit 20 --json databaseId,status,conclusion,createdAt,headSha)"
 
           active="$(printf '%s' "${runs_json}" | jq '[.[] | select(.status == "in_progress")] | length')"
           blocked="$(printf '%s' "${runs_json}" | jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested")] | length')"
@@ -31,11 +54,6 @@ jobs:
           echo "current_main_sha=${current_sha}"
           echo "active=${active} blocked=${blocked}"
 
-          # GitHub can expose a run that is waiting for capacity/concurrency as
-          # pending rather than queued. Treat all non-running scheduler states
-          # as blocked, but never cancel an actively executing research run.
-          # Scheduler-blocked runs on an older SHA are cancelled immediately so
-          # the newest executable contract is not buried behind stale queue items.
           printf '%s' "${runs_json}" |
           jq -c '.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested")' |
           while IFS= read -r row; do
@@ -48,27 +66,19 @@ jobs:
             age=$((now - created_epoch))
 
             # A newer main SHA supersedes scheduler-blocked runs immediately.
-            # Never cancel an in-progress run here: expensive chronological OOS
-            # may be resumable and must not be interrupted by a newer commit.
+            # Never cancel an in-progress run here: chronological OOS may be
+            # resumable and should not be interrupted by this watchdog.
             if [ -n "${head_sha}" ] && [ "${head_sha}" != "${current_sha}" ]; then
               echo "Cancelling superseded ${status} closed-loop run ${id} (${head_sha})"
-              if ! gh run cancel "${id}" --repo "${REPO}"; then
-                echo "Failed to cancel superseded run ${id}; watchdog must remain visibly failed." >&2
-                exit 1
-              fi
+              gh_retry run cancel "${id}" --repo "${REPO}"
             elif [ "${age}" -ge 2700 ]; then
               echo "Cancelling stale ${status} closed-loop run ${id} (age=${age}s)"
-              if ! gh run cancel "${id}" --repo "${REPO}"; then
-                echo "Failed to cancel stale run ${id}; watchdog must remain visibly failed." >&2
-                exit 1
-              fi
+              gh_retry run cancel "${id}" --repo "${REPO}"
             fi
           done
 
-          # Dispatch is intentionally owned by baseball_24h_supervisor.yml.
-          # Keeping a single dispatcher prevents two 15-minute watchdogs from
-          # racing and creating redundant pending OOS runs. This watchdog only
-          # drains stale scheduler-blocked entries.
+          # Dispatch remains exclusively owned by baseball_24h_supervisor.yml.
+          # This watchdog only drains scheduler-blocked closed-loop runs.
           if [ "${active}" -eq 0 ] && [ "${blocked}" -eq 0 ]; then
             echo 'No active or blocked canonical run; 24h supervisor owns dispatch.'
           fi

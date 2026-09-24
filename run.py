@@ -36,10 +36,11 @@ def cmd_predict(args):
         data_dir=args.data_dir,
     )
     print(__import__("json").dumps(result, ensure_ascii=False, indent=2, default=str))
-    return 0 if result.get("execution_status") not in {
-        "BLOCKED_NO_CURRENT_PRODUCTION_RUNTIME",
-        "BLOCKED_STARTERS",
-    } else 0
+    # Expected pregame data blocking (for example, starters not yet
+    # officially published) is a retryable operational state. A missing
+    # registered production runtime is a configuration failure and must
+    # propagate nonzero so automation cannot report false success.
+    return 1 if result.get("execution_status") == "BLOCKED_NO_CURRENT_PRODUCTION_RUNTIME" else 0
 
 
 def cmd_verify(args):

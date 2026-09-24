@@ -165,6 +165,10 @@ def main(argv: list[str] | None = None) -> int:
         data_dir=args.data_dir,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+    if result.get("execution_status") == "BLOCKED_NO_CURRENT_PRODUCTION_RUNTIME":
+        return 1
+    # BLOCKED_STARTERS and NO_FUTURE_GAMES are explicit, fail-closed
+    # operational states that the scheduler is expected to revisit.
     return 0
 
 
