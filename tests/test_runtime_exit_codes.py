@@ -11,7 +11,7 @@ def _args():
 def test_run_predict_propagates_missing_runtime_as_failure(monkeypatch):
     monkeypatch.setattr(
         current_production,
-        predict_current,
+        "predict_current",
         lambda **_: {
             "execution_status": "BLOCKED_NO_CURRENT_PRODUCTION_RUNTIME",
             "predictions": [],
