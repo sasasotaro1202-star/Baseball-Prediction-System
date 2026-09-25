@@ -213,13 +213,19 @@ def reconcile() -> dict[str, Any]:
     dates = [d for d in pred["datetime_jst"] if pd.notna(d)]
     results = _load_cached_results(dates)
     if results.empty:
-        return {
+        payload = {
             "generated_at_utc": _utc_now(),
             "status": "NO_COMPLETED_RESULTS",
             "matched_rows": 0,
             "new_experiences": 0,
             "prediction_rows": int(len(pred)),
         }
+        EXPERIENCE.mkdir(parents=True, exist_ok=True)
+        SUMMARY_PATH.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        return payload
 
     pred = pred.copy()
     pred["date_key"] = pred["datetime_jst"].dt.tz_convert("Asia/Tokyo").dt.strftime("%Y-%m-%d")
