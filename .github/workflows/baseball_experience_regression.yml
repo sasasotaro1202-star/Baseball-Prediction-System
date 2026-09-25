@@ -9,6 +9,11 @@ on:
       - 'research/experience_rollup.py'
       - 'tests/test_experience_rollup.py'
       - '.github/workflows/baseball_experience_regression.yml'
+  pull_request:
+    paths:
+      - 'research/experience_rollup.py'
+      - 'tests/test_experience_rollup.py'
+      - '.github/workflows/baseball_experience_regression.yml'
 
 permissions:
   contents: read
