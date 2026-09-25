@@ -41,3 +41,10 @@ def test_dispatch():
     assert classify_game("NPB", game_type="交流戦").league == "NPB"
     assert classify_game("MLB", game_type="R").league == "MLB"
     assert classify_game("foo").status == "unknown"
+
+
+def test_mlb_taxonomy_is_case_stable_and_preserves_unknown_series_text():
+    assert classify_mlb("r").competition == "mlb_regular"
+    unknown = classify_mlb("", "Championship Series")
+    assert unknown.status == "unknown"
+    assert unknown.source_value == "Championship Series"
