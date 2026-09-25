@@ -18,6 +18,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from core.atomic_io import atomic_write_json
+from research.competition_taxonomy import classify_game
 
 REQUIRED_MODULES = (
     "baseball_backtest",
@@ -63,6 +64,50 @@ def _repair_npb_targets(pbp: pd.DataFrame, games: pd.DataFrame) -> pd.DataFrame:
     if (out[["home_score", "away_score"]] < 0).any().any():
         raise RuntimeError("NPB target repair produced negative scores")
     return out
+
+
+def _competition_audit(games: pd.DataFrame, league: str) -> dict:
+    """Attach fail-closed competition metadata and return an auditable inventory."""
+    required = {"league"}
+    if not required.issubset(games.columns):
+        raise RuntimeError(f"{league} competition classification missing league column")
+    out = games.copy()
+    if "game_type" not in out.columns:
+        out["game_type"] = ""
+    if "series_description" not in out.columns:
+        out["series_description"] = ""
+    labels = [
+        classify_game(
+            league,
+            game_type=row.get("game_type", ""),
+            series_description=row.get("series_description", ""),
+        )
+        for _, row in out.iterrows()
+    ]
+    out["competition"] = [x.competition for x in labels]
+    out["competition_stage"] = [x.stage for x in labels]
+    out["season_type"] = [x.season_type for x in labels]
+    out["game_class"] = [x.game_class for x in labels]
+    out["competition_key"] = [x.competition_key for x in labels]
+    out["competition_classification_status"] = [x.status for x in labels]
+    counts = (
+        out["competition_key"]
+        .value_counts(dropna=False)
+        .sort_index()
+        .astype(int)
+        .to_dict()
+    )
+    unknown = int((out["competition_classification_status"] != "classified").sum())
+    return {
+        "games": out,
+        "inventory": {
+            "league": league,
+            "rows": int(len(out)),
+            "unknown_rows": unknown,
+            "unknown_rate": float(unknown / max(len(out), 1)),
+            "competition_counts": {str(k): int(v) for k, v in counts.items()},
+        },
+    }
 
 
 def _validate_targets(frame: pd.DataFrame, league: str) -> dict:
@@ -225,6 +270,9 @@ def run_one(league: str, data_dir: Path, *, mlb_start: int, mlb_end: int, retrie
                     if "confirmed_starters" in games.columns:
                         games["confirmed_starters"] = False
                 result["starter_filter"] = starter_audit
+                classified = _competition_audit(games, "NPB")
+                games = classified["games"]
+                result["competition_inventory"] = classified["inventory"]
                 target_quality = _validate_targets(games, "NPB")
                 frame = bt.run_walkforward(games, "NPB")
                 if len(games) >= 200 and len(frame) < max(100, int(len(games) * 0.15)):
@@ -259,6 +307,9 @@ def run_one(league: str, data_dir: Path, *, mlb_start: int, mlb_end: int, retrie
                     if "confirmed_starters" in games.columns:
                         games["confirmed_starters"] = False
                 result["starter_filter"] = starter_audit
+                classified = _competition_audit(games, "MLB")
+                games = classified["games"]
+                result["competition_inventory"] = classified["inventory"]
                 target_quality = _validate_targets(games, "MLB")
                 frame = bt.run_walkforward(games, "MLB")
             frame = _canonicalize_walkforward(bt, league, frame)
