@@ -64,7 +64,7 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import StandardScaler
 
 from research.regime_router import RegimeRouter
-from research.competition_taxonomy import classify_mlb
+from research.competition_taxonomy import classify_mlb, classify_npb
 from research.hierarchical_result_model import HierarchicalNPBClassifier
 from research.correlated_score import estimate_shared_lambda, low_high as correlated_low_high, top_scores as correlated_top_scores
 from evaluation.calibration import fit_temperature, TemperatureCalibration
