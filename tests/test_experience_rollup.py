@@ -219,3 +219,24 @@ def test_reconcile_persists_no_completed_results_status(tmp_path, monkeypatch):
     persisted = json.loads((exp / "experience_summary.json").read_text(encoding="utf-8"))
     assert result["status"] == "NO_COMPLETED_RESULTS"
     assert persisted == result
+
+
+def test_rollup_writes_training_index_when_results_are_unavailable(tmp_path, monkeypatch):
+    exp = tmp_path / "experience"
+    monkeypatch.setattr(roll, "EXPERIENCE", exp)
+    monkeypatch.setattr(roll, "PRED_DIR", exp / "predictions")
+    monkeypatch.setattr(roll, "RESULT_DIR", exp / "official_results")
+    monkeypatch.setattr(roll, "CASE_SUMMARY_PATH", exp / "experience_case_summary.json")
+    monkeypatch.setattr(roll, "TRAINING_INDEX_PATH", exp / "experience_training_index.json")
+
+    _write_prediction(tmp_path, cutoff="2026-09-26T02:00:00+00:00")
+    source = tmp_path / "predictions" / "2026-09-26.jsonl"
+    (exp / "predictions").mkdir(parents=True, exist_ok=True)
+    (exp / "predictions" / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+
+    monkeypatch.setattr(roll, "_cache_results", lambda dates: pd.DataFrame())
+
+    result = roll.rollup()
+    training = json.loads((exp / "experience_training_index.json").read_text(encoding="utf-8"))
+    assert result["status"] == "NO_COMPLETED_RESULTS"
+    assert training == result
