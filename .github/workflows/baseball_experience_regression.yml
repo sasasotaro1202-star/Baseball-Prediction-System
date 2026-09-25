@@ -1,0 +1,47 @@
+name: Baseball Experience Rollup Regression
+
+on:
+  push:
+    branches:
+      - main
+      - 'fix/**'
+    paths:
+      - 'research/experience_rollup.py'
+      - 'tests/test_experience_rollup.py'
+      - '.github/workflows/baseball_experience_regression.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baseball-experience-regression-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        timeout-minutes: 5
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        timeout-minutes: 5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        timeout-minutes: 5
+        run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
+
+      - name: Compile
+        timeout-minutes: 2
+        run: python -m compileall -q research/experience_rollup.py tests/test_experience_rollup.py
+
+      - name: Run experience regression
+        timeout-minutes: 5
+        run: python -m pytest -q tests/test_experience_rollup.py
