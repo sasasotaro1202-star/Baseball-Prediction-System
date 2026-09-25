@@ -251,7 +251,12 @@ def rollup() -> dict[str, Any]:
         return payload
 
     pred["date_key"] = pred["datetime_jst"].dt.tz_convert("Asia/Tokyo").dt.strftime("%Y-%m-%d")
-    results["date_key"] = results["date"].dt.strftime("%Y-%m-%d")
+    # Official result caches are CSV-backed and may be loaded as plain strings
+    # (e.g. YYYY-MM-DD). Normalize them explicitly before using .dt so the
+    # rollup remains compatible across pandas versions and test fixtures.
+    results["date"] = pd.to_datetime(results["date"], errors="coerce", utc=True)
+    results = results.dropna(subset=["date"]).copy()
+    results["date_key"] = results["date"].dt.tz_convert("Asia/Tokyo").dt.strftime("%Y-%m-%d")
     pred["home_key"] = pred["home"].astype(str)
     pred["away_key"] = pred["away"].astype(str)
     results["home_key"] = results["home"].astype(str)
