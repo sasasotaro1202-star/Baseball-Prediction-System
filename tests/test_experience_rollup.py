@@ -115,8 +115,8 @@ def test_rollup_low_high_threshold_uses_normalized_probability_scale():
         [
             {
                 "game_id": "low",
-                "datetime_jst": "2026-09-26T05:00:00+00:00",
-                "prediction_cutoff_utc": "2026-09-26T02:00:00+00:00",
+                "datetime_jst": pd.Timestamp("2026-09-26T05:00:00+00:00"),
+                "prediction_cutoff_utc": pd.Timestamp("2026-09-26T02:00:00+00:00"),
                 "home_score": 4,
                 "away_score": 2,
                 "home_win_pct": 60.0,
@@ -130,8 +130,8 @@ def test_rollup_low_high_threshold_uses_normalized_probability_scale():
             },
             {
                 "game_id": "high",
-                "datetime_jst": "2026-09-26T06:00:00+00:00",
-                "prediction_cutoff_utc": "2026-09-26T03:00:00+00:00",
+                "datetime_jst": pd.Timestamp("2026-09-26T06:00:00+00:00"),
+                "prediction_cutoff_utc": pd.Timestamp("2026-09-26T03:00:00+00:00"),
                 "home_score": 5,
                 "away_score": 4,
                 "home_win_pct": 60.0,
