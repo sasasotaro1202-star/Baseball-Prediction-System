@@ -217,6 +217,9 @@ def reconcile() -> dict[str, Any]:
 
     pred = pred.copy()
     pred["date_key"] = pred["datetime_jst"].dt.tz_convert("Asia/Tokyo").dt.strftime("%Y-%m-%d")
+    results["date"] = pd.to_datetime(results["date"], errors="coerce")
+    if results["date"].isna().any():
+        raise RuntimeError("official experience results contain an invalid date")
     results["date_key"] = results["date"].dt.strftime("%Y-%m-%d")
     for col in ("home", "away"):
         pred[f"{col}_key"] = pred[col].astype(str)
@@ -325,6 +328,7 @@ def reconcile() -> dict[str, Any]:
     existing = pd.DataFrame()
     if LEDGER_PATH.exists() and LEDGER_PATH.stat().st_size > 0:
         existing = pd.read_csv(LEDGER_PATH)
+    existing_ids = set(existing["prediction_id"].astype(str)) if "prediction_id" in existing.columns else set()
     if not existing.empty:
         experience = pd.concat([existing, experience], ignore_index=True)
     if not experience.empty:
@@ -344,7 +348,7 @@ def reconcile() -> dict[str, Any]:
         "status": "UPDATED",
         "prediction_rows": int(len(pred)),
         "matched_rows_total": int(len(experience)),
-        "newly_matched_rows": int(len(matched)),
+        "newly_matched_rows": int(sum(1 for x in matched["prediction_id"].astype(str) if x not in existing_ids)),
         "outcome_accuracy": float(experience["outcome_correct"].mean()),
         "logloss": float(experience["logloss"].mean()),
         "brier": float(experience["brier"].mean()),
