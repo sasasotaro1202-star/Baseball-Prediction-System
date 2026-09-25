@@ -73,8 +73,42 @@ jobs:
           active_count="$(jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length' <<<"${runs}")"
           echo "active_count=${active_count}"
 
-          if [[ "${active_count}" -gt 0 ]]; then
-            echo "Candidate OOS already active; do not interrupt expensive research."
+          # A queued/pending candidate on the current SHA can be scheduler-blocked
+          # without having created a job. Treat only genuinely in-progress work
+          # as protected; recover a same-SHA queue that has remained pending
+          # for >=30 minutes.
+          stale_same_sha_pending=0
+          while IFS= read -r row; do
+            [ -n "${row}" ] || continue
+            id="$(jq -r '.databaseId' <<<"${row}")"
+            status="$(jq -r '.status' <<<"${row}")"
+            sha="$(jq -r '.headSha // empty' <<<"${row}")"
+            created="$(jq -r '.createdAt // empty' <<<"${row}")"
+            if [[ "${sha}" == "${current_sha}" ]] && [[ "${status}" =~ ^(queued|pending|waiting|requested)$ ]] && [[ -n "${created}" ]]; then
+              created_epoch="$(date -d "${created}" +%s)"
+              age_minutes=$(( ($(date +%s) - created_epoch) / 60 ))
+              if [[ "${age_minutes}" -ge 30 ]]; then
+                echo "Cancelling same-SHA scheduler-stuck candidate run ${id} after ${age_minutes}m (${status})."
+                if ! gh run cancel "${id}" --repo "${GH_REPO}"; then
+                  echo "Failed to cancel scheduler-stuck candidate run ${id}; refusing to dispatch a duplicate." >&2
+                  exit 1
+                fi
+                stale_same_sha_pending=1
+              fi
+            fi
+          done < <(jq -c '.[]' <<<"${runs}")
+
+          if [[ "${stale_same_sha_pending}" -eq 1 ]]; then
+            sleep 3
+            runs="$(gh run list --repo "${GH_REPO}" --workflow "${CANDIDATE_WORKFLOW}" --limit 50               --json databaseId,status,conclusion,createdAt,headSha,number)"
+          fi
+
+          active_count="$(jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length' <<<"${runs}")"
+          echo "active_count_after_pending_recovery=${active_count}"
+
+          in_progress_count="$(jq '[.[] | select(.status == "in_progress")] | length' <<<"${runs}")"
+          if [[ "${in_progress_count}" -gt 0 ]]; then
+            echo "Candidate OOS has in-progress work; do not interrupt expensive research."
             exit 0
           fi
 
