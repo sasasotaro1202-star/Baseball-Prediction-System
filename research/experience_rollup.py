@@ -271,6 +271,10 @@ def rollup() -> dict[str, Any]:
             "matched_rows": 0,
         }
         CASE_SUMMARY_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        # Keep the artifact contract complete even when no official result is
+        # available yet. The scheduled reconciliation workflow validates this
+        # index before any later training reuse.
+        TRAINING_INDEX_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         return payload
 
     pred["date_key"] = pred["datetime_jst"].dt.tz_convert("Asia/Tokyo").dt.strftime("%Y-%m-%d")
@@ -304,6 +308,7 @@ def rollup() -> dict[str, Any]:
             "matched_rows": 0,
         }
         CASE_SUMMARY_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        TRAINING_INDEX_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         return payload
 
     weight_names = sorted({
