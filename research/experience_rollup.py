@@ -176,9 +176,13 @@ def _evaluate(merged: pd.DataFrame) -> pd.DataFrame:
     x["logloss"] = -np.log(np.clip(probs[np.arange(len(x)), y], 1e-12, 1.0))
     x["brier"] = np.sum((probs - np.eye(3)[y]) ** 2, axis=1)
 
+    # high_pct was normalized from percentage points to [0, 1] above.
+    # Keep the classification threshold on the same probability scale.
     x["high_probability"] = pd.to_numeric(x["high_pct"], errors="coerce")
+    if not np.isfinite(x["high_probability"].to_numpy(float)).all():
+        raise RuntimeError("experience snapshot contains non-finite Low/High probabilities")
     x["low_high_actual"] = (x["actual_total_runs"] >= 7).astype(int)
-    x["low_high_predicted"] = (x["high_probability"] >= 50.0).astype(int)
+    x["low_high_predicted"] = (x["high_probability"] >= 0.5).astype(int)
     x["low_high_correct"] = (
         x["low_high_predicted"] == x["low_high_actual"]
     ).astype(int)
