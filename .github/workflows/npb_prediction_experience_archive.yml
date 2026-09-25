@@ -11,6 +11,9 @@ on:
         description: "Completed NPB production workflow run ID to archive"
         required: false
         type: string
+  schedule:
+    # Safety-net scan in case workflow_run delivery is delayed or missed.
+    - cron: "20 0,2,4,6,8,10,12,14,16,18,20,22 * * *"
 
 permissions:
   actions: read
@@ -48,9 +51,14 @@ jobs:
         run: |
           set -euo pipefail
           run_id="${{ inputs.run_id }}"
-          if [ -z "${run_id}" ]; then
+          if [ -z "${run_id}" ] && [ "${{ github.event_name }}" = "workflow_run" ]; then
             run_id="${{ github.event.workflow_run.id }}"
           fi
+          if [ -z "${run_id}" ]; then
+            run_id="$(gh run list --repo "${GITHUB_REPOSITORY}" --workflow "NPB Production Prediction" --status success --limit 1 --json databaseId --jq ' .[0].databaseId')" 
+          fi
+          test -n "${run_id}" && test "${run_id}" != "null"
+          echo "Archiving production run ${run_id}"
           mkdir -p "${RUNNER_TEMP}/npb-production"
           gh run download "${run_id}"             --repo "${GITHUB_REPOSITORY}"             --dir "${RUNNER_TEMP}/npb-production"
           find "${RUNNER_TEMP}/npb-production" -type f -maxdepth 5 -print
