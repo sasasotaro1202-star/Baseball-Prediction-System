@@ -1,0 +1,107 @@
+name: NPB Prediction Experience Archive
+
+on:
+  workflow_run:
+    workflows:
+      - NPB Production Prediction
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Completed NPB production workflow run ID to archive"
+        required: false
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: npb-prediction-experience-archive
+  cancel-in-progress: false
+
+jobs:
+  archive:
+    if: >-
+      (github.event_name == 'workflow_dispatch') ||
+      (github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+
+      - name: Download production artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run_id="${{ inputs.run_id }}"
+          if [ -z "${run_id}" ]; then
+            run_id="${{ github.event.workflow_run.id }}"
+          fi
+          mkdir -p "${RUNNER_TEMP}/npb-production"
+          gh run download "${run_id}"             --repo "${GITHUB_REPOSITORY}"             --dir "${RUNNER_TEMP}/npb-production"
+          find "${RUNNER_TEMP}/npb-production" -type f -maxdepth 5 -print
+          test "$(find "${RUNNER_TEMP}/npb-production" -type f -name 'npb_production_*.json' | wc -l | tr -d ' ')" -ge 1
+
+      - name: Archive prediction experience
+        env:
+          RUN_ID: ${{ inputs.run_id || github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          file="$(find "${RUNNER_TEMP}/npb-production" -type f -name 'npb_production_*.json' | sort | tail -n 1)"
+          python -m research.experience_ledger --archive "${file}" --run-id "${RUN_ID}"
+
+      - name: Validate archive
+        run: |
+          set -euo pipefail
+          test -d data/experience/predictions
+          test "$(find data/experience/predictions -type f -name '*.jsonl' | wc -l | tr -d ' ')" -ge 1
+          python - <<'PY'
+          from pathlib import Path
+          import json
+
+          paths = list(Path("data/experience/predictions").glob("*.jsonl"))
+          rows = []
+          for path in paths:
+              for line in path.read_text(encoding="utf-8").splitlines():
+                  if line.strip():
+                      rows.append(json.loads(line))
+          if not rows:
+              raise SystemExit("prediction experience archive is empty")
+          ids = [str(x.get("prediction_id")) for x in rows]
+          if any(not x or x == "None" for x in ids):
+              raise SystemExit("prediction experience archive contains missing IDs")
+          if len(ids) != len(set(ids)):
+              raise SystemExit("prediction experience archive contains duplicate prediction IDs")
+          print(f"archived_prediction_snapshots={len(rows)}")
+          PY
+
+      - name: Commit experience archive
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/experience/
+          if git diff --cached --quiet; then
+            echo "No new archive data to commit."
+            exit 0
+          fi
+          git commit -m "Archive NPB production prediction experience"
+          for attempt in 1 2 3; do
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            git fetch origin main
+            git rebase origin/main
+          done
+          exit 1
