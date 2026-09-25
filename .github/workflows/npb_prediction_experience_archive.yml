@@ -39,6 +39,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install experience dependencies
+        run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
+
       - name: Download production artifact
         env:
           GH_TOKEN: ${{ github.token }}
@@ -62,6 +65,8 @@ jobs:
           python -m research.experience_ledger --archive "${file}" --run-id "${RUN_ID}"
 
       - name: Validate archive
+        env:
+          PYTHONUNBUFFERED: "1"
         run: |
           set -euo pipefail
           test -d data/experience/predictions
