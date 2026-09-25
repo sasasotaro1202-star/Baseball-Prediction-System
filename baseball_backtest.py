@@ -431,11 +431,20 @@ class BaseballBacktest:
                 "starter_evidence_status": "pit_safe" if (h_safe and a_safe) else "unknown",
                 "home_bullpen_apps": float(home_bullpen_apps),
                 "away_bullpen_apps": float(away_bullpen_apps),
+                "game_type": gt,
+                "series_description": "",
             })
         out = pd.DataFrame(rows)
         if out.empty:
             raise RuntimeError("No NPB games could be reconstructed.")
         out["datetime"] = pd.to_datetime(out["datetime"], errors="coerce")
+        labels = [classify_npb(x) for x in out.get("game_type", pd.Series("", index=out.index)).fillna("")]
+        out["competition"] = [x.competition for x in labels]
+        out["competition_stage"] = [x.stage for x in labels]
+        out["season_type"] = [x.season_type for x in labels]
+        out["game_class"] = [x.game_class for x in labels]
+        out["competition_key"] = [x.competition_key for x in labels]
+        out["competition_classification_status"] = [x.status for x in labels]
         return out.sort_values(["datetime", "game_id"]).drop_duplicates("game_id").reset_index(drop=True)
 
     def _first_pitcher(self, g: pd.DataFrame, side: str) -> str:
