@@ -3,3 +3,7 @@ __pycache__/
 .env
 results/
 data/pit/*.jsonl
+
+# Persist production prediction experience; results/ stays transient.
+!data/experience/
+!data/experience/**
