@@ -1,0 +1,106 @@
+name: NPB Prediction Experience Reconciliation
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 03:30 JST daily; previous-day NPB games should normally have final
+    # official results by this point. Reconciliation remains fail-closed.
+    - cron: '30 18 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: npb-prediction-experience-reconciliation
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
+
+      - name: Reconcile canonical experience
+        env:
+          PYTHONPATH: .
+          PYTHONUNBUFFERED: '1'
+        run: |
+          set -euo pipefail
+          python -m research.experience_ledger --reconcile
+
+      - name: Reconcile every pregame snapshot
+        env:
+          PYTHONPATH: .
+          PYTHONUNBUFFERED: '1'
+        run: |
+          set -euo pipefail
+          python -m research.experience_rollup
+
+      - name: Validate reconciliation outputs
+        run: |
+          set -euo pipefail
+          test -f data/experience/experience_summary.json
+          test -f data/experience/experience_case_summary.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          canonical = json.loads(Path("data/experience/experience_summary.json").read_text(encoding="utf-8"))
+          snapshots = json.loads(Path("data/experience/experience_case_summary.json").read_text(encoding="utf-8"))
+
+          allowed = {"UPDATED", "NO_COMPLETED_RESULTS", "NO_PREDICTIONS", "NO_PREGAME_PREDICTIONS"}
+          if canonical.get("status") not in allowed:
+              raise SystemExit(f"unexpected canonical reconciliation status: {canonical.get('status')}")
+          if snapshots.get("status") not in allowed:
+              raise SystemExit(f"unexpected snapshot reconciliation status: {snapshots.get('status')}")
+
+          for key in ("outcome_accuracy", "logloss", "brier", "low_high_accuracy", "score_mae", "top1_exact_hit_rate", "top4_exact_hit_rate"):
+              if key in canonical:
+                  value = float(canonical[key])
+                  if value != value or value in (float("inf"), float("-inf")):
+                      raise SystemExit(f"non-finite canonical metric: {key}")
+          print(json.dumps({
+              "canonical_status": canonical.get("status"),
+              "canonical_cases": canonical.get("matched_rows_total", canonical.get("matched_rows", 0)),
+              "canonical_accuracy": canonical.get("outcome_accuracy"),
+              "canonical_logloss": canonical.get("logloss"),
+              "canonical_brier": canonical.get("brier"),
+              "snapshot_status": snapshots.get("status"),
+              "snapshot_cases": snapshots.get("matched_snapshot_rows", snapshots.get("matched_rows", 0)),
+          }, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Commit experience metrics
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/experience/
+          if git diff --cached --quiet; then
+            echo "No reconciliation changes to commit."
+            exit 0
+          fi
+          git commit -m "Update NPB prediction experience metrics"
+          for attempt in 1 2 3; do
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            git fetch origin main
+            git rebase origin/main
+          done
+          exit 1
