@@ -162,8 +162,16 @@ def _evaluate(merged: pd.DataFrame) -> pd.DataFrame:
     for col in ("home_win_pct", "draw_pct", "away_win_pct", "low_pct", "high_pct"):
         x[col] = pd.to_numeric(x[col], errors="coerce") / 100.0
     probs = x[["home_win_pct", "draw_pct", "away_win_pct"]].to_numpy(float)
-    if not np.isfinite(probs).all():
-        raise RuntimeError("experience snapshot contains non-finite probabilities")
+    if (
+        not np.isfinite(probs).all()
+        or (probs < 0.0).any()
+        or (probs > 1.0).any()
+        or (np.abs(probs.sum(axis=1) - 1.0) > 1e-6).any()
+    ):
+        raise RuntimeError(
+            "experience snapshot contains invalid win probabilities "
+            "(must be finite, in [0,1], and row-normalized)"
+        )
 
     y = x["actual_outcome"].map({
         "HOME_WIN": 0, "DRAW": 1, "AWAY_WIN": 2
@@ -179,8 +187,19 @@ def _evaluate(merged: pd.DataFrame) -> pd.DataFrame:
     # high_pct was normalized from percentage points to [0, 1] above.
     # Keep the classification threshold on the same probability scale.
     x["high_probability"] = pd.to_numeric(x["high_pct"], errors="coerce")
-    if not np.isfinite(x["high_probability"].to_numpy(float)).all():
-        raise RuntimeError("experience snapshot contains non-finite Low/High probabilities")
+    low_probability = pd.to_numeric(x["low_pct"], errors="coerce")
+    high_probability = x["high_probability"]
+    low_high = pd.concat([low_probability, high_probability], axis=1).to_numpy(float)
+    if (
+        not np.isfinite(low_high).all()
+        or (low_high < 0.0).any()
+        or (low_high > 1.0).any()
+        or (np.abs(low_high.sum(axis=1) - 1.0) > 1e-6).any()
+    ):
+        raise RuntimeError(
+            "experience snapshot contains invalid Low/High probabilities "
+            "(must be finite, in [0,1], and row-normalized)"
+        )
     x["low_high_actual"] = (x["actual_total_runs"] >= 7).astype(int)
     x["low_high_predicted"] = (x["high_probability"] >= 0.5).astype(int)
     x["low_high_correct"] = (
