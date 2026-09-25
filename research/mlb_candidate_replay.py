@@ -21,6 +21,11 @@ from baseball_backtest import BaseballBacktest, low_high_probs, score_candidates
 from core.atomic_io import atomic_write_json
 from evaluation.metrics import classification_metrics
 from research.candidates import CandidateSpec, candidate_fingerprint, lock_candidate
+from research.individually_calibrated_ensemble import (
+    CalibratedBlendSpec,
+    apply_calibrated_blend,
+    fit_calibrated_blend,
+)
 from research.validation_pipeline import run_validation_pipeline
 from evaluation.uncertainty import paired_block_bootstrap, to_dict as uncertainty_to_dict
 from research.adoption_gate import GatePolicy
@@ -217,7 +222,7 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
     for cut in range(dev_start,holdout_start,config.block_size):
         stop=min(holdout_start,cut+config.block_size)
         if not fitted_base or cut-last_fit>=config.retrain_every:
-            for name in ["ProductionEnsemble"] + [k for k,_ in candidates[:max(1,config.recency_variant_top_k)]]:
+            for name in ["ProductionEnsemble"] + [k for k,_ in candidates[:max(3,config.recency_variant_top_k)]]:
                 if name=="ProductionEnsemble":
                     fitted_base[name]=None
                 else:
@@ -248,6 +253,14 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
             development_predictions[vname]=vp
             variant_specs[vname]=(base_name,int(half_life))
 
+    # Preserve the initial base-model ranking for the separate
+    # individually calibrated blend challenger. Only raw base-model OOS
+    # streams are eligible as components; recency/calibration variants are
+    # intentionally not nested inside this candidate.
+    base_component_names = tuple(
+        k for k,_ in candidates if k in names
+    )[:3]
+
     candidates=[(k,v) for k,v in development.items() if k!="ProductionEnsemble"]
     candidates.sort(key=lambda kv:(kv[1]["LogLoss"],kv[1]["Brier"],-kv[1]["Accuracy"],kv[0]))
     calibration_specs={}
@@ -262,15 +275,45 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
         development_predictions[cname]=q
         calibration_specs[cname]=(name,t)
 
+    # Research-only individually calibrated constrained blend. This is
+    # selected against Development OOS only and becomes fully immutable before
+    # the independent holdout is evaluated.
+    blend_specs: dict[str, CalibratedBlendSpec] = {}
+    blend_name = "IndividuallyCalibratedBlend"
+    if len(base_component_names) >= 2:
+        component_probs = {
+            name: development_predictions[name]
+            for name in base_component_names
+            if name in development_predictions
+        }
+        if len(component_probs) >= 2:
+            blend_spec, blend_pred = fit_calibrated_blend(
+                y_dev,
+                component_probs,
+                top_k=min(3, len(component_probs)),
+                temperature_grid=RESEARCH_TEMPERATURE_GRID,
+                weight_step=0.25,
+            )
+            development[blend_name] = classification_metrics(y_dev, blend_pred, classes=[0,1])
+            development_predictions[blend_name] = blend_pred
+            blend_specs[blend_name] = blend_spec
+
     candidates=[(k,v) for k,v in development.items() if k!="ProductionEnsemble"]
     candidates.sort(key=lambda kv:(kv[1]["LogLoss"],kv[1]["Brier"],-kv[1]["Accuracy"],kv[0]))
     selected_name,selected_metrics=candidates[0]
+    selected_blend_spec = blend_specs.get(selected_name)
     selected_temperature=1.0
     base_selected=selected_name
-    if selected_name.startswith("TemperatureScaled:"):
+    if selected_blend_spec is not None:
+        selected_model_name=blend_name
+        selected_half_life=None
+        selected_temperature=1.0
+    elif selected_name.startswith("TemperatureScaled:"):
         base_selected=selected_name[len("TemperatureScaled:"):]
         selected_temperature=calibration_specs[selected_name][1]
-    selected_model_name,selected_half_life=variant_specs.get(base_selected,(base_selected,None))
+        selected_model_name,selected_half_life=variant_specs.get(base_selected,(base_selected,None))
+    else:
+        selected_model_name,selected_half_life=variant_specs.get(base_selected,(base_selected,None))
 
     if baseline["LogLoss"] - selected_metrics["LogLoss"] <= 0:
         return {"stage":"development_evaluated","decision":"NO_CHANGE","baseline":baseline,
@@ -285,11 +328,25 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
         orient="split", date_format="iso", double_precision=15
     ).encode("utf-8")
     dataset_hash = hashlib.sha256(dataset_bytes).hexdigest()
+    blend_token = (
+        json.dumps(selected_blend_spec.to_dict(), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        if selected_blend_spec is not None
+        else ""
+    )
+    selection_reason = (
+        f"Development OOS only; selected individually calibrated constrained blend "
+        f"components={selected_blend_spec.model_names}, component_temperatures={selected_blend_spec.component_temperatures}, "
+        f"blend_weights={selected_blend_spec.blend_weights}, final_temperature={selected_blend_spec.final_temperature:.6f}; "
+        f"base_recency_half_life={base_half_life}."
+        if selected_blend_spec is not None
+        else
+        f"Development OOS only; selected {selected_model_name} with recency_half_life={selected_half_life or base_half_life} and frozen temperature={selected_temperature:.4f}."
+    )
     spec = CandidateSpec(
-        candidate_id="cand-" + hashlib.sha256(f"MLB|{selected_model_name}|HL={selected_half_life or base_half_life}|T={selected_temperature:.4f}|{feature_version}|{git_commit}|{dataset_hash}".encode()).hexdigest()[:20],
+        candidate_id="cand-" + hashlib.sha256(f"MLB|{selected_model_name}|HL={selected_half_life or base_half_life}|T={selected_temperature:.4f}|Blend={blend_token}|{feature_version}|{git_commit}|{dataset_hash}".encode()).hexdigest()[:20],
         league="MLB", objective="win", model_version=selected_model_name, feature_version=feature_version,
         development_metrics=selected_metrics,
-        selection_reason=f"Development OOS only; selected {selected_model_name} with recency_half_life={selected_half_life or base_half_life} and frozen temperature={selected_temperature:.4f}.",
+        selection_reason=selection_reason,
         git_commit=git_commit, dataset_hash=dataset_hash,
     )
     locked = lock_candidate(spec)
@@ -300,9 +357,23 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
     if not base_fit:
         raise RuntimeError("MLB production ensemble could not be fitted for holdout")
     base_p = bt.ensemble_proba(base_fit, X_holdout, "MLB")
-    cand_p = _proba(bt, _fit_with_half_life(bt, selected_model_name, X_train, y_train, selected_half_life), X_holdout)
-    if selected_temperature != 1.0:
-        cand_p = _temperature_scale(cand_p, selected_temperature)
+    if selected_blend_spec is not None:
+        holdout_components = {}
+        for component_name in selected_blend_spec.model_names:
+            component_model = _fit_with_half_life(
+                bt, component_name, X_train, y_train, None
+            )
+            holdout_components[component_name] = _proba(
+                bt, component_model, X_holdout
+            )
+        cand_p = apply_calibrated_blend(selected_blend_spec, holdout_components)
+    else:
+        cand_p = _proba(
+            bt, _fit_with_half_life(bt, selected_model_name, X_train, y_train, selected_half_life),
+            X_holdout,
+        )
+        if selected_temperature != 1.0:
+            cand_p = _temperature_scale(cand_p, selected_temperature)
     base = classification_metrics(y_holdout, base_p, classes=[0, 1])
     cand = classification_metrics(y_holdout, cand_p, classes=[0, 1])
 
@@ -353,7 +424,10 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
     out = {"stage": "locked_holdout_evaluated", "candidate": locked,
            "holdout": {"baseline": base, "candidate": cand,
                        "baseline_score": base_score, "candidate_score": cand_score,
-                       "baseline_hilo": base_hilo, "candidate_hilo": cand_hilo},
+                       "baseline_hilo": base_hilo, "candidate_hilo": cand_hilo,
+                       "candidate_blend_spec": (
+                           selected_blend_spec.to_dict() if selected_blend_spec is not None else None
+                       )},
            "validation": asdict(lifecycle), "decision": lifecycle.decision,
            "score_hilo_status": "CONNECTED_PIT_SAFE_TRAINING_ONLY",
            "holdout_uncertainty": holdout_uncertainty}
