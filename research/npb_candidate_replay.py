@@ -23,6 +23,11 @@ from baseball_backtest import BaseballBacktest, low_high_probs, score_candidates
 from core.atomic_io import atomic_write_json
 from evaluation.metrics import expected_calibration_error, multiclass_brier
 from research.candidates import CandidateSpec, candidate_fingerprint, lock_candidate
+from research.individually_calibrated_ensemble import (
+    CalibratedBlendSpec,
+    apply_calibrated_blend,
+    fit_calibrated_blend,
+)
 from research.validation_pipeline import run_validation_pipeline
 from evaluation.uncertainty import paired_block_bootstrap, to_dict as uncertainty_to_dict
 from research.adoption_gate import GatePolicy
@@ -388,12 +393,42 @@ def run_npb_candidate_cycle(
         development_predictions[cal_name] = calibrated
         calibrated_specs[cal_name] = (name, temperature)
 
-    # Re-rank after calibration challengers have been added.
+    # Research-only individually calibrated constrained blend challenger.
+    # Component probabilities are strict Development OOS streams from the
+    # existing base-model fits; per-component and final temperatures plus blend
+    # weights are learned only on Development OOS, then frozen before holdout.
+    blend_specs: dict[str, CalibratedBlendSpec] = {}
+    blend_name = "IndividuallyCalibratedBlend"
+    blend_components = tuple(
+        sorted(
+            (name for name in candidate_names if name in development_predictions),
+            key=lambda name: (development[name]["LogLoss"], name),
+        )[:3]
+    )
+    if len(blend_components) >= 2:
+        component_probs = {name: development_predictions[name] for name in blend_components}
+        blend_spec, blend_pred = fit_calibrated_blend(
+            y_dev,
+            component_probs,
+            top_k=len(blend_components),
+            temperature_grid=RESEARCH_TEMPERATURE_GRID,
+            weight_step=0.25,
+        )
+        development[blend_name] = _metrics(y_dev, blend_pred)
+        development_predictions[blend_name] = blend_pred
+        blend_specs[blend_name] = blend_spec
+
+    # Re-rank after calibration and blend challengers have been added.
     candidates = [(name, metrics) for name, metrics in development.items() if name != "ProductionEnsemble"]
     candidates.sort(key=lambda x: (x[1]["LogLoss"], x[1]["Brier"], -x[1]["Accuracy"], x[0]))
     selected_name, selected_metrics = candidates[0]
+    selected_blend_spec = blend_specs.get(selected_name)
 
-    if selected_name.startswith("TemperatureScaled:"):
+    if selected_blend_spec is not None:
+        selected_model_name = blend_name
+        selected_half_life = None
+        selected_temperature = 1.0
+    elif selected_name.startswith("TemperatureScaled:"):
         base_selected = selected_name[len("TemperatureScaled:"):]
         base_variant = variant_specs.get(base_selected)
         if base_variant is None:
@@ -444,16 +479,31 @@ def run_npb_candidate_cycle(
         }
 
     dataset_hash = hashlib.sha256(pd.util.hash_pandas_object(games, index=True).values.tobytes()).hexdigest()
+    blend_token = (
+        json.dumps(selected_blend_spec.to_dict(), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        if selected_blend_spec is not None
+        else ""
+    )
+    selection_reason = (
+        f"Development OOS only; selected individually calibrated constrained blend "
+        f"components={selected_blend_spec.model_names}, component_temperatures={selected_blend_spec.component_temperatures}, "
+        f"blend_weights={selected_blend_spec.blend_weights}, final_temperature={selected_blend_spec.final_temperature:.6f}; "
+        f"base_recency_half_life={base_half_life}, frozen draw scale={selected_draw_scale:.4f}."
+        if selected_blend_spec is not None
+        else
+        f"Development OOS only; selected {selected_model_name} with recency_half_life={selected_half_life or base_half_life}, "
+        f"frozen temperature={selected_temperature:.4f}, and frozen draw scale={selected_draw_scale:.4f}."
+    )
     spec = CandidateSpec(
         candidate_id="cand-" + hashlib.sha256(
-            f"NPB|{selected_model_name}|HL={selected_half_life or base_half_life}|T={selected_temperature:.4f}|DrawScale={selected_draw_scale:.4f}|{feature_version}|{git_commit}|{dataset_hash}".encode("utf-8")
+            f"NPB|{selected_model_name}|HL={selected_half_life or base_half_life}|T={selected_temperature:.4f}|DrawScale={selected_draw_scale:.4f}|Blend={blend_token}|{feature_version}|{git_commit}|{dataset_hash}".encode("utf-8")
         ).hexdigest()[:20],
         league="NPB",
         objective="win",
         model_version=selected_model_name,
         feature_version=feature_version,
         development_metrics=selected_metrics,
-        selection_reason=f"Development OOS only; selected {selected_model_name} with recency_half_life={selected_half_life or base_half_life}, frozen temperature={selected_temperature:.4f}, and frozen draw scale={selected_draw_scale:.4f}.",
+        selection_reason=selection_reason,
         git_commit=git_commit,
         dataset_hash=dataset_hash,
     )
@@ -469,13 +519,25 @@ def run_npb_candidate_cycle(
     if not base_fit:
         raise RuntimeError("production ensemble could not be fitted for locked holdout")
     base_p = bt.ensemble_proba(base_fit, X_holdout, "NPB")
-    cand_model = _fit_candidate(
-        bt, selected_model_name, X_train, y_train,
-        recency_half_life=selected_half_life,
-    )
-    cand_p = _candidate_probability(bt, cand_model, X_holdout)
-    if selected_temperature != 1.0:
-        cand_p = _temperature_scale(cand_p, selected_temperature)
+    if selected_blend_spec is not None:
+        holdout_components = {}
+        for component_name in selected_blend_spec.model_names:
+            component_model = _fit_candidate(
+                bt, component_name, X_train, y_train,
+                recency_half_life=None,
+            )
+            holdout_components[component_name] = _candidate_probability(
+                bt, component_model, X_holdout
+            )
+        cand_p = apply_calibrated_blend(selected_blend_spec, holdout_components)
+    else:
+        cand_model = _fit_candidate(
+            bt, selected_model_name, X_train, y_train,
+            recency_half_life=selected_half_life,
+        )
+        cand_p = _candidate_probability(bt, cand_model, X_holdout)
+        if selected_temperature != 1.0:
+            cand_p = _temperature_scale(cand_p, selected_temperature)
     if selected_draw_scale != 1.0:
         cand_p = _draw_scale(cand_p, selected_draw_scale)
 
@@ -545,6 +607,9 @@ def run_npb_candidate_cycle(
         "candidate_recency_half_life": selected_half_life,
         "candidate_temperature": float(selected_temperature),
         "candidate_draw_scale": float(selected_draw_scale),
+        "candidate_blend_spec": (
+            selected_blend_spec.to_dict() if selected_blend_spec is not None else None
+        ),
         "dataset_hash": dataset_hash,
         "selection_locked_before_holdout": True,
         "starter_pit_evidence_ok": False,
