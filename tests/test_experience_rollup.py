@@ -107,3 +107,41 @@ def test_rollup_rejects_post_start_prediction(tmp_path, monkeypatch):
     result = roll.rollup()
     assert result["snapshot_rows"] == 0
     assert result["status"] == "NO_PREGAME_PREDICTIONS"
+
+
+def test_rollup_low_high_threshold_uses_normalized_probability_scale():
+    merged = pd.DataFrame(
+        [
+            {
+                "game_id": "low",
+                "home_score": 4,
+                "away_score": 2,
+                "home_win_pct": 60.0,
+                "draw_pct": 5.0,
+                "away_win_pct": 35.0,
+                "low_pct": 70.0,
+                "high_pct": 30.0,
+                "lambda_home": 3.2,
+                "lambda_away": 2.4,
+                "top4_exact_scores": [],
+            },
+            {
+                "game_id": "high",
+                "home_score": 5,
+                "away_score": 4,
+                "home_win_pct": 60.0,
+                "draw_pct": 5.0,
+                "away_win_pct": 35.0,
+                "low_pct": 30.0,
+                "high_pct": 70.0,
+                "lambda_home": 3.2,
+                "lambda_away": 2.4,
+                "top4_exact_scores": [],
+            },
+        ]
+    )
+    scored = roll._evaluate(merged)
+    assert scored["high_probability"].tolist() == [0.3, 0.7]
+    assert scored["low_high_predicted"].tolist() == [0, 1]
+    assert scored["low_high_actual"].tolist() == [0, 1]
+    assert scored["low_high_correct"].tolist() == [1, 1]
