@@ -1,5 +1,3 @@
-import pytest
-
 from research.adoption_gate import candidate_lock
 from research.candidates import CandidateSpec, candidate_fingerprint
 from research.validation_pipeline import run_validation_pipeline
@@ -19,6 +17,20 @@ def _spec(**overrides):
     )
     base.update(overrides)
     return CandidateSpec(**base)
+
+
+def _holdout_kwargs():
+    return dict(
+        validation_windows=2,
+        calibration_ok=True,
+        no_future_target_data=True,
+        reproducible=True,
+        league="NPB",
+        holdout_score_baseline={"ScoreMAE": 3.0},
+        holdout_score_candidate={"ScoreMAE": 2.9},
+        holdout_hilo_baseline={"LogLoss": 0.69, "Brier": 0.24, "Accuracy": 0.60},
+        holdout_hilo_candidate={"LogLoss": 0.68, "Brier": 0.23, "Accuracy": 0.61},
+    )
 
 
 def test_candidate_fingerprint_changes_with_locked_selection_inputs():
@@ -42,11 +54,7 @@ def test_validation_pipeline_requires_independent_uncertainty_evidence():
         development_metrics={"rows": 250},
         holdout_baseline={"rows": 250, "LogLoss": 0.70, "Brier": 0.25, "Accuracy": 0.60, "DrawRecall": 0.20, "DrawProbabilityMAE": 0.01},
         holdout_candidate={"rows": 250, "LogLoss": 0.68, "Brier": 0.24, "Accuracy": 0.61, "DrawRecall": 0.20, "DrawProbabilityMAE": 0.01},
-        validation_windows=2,
-        calibration_ok=True,
-        no_future_target_data=True,
-        reproducible=True,
-        league="NPB",
+        **_holdout_kwargs(),
     )
     rejected = run_validation_pipeline(**common)
     assert rejected.decision == "REJECT"
@@ -60,20 +68,17 @@ def test_validation_pipeline_requires_independent_uncertainty_evidence():
     assert accepted.decision == "ADOPT"
 
 
-def test_validation_pipeline_does_not_allow_missing_primary_metrics_to_promote():
-    with pytest.raises(ValueError):
-        run_validation_pipeline(
-            candidate_id="cand-missing",
-            development_metrics={"rows": 250},
-            holdout_baseline={"rows": 250, "LogLoss": 0.70, "Brier": 0.25},
-            holdout_candidate={"rows": 250, "LogLoss": 0.68, "Brier": 0.24},
-            validation_windows=2,
-            calibration_ok=True,
-            no_future_target_data=True,
-            reproducible=True,
-            league="NPB",
-            holdout_uncertainty={
-                "improvement_ci95": {"LogLoss": [0.01, 0.05]},
-                "p_improvement_positive": {"LogLoss": 0.99},
-            },
-        )
+def test_validation_pipeline_never_promotes_missing_primary_metrics():
+    record = run_validation_pipeline(
+        candidate_id="cand-missing",
+        development_metrics={"rows": 250},
+        holdout_baseline={"rows": 250, "LogLoss": 0.70, "Brier": 0.25},
+        holdout_candidate={"rows": 250, "LogLoss": 0.68, "Brier": 0.24},
+        **_holdout_kwargs(),
+        holdout_uncertainty={
+            "improvement_ci95": {"LogLoss": [0.01, 0.05]},
+            "p_improvement_positive": {"LogLoss": 0.99},
+        },
+    )
+    assert record.decision == "REJECT"
+    assert any(reason.startswith("primary_metrics_missing_or_nonfinite") for reason in record.locked_holdout["reasons"])
