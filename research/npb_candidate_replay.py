@@ -484,19 +484,20 @@ def run_npb_candidate_cycle(
         if selected_blend_spec is not None
         else ""
     )
+    selected_recency_half_life = None if selected_blend_spec is not None else (selected_half_life or base_half_life)
     selection_reason = (
         f"Development OOS only; selected individually calibrated constrained blend "
         f"components={selected_blend_spec.model_names}, component_temperatures={selected_blend_spec.component_temperatures}, "
         f"blend_weights={selected_blend_spec.blend_weights}, final_temperature={selected_blend_spec.final_temperature:.6f}; "
-        f"base_recency_half_life={base_half_life}, frozen draw scale={selected_draw_scale:.4f}."
+        f"frozen draw scale={selected_draw_scale:.4f}."
         if selected_blend_spec is not None
         else
-        f"Development OOS only; selected {selected_model_name} with recency_half_life={selected_half_life or base_half_life}, "
+        f"Development OOS only; selected {selected_model_name} with recency_half_life={selected_recency_half_life}, "
         f"frozen temperature={selected_temperature:.4f}, and frozen draw scale={selected_draw_scale:.4f}."
     )
     spec = CandidateSpec(
         candidate_id="cand-" + hashlib.sha256(
-            f"NPB|{selected_model_name}|HL={selected_half_life or base_half_life}|T={selected_temperature:.4f}|DrawScale={selected_draw_scale:.4f}|Blend={blend_token}|{feature_version}|{git_commit}|{dataset_hash}".encode("utf-8")
+            f"NPB|{selected_model_name}|HL={selected_recency_half_life}|T={selected_temperature:.4f}|DrawScale={selected_draw_scale:.4f}|Blend={blend_token}|{feature_version}|{git_commit}|{dataset_hash}".encode("utf-8")
         ).hexdigest()[:20],
         league="NPB",
         objective="win",
