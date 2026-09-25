@@ -120,6 +120,12 @@ def _load_predictions() -> pd.DataFrame:
     df["prediction_cutoff_utc"] = pd.to_datetime(df["prediction_cutoff_utc"], utc=True, errors="coerce")
     df["datetime_jst"] = pd.to_datetime(df["datetime_jst"], utc=True, errors="coerce")
     df = df.dropna(subset=["prediction_cutoff_utc", "datetime_jst", "game_id"])
+    # Only pregame predictions are valid experience. Anything made at or after
+    # first pitch is excluded so late re-runs cannot masquerade as pregame skill.
+    df = df.loc[
+        df["prediction_cutoff_utc"]
+        < df["datetime_jst"].dt.tz_convert("UTC")
+    ].copy()
     df = df.sort_values(["game_id", "prediction_cutoff_utc", "prediction_id"])
     df = df.drop_duplicates("game_id", keep="last").reset_index(drop=True)
     return df
