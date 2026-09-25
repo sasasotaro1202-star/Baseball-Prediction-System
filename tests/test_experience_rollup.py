@@ -4,6 +4,7 @@ from pathlib import Path
 import pandas as pd
 
 import research.experience_rollup as roll
+import research.experience_ledger as ledger
 
 
 def _write_prediction(root: Path, *, cutoff: str, game_id: str = "NPB-2026-09-26-1"):
@@ -107,3 +108,110 @@ def test_rollup_rejects_post_start_prediction(tmp_path, monkeypatch):
     result = roll.rollup()
     assert result["snapshot_rows"] == 0
     assert result["status"] == "NO_PREGAME_PREDICTIONS"
+
+
+def test_rollup_low_high_threshold_uses_normalized_probability_scale():
+    merged = pd.DataFrame(
+        [
+            {
+                "game_id": "low",
+                "home_score": 4,
+                "away_score": 2,
+                "home_win_pct": 60.0,
+                "draw_pct": 5.0,
+                "away_win_pct": 35.0,
+                "low_pct": 70.0,
+                "high_pct": 30.0,
+                "lambda_home": 3.2,
+                "lambda_away": 2.4,
+                "top4_exact_scores": [],
+            },
+            {
+                "game_id": "high",
+                "home_score": 5,
+                "away_score": 4,
+                "home_win_pct": 60.0,
+                "draw_pct": 5.0,
+                "away_win_pct": 35.0,
+                "low_pct": 30.0,
+                "high_pct": 70.0,
+                "lambda_home": 3.2,
+                "lambda_away": 2.4,
+                "top4_exact_scores": [],
+            },
+        ]
+    )
+    scored = roll._evaluate(merged)
+    assert scored["high_probability"].tolist() == [0.3, 0.7]
+    assert scored["low_high_predicted"].tolist() == [0, 1]
+    assert scored["low_high_actual"].tolist() == [0, 1]
+    assert scored["low_high_correct"].tolist() == [1, 1]
+
+
+def test_rollup_rejects_invalid_probability_contract():
+    merged = pd.DataFrame(
+        [{
+            "game_id": "invalid",
+            "home_score": 4,
+            "away_score": 2,
+            "home_win_pct": 80.0,
+            "draw_pct": 10.0,
+            "away_win_pct": 30.0,
+            "low_pct": 70.0,
+            "high_pct": 30.0,
+            "lambda_home": 3.2,
+            "lambda_away": 2.4,
+            "top4_exact_scores": [],
+        }]
+    )
+    try:
+        roll._evaluate(merged)
+    except RuntimeError as exc:
+        assert "invalid win probabilities" in str(exc)
+    else:
+        raise AssertionError("invalid probability contract must fail closed")
+
+
+def test_rollup_rejects_invalid_low_high_contract():
+    merged = pd.DataFrame(
+        [{
+            "game_id": "invalid-lh",
+            "home_score": 4,
+            "away_score": 2,
+            "home_win_pct": 60.0,
+            "draw_pct": 5.0,
+            "away_win_pct": 35.0,
+            "low_pct": 80.0,
+            "high_pct": 30.0,
+            "lambda_home": 3.2,
+            "lambda_away": 2.4,
+            "top4_exact_scores": [],
+        }]
+    )
+    try:
+        roll._evaluate(merged)
+    except RuntimeError as exc:
+        assert "invalid Low/High probabilities" in str(exc)
+    else:
+        raise AssertionError("invalid Low/High contract must fail closed")
+
+
+def test_reconcile_persists_no_completed_results_status(tmp_path, monkeypatch):
+    exp = tmp_path / "experience"
+    monkeypatch.setattr(ledger, "EXPERIENCE", exp)
+    monkeypatch.setattr(ledger, "SUMMARY_PATH", exp / "experience_summary.json")
+
+    pred = pd.DataFrame(
+        [{
+            "game_id": "NPB-2026-09-26-1",
+            "datetime_jst": pd.Timestamp("2026-09-26T14:00:00+09:00"),
+            "prediction_cutoff_utc": pd.Timestamp("2026-09-26T02:00:00+00:00"),
+        }]
+    )
+    monkeypatch.setattr(ledger, "_load_predictions", lambda: pred)
+    monkeypatch.setattr(ledger, "_load_cached_results", lambda dates: pd.DataFrame())
+
+    result = ledger.reconcile()
+    persisted = json.loads((exp / "experience_summary.json").read_text(encoding="utf-8"))
+    assert result["status"] == "NO_COMPLETED_RESULTS"
+    assert persisted == result
