@@ -27,3 +27,30 @@ def test_draw_scale_grid_is_bounded_and_monotone():
     assert float(NPB_DRAW_SCALE_GRID[0]) >= 0.5
     assert float(NPB_DRAW_SCALE_GRID[-1]) <= 6.0
     assert np.all(np.diff(NPB_DRAW_SCALE_GRID) > 0)
+
+
+
+def test_development_selection_skips_calibration_regression():
+    from research.npb_candidate_replay import _select_development_candidate
+
+    baseline = {"Accuracy": 0.52, "LogLoss": 0.80, "Brier": 0.52, "ECE": 0.02}
+    development = {
+        "ProductionEnsemble": baseline,
+        "LowECE": {"Accuracy": 0.54, "LogLoss": 0.75, "Brier": 0.50, "ECE": 0.024},
+        "BetterLogLossButBadECE": {"Accuracy": 0.56, "LogLoss": 0.70, "Brier": 0.48, "ECE": 0.040},
+    }
+    selected = _select_development_candidate(development, baseline, 0.005)
+    assert selected is not None
+    assert selected[0] == "LowECE"
+
+
+def test_development_selection_returns_none_when_all_fail_calibration():
+    from research.npb_candidate_replay import _select_development_candidate
+
+    baseline = {"Accuracy": 0.52, "LogLoss": 0.80, "Brier": 0.52, "ECE": 0.02}
+    development = {
+        "ProductionEnsemble": baseline,
+        "BadA": {"Accuracy": 0.56, "LogLoss": 0.70, "Brier": 0.48, "ECE": 0.040},
+        "BadB": {"Accuracy": 0.55, "LogLoss": 0.73, "Brier": 0.49, "ECE": 0.050},
+    }
+    assert _select_development_candidate(development, baseline, 0.005) is None
