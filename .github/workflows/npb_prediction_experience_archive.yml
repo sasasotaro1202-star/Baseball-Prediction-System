@@ -27,6 +27,7 @@ jobs:
   archive:
     if: >-
       (github.event_name == 'workflow_dispatch') ||
+      (github.event_name == 'schedule') ||
       (github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -46,6 +47,7 @@ jobs:
         run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
 
       - name: Download production artifact
+        id: download
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -58,6 +60,7 @@ jobs:
             run_id="$(gh run list --repo "${GITHUB_REPOSITORY}" --workflow "NPB Production Prediction" --status success --limit 1 --json databaseId --jq ' .[0].databaseId')" 
           fi
           test -n "${run_id}" && test "${run_id}" != "null"
+          echo "run_id=${run_id}" >> "$GITHUB_OUTPUT"
           echo "Archiving production run ${run_id}"
           mkdir -p "${RUNNER_TEMP}/npb-production"
           gh run download "${run_id}"             --repo "${GITHUB_REPOSITORY}"             --dir "${RUNNER_TEMP}/npb-production"
@@ -66,7 +69,7 @@ jobs:
 
       - name: Archive prediction experience
         env:
-          RUN_ID: ${{ inputs.run_id || github.event.workflow_run.id }}
+          RUN_ID: ${{ steps.download.outputs.run_id }}
         run: |
           set -euo pipefail
           file="$(find "${RUNNER_TEMP}/npb-production" -type f -name 'npb_production_*.json' | sort | tail -n 1)"
