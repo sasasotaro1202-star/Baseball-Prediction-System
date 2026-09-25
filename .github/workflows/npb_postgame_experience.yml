@@ -2,8 +2,9 @@ name: NPB Postgame Experience Reconciliation
 
 on:
   schedule:
-    # 04:30 JST every day; late games have normally finished.
-    - cron: "30 19 * * *"
+    # Reconcile several times each day so afternoon/evening results are learned quickly.
+    # UTC -> JST: 01:30, 04:30, 07:30, 10:30, 13:30, 16:30, 19:30, 22:30.
+    - cron: "30 1,4,7,10,13,16,19,22 * * *"
   workflow_dispatch:
 
 permissions:
@@ -38,12 +39,25 @@ jobs:
           set -euo pipefail
           python -m research.experience_ledger --reconcile
 
+      - name: Build full snapshot experience and situation rollups
+        run: |
+          set -euo pipefail
+          python -m research.experience_rollup
+
       - name: Validate experience evidence
         run: |
           set -euo pipefail
           test -s data/experience/experience_summary.json
-          test -s data/experience/experience_ledger.csv
-          test -s data/experience/experience_ledger.jsonl
+          test -s data/experience/experience_case_summary.json
+          test -s data/experience/experience_training_index.json
+          if [ -f data/experience/experience_ledger.csv ]; then
+            test -s data/experience/experience_ledger.csv
+            test -s data/experience/experience_ledger.jsonl
+          fi
+          if [ -f data/experience/snapshot_experience_ledger.csv ]; then
+            test -s data/experience/snapshot_experience_ledger.csv
+            test -s data/experience/snapshot_experience_ledger.jsonl
+          fi
           python - <<'PY'
           import json
           from pathlib import Path
