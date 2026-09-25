@@ -20,7 +20,7 @@ permissions:
 
 concurrency:
   group: npb-dynamic-loss-router-research
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   PYTHONPATH: .
