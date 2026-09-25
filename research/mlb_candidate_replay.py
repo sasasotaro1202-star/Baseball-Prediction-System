@@ -46,7 +46,10 @@ class MLBReplayConfig:
     min_train_rows: int = 180
     min_holdout_rows: int = 200
     block_size: int = 60
-    retrain_every: int = 180
+    # MLB has substantially more chronological rows than NPB. A 720-game
+    # research retraining cadence keeps the Development OOS lifecycle within
+    # the bounded free-CI compute budget while preserving strict chronology.
+    retrain_every: int = 720
     calibration_tolerance: float = 0.005
     recency_half_lives: tuple[int, ...] = (900, 1800, 3600)
     recency_variant_top_k: int = 2
