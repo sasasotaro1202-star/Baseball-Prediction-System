@@ -333,17 +333,17 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
         if selected_blend_spec is not None
         else ""
     )
+    selected_recency_half_life = None if selected_blend_spec is not None else (selected_half_life or base_half_life)
     selection_reason = (
         f"Development OOS only; selected individually calibrated constrained blend "
         f"components={selected_blend_spec.model_names}, component_temperatures={selected_blend_spec.component_temperatures}, "
-        f"blend_weights={selected_blend_spec.blend_weights}, final_temperature={selected_blend_spec.final_temperature:.6f}; "
-        f"base_recency_half_life={base_half_life}."
+        f"blend_weights={selected_blend_spec.blend_weights}, final_temperature={selected_blend_spec.final_temperature:.6f}."
         if selected_blend_spec is not None
         else
-        f"Development OOS only; selected {selected_model_name} with recency_half_life={selected_half_life or base_half_life} and frozen temperature={selected_temperature:.4f}."
+        f"Development OOS only; selected {selected_model_name} with recency_half_life={selected_recency_half_life} and frozen temperature={selected_temperature:.4f}."
     )
     spec = CandidateSpec(
-        candidate_id="cand-" + hashlib.sha256(f"MLB|{selected_model_name}|HL={selected_half_life or base_half_life}|T={selected_temperature:.4f}|Blend={blend_token}|{feature_version}|{git_commit}|{dataset_hash}".encode()).hexdigest()[:20],
+        candidate_id="cand-" + hashlib.sha256(f"MLB|{selected_model_name}|HL={selected_recency_half_life}|T={selected_temperature:.4f}|Blend={blend_token}|{feature_version}|{git_commit}|{dataset_hash}".encode()).hexdigest()[:20],
         league="MLB", objective="win", model_version=selected_model_name, feature_version=feature_version,
         development_metrics=selected_metrics,
         selection_reason=selection_reason,
