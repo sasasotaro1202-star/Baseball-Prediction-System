@@ -64,6 +64,7 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import StandardScaler
 
 from research.regime_router import RegimeRouter
+from research.competition_taxonomy import classify_mlb
 from research.hierarchical_result_model import HierarchicalNPBClassifier
 from research.correlated_score import estimate_shared_lambda, low_high as correlated_low_high, top_scores as correlated_top_scores
 from evaluation.calibration import fit_temperature, TemperatureCalibration
@@ -489,7 +490,9 @@ class BaseballBacktest:
         if cache.exists():
             try:
                 df = pd.read_csv(cache)
-                if len(df) > 100:
+                # A pre-taxonomy cache lacks gameType; do not silently reuse it,
+                # otherwise postseason/all-star games become UNKNOWN forever.
+                if len(df) > 100 and {"game_type", "series_description"}.issubset(df.columns):
                     print(f"[MLB] using cache: {cache} ({len(df)})")
                     return self._normalize_mlb_games(df)
             except Exception:
@@ -518,6 +521,12 @@ class BaseballBacktest:
                         "home_score": home.get("score", np.nan),
                         "away_score": away.get("score", np.nan),
                         "home_starter": hp, "away_starter": ap,
+                        # MLB StatsAPI exposes gameType at the game level; retain
+                        # it alongside seriesDescription so competition routing is
+                        # deterministic and auditable.
+                        "game_type": str(game.get("gameType") or ""),
+                        "series_description": str(game.get("seriesDescription") or ""),
+                        "season": str(game.get("season") or year),
                         "venue": (game.get("venue") or {}).get("name", ""),
                         "confirmed_starters": bool(hp and ap),
                     })
@@ -578,6 +587,20 @@ class BaseballBacktest:
         out["datetime"] = pd.to_datetime(out["datetime"], errors="coerce", utc=True)
         out = out.dropna(subset=["datetime", "home_score", "away_score", "home", "away"])
         out["league"] = "MLB"
+        if "game_type" not in out.columns:
+            out["game_type"] = ""
+        if "series_description" not in out.columns:
+            out["series_description"] = ""
+        labels = [
+            classify_mlb(gt, sd)
+            for gt, sd in zip(out["game_type"].fillna(""), out["series_description"].fillna(""))
+        ]
+        out["competition"] = [x.competition for x in labels]
+        out["competition_stage"] = [x.stage for x in labels]
+        out["season_type"] = [x.season_type for x in labels]
+        out["game_class"] = [x.game_class for x in labels]
+        out["competition_key"] = [x.competition_key for x in labels]
+        out["competition_classification_status"] = [x.status for x in labels]
         out["game_id"] = out["game_id"].astype(str)
 
         # A starter identity is usable in prediction-time features only when
