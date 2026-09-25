@@ -67,6 +67,7 @@ def candidate_lock(*, development_metrics: Mapping[str, float], candidate_id: st
         "development_rows": rows,
         "development_metrics": dict(development_metrics),
         "holdout_evaluated": False,
+        "holdout_access": "forbidden_during_selection",
     }
 
 
