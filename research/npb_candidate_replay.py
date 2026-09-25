@@ -68,6 +68,51 @@ def _metrics(y: np.ndarray, p: np.ndarray) -> dict[str, float]:
     }
 
 
+def _select_development_candidate(
+    development: dict[str, dict[str, float]],
+    baseline: dict[str, float],
+    calibration_tolerance: float,
+) -> tuple[str, dict[str, float]] | None:
+    """Select a candidate from Development OOS with a calibration guard.
+
+    Candidates are eligible only when Development ECE is finite and no worse
+    than the baseline by more than the holdout calibration tolerance. Among
+    eligible candidates, the existing LogLoss/Brier/Accuracy ordering remains
+    unchanged. Holdout data is never consulted here.
+    """
+    if not np.isfinite(float(calibration_tolerance)) or calibration_tolerance < 0:
+        raise ValueError("calibration_tolerance must be finite and non-negative")
+    baseline_ece = float(baseline.get("ECE", float("nan")))
+    if not np.isfinite(baseline_ece):
+        raise ValueError("baseline ECE must be finite for Development selection")
+
+    eligible: list[tuple[str, dict[str, float]]] = []
+    max_ece = baseline_ece + float(calibration_tolerance)
+    for name, metrics in development.items():
+        if name == "ProductionEnsemble":
+            continue
+        try:
+            values = tuple(float(metrics[k]) for k in ("ECE", "LogLoss", "Brier", "Accuracy"))
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not all(np.isfinite(v) for v in values):
+            continue
+        if values[0] <= max_ece:
+            eligible.append((name, metrics))
+
+    if not eligible:
+        return None
+    eligible.sort(
+        key=lambda x: (
+            float(x[1]["LogLoss"]),
+            float(x[1]["Brier"]),
+            -float(x[1]["Accuracy"]),
+            x[0],
+        )
+    )
+    return eligible[0]
+
+
 def _temperature_scale(p: np.ndarray, temperature: float) -> np.ndarray:
     """Apply multiclass temperature scaling to probabilities without changing classes."""
     if not np.isfinite(temperature) or temperature <= 0:
@@ -419,9 +464,25 @@ def run_npb_candidate_cycle(
         blend_specs[blend_name] = blend_spec
 
     # Re-rank after calibration and blend challengers have been added.
-    candidates = [(name, metrics) for name, metrics in development.items() if name != "ProductionEnsemble"]
-    candidates.sort(key=lambda x: (x[1]["LogLoss"], x[1]["Brier"], -x[1]["Accuracy"], x[0]))
-    selected_name, selected_metrics = candidates[0]
+    # Candidates outside the Development calibration envelope are not sent to
+    # the locked holdout because the adoption gate would reject them anyway.
+    selected = _select_development_candidate(
+        development, baseline, config.calibration_tolerance
+    )
+    if selected is None:
+        return {
+            "stage": "development_evaluated",
+            "decision": "NO_CHANGE",
+            "baseline": baseline,
+            "candidate": None,
+            "candidate_model": None,
+            "candidate_recency_half_life": None,
+            "candidate_temperature": 1.0,
+            "validation_windows": validation_windows,
+            "development": development,
+            "selection_reason": "No candidate passed the Development calibration guard.",
+        }
+    selected_name, selected_metrics = selected
     selected_blend_spec = blend_specs.get(selected_name)
 
     if selected_blend_spec is not None:
