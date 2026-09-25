@@ -1,0 +1,149 @@
+name: NPB Dynamic Loss Router Research
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  push:
+    branches:
+      - research/dynamic-loss-router-20260926
+    paths:
+      - "research/npb_dynamic_loss_router.py"
+      - "tests/test_npb_dynamic_loss_router.py"
+      - ".github/workflows/npb_dynamic_loss_router.yml"
+      - "baseball_backtest.py"
+      - "research/npb_candidate_replay.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npb-dynamic-loss-router-research
+  cancel-in-progress: true
+
+env:
+  PYTHONPATH: .
+  PYTHONUNBUFFERED: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 260
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
+
+      - name: Unit tests
+        run: python -m pytest -q tests/test_npb_dynamic_loss_router.py
+
+      - name: Stage NPB historical PBP release data
+        env:
+          GH_TOKEN: ${{ github.token }}
+        timeout-minutes: 25
+        run: |
+          set -euo pipefail
+          mkdir -p data
+          for year in 2020 2021 2022 2023 2024 2025 2026; do
+            existing=$(find data -maxdepth 1 -type f -name "${year}-*_pbp.csv" | wc -l | tr -d ' ')
+            if [ "$existing" -gt 0 ]; then
+              echo "NPB ${year}: cached (${existing} file(s))"
+              continue
+            fi
+            downloaded=0
+            for attempt in 1 2 3; do
+              if gh release download pbp --repo armstjc/Nippon-Baseball-Data-Repository --pattern "${year}-*_pbp.csv" --dir data --clobber; then
+                downloaded=1
+                break
+              fi
+              if [ "$attempt" -lt 3 ]; then sleep $((attempt * 5)); fi
+            done
+            if [ "$downloaded" -ne 1 ]; then
+              echo "failed to stage NPB ${year}" >&2
+              exit 1
+            fi
+          done
+          test "$(find data -maxdepth 1 -name '*_pbp.csv' | wc -l | tr -d ' ')" -ge 7
+
+      - name: Run dynamic loss-router OOS research
+        env:
+          BASEBALL_TIME_BUDGET_SEC: "10800"
+          BASEBALL_HARD_CAP_SEC: "12600"
+          NPB_RETRAIN_EVERY: "180"
+          BASEBALL_INNER_JOBS: "2"
+        timeout-minutes: 225
+        run: |
+          set -euo pipefail
+          python -m research.npb_dynamic_loss_router --data-dir data
+
+      - name: Verify evidence and print key metrics
+        run: |
+          set -euo pipefail
+          test -s results/npb_dynamic_loss_router.json
+          test -s results/npb_dynamic_loss_router_development_ledger.csv
+          test -s results/npb_dynamic_loss_router_holdout_ledger.csv
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          obj = json.loads(Path("results/npb_dynamic_loss_router.json").read_text(encoding="utf-8"))
+          required = [
+              "full_development",
+              "baseline_production_ensemble",
+              "locked_holdout_dynamic_router",
+              "locked_holdout_production_ensemble",
+          ]
+          missing = [k for k in required if k not in obj]
+          if missing:
+              raise SystemExit(f"missing evidence fields: {missing}")
+
+          dev = obj["full_development"]
+          base_dev = obj["baseline_production_ensemble"]
+          hold = obj["locked_holdout_dynamic_router"]
+          hold_base = obj["locked_holdout_production_ensemble"]
+          print("Development dynamic router:", json.dumps(dev, ensure_ascii=False))
+          print("Development production baseline:", json.dumps(base_dev, ensure_ascii=False))
+          print("Locked holdout dynamic router:", json.dumps(hold, ensure_ascii=False))
+          print("Locked holdout production baseline:", json.dumps(hold_base, ensure_ascii=False))
+          print("Expert pool:", obj.get("expert_pool"))
+
+          # No automatic promotion: this workflow is evidence generation only.
+          # A candidate is interesting only if it improves both key primary
+          # metrics on the locked holdout; the gate remains a human-reviewed
+          # downstream decision.
+          print(
+              "Holdout deltas:",
+              {
+                  "accuracy": hold["Accuracy"] - hold_base["Accuracy"],
+                  "logloss": hold["LogLoss"] - hold_base["LogLoss"],
+                  "brier": hold["Brier"] - hold_base["Brier"],
+                  "ece": hold["ECE"] - hold_base["ECE"],
+              },
+          )
+          PY
+
+      - name: Upload dynamic-router evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: npb-dynamic-loss-router-${{ github.run_id }}
+          path: |
+            results/npb_dynamic_loss_router.json
+            results/npb_dynamic_loss_router_development_ledger.csv
+            results/npb_dynamic_loss_router_holdout_ledger.csv
+          if-no-files-found: warn
+          retention-days: 30
