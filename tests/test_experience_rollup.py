@@ -4,6 +4,7 @@ from pathlib import Path
 import pandas as pd
 
 import research.experience_rollup as roll
+import research.experience_ledger as ledger
 
 
 def _write_prediction(root: Path, *, cutoff: str, game_id: str = "NPB-2026-09-26-1"):
@@ -107,6 +108,27 @@ def test_rollup_rejects_post_start_prediction(tmp_path, monkeypatch):
     result = roll.rollup()
     assert result["snapshot_rows"] == 0
     assert result["status"] == "NO_PREGAME_PREDICTIONS"
+
+
+def test_reconcile_persists_no_completed_results_status(tmp_path, monkeypatch):
+    exp = tmp_path / "experience"
+    monkeypatch.setattr(ledger, "EXPERIENCE", exp)
+    monkeypatch.setattr(ledger, "SUMMARY_PATH", exp / "experience_summary.json")
+
+    pred = pd.DataFrame(
+        [{
+            "game_id": "NPB-2026-09-26-1",
+            "datetime_jst": pd.Timestamp("2026-09-26T14:00:00+09:00"),
+            "prediction_cutoff_utc": pd.Timestamp("2026-09-26T02:00:00+00:00"),
+        }]
+    )
+    monkeypatch.setattr(ledger, "_load_predictions", lambda: pred)
+    monkeypatch.setattr(ledger, "_load_cached_results", lambda dates: pd.DataFrame())
+
+    result = ledger.reconcile()
+    persisted = json.loads((exp / "experience_summary.json").read_text(encoding="utf-8"))
+    assert result["status"] == "NO_COMPLETED_RESULTS"
+    assert persisted == result
 
 
 def test_rollup_low_high_threshold_uses_normalized_probability_scale():
