@@ -125,9 +125,17 @@ def main() -> None:
     conformal_eval = split_conformal_sets(fit_p[names[0]], y_fit, eval_p[names[0]])
 
     ablation = {
-        "Baseline": metrics(y_eval, dev_predictions["ProductionEnsemble"][cut:]),
-        "Disagreement_Predictability_Failure_Drift": metrics(y_eval, routed_eval["probabilities"]),
-        "Plus_Retrieval": fused["metrics"],
+        "A_CurrentProduction": metrics(y_eval, dev_predictions["ProductionEnsemble"][cut:]),
+        "B_Disagreement": metrics(y_eval, controller.route(eval_p, mode="B")["probabilities"]),
+        "C_Predictability": metrics(y_eval, controller.route(eval_p, mode="C")["probabilities"]),
+        "D_FutureFailure": metrics(y_eval, controller.route(eval_p, mode="D")["probabilities"]),
+        "E_Drift": metrics(y_eval, controller.route(eval_p, mode="E")["probabilities"]),
+        "F_Disagreement_Predictability": metrics(y_eval, controller.route(eval_p, mode="F")["probabilities"]),
+        "G_Disagreement_Failure": metrics(y_eval, controller.route(eval_p, mode="G")["probabilities"]),
+        "H_Predictability_Failure": metrics(y_eval, controller.route(eval_p, mode="H")["probabilities"]),
+        "I_Drift_Failure": metrics(y_eval, controller.route(eval_p, mode="I")["probabilities"]),
+        "J_All_Three_CoreLayers": metrics(y_eval, routed_eval["probabilities"]),
+        "K_All_Three_Plus_Retrieval": fused["metrics"],
     }
     selective = selective_metrics(y_eval, fused["probabilities"], fused["confidence"] if "confidence" in fused else fused["probabilities"].max(axis=1))
 
