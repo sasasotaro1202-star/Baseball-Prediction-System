@@ -111,7 +111,14 @@ def _model_panel(df: pd.DataFrame, league: str) -> tuple[dict[str, np.ndarray], 
     return models, losses
 
 
-def run_real_oos_bridge(\n    path: str | Path,\n    *,\n    league: str,\n    data_snapshot_id: str = "unknown",\n    pit_availability_path: str | Path | None = None,\n    pit_snapshots_path: str | Path | None = None,\n) -> dict[str, Any]:
+def run_real_oos_bridge(
+    path: str | Path,
+    *,
+    league: str,
+    data_snapshot_id: str = "unknown",
+    pit_availability_path: str | Path | None = None,
+    pit_snapshots_path: str | Path | None = None,
+) -> dict[str, Any]:
     pth = Path(path)
     if not pth.exists():
         return {
@@ -126,7 +133,11 @@ def run_real_oos_bridge(\n    path: str | Path,\n    *,\n    league: str,\n    d
     # Enrich only from exact, append-only PIT ledger matches. Missing evidence
     # remains unresolved; no game-time/retrieval-time inference is permitted.
     try:
-        df, pit_join = attach_pit_evidence(\n            df,\n            availability_path=pit_availability_path or (Path(__file__).resolve().parents[1] / "data" / "pit" / "availability_observations.jsonl"),\n            snapshots_path=pit_snapshots_path or (Path(__file__).resolve().parents[1] / "data" / "pit" / "source_snapshots.jsonl"),\n        )
+        df, pit_join = attach_pit_evidence(
+            df,
+            availability_path=pit_availability_path or (Path(__file__).resolve().parents[1] / "data" / "pit" / "availability_observations.jsonl"),
+            snapshots_path=pit_snapshots_path or (Path(__file__).resolve().parents[1] / "data" / "pit" / "source_snapshots.jsonl"),
+        )
     except Exception as exc:
         pit_join = {
             "status": "BLOCKED",
