@@ -49,7 +49,7 @@ def test_multi_model_panel_never_fabricates():
     q = p.copy()
     q["model"] = "A"
     p["model"] = "A"
-    q["model"] = "B"
+    q["model"] = "A"
     # Duplicate model panel intentionally remains structurally invalid through
     # duplicate game/model identities after concatenation.
     panel = pd.concat([p, q], ignore_index=True)
