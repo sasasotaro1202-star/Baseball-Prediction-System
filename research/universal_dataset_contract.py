@@ -13,7 +13,7 @@ import pandas as pd
 
 from data.source_registry import SOURCES
 from research.competition_catalog import get_scope
-from research.universal_source_matrix import pit_safe_rows
+from research.universal_source_matrix import pit_safe_rows, source_capabilities
 
 
 IDENTITY_COLUMNS = (
@@ -86,11 +86,7 @@ def normalize_research_frame(
     out["competition_gender"] = scope.gender
     out["outcome_contract"] = scope.outcome_contract
     out["rule_family"] = scope.rule_family
-    out["source_capability_contract"] = [
-        ",".join(sorted(
-            next(s for s in SOURCES if s.source_id == source_id).feature.split(",")
-        ))
-    ] * len(out)
+    out["source_capability_contract"] = [",".join(sorted(source_capabilities(source_id)))] * len(out)
     return out
 
 
