@@ -69,3 +69,19 @@ def test_every_registered_source_is_applied_to_at_least_one_scope():
     assert registered <= applied, (
         f"registered sources not applied to any scope: {sorted(registered - applied)}"
     )
+
+
+def test_global_sources_have_expected_scope_bindings():
+    checks = {
+        "WBC": "wbc_official_stats",
+        "WBSC_WomensBaseball": "wbsc_womens_baseball",
+        "LittleLeague_WorldSeries": "little_league_world_series",
+        "CapeCod": "cape_cod_league",
+        "WBSC_Europe": "wbsc_europe_baseball",
+        "LIDOM": "lidom_mlb_winter",
+        "LVBP": "lvbp_official",
+        "LBPRC": "lbprc_official",
+        "LMP": "lmp_mlb_winter",
+    }
+    for scope_id, source_id in checks.items():
+        assert source_id in {r["source_id"] for r in application_plan(scope_id)}
