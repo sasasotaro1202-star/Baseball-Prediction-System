@@ -1381,6 +1381,16 @@ class BaseballBacktest:
         return np.clip(w, 0.20, 1.0)
 
     def _fit_model(self, model, X, y, weights=None, league="NPB"):
+        # Defensive shape normalization keeps estimator APIs on the documented
+        # 2D feature contract without changing chronology or target semantics.
+        if isinstance(X, pd.Series):
+            X = X.to_frame()
+        elif not isinstance(X, pd.DataFrame):
+            X = pd.DataFrame(X)
+        y = np.asarray(y).reshape(-1)
+        if weights is not None:
+            weights = np.asarray(weights, dtype=float).reshape(-1)
+
         # A bounded recent-prefix window controls runtime while preserving
         # chronology: every retained row is still earlier than the OOS target.
         rows_in = int(len(X))
