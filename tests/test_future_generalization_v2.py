@@ -58,8 +58,9 @@ def test_safety_fails_closed_on_nan():
 
 def test_selective_metrics_reports_fixed_coverages():
     y, p = _probs(200)
-    conf = p.max(axis=1)
-    out = selective_metrics(y, p, conf)
+    mean_p = np.mean(np.stack(list(p.values()), axis=0), axis=0)
+    conf = mean_p.max(axis=1)
+    out = selective_metrics(y, mean_p, conf)
     assert set(out) == {"100%", "95%", "90%", "80%", "70%"}
     assert out["100%"]["Coverage"] == 1.0
     assert out["70%"]["rows"] <= out["80%"]["rows"]
