@@ -1,6 +1,8 @@
 name: Baseball Universal Readiness Audit
 
 on:
+  schedule:
+    - cron: "31 2 * * *"
   push:
     paths:
       - "research/universal_readiness.py"
