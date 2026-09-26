@@ -74,3 +74,36 @@ def test_snapshot_after_cutoff_is_rejected(tmp_path: Path):
 
     assert report["matched_rows"] == 0
     assert out.loc[0, "pit_join_status"] == "UNRESOLVED"
+
+def test_latest_snapshot_after_cutoff_does_not_hide_earlier_safe_snapshot(tmp_path: Path):
+    av = tmp_path / "availability.jsonl"
+    snap = tmp_path / "snapshots.jsonl"
+    av.write_text(json.dumps({
+        "game_id": "G2",
+        "event_id": "MLB:G2",
+        "prediction_cutoff": "2026-09-10T10:00:00Z",
+        "observed_at": "2026-09-10T10:00:00Z",
+    }) + "\n", encoding="utf-8")
+    snap.write_text(
+        "\n".join([
+            json.dumps({
+                "entity_id": "MLB:G2",
+                "event_id": "MLB:G2",
+                "available_at": "2026-09-10T09:00:00Z",
+                "status": "KNOWN",
+            }),
+            json.dumps({
+                "entity_id": "MLB:G2",
+                "event_id": "MLB:G2",
+                "available_at": "2026-09-10T11:00:00Z",
+                "status": "KNOWN",
+            }),
+        ]) + "\n",
+        encoding="utf-8",
+    )
+    oos = pd.DataFrame([{"game_id": "G2", "datetime": "2026-09-10T12:00:00Z"}])
+    out, report = attach_pit_evidence(oos, availability_path=av, snapshots_path=snap)
+
+    assert report["status"] == "PIT_COMPLETE"
+    assert out.loc[0, "pit_join_status"] == "PIT_VERIFIED"
+    assert out.loc[0, "available_at"] == pd.Timestamp("2026-09-10T09:00:00Z")
