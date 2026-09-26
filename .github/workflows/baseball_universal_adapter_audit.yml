@@ -1,0 +1,38 @@
+name: Baseball Universal Adapter Coverage Audit
+
+on:
+  schedule:
+    - cron: "47 2 * * *"
+  push:
+    paths:
+      - "research/universal_adapter_registry.py"
+      - "research/universal_readiness.py"
+      - "data/source_registry.py"
+      - "tests/test_universal_adapter_registry.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install minimal dependencies
+        run: python -m pip install --disable-pip-version-check pandas pytest
+      - name: Test adapter registry
+        run: python -m pytest -q tests/test_universal_adapter_registry.py tests/test_universal_readiness.py
+      - name: Generate adapter coverage report
+        run: python -m research.universal_adapter_registry > universal_adapter_audit.json
+      - name: Upload adapter audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: baseball-universal-adapter-audit
+          path: universal_adapter_audit.json
+          if-no-files-found: error
+          retention-days: 14
