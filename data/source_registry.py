@@ -57,6 +57,10 @@ SOURCES = (
     SourceSpec("omyu_womens_junior", "Japan-WomensJunior", "game_and_pitch_by_pitch", "一球速報.com / OmyuTech", 2, False, "public pages vary by organizer; machine access and PIT require validation"),
     SourceSpec("samurai_u23", "Japan-U23", "national_team_results_and_rosters", "Japan Baseball / WBSC-related U23 competitions", 1, False, "official results are public; bulk historical PIT/PBP availability is unverified"),
     SourceSpec("wbsc_age_group_reports", "WBSC-U12-U15-U18-U23", "tournament_reports_and_stats", "WBSC official tournament reports", 1, False, "historical reports are public; prediction-time availability and bulk PBP must be proven"),
+    SourceSpec("omyu_independent", "Japan-Independent", "game_and_pitch_by_pitch", "一球速報.com / OmyuTech", 1, False, "public pages vary by organizer; machine access, terms and PIT require validation"),
+    SourceSpec("iblj_official_stats", "Japan-Independent", "league_and_player_stats", "https://data.iblj.co.jp/", 1, False, "official public statistics; historical availability boundary must be audited"),
+    SourceSpec("bcl_official_stats", "Japan-Independent", "league_and_player_stats", "https://www.bc-l-data.jp/", 1, False, "official public statistics; historical availability boundary must be audited"),
+    SourceSpec("yahoo_ipbl_stats", "Japan-Independent", "league_and_player_stats", "Yahoo! Sports 独立リーグ", 2, False, "public statistics; publication boundary and access terms require audit"),
 )
 
 
@@ -66,3 +70,4 @@ def registry() -> list[dict[str, Any]]:
 
 def resolve(league: str, feature: str) -> list[SourceSpec]:
     return [s for s in SOURCES if (s.league == league or s.league == "NPB+MLB") and s.feature == feature]
+
