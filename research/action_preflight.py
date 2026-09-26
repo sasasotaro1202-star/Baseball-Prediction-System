@@ -27,6 +27,7 @@ REQUIRED_MODULES = (
     "research.validation_pipeline",
     "research.adoption_gate",
     "research.closed_loop_governance",
+    "research.oos_pit_join",
     "prediction.runner",
     "prediction.prediction_log",
     "prediction.score_distribution",
@@ -53,6 +54,7 @@ REQUIRED_FILES = (
     Path("evaluation/calibration.py"),
     Path("core/atomic_io.py"),
     Path("research/closed_loop_governance.py"),
+    Path("research/oos_pit_join.py"),
 )
 
 WORKFLOW_DIR = ROOT / ".github" / "workflows"
