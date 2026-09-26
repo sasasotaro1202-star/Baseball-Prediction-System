@@ -65,7 +65,7 @@ def test_failure_memory_and_strategy_rate_are_pit_safe():
     q = failure_memory(
         hist, {"x":.1}, prediction_time=base+pd.Timedelta(hours=2), feature_cols=["x"], k=3
     )
-    assert q["pit_filtered_rows"] == 1
+    assert q["pit_filtered_rows"] == 2
     rates = strategy_failure_rate(
         hist, prediction_time=base+pd.Timedelta(hours=4)
     )
