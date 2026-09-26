@@ -66,7 +66,9 @@ def test_complete_model_panel_adds_error_and_future_failure_diagnostics():
     q["model"] = "B"
     q["pred_home"] = .55
     q["pred_away"] = .45
-    panel = pd.concat([p, q], ignore_index=True)
+    panel = pd.concat([p, q], ignore_index=True).sort_values(
+        ["prediction_time", "game_id", "model"], kind="mergesort"
+    ).reset_index(drop=True)
     path = "/tmp/ultimate_v13_complete_panel.csv"
     panel.to_csv(path, index=False)
     report = run_real_oos_bridge(path, league="MLB")
