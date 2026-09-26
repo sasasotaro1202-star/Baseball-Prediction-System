@@ -1,0 +1,27 @@
+name: Baseball Universal Scope Matrix Gate
+
+on:
+  push:
+    paths:
+      - "research/competition_catalog.py"
+      - "research/universal_source_matrix.py"
+      - "data/source_registry.py"
+      - "tests/test_universal_source_matrix.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install minimal dependencies
+        run: python -m pip install --disable-pip-version-check pandas pytest
+      - name: Run universal scope/PIT contract tests
+        run: python -m pytest -q tests/test_universal_source_matrix.py
