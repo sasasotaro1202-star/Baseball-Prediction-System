@@ -1351,7 +1351,7 @@ class BaseballBacktest:
         # portfolio. The production/default portfolio remains unchanged, and
         # the allow-list fails closed rather than silently falling back to a
         # different model set.
-        pool_raw = os.getenv("BASEBALL_FAST_MODEL_POOL", "").strip()
+        pool_raw = os.getenv(f"BASEBALL_FAST_MODEL_POOL_{league}", os.getenv("BASEBALL_FAST_MODEL_POOL", "")).strip()
         if fast and pool_raw:
             requested = [name.strip() for name in pool_raw.split(",") if name.strip()]
             unknown = [name for name in requested if name not in m]
