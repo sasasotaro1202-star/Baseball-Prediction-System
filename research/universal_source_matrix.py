@@ -45,6 +45,7 @@ SOURCE_CAPABILITIES: dict[str, frozenset[str]] = {
     "npb_hawkeye_npbplus": frozenset({"tracking", "pitching", "batting", "fielding"}),
     "npb_public_spaia_pbp": frozenset({"play_by_play", "pitching", "batting", "lineups"}),
     "armstjc_npb_repository": frozenset({"schedule_identity", "play_by_play", "batting", "pitching"}),
+    "wocchi09_npb_data": frozenset({"play_by_play", "tracking", "pitching", "batting"}),
     "mlb_statsapi": frozenset({"schedule_identity", "roster", "batting", "pitching", "fielding"}),
     "mlb_starters": frozenset({"starting_pitchers"}),
     "mlb_milb_statcast": frozenset({"tracking", "pitching", "batting"}),
@@ -77,13 +78,11 @@ SOURCE_CAPABILITIES: dict[str, frozenset[str]] = {
     "fangraphs": frozenset({"batting", "pitching", "fielding"}),
     "weather": frozenset({"weather"}),
     "x_api_recent_search": frozenset({"news_context"}),
+    "lahman": frozenset({"schedule_identity", "batting", "pitching", "fielding"}),
 }
 
 _SHARED_SOURCES = {
     "weather",
-    "fangraphs",
-    "retrosheet",
-    "statcast",
 }
 
 
