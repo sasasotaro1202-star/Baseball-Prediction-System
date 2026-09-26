@@ -1,8 +1,9 @@
 """Strict PIT evidence join for chronological baseball OOS artifacts.
 
-Only exact game/event matches from the append-only PIT ledger are joined.
-No timestamps are inferred from game time, retrieval time, or post-game data.
-Rows without sufficient evidence remain unresolved.
+Only exact prediction-cutoff matches from the append-only PIT ledger are joined.
+No prediction timestamp is reconstructed from event time, retrieval time, or
+"latest observation before the game". Rows without an explicit OOS prediction
+timestamp remain unresolved.
 """
 from __future__ import annotations
 
@@ -46,19 +47,40 @@ def attach_pit_evidence(
     if event_dt.isna().any():
         raise ValueError("OOS artifact contains invalid datetime")
 
+    explicit_pt = None
+    if "prediction_time" in out.columns:
+        explicit_pt = pd.to_datetime(out["prediction_time"], errors="coerce", utc=True).reset_index(drop=True)
+    out["available_at"] = pd.NaT
+    out["pit_join_status"] = "UNRESOLVED"
+    out["pit_join_reason"] = "prediction_time_not_recorded_in_oos"
+
     av = _read_jsonl(Path(availability_path))
     snap = _read_jsonl(Path(snapshots_path))
 
+    if explicit_pt is None:
+        return out, {
+            "status": "NO_EXPLICIT_PREDICTION_TIME",
+            "oos_rows": int(len(out)),
+            "matched_rows": 0,
+            "coverage": 0.0,
+            "unmatched_rows": int(len(out)),
+            "fully_verified": False,
+            "reason": "historical OOS artifact does not carry the original prediction_time",
+        }
+
+    invalid_pt = explicit_pt.isna()
+    out.loc[invalid_pt, "pit_join_reason"] = "prediction_time_missing_or_invalid"
     if av.empty:
-        report = {
+        out.loc[~invalid_pt, "pit_join_reason"] = "availability_ledger_empty"
+        return out, {
             "status": "NO_EVIDENCE",
             "oos_rows": int(len(out)),
             "matched_rows": 0,
             "coverage": 0.0,
             "unmatched_rows": int(len(out)),
+            "fully_verified": False,
             "reason": "availability_ledger_empty",
         }
-        return _add_columns(out, None, None, None), report
 
     av["game_id"] = av.get("game_id", pd.Series(dtype=str)).astype(str).str.strip()
     av["prediction_cutoff_dt"] = pd.to_datetime(
@@ -82,33 +104,38 @@ def attach_pit_evidence(
         for eid in list(snap_by_id):
             snap_by_id[eid].sort(key=lambda x: x[0])
 
-    evidence = []
+    evidence: list[tuple[Any, Any, str, str]] = []
     for idx, row in out.iterrows():
         gid = str(row["game_id"]).strip()
-        cutoff_event = event_dt.iloc[idx]
-        candidates = av[av["game_id"] == gid].copy()
-        if candidates.empty:
-            evidence.append((None, None, "UNRESOLVED", "game_id_not_in_pit_ledger"))
+        pt = explicit_pt.iloc[idx]
+        if pd.isna(pt):
+            evidence.append((None, None, "UNRESOLVED", "prediction_time_missing_or_invalid"))
             continue
-        safe = candidates[
-            candidates["prediction_cutoff_dt"].notna()
-            & (candidates["prediction_cutoff_dt"] <= cutoff_event)
+        if pt > event_dt.iloc[idx]:
+            evidence.append((None, pt, "UNRESOLVED", "prediction_time_after_event_time"))
+            continue
+
+        candidates = av[
+            (av["game_id"] == gid)
+            & av["prediction_cutoff_dt"].notna()
+            & (av["prediction_cutoff_dt"] == pt)
         ].copy()
-        if safe.empty:
-            evidence.append((None, None, "UNRESOLVED", "no_pit_cutoff_at_or_before_event"))
+        if candidates.empty:
+            evidence.append((None, pt, "UNRESOLVED", "no_exact_pit_record_at_prediction_time"))
             continue
-        safe = safe.sort_values("prediction_cutoff_dt")
-        chosen = safe.iloc[-1]
-        cutoff = chosen["prediction_cutoff_dt"]
+
+        # Exact event/cutoff identity is required. Never substitute the latest
+        # earlier cutoff because doing so would reconstruct a prediction time.
+        chosen = candidates.sort_values("observed_at_dt").iloc[-1]
         sid = str(chosen.get("event_id", "")).strip()
-        candidates = snap_by_id.get(sid) or snap_by_id.get(gid) or []
-        safe_snapshots = [item for item in candidates if item[0] <= cutoff]
+        snapshot_candidates = snap_by_id.get(sid) or snap_by_id.get(gid) or []
+        safe_snapshots = [item for item in snapshot_candidates if item[0] <= pt]
         if not safe_snapshots:
-            evidence.append((None, cutoff, "UNRESOLVED", "matching_snapshot_missing_or_after_cutoff"))
+            evidence.append((None, pt, "UNRESOLVED", "matching_snapshot_missing_or_after_prediction_time"))
             continue
-        available, snap_row = safe_snapshots[-1]
-        # The source itself explicitly records the snapshot as KNOWN.
-        evidence.append((available, cutoff, "PIT_VERIFIED", "exact_game_snapshot"))
+
+        available, _snap_row = safe_snapshots[-1]
+        evidence.append((available, pt, "PIT_VERIFIED", "exact_game_and_prediction_cutoff"))
 
     out["available_at"] = [x[0] for x in evidence]
     out["prediction_time"] = [x[1] for x in evidence]
@@ -125,17 +152,3 @@ def attach_pit_evidence(
         "fully_verified": bool(matched == len(out)),
     }
     return out, report
-
-
-def _add_columns(
-    out: pd.DataFrame,
-    available_at: Any,
-    prediction_time: Any,
-    status: Any,
-) -> pd.DataFrame:
-    out = out.copy()
-    out["available_at"] = available_at
-    out["prediction_time"] = prediction_time
-    out["pit_join_status"] = status if status is not None else "UNRESOLVED"
-    out["pit_join_reason"] = "availability_ledger_empty"
-    return out
