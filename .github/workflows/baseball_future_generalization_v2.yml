@@ -1,0 +1,47 @@
+name: Baseball Future Generalization v2 Research
+
+on:
+  pull_request:
+    paths:
+      - 'research/future_generalization_v2.py'
+      - 'research/run_future_generalization_v2_npb.py'
+      - 'tests/test_future_generalization_v2.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements-ci.txt
+      - run: python -m pytest -q tests/test_future_generalization_v2.py
+
+  npb-research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements-ci.txt
+      - name: Run NPB Future Generalization v2
+        env:
+          PIT_SAFE_STARTER_DATA: '0'
+          BASEBALL_FAST_OOS: '1'
+          BASEBALL_SCORE_FAST_VALIDATION: '1'
+        run: python research/run_future_generalization_v2_npb.py
+      - name: Upload research artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: future-generalization-v2-npb
+          path: research_outputs/future_generalization_v2_npb.json
+          if-no-files-found: error
