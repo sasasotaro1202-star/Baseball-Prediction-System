@@ -55,3 +55,17 @@ def test_manifest_is_auditable():
     assert m["events"] == 1
     assert m["pit_status"] == "PASS"
     assert m["required_pit_rule"] == "available_at <= prediction_time"
+
+
+def test_source_not_bound_to_scope_is_rejected():
+    with pytest.raises(UniversalContractError):
+        normalize_research_frame(
+            _frame(),
+            scope_id="Japan_HighSchool",
+            source_id="statcast",
+        )
+
+
+def test_manifest_records_actual_capabilities():
+    m = research_manifest(_frame(), scope_id="Japan_HighSchool", source_id="omyu_high_school")
+    assert "play_by_play" in m["feature_columns_present"] or m["feature_columns_present"] == ["batting"]
