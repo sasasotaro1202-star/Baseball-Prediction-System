@@ -73,6 +73,8 @@ SOURCES = (
     SourceSpec("wbsc_europe_baseball", "WBSC-Europe", "european_baseball_competitions", "WBSC Europe", 1, False, "official competitions/rules/reports are public; bulk PBP/PIT availability varies"),
     SourceSpec("knbsb_baseball", "Netherlands-Baseball", "league_and_youth_competitions", "KNBSB", 2, False, "official competition schedules/results/stats and youth classes are public; structured PIT requires validation"),
     SourceSpec("openbiomechanics", "Cross-Level-Research", "biomechanics_player_prior", "Driveline OpenBiomechanics Project", 2, False, "public research dataset; not game-time evidence, small research cohort, player linkage/PIT required"),
+    SourceSpec("jaba_official", "Japan-Amateur", "corporate_baseball_competitions", "https://www.jaba.or.jp/", 1, False, "official schedules/results are public; structured PBP and historical PIT require validation"),
+    SourceSpec("big6_scorebook", "Japan-University", "university_league_records", "https://big6scorebook.jp/", 1, False, "official record room exposes schedules, results and player/team records; granular PIT requires validation"),
 )
 
 
