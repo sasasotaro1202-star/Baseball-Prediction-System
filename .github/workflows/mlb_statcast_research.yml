@@ -1,0 +1,76 @@
+name: MLB Statcast Research Collection
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Recent calendar days to collect (1-14)"
+        required: false
+        default: "7"
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - "data/mlb_statcast.py"
+      - "tests/test_mlb_statcast.py"
+      - ".github/workflows/mlb_statcast_research.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mlb-statcast-research
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install dependencies
+        run: python -m pip install --disable-pip-version-check --retries 5 --timeout 120 --prefer-binary -r requirements.txt
+      - name: Run focused tests
+        run: python -m pytest -q tests/test_mlb_statcast.py
+      - name: Collect Statcast research data
+        env:
+          DAYS: ${{ inputs.days || '7' }}
+        run: |
+          set -euo pipefail
+          days="${DAYS}"
+          if ! [[ "${days}" =~ ^[0-9]+$ ]]; then
+            echo "days must be an integer" >&2
+            exit 1
+          fi
+          days=$((days < 1 ? 1 : days > 14 ? 14 : days))
+          python -m data.mlb_statcast --days "${days}" --output-dir data/mlb_statcast
+      - name: Validate fail-closed research contract
+        run: |
+          set -euo pipefail
+          test -s data/mlb_statcast/manifest.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          obj = json.loads(Path("data/mlb_statcast/manifest.json").read_text(encoding="utf-8"))[0]
+          assert obj["tracking_pit_status"] == "UNVERIFIED"
+          assert obj["historical_backtest_eligible"] is False
+          assert obj["production_eligible"] is False
+          assert int(obj["rows_games"]) >= 0
+          print(json.dumps(obj, ensure_ascii=False, indent=2))
+          PY
+      - name: Upload Statcast research artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: mlb-statcast-research-${{ github.run_id }}
+          path: |
+            data/mlb_statcast/**
+          if-no-files-found: error
+          retention-days: 14
