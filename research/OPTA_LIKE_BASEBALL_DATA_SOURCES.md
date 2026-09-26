@@ -238,3 +238,56 @@ The same target schema should not assume identical rules. Each competition must
 carry rule metadata such as innings, tie handling, extra-inning format, mercy/run
 rule, mound/distance conventions, designated hitter usage, and age class before
 cross-competition modeling.
+
+
+## Japanese Independent Leagues — 2026-09-27
+
+### 四国アイランドリーグplus
+- Official public data site exposes schedule/current games, standings, head-to-head
+  results, batting and pitching statistics.
+- Current season data is publicly viewable; historical prediction-time
+  availability still requires PIT reconstruction before OOS use.
+- Source: https://data.iblj.co.jp/
+
+### ルートインBCリーグ
+- Official data site exposes standings, head-to-head results, batting and
+  pitching statistics for multiple seasons.
+- Source: https://www.bc-l-data.jp/
+
+### 一球速報.com / OmyuTech — independent leagues
+- OmyuTech indexes Japanese independent leagues including the BC League and
+  Shikoku Island League and exposes team, schedule and competition pages.
+- Machine-access method, terms and historical PIT remain verification gates.
+- Source: https://baseball.omyutech.com/
+
+### Yahoo! Sports independent leagues
+- Public independent-league player statistics provide a secondary cross-check
+  for Japanese independent-league performance.
+- Source: https://baseball.yahoo.co.jp/ipbl/stats/
+
+Status: RESEARCH / HIGH-VALUE DOMESTIC INDEPENDENT-LEAGUE COVERAGE.
+
+## Universal scope application — 2026-09-27
+
+All currently registered baseball sources are mapped to an explicit competition
+scope in:
+- `research/competition_catalog.py`
+- `research/universal_source_matrix.py`
+
+The current catalog covers professional, college, high-school, junior,
+elementary and international age-group scopes. Source capabilities are mapped
+to canonical signals such as schedule identity, starters, lineups, batting,
+pitching, fielding, bullpen, PBP, tracking, weather, news context and
+tournament rules.
+
+Application is additive and fail-closed:
+- a source is applied only to scopes for which it is explicitly registered;
+- missing information remains missing and is never converted to zero;
+- historical research requires explicit `available_at <= prediction_time`;
+- unknown PIT status is rejected;
+- rule differences remain competition metadata rather than being silently
+  normalized away.
+
+This is the application layer requested for the collected source inventory.
+It is research-only until each source passes its own PIT, data-quality,
+chronological OOS, calibration and robustness gates.
