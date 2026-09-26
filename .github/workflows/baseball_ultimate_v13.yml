@@ -115,6 +115,8 @@ jobs:
         run: |
           set -euo pipefail
           test -s results/future_generalization_v13_report.json
+          test -s results/ultimate_v13_operational_smoke.json
+          test -s results/ultimate_v13_real_oos_smoke.csv
           python - <<'PY'
           import json
           from pathlib import Path
