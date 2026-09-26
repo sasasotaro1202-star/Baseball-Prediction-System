@@ -272,6 +272,31 @@ jobs:
           path: results/checkpoints
           key: baseball-oos-checkpoints-v3-${{ runner.os }}-${{ hashFiles('requirements.txt', 'baseball_backtest.py', 'research_runner_v6.py', 'research/regime_router.py', 'research/correlated_score.py', 'research/backtest_output_contract.py', 'prediction/score_distribution.py', 'data/npb_pbp_adapter.py') }}-${{ github.run_number }}
 
+      - name: Run Ultimate v13 Real OOS Bridge
+        if: always()
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          mkdir -p results/ultimate_v13
+          python -m research.ultimate_v13_real_oos --league NPB --path results/checkpoints/npb_walkforward.csv --output results/ultimate_v13/npb_real_oos.json --data-snapshot-id ${GITHUB_SHA}-npb
+          python -m research.ultimate_v13_real_oos --league MLB --path results/checkpoints/mlb_walkforward.csv --output results/ultimate_v13/mlb_real_oos.json --data-snapshot-id ${GITHUB_SHA}-mlb
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          paths=[Path('results/ultimate_v13/npb_real_oos.json'),Path('results/ultimate_v13/mlb_real_oos.json')]
+          for p in paths:
+              obj=json.loads(p.read_text(encoding='utf-8'))
+              print(p, json.dumps({
+                  'status':obj.get('status'),
+                  'promotion_status':obj.get('promotion_status'),
+                  'rows':obj.get('rows'),
+                  'pit':obj.get('pit'),
+                  'metrics':obj.get('metrics'),
+                  'blockers':obj.get('blockers'),
+                  'model_panel':obj.get('model_panel',{}).get('status'),
+              }, ensure_ascii=False))
+          PY
+
       - name: Verify research manifest
         timeout-minutes: 5
         run: |
