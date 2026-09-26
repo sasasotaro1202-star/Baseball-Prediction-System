@@ -291,3 +291,90 @@ Application is additive and fail-closed:
 This is the application layer requested for the collected source inventory.
 It is research-only until each source passes its own PIT, data-quality,
 chronological OOS, calibration and robustness gates.
+
+
+## Additional global and development-league sources — 2026-09-27
+
+### Latin American winter leagues
+- MLB's winter-league statistics layer currently exposes LIDOM, LVBP, LMP and
+  LBPRC statistical views.
+- LVBP also has a public live-statistics/standings portal.
+- LBPRC exposes public player batting/pitching statistics.
+- These sources are valuable for winter-player form, roster context and
+  cross-league player priors; historical PIT remains a separate requirement.
+Sources:
+https://www.mlb.com/ligas-invernales/stats/team
+https://stats.lvbp.com/
+https://www.ligapr.com/estadisticas/jugadores
+Status: HIGH-VALUE PUBLIC STATISTICS / research-first.
+
+### World Baseball Classic
+- Official MLB WBC statistics expose team and player batting/pitching views
+  for the 2026 tournament and prior editions.
+- Useful as an international tournament domain and for country/roster
+  normalization, but tournament-specific PIT and PBP granularity still need
+  explicit validation.
+Source:
+https://www.mlb.com/world-baseball-classic/stats/team
+Status: HIGH-VALUE INTERNATIONAL TOURNAMENT SOURCE.
+
+### Little League World Series
+- Little League International publishes official schedules, brackets and
+  game recaps for the 2026 LLBWS.
+- This adds a distinct youth domain that should not be mixed with high-school
+  or junior-hardball rules without explicit competition metadata.
+Sources:
+https://www.littleleague.org/world-series/2026/llbws/tournaments/world-series/
+https://www.littleleague.org/world-series/2026/llbws/bracket/
+Status: AUTHORITATIVE YOUTH RESULTS / PBP depth varies.
+
+### Cape Cod Baseball League
+- The 2026 CCBL publishes official schedule plus player/team batting and
+  pitching statistics.
+- This is an important college-summer bridge because it concentrates
+  collegiate players in a separate competition environment.
+Sources:
+https://www.capecodleague.com/about/schedule
+https://www.capecodleague.com/stats
+Status: HIGH-VALUE COLLEGE-SUMMER SOURCE.
+
+### European baseball
+- WBSC Europe provides competition/rule documentation across senior and
+  youth categories such as U12, U15, U18 and U23.
+- Czech Baseball Association's 2026 Extraliga pages expose schedules,
+  results, standings and player statistics, with historical season selectors
+  on team-stat pages.
+- KNBSB exposes Dutch competition schedules/results/statistics and youth
+  competition calendars and rules.
+Sources:
+https://www.wbsceurope.org/
+https://m.baseball.cz/soutez/prehled
+https://skokani.baseball.cz/statistiky
+https://www.knbsb.nl/competities/
+Status: HIGH-VALUE INTERNATIONAL / EUROPEAN RESEARCH SOURCES.
+
+### Biomechanics research prior
+OpenBiomechanics provides public processed biomechanics datasets for pitching,
+hitting and high-performance assessments. The current snapshot is a small
+research cohort and is not itself a game-time feed; it can only be used as a
+representation/pretraining or player-prior candidate after explicit linkage
+and temporal validity checks.
+Source:
+https://github.com/drivelineresearch/openbiomechanics
+Status: RESEARCH-ONLY / NOT PREDICTION-TIME EVIDENCE.
+
+## Newly registered application scopes
+The universal catalog now additionally includes:
+- WBC
+- WBSC Women's Baseball
+- Little League World Series
+- Cape Cod Baseball League
+- WBSC Europe
+- Netherlands Youth Baseball
+- Czech Baseball Competitions
+- LIDOM / LVBP / LBPRC / LMP
+- Japanese JABA corporate/amateur baseball
+
+Every newly added source is required to have:
+source registration → capability mapping → scope binding → PIT gate → OOS/calibration/robustness gate
+before any production eligibility.
