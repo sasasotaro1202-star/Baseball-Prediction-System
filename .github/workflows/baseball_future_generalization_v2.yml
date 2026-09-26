@@ -1,6 +1,9 @@
 name: Baseball Future Generalization v6 Research
 
 on:
+  push:
+    branches:
+      - 'research/future-generalization-v2'
   pull_request:
     paths:
       - 'research/future_generalization_v2.py'
