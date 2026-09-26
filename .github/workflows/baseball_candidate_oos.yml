@@ -120,7 +120,6 @@ jobs:
             export BASEBALL_SCORE_TREE_ESTIMATORS=60
             export BASEBALL_SCORE_HIST_MAX_ITER=100
           fi
-          set -euo pipefail
           python -m research.real_data_validation --league "${{ matrix.league }}" --mlb-start 2020 --mlb-end 2026
 
       - name: Verify lifecycle decision is explicit
