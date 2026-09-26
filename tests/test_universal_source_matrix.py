@@ -162,3 +162,17 @@ def test_australia_and_puerto_rico_youth_scopes_bind_sources():
     }
     for scope_id, source_id in checks.items():
         assert source_id in {r["source_id"] for r in application_plan(scope_id)}
+
+
+def test_brazil_multi_age_scopes_bind_cbbs():
+    for scope_id in ("Brazil_PreInfantil", "Brazil_Infantil", "Brazil_Juvenil", "Brazil_Junior"):
+        assert "cbbs_brazil_competitions" in {r["source_id"] for r in application_plan(scope_id)}
+
+
+def test_israel_all_age_scopes_bind_iab():
+    for scope_id in ("Israel_Minors", "Israel_Juveniles", "Israel_LittleLeague", "Israel_Cadets", "Israel_Juniors", "Israel_Premier"):
+        assert "iab_israel_baseball" in {r["source_id"] for r in application_plan(scope_id)}
+
+
+def test_argentina_lab_binds_official_source():
+    assert "liga_argentina_beisbol" in {r["source_id"] for r in application_plan("Argentina_LAB")}
