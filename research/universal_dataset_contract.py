@@ -6,8 +6,7 @@ unknown provenance/PIT is rejected instead of guessed.
 """
 from __future__ import annotations
 
-from dataclasses import asdict
-from typing import Any
+from typing import Any, Iterable
 
 import pandas as pd
 
@@ -48,6 +47,7 @@ def normalize_research_frame(
     scope_id: str,
     source_id: str,
     status_col: str | None = "status",
+    require_features: Iterable[str] | None = None,
 ) -> pd.DataFrame:
     """Normalize and fail-closed a collected table for one competition scope."""
     if not isinstance(frame, pd.DataFrame) or frame.empty:
@@ -55,6 +55,16 @@ def normalize_research_frame(
     scope = get_scope(scope_id)
     validate_source_id(source_id)
     applicable = {row["source_id"] for row in application_plan(scope_id)}
+    if require_features is not None:
+        requested = {str(feature) for feature in require_features}
+        unknown_features = requested - set(FEATURE_COLUMNS)
+        if unknown_features:
+            raise UniversalContractError(f"unknown canonical features: {sorted(unknown_features)}")
+        unsupported = requested - set(source_capabilities(source_id))
+        if unsupported:
+            raise UniversalContractError(
+                f"source {source_id} cannot provide requested features: {sorted(unsupported)}"
+            )
     if source_id not in applicable:
         raise UniversalContractError(
             f"source {source_id} is not registered as applicable to scope {scope_id}"
@@ -67,6 +77,9 @@ def normalize_research_frame(
     out = frame.copy()
     out["scope_id"] = scope.scope_id
     out["source_id"] = source_id
+    out["event_id"] = out["event_id"].astype(str).str.strip()
+    if out["event_id"].eq("").any() or out["event_id"].str.lower().eq("nan").any():
+        raise UniversalContractError("event_id contains blank values")
     for col in ("event_time", "prediction_time", "available_at"):
         out[col] = pd.to_datetime(out[col], errors="coerce", utc=True)
 
