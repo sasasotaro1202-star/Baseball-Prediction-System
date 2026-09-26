@@ -478,3 +478,47 @@ free-first sources for:
 
 These remain Discovery Targets until public data depth, terms, provenance and
 prediction-time availability can be established.
+
+
+## Canada / Great Britain / Australia / Puerto Rico multi-age additions — 2026-09-27
+
+### Ontario Inter County Baseball Association
+The 2026 season catalog contains 8U, 9U, 10U, 11U, 12U, 13U, 14U, 15U,
+16U, 18U and 22U classes with multiple divisions, providing unusually broad
+longitudinal youth coverage.
+Source: https://icbabaseball.ca/Seasons/Current/
+Status: HIGH-VALUE MULTI-AGE PUBLIC COMPETITION SOURCE.
+
+### Baseball Québec / Québec Women's Baseball
+Baseball Québec's 2026 championship framework spans 9U through 18U and 21U,
+with both male and female divisions. The Québec women's league publishes 2026
+rules, standings and match-data workflows.
+Sources:
+https://www.baseballquebec.com/fr/publication/federation/dates_des_championnats_2026.html
+https://www.lfbq.ca/en/index.html
+Status: HIGH-VALUE MULTI-AGE / WOMENS SOURCE FAMILY.
+
+### Great Britain Baseball
+The British Baseball Federation runs senior leagues through multiple divisions
+and has active youth competitions including U12/U14 and a new U16 national
+league in 2026.
+Sources:
+https://britishbaseball.org.uk/
+https://britishbaseball.org.uk/bbf-announces-inaugural-u16-youth-national-baseball-league-for-2026/
+Status: HIGH-VALUE SENIOR + YOUTH SOURCE FAMILY.
+
+### Baseball Australia
+The 2026 Australian Youth Championships provide U16 and U18 schedules, results,
+team batting and pitching leaderboards. Baseball Australia also publishes
+national senior and women's championship hubs.
+Sources:
+https://baseball.com.au/ayc2026/
+https://baseball.com.au/2026nationals
+Status: HIGH-VALUE MULTI-AGE / WOMENS SOURCE FAMILY.
+
+### Puerto Rico Juvenile Double-A
+The Liga de Béisbol Doble A Juvenil de Puerto Rico publishes current and prior
+season accumulated statistics through its official portal.
+Source:
+https://www.lbdajpr.org/itinerario/estadisticas
+Status: HIGH-VALUE YOUTH STATISTICS CANDIDATE.
