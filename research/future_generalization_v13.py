@@ -112,7 +112,7 @@ def model_disagreement(model_probs: Mapping[str, np.ndarray]) -> dict[str, objec
             b = names[j]
             l1 = 0.5 * np.abs(ps[i] - ps[j]).sum(axis=1)
             l2 = np.linalg.norm(ps[i] - ps[j], axis=1)
-            js = np.array([_js(ps[i, r], ps[j, r]) for r in range(n)])
+            js = np.array([_js(ps[i][r], ps[j][r]) for r in range(n)])
             cosine = np.array([_cosine_distance(ps[i, r], ps[j, r]) for r in range(n)])
             kl = np.array([
                 np.sum(ps[i, r] * np.log(
