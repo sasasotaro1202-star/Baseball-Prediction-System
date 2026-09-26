@@ -123,3 +123,8 @@ def test_germany_and_spain_age_scopes_bind_sources():
         ("Colombia_LPBC", "lpbc_colombia"),
     ):
         assert source_id in {r["source_id"] for r in application_plan(scope_id)}
+
+
+def test_us_summer_collegiate_scopes_bind_sources():
+    assert "northwoods_league" in {r["source_id"] for r in application_plan("Northwoods")}
+    assert "west_coast_league" in {r["source_id"] for r in application_plan("WestCoastLeague")}
