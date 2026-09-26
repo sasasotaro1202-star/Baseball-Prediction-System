@@ -95,3 +95,7 @@ def test_domestic_amateur_scopes_bind_official_sources():
 def test_netherlands_youth_scope_is_explicit():
     rows = application_plan("Netherlands_Youth")
     assert "knbsb_baseball" in {r["source_id"] for r in rows}
+
+
+def test_czech_baseball_scope_binds_official_source():
+    assert "czech_baseball_assoc" in {r["source_id"] for r in application_plan("Czechia_Baseball")}
