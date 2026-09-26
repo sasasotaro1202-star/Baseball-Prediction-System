@@ -268,11 +268,6 @@ jobs:
           BASEBALL_SCORE_HIST_MAX_ITER: '100'
           NPB_RETRAIN_EVERY: '300'
           MLB_ENRICH_STARTERS: '0'
-          BASEBALL_FAST_MODEL_POOL: 'Logistic,HistGB,ExtraTrees'
-          BASEBALL_FAST_MODEL_POOL_NPB: 'Logistic,HistGB,ExtraTrees,HierarchicalDrawResult'
-          BASEBALL_SCORE_FAST_VALIDATION: '1'
-          BASEBALL_SCORE_TREE_ESTIMATORS: '60'
-          BASEBALL_SCORE_HIST_MAX_ITER: '100'
         run: python -u research_runner_v6.py --league BOTH --mlb-start 2020 --mlb-end 2026 --retries 0
 
       - name: Save chronological OOS checkpoints
