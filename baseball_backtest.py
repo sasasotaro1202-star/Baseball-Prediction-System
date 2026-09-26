@@ -2082,9 +2082,9 @@ class BaseballBacktest:
             ("Tweedie", lambda: TweedieRegressor(
                 power=1.5, alpha=0.08, link="log", max_iter=1000
             )),
-            ("HistPoisson", lambda: HistGradientBoostingRegressor(loss="poisson", max_iter=180, learning_rate=0.035, max_leaf_nodes=15, l2_regularization=1.5, random_state=42)),
-            ("RFReg", lambda: RandomForestRegressor(n_estimators=180, min_samples_leaf=5, max_features=0.75, random_state=42, n_jobs=self.inner_jobs)),
-            ("ExtraTreesReg", lambda: ExtraTreesRegressor(n_estimators=180, min_samples_leaf=4, max_features=0.8, random_state=42, n_jobs=self.inner_jobs)),
+            ("HistPoisson", lambda: HistGradientBoostingRegressor(loss="poisson", max_iter=score_hist_iter, learning_rate=0.035, max_leaf_nodes=15, l2_regularization=1.5, random_state=42)),
+            ("RFReg", lambda: RandomForestRegressor(n_estimators=score_tree_estimators, min_samples_leaf=5, max_features=0.75, random_state=42, n_jobs=self.inner_jobs)),
+            ("ExtraTreesReg", lambda: ExtraTreesRegressor(n_estimators=score_tree_estimators, min_samples_leaf=4, max_features=0.8, random_state=42, n_jobs=self.inner_jobs)),
         ]
         scored=[]
         residuals_by_model={}
