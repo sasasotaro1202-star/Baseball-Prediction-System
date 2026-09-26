@@ -58,6 +58,20 @@ def test_score_fast_validation_flag_can_be_read(monkeypatch):
     monkeypatch.setenv("BASEBALL_SCORE_FAST_VALIDATION", "1")
     assert os.getenv("BASEBALL_SCORE_FAST_VALIDATION") == "1"
 
+def test_score_model_failure_message_includes_model_details():
+    bt = BaseballBacktest()
+    bt.audit.extend([
+        {"type": "score_model_error", "stage": "score_validation", "model": "Poisson", "error": "bad input"},
+        {"type": "score_model_error", "stage": "score_validation", "model": "HistPoisson", "error": "nan target"},
+    ])
+    failures = [
+        entry for entry in bt.audit
+        if entry.get("type") == "score_model_error" and entry.get("stage") == "score_validation"
+    ]
+    message = "; ".join(f"{x['model']}: {x['error']}" for x in failures[-2:])
+    assert "Poisson: bad input" in message
+    assert "HistPoisson: nan target" in message
+
 def test_configurable_hard_cap(monkeypatch):
     monkeypatch.setenv("BASEBALL_TIME_BUDGET_SEC", "7200")
     monkeypatch.setenv("BASEBALL_HARD_CAP_SEC", "12600")

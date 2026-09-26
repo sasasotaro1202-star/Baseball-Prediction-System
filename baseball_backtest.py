@@ -2133,7 +2133,19 @@ class BaseballBacktest:
                     })
                     continue
             if losses: scored.append((float(np.mean(losses)), name, factory))
-        if not scored: return None
+        if not scored:
+            failures = [
+                entry for entry in self.audit
+                if entry.get("type") == "score_model_error"
+                and entry.get("stage") == "score_validation"
+            ]
+            detail = "; ".join(
+                f"{item.get('model')}: {item.get('error')}" for item in failures[-len(specs):]
+            )
+            raise RuntimeError(
+                "No score model passed chronological validation"
+                + (f"; failures={detail}" if detail else "")
+            )
         scored.sort(key=lambda z:z[0])
         top=scored[:3]
         top_names={name for _,name,_ in top}
