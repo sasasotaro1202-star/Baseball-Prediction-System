@@ -4,6 +4,11 @@ def test_fast_model_pool_is_explicit_and_bounded(monkeypatch):
     monkeypatch.setenv("BASEBALL_FAST_OOS", "1")
     monkeypatch.setenv(
         "BASEBALL_FAST_MODEL_POOL",
+        "Logistic,HistGB,ExtraTrees",
+        # NPB-only challenger is selected through the league-specific override.
+    )
+    monkeypatch.setenv(
+        "BASEBALL_FAST_MODEL_POOL_NPB",
         "Logistic,HistGB,ExtraTrees,HierarchicalDrawResult",
     )
     bt = BaseballBacktest()
