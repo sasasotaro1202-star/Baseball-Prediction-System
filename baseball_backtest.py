@@ -1305,6 +1305,10 @@ class BaseballBacktest:
         lgbm_estimators = self._env_int("BASEBALL_LGBM_ESTIMATORS", 180 if fast else 300, minimum=1)
         xgb_estimators = self._env_int("BASEBALL_XGB_ESTIMATORS", 120 if fast else 300, minimum=1)
         cat_iterations = self._env_int("BASEBALL_CATBOOST_ITERATIONS", 120 if fast else 300, minimum=1)
+        cat_random_strength = float(os.getenv("BASEBALL_CATBOOST_RANDOM_STRENGTH", "1.0"))
+        if not np.isfinite(cat_random_strength) or cat_random_strength < 0:
+            raise ValueError("BASEBALL_CATBOOST_RANDOM_STRENGTH must be finite and >= 0")
+        cat_deterministic = os.getenv("BASEBALL_CATBOOST_DETERMINISTIC", "0") == "1"
 
         m: Dict[str, Any] = {
             "Logistic": Pipeline([("scale", StandardScaler()), ("m", LogisticRegression(C=0.5, max_iter=2500, class_weight="balanced", random_state=RANDOM_STATE))]),
@@ -1330,7 +1334,12 @@ class BaseballBacktest:
         if XGBClassifier is not None:
             m["XGBoost"] = XGBClassifier(n_estimators=xgb_estimators, max_depth=4, learning_rate=0.025, min_child_weight=8, subsample=0.85, colsample_bytree=0.8, reg_alpha=0.2, reg_lambda=3.0, objective="multi:softprob" if k==3 else "binary:logistic", num_class=k if k==3 else None, eval_metric="mlogloss" if k==3 else "logloss", tree_method="hist", random_state=RANDOM_STATE, n_jobs=self.inner_jobs)
         if CatBoostClassifier is not None:
-            m["CatBoost"] = CatBoostClassifier(iterations=cat_iterations, depth=6, learning_rate=0.03, loss_function="MultiClass" if k==3 else "Logloss", verbose=False, random_seed=RANDOM_STATE, thread_count=self.inner_jobs, l2_leaf_reg=5.0)
+            cat_kwargs = dict(iterations=cat_iterations, depth=6, learning_rate=0.03, loss_function="MultiClass" if k==3 else "Logloss", verbose=False, random_seed=RANDOM_STATE, thread_count=self.inner_jobs, l2_leaf_reg=5.0, random_strength=cat_random_strength)
+            if cat_deterministic:
+                cat_kwargs["bootstrap_type"] = "No"
+                cat_kwargs["random_strength"] = 0.0
+                cat_kwargs["thread_count"] = 1
+            m["CatBoost"] = CatBoostClassifier(**cat_kwargs)
         return m
 
     def _validation_splits(self, n: int) -> List[Tuple[int,int]]:
