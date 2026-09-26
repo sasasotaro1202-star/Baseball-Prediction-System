@@ -95,6 +95,10 @@ SOURCES = (
     SourceSpec("bbf_youth_u16_u18", "GreatBritain-Youth", "youth_u16_u18", "British Baseball Federation Youth", 1, False, "official 2026 U16 plus youth U12/U14 competitions; detailed PIT/PBP depth requires validation"),
     SourceSpec("paba_philippines", "Philippines-Baseball", "national_and_tournament_results", "Philippine Amateur Baseball Association", 1, False, "official national-team event scoreboard/results; league-level historical PBP/PIT not yet verified"),
     SourceSpec("asian_games_baseball", "AsianGames-Baseball", "international_event_results", "Aichi-Nagoya 2026 Asian Games baseball", 1, False, "official event results are public; prediction-time PBP/PIT provenance requires validation"),
+    SourceSpec("baseball_australia_youth", "Australia-Youth", "u16_u18_tournament_stats", "Baseball Australia Youth Championships", 1, False, "official 2026 U16/U18 schedule, results and tournament stats are public; underlying scoring service and historical PIT require validation"),
+    SourceSpec("baseball_australia_womens", "Australia-Womens", "womens_national_championships", "Baseball Australia Women's Championships", 1, False, "official 2026 championship results and team statistics are public; detailed PBP/PIT requires validation"),
+    SourceSpec("baseball_australia_womens_u16", "Australia-WomensYouth", "u16_womens_baseball", "Baseball Australia Youth Women", 1, False, "official 2026 U16 women's championship results are public; detailed PBP/PIT requires validation"),
+    SourceSpec("lbda_juvenil_puerto_rico", "PuertoRico-Youth", "juvenile_baseball_stats", "Liga de Béisbol Doble A Juvenil de Puerto Rico", 1, False, "official accumulated/current and prior-season statistics are public; historical PIT/PBP depth requires validation"),
 )
 
 
