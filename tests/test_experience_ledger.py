@@ -67,6 +67,15 @@ def test_archive_preserves_each_prediction_snapshot(tmp_path, monkeypatch):
     assert rows[0]["prediction_id"]
 
 
+def test_multiclass_ece_uses_confidence_vs_accuracy():
+    probabilities = np.array([
+        [0.60, 0.05, 0.35],
+        [0.20, 0.65, 0.15],
+    ])
+    y_true = np.array([0, 1])
+    assert exp._multiclass_ece(probabilities, y_true, bins=10) == 0.35
+
+
 def test_reconcile_computes_real_game_experience(tmp_path, monkeypatch):
     monkeypatch.setattr(exp, "EXPERIENCE", tmp_path / "experience")
     monkeypatch.setattr(exp, "PRED_DIR", tmp_path / "experience" / "predictions")
