@@ -95,6 +95,12 @@ SOURCE_CAPABILITIES: dict[str, frozenset[str]] = {
     "wbsc_europe_baseball": frozenset({"schedule_identity", "batting", "pitching", "roster", "tournament_rules"}),
     "knbsb_baseball": frozenset({"schedule_identity", "batting", "pitching", "tournament_rules"}),
     "czech_baseball_assoc": frozenset({"schedule_identity", "batting", "pitching", "tournament_rules"}),
+    "dbv_dbl_official": frozenset({"schedule_identity", "batting", "pitching", "tournament_rules"}),
+    "dbsv_2bundesliga": frozenset({"schedule_identity", "batting", "pitching", "tournament_rules"}),
+    "bbsv_youth_baseball": frozenset({"schedule_identity", "batting", "pitching", "tournament_rules"}),
+    "rfebs_baseball": frozenset({"schedule_identity", "batting", "pitching", "tournament_rules", "roster"}),
+    "lpbc_colombia": frozenset({"schedule_identity", "batting", "pitching"}),
+
     "openbiomechanics": frozenset({"tracking", "pitching", "batting"}),
 
     "jhbf_official": frozenset({"schedule_identity", "tournament_rules"}),
