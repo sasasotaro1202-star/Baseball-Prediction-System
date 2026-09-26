@@ -99,6 +99,9 @@ SOURCES = (
     SourceSpec("baseball_australia_womens", "Australia-Womens", "womens_national_championships", "Baseball Australia Women's Championships", 1, False, "official 2026 championship results and team statistics are public; detailed PBP/PIT requires validation"),
     SourceSpec("baseball_australia_womens_u16", "Australia-WomensYouth", "u16_womens_baseball", "Baseball Australia Youth Women", 1, False, "official 2026 U16 women's championship results are public; detailed PBP/PIT requires validation"),
     SourceSpec("lbda_juvenil_puerto_rico", "PuertoRico-Youth", "juvenile_baseball_stats", "Liga de Béisbol Doble A Juvenil de Puerto Rico", 1, False, "official accumulated/current and prior-season statistics are public; historical PIT/PBP depth requires validation"),
+    SourceSpec("cbbs_brazil_competitions", "Brazil-Baseball", "national_youth_and_club_competitions", "CBBS", 1, False, "official public schedules, results and championship reports; detailed PBP/PIT depends on event"),
+    SourceSpec("iab_israel_baseball", "Israel-Baseball", "multi_age_leagues_and_rules", "Israel Association of Baseball", 1, False, "official public leagues from grades 1-12 and adults, plus league rules; historical PIT/PBP depth requires validation"),
+    SourceSpec("liga_argentina_beisbol", "Argentina-LAB", "national_league_schedule_results_stats", "Liga Argentina de Béisbol", 1, False, "official public scoreboard/results/statistics; historical PIT and granular PBP require validation"),
 )
 
 
