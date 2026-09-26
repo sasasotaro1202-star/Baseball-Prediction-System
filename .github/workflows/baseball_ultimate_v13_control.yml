@@ -1,0 +1,140 @@
+name: Baseball Ultimate v13 Control Plane
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'research/ultimate_v13_control.py'
+      - 'tests/test_ultimate_v13_control.py'
+      - '.github/workflows/baseball_ultimate_v13_control.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baseball-ultimate-v13-control
+  cancel-in-progress: false
+
+jobs:
+  unit_and_regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install
+        run: python -m pip install --disable-pip-version-check --retries 5 --timeout 90 --prefer-binary -r requirements.txt
+      - name: Compile
+        run: python -m compileall -q research/ultimate_v13_control.py
+      - name: Targeted tests
+        run: python -m pytest -q tests/test_ultimate_v13_control.py
+      - name: Full regression suite
+        run: python -m pytest -q tests
+
+  control_e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install
+        run: python -m pip install --disable-pip-version-check --retries 5 --timeout 90 --prefer-binary -r requirements.txt
+      - name: Run synthetic chronological E2E
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from research.ultimate_v13_control import run_control_plane
+          report = run_control_plane()
+          Path("results/ultimate_v13_control_report.json").write_text(
+              json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False),
+              encoding="utf-8",
+          )
+          print(json.dumps({
+              "evidence_scope": report["evidence_scope"],
+              "promotion_status": report["promotion_status"],
+              "artifact_gate": report["artifact_gate"],
+              "promotion_gate": report["promotion_gate"],
+              "synthetic_oos_metrics": report["synthetic_oos_metrics"],
+          }, ensure_ascii=False, indent=2))
+          PY
+      - name: Verify report contract
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          obj = json.loads(Path("results/ultimate_v13_control_report.json").read_text(encoding="utf-8"))
+          required = {
+              "schema_version","evidence_scope","oos_scope","pit","data_quality",
+              "disagreement","predictability","future_failure","time_to_failure",
+              "regime","retrieval","meta_label","uncertainty","active_information",
+              "adaptive_compute","trajectory","revision","selective","ablation",
+              "robustness","calibration","promotion_gate"
+          }
+          missing = sorted(required - set(obj))
+          if missing:
+              raise SystemExit("missing report keys: " + ",".join(missing))
+          if obj["evidence_scope"] != "synthetic_oos":
+              raise SystemExit("synthetic E2E evidence scope was not explicit")
+          if obj["promotion_gate"]["auto_promotion"] is not False:
+              raise SystemExit("auto-promotion must remain disabled")
+          if obj["promotion_gate"]["status"] != "HOLD":
+              raise SystemExit("synthetic evidence must not pass promotion")
+          if obj["artifact_gate"]["status"] != "PASS":
+              raise SystemExit("artifact gate failed")
+          print("Ultimate v13 Control Plane E2E: PASS (research-only; promotion HOLD)")
+          PY
+      - name: Upload control report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: baseball-ultimate-v13-control-${{ github.run_id }}
+          path: results/ultimate_v13_control_report.json
+          if-no-files-found: error
+          retention-days: 7
+
+  production_contract_audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Audit production guardrails
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          runner = Path("prediction/runner.py").read_text(encoding="utf-8")
+          gate = Path("research/final_gate.py").read_text(encoding="utf-8")
+          required_runner = [
+              "def run_production_prediction",
+              'kwargs["production"] = True',
+              "production_prediction_eligible",
+          ]
+          required_gate = [
+              "PASS_INFRASTRUCTURE_ONLY",
+              "BLOCKED_UNTIL_REAL_PIT_STARTER_AND_LINE_EVIDENCE",
+          ]
+          for needle in required_runner + required_gate:
+              source = runner if needle in runner else gate
+              if needle not in source:
+                  raise SystemExit("missing guardrail: " + needle)
+          print("Production contract audit: PASS")
+          print("Promotion remains explicitly blocked until real PIT/evidence gates pass.")
+          PY
