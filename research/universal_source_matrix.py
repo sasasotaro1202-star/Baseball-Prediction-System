@@ -67,6 +67,9 @@ SOURCE_CAPABILITIES: dict[str, frozenset[str]] = {
     "omyu_youth_girls": frozenset({"schedule_identity", "play_by_play", "batting", "pitching", "lineups"}),
     "omyu_university": frozenset({"schedule_identity", "play_by_play", "batting", "pitching", "lineups"}),
     "omyu_jaba": frozenset({"schedule_identity", "play_by_play", "batting", "pitching", "lineups"}),
+    "jaba_official": frozenset({"schedule_identity", "batting", "pitching", "tournament_rules"}),
+    "big6_scorebook": frozenset({"schedule_identity", "batting", "pitching"}),
+
     "omyu_elementary": frozenset({"schedule_identity", "play_by_play", "batting", "pitching"}),
     "omyu_womens_high_school": frozenset({"schedule_identity", "play_by_play", "batting", "pitching", "lineups"}),
     "omyu_womens_junior": frozenset({"schedule_identity", "play_by_play", "batting", "pitching", "lineups"}),
