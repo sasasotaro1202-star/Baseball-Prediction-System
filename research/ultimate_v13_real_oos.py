@@ -16,6 +16,7 @@ import pandas as pd
 
 from evaluation.metrics import classification_metrics
 from research.ultimate_v13_control import FutureFailureEstimator, error_correlation, model_disagreement, predictability_score
+from research.oos_pit_join import attach_pit_evidence
 from research.ultimate_v13_operational_controls import (
     output_format,
     build_forecast_contract,
@@ -122,6 +123,23 @@ def run_real_oos_bridge(path: str | Path, *, league: str, data_snapshot_id: str 
         }
     df = pd.read_csv(pth)
     blockers: list[str] = []
+    # Enrich only from exact, append-only PIT ledger matches. Missing evidence
+    # remains unresolved; no game-time/retrieval-time inference is permitted.
+    try:
+        df, pit_join = attach_pit_evidence(df)
+    except Exception as exc:
+        pit_join = {
+            "status": "BLOCKED",
+            "oos_rows": int(len(df)),
+            "matched_rows": 0,
+            "coverage": 0.0,
+            "unmatched_rows": int(len(df)),
+            "fully_verified": False,
+            "reason": f"{type(exc).__name__}:{exc}",
+        }
+        blockers.append("pit_join_error")
+    if pit_join.get("status") != "PIT_COMPLETE":
+        blockers.append("pit_join_incomplete")
     if "prediction_time" in df.columns:
         parsed_pt = pd.to_datetime(df["prediction_time"], errors="coerce", utc=True)
         if parsed_pt.isna().any():
@@ -153,6 +171,7 @@ def run_real_oos_bridge(path: str | Path, *, league: str, data_snapshot_id: str 
         "path": str(pth),
         "rows": int(len(df)),
         "pit": pit,
+        "pit_join": pit_join,
         "blockers": blockers,
         "model_panel": {"status": "UNAVAILABLE"},
     }
