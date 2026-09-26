@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 from evaluation.metrics import classification_metrics
-from research.ultimate_v13_control import model_disagreement, predictability_score
+from research.ultimate_v13_control import FutureFailureEstimator, error_correlation, model_disagreement, predictability_score
 from research.ultimate_v13_operational_controls import (
     output_format,
     build_forecast_contract,
@@ -122,6 +122,12 @@ def run_real_oos_bridge(path: str | Path, *, league: str, data_snapshot_id: str 
         }
     df = pd.read_csv(pth)
     blockers: list[str] = []
+    if "prediction_time" in df.columns:
+        parsed_pt = pd.to_datetime(df["prediction_time"], errors="coerce", utc=True)
+        if parsed_pt.isna().any():
+            blockers.append("invalid_prediction_time")
+        elif not parsed_pt.is_monotonic_increasing:
+            blockers.append("oos_not_chronological")
     if len(df) < 100:
         blockers.append("insufficient_oos_rows")
     pit = _pit_status(df)
@@ -152,23 +158,41 @@ def run_real_oos_bridge(path: str | Path, *, league: str, data_snapshot_id: str 
     }
     if pmat is not None and y is not None:
         result["metrics"] = _metrics(y, pmat)
+        prior_probs = pmat[:-1] if len(pmat) > 1 else None
         result["predictability"] = predictability_score(
-            pmat,
-            history_probs=pmat,
+            pmat[-1:],
+            history_probs=prior_probs,
             data_quality=1.0 if pit["status"] == "PASS" else 0.0,
         )
         panel = _model_panel(df, league)
         if panel is not None:
             model_probs, losses = panel
-            result["model_panel"] = {
+            panel_out = {
                 "status": "PASS",
                 "models": sorted(model_probs),
                 "model_disagreement": model_disagreement(model_probs),
+                "error_correlation": error_correlation(y, model_probs),
                 "loss_rows": {k: len(v) for k, v in losses.items()},
-                "router_stability": router_stability(
-                    [{"model": float(i == j)} for i, name in enumerate(sorted(model_probs)) for j in range(len(model_probs))]
-                ) if len(model_probs) == 1 else {"status": "AVAILABLE"},
+                "router_stability": {"status": "UNAVAILABLE", "reason": "router_weights_not_present_in_checkpoint"},
             }
+            terminal_history = {name: values[:-1] for name, values in losses.items() if len(values) >= 2}
+            try:
+                if terminal_history and min(map(len, terminal_history.values())) >= 32:
+                    failure_estimator = FutureFailureEstimator(horizon=8).fit(terminal_history)
+                    panel_out["future_failure"] = failure_estimator.predict(terminal_history)
+                    panel_out["time_to_failure"] = {
+                        name: details["time_to_failure_periods"]
+                        for name, details in panel_out["future_failure"].items()
+                    }
+                else:
+                    unavailable = {"status": "UNAVAILABLE", "reason": "insufficient_pre_terminal_loss_history"}
+                    panel_out["future_failure"] = unavailable
+                    panel_out["time_to_failure"] = unavailable
+            except Exception as exc:
+                blocked = {"status": "BLOCKED", "reason": f"{type(exc).__name__}:{exc}"}
+                panel_out["future_failure"] = blocked
+                panel_out["time_to_failure"] = blocked
+            result["model_panel"] = panel_out
         else:
             result["model_panel"] = {
                 "status": "BLOCKED",
