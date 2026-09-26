@@ -1,0 +1,150 @@
+"""Universal adapter registry for baseball research sources.
+
+Registration alone never implies data collection readiness. This registry records
+the concrete repository adapter/normalizer contract where one exists and lets the
+coverage audit distinguish IMPLEMENTED from UNWIRED without auto-promoting PIT/OOS.
+"""
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any
+
+from data.source_registry import SOURCES
+
+
+@dataclass(frozen=True)
+class AdapterSpec:
+    source_id: str
+    module_path: str
+    symbol: str
+    kind: str
+    collection_ready: bool
+    notes: str
+
+
+# Only adapters whose implementation is actually present in this repository are
+# listed. Absence from this table is intentionally equivalent to UNWIRED.
+ADAPTERS: tuple[AdapterSpec, ...] = (
+    AdapterSpec(
+        "statcast",
+        "data.mlb_statcast",
+        "fetch_statcast",
+        "collector",
+        True,
+        "Public Baseball Savant CSV collector; PIT/OOS remain separately unverified.",
+    ),
+    AdapterSpec(
+        "npb_public_spaia_pbp",
+        "data.npb_pbp_adapter",
+        "normalize_pbp_frame",
+        "normalizer",
+        False,
+        "Normalizes a supplied public NPB PBP corpus; acquisition/PIT/OOS are separate gates.",
+    ),
+    AdapterSpec(
+        "npb_hawkeye_npbplus",
+        "research.npb_tracking_source",
+        "normalize_tracking_frame",
+        "normalizer",
+        False,
+        "Normalizes approved tracking payloads; direct NPB+ / Hawk-Eye collection is not claimed.",
+    ),
+    AdapterSpec(
+        "asian_games_baseball",
+        "research.asian_games_baseball",
+        "fetch_schedule",
+        "collector",
+        True,
+        "Official organizer/BFJ schedule evidence only; prediction eligibility remains research-only.",
+    ),
+)
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def _module_file(module_path: str) -> Path:
+    return _repo_root() / (module_path.replace(".", "/") + ".py")
+
+
+def adapter_specs() -> tuple[AdapterSpec, ...]:
+    return ADAPTERS
+
+
+def adapter_spec(source_id: str) -> AdapterSpec | None:
+    for spec in ADAPTERS:
+        if spec.source_id == source_id:
+            return spec
+    return None
+
+
+def adapter_present(source_id: str) -> bool:
+    spec = adapter_spec(source_id)
+    return bool(spec and _module_file(spec.module_path).is_file())
+
+
+def adapter_metadata(source_id: str) -> dict[str, Any]:
+    spec = adapter_spec(source_id)
+    if spec is None:
+        return {
+            "mapped": False,
+            "implemented": False,
+            "module_path": None,
+            "symbol": None,
+            "kind": None,
+            "collection_ready": False,
+            "notes": "No concrete adapter contract is registered.",
+        }
+    present = _module_file(spec.module_path).is_file()
+    return asdict(spec) | {
+        "mapped": True,
+        "implemented": present,
+        "module_file": str(_module_file(spec.module_path).relative_to(_repo_root())),
+    }
+
+
+def audit_adapters() -> dict[str, Any]:
+    registered_ids = {s.source_id for s in SOURCES}
+    mapped_ids = {s.source_id for s in ADAPTERS}
+    unknown_mappings = sorted(mapped_ids - registered_ids)
+    rows: list[dict[str, Any]] = []
+    for source in SOURCES:
+        meta = adapter_metadata(source.source_id)
+        rows.append(
+            {
+                "source_id": source.source_id,
+                "adapter_state": "IMPLEMENTED" if meta["implemented"] else "UNWIRED",
+                "mapped": bool(meta["mapped"]),
+                "module_path": meta["module_path"],
+                "symbol": meta["symbol"],
+                "kind": meta["kind"],
+                "collection_ready": bool(meta["collection_ready"]),
+                "notes": meta["notes"],
+            }
+        )
+    return {
+        "source_count": len(rows),
+        "mapped_count": sum(r["mapped"] for r in rows),
+        "implemented_count": sum(r["adapter_state"] == "IMPLEMENTED" for r in rows),
+        "unwired_count": sum(r["adapter_state"] == "UNWIRED" for r in rows),
+        "collection_ready_count": sum(r["collection_ready"] for r in rows),
+        "unknown_adapter_mappings": unknown_mappings,
+        "sources": rows,
+        "promotion_rule": (
+            "IMPLEMENTED adapter presence is not PIT/OOS/production evidence; "
+            "PIT and chronological OOS must pass independently before advancement."
+        ),
+    }
+
+
+def main() -> int:
+    import json
+
+    print(json.dumps(audit_adapters(), ensure_ascii=False, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
