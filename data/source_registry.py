@@ -81,6 +81,11 @@ SOURCES = (
     SourceSpec("kbo_data_portal_collector", "KBO", "historical_game_schedule_player_stats", "GitHub kbo-data-portal/collector", 1, False, "public collector claims 1982-present; source terms and prediction-time availability require audit"),
     SourceSpec("ffbs_d1_official", "France-D1", "schedule_results_stats", "Fédération Française de Baseball et Softball", 1, False, "official public competition pages; structured PBP and historical PIT depth require validation"),
     SourceSpec("wbc_scouting_public_dataset", "WBC+PlayerPrior", "player_pitch_level_pre_event_prior", "GitHub yasumorishima/kaggle-datasets WBC 2026 scouting dataset", 2, False, "derived public dataset using MLB regular-season Statcast; use only as pre-event prior with explicit temporal boundary"),
+    SourceSpec("dbv_dbl_official", "Germany-DBL", "schedule_results_stats", "https://www.baseball.de/", 1, False, "official public DBL schedules/results/statistics; historical PIT granularity requires validation"),
+    SourceSpec("dbsv_2bundesliga", "Germany-2BL", "schedule_results_stats", "Deutscher Baseball- und Softballverband", 1, False, "official public 2nd Bundesliga statistics; historical PIT/PBP granularity requires validation"),
+    SourceSpec("bbsv_youth_baseball", "Germany-Youth", "age_group_competitions", "BBSV youth baseball competitions", 1, False, "official age-class schedules/rules/results are public; detailed historical PIT/PBP requires validation"),
+    SourceSpec("rfebs_baseball", "Spain-Baseball", "league_and_age_group_competitions", "https://www.rfebs.es/es/disciplines/baseball", 1, False, "official Spanish baseball competition calendar/results; structured PBP and historical PIT require validation"),
+    SourceSpec("lpbc_colombia", "Colombia-LPBC", "league_results_statistics", "https://www.lpbcol.com.co/", 1, False, "official public live statistics/results; historical PIT and structured acquisition require validation"),
 )
 
 
