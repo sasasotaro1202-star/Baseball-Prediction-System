@@ -1,6 +1,9 @@
 import pandas as pd
 import pytest
 
+from data.source_registry import SOURCES
+from research.universal_source_matrix import SOURCE_CAPABILITIES
+
 from research.competition_catalog import get_scope, scopes
 from research.universal_source_matrix import application_matrix, application_plan, pit_safe_rows
 
@@ -44,3 +47,17 @@ def test_scope_rule_metadata_is_explicit():
     scope = get_scope("Japan_U12")
     assert scope.outcome_contract == "competition_defined"
     assert scope.rule_family == "wbsc_age_group_specific"
+
+
+def test_every_registered_source_has_explicit_capability_mapping():
+    registered = {s.source_id for s in SOURCES}
+    assert not (registered - set(SOURCE_CAPABILITIES)), (
+        f"unmapped registered sources: {sorted(registered - set(SOURCE_CAPABILITIES))}"
+    )
+
+
+def test_mlb_only_tracking_sources_are_not_applied_to_high_school():
+    source_ids = {r["source_id"] for r in application_plan("Japan_HighSchool")}
+    assert "statcast" not in source_ids
+    assert "fangraphs" not in source_ids
+    assert "retrosheet" not in source_ids
