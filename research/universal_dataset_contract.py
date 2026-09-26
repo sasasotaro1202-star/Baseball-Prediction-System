@@ -112,4 +112,5 @@ def research_manifest(frame: pd.DataFrame, *, scope_id: str, source_id: str) -> 
         "pit_status": "PASS",
         "required_pit_rule": "available_at <= prediction_time",
         "feature_columns_present": sorted(set(FEATURE_COLUMNS) & set(normalized.columns)),
+        "source_capabilities": sorted(source_capabilities(source_id)),
     }
