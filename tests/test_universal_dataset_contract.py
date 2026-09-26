@@ -69,3 +69,22 @@ def test_source_not_bound_to_scope_is_rejected():
 def test_manifest_records_actual_capabilities():
     m = research_manifest(_frame(), scope_id="Japan_HighSchool", source_id="omyu_high_school")
     assert m["source_capabilities"] == ["batting", "lineups", "pitching", "play_by_play", "schedule_identity"]
+
+
+def test_unsupported_feature_is_rejected():
+    with pytest.raises(UniversalContractError):
+        normalize_research_frame(
+            _frame(),
+            scope_id="Japan_HighSchool",
+            source_id="omyu_high_school",
+            require_features=["tracking"],
+        )
+
+
+def test_blank_event_id_is_rejected():
+    with pytest.raises(UniversalContractError):
+        normalize_research_frame(
+            _frame(event_id=[""]),
+            scope_id="Japan_HighSchool",
+            source_id="omyu_high_school",
+        )
