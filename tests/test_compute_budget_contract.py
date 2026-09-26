@@ -65,3 +65,27 @@ def test_hard_cap_limits_requested_budget(monkeypatch):
     monkeypatch.setenv("BASEBALL_HARD_CAP_SEC", "5400")
     bt = BaseballBacktest()
     assert bt.time_budget_sec == 5400.0
+
+
+def test_deterministic_catboost_research_mode(monkeypatch):
+    monkeypatch.setenv("BASEBALL_CATBOOST_DETERMINISTIC", "1")
+    bt = BaseballBacktest()
+    models = bt.models("NPB")
+    if "CatBoost" not in models:
+        return
+    model = models["CatBoost"]
+    params = model.get_params()
+    assert params["bootstrap_type"] == "No"
+    assert params["random_strength"] == 0.0
+    assert params["thread_count"] == 1
+
+
+def test_invalid_catboost_random_strength_fails_closed(monkeypatch):
+    monkeypatch.setenv("BASEBALL_CATBOOST_RANDOM_STRENGTH", "not-a-number")
+    bt = BaseballBacktest()
+    try:
+        bt.models("NPB")
+    except ValueError as exc:
+        assert "BASEBALL_CATBOOST_RANDOM_STRENGTH" in str(exc)
+    else:
+        raise AssertionError("invalid CatBoost randomness configuration was silently accepted")
