@@ -2126,7 +2126,7 @@ class BaseballBacktest:
                 )
                 try:
                     mh=factory(); ma=factory()
-                    self._fit_model(mh, X.iloc[tr], y_home[tr], self._sample_weights(tr), league); self._fit_model(ma, X.iloc[tr], y_away[tr], self._sample_weights(tr), league)
+                    self._fit_model(mh, X.iloc[:tr], y_home[:tr], self._sample_weights(tr), league); self._fit_model(ma, X.iloc[:tr], y_away[:tr], self._sample_weights(tr), league)
                     ph=np.clip(mh.predict(X.iloc[va]), 0.05, 15)
                     pa=np.clip(ma.predict(X.iloc[va]), 0.05, 15)
                     nll_h=np.mean(ph - y_home[va]*np.log(ph) + np.array([math.lgamma(v+1) for v in y_home[va]]))
