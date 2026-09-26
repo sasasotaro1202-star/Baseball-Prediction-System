@@ -40,9 +40,9 @@ def attach_pit_evidence(
     if "datetime" not in oos.columns:
         raise ValueError("OOS artifact requires datetime")
 
-    out = oos.copy()
+    out = oos.copy().reset_index(drop=True)
     out["game_id"] = out["game_id"].astype(str).str.strip()
-    event_dt = pd.to_datetime(out["datetime"], errors="coerce", utc=True)
+    event_dt = pd.to_datetime(out["datetime"], errors="coerce", utc=True).reset_index(drop=True)
     if event_dt.isna().any():
         raise ValueError("OOS artifact contains invalid datetime")
 
@@ -68,7 +68,7 @@ def attach_pit_evidence(
         av.get("observed_at"), errors="coerce", utc=True
     )
 
-    snap_by_id = {}
+    snap_by_id: dict[str, list[tuple[pd.Timestamp, Any]]] = {}
     if not snap.empty and "entity_id" in snap.columns:
         for _, row in snap.iterrows():
             eid = str(row.get("entity_id", "")).strip()
@@ -78,7 +78,9 @@ def attach_pit_evidence(
             available = pd.to_datetime(row.get("available_at"), errors="coerce", utc=True)
             if status != "KNOWN" or pd.isna(available):
                 continue
-            snap_by_id[eid] = row
+            snap_by_id.setdefault(eid, []).append((available, row))
+        for eid in list(snap_by_id):
+            snap_by_id[eid].sort(key=lambda x: x[0])
 
     evidence = []
     for idx, row in out.iterrows():
@@ -99,18 +101,12 @@ def attach_pit_evidence(
         chosen = safe.iloc[-1]
         cutoff = chosen["prediction_cutoff_dt"]
         sid = str(chosen.get("event_id", "")).strip()
-        snap_row = snap_by_id.get(sid)
-        if snap_row is None:
-            # Some ledgers use the raw game_id as entity_id while event_id is
-            # namespaced; try the plain id before declaring the row unresolved.
-            snap_row = snap_by_id.get(gid)
-        if snap_row is None:
-            evidence.append((None, cutoff, "UNRESOLVED", "matching_snapshot_missing"))
+        candidates = snap_by_id.get(sid) or snap_by_id.get(gid) or []
+        safe_snapshots = [item for item in candidates if item[0] <= cutoff]
+        if not safe_snapshots:
+            evidence.append((None, cutoff, "UNRESOLVED", "matching_snapshot_missing_or_after_cutoff"))
             continue
-        available = pd.to_datetime(snap_row.get("available_at"), errors="coerce", utc=True)
-        if pd.isna(available) or available > cutoff:
-            evidence.append((None, cutoff, "UNRESOLVED", "snapshot_not_available_by_prediction_cutoff"))
-            continue
+        available, snap_row = safe_snapshots[-1]
         # The source itself explicitly records the snapshot as KNOWN.
         evidence.append((available, cutoff, "PIT_VERIFIED", "exact_game_snapshot"))
 
