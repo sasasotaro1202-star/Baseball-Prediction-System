@@ -368,8 +368,10 @@ class FutureGeneralizationController:
     ) -> np.ndarray:
         if self.base_weights_ is None or self.fallback_weights_ is None:
             raise RuntimeError("controller is not fitted")
-        p = normalize_probs(probs_row[None, :])[0]
-        model_probs = probs_row
+        model_probs = np.asarray(probs_row, dtype=float)
+        if model_probs.ndim != 2 or model_probs.shape[0] != len(self.model_names):
+            raise ValueError("probs_row must be one probability vector per model")
+        model_probs = np.vstack([normalize_probs(row[None, :])[0] for row in model_probs])
         consensus = model_probs.mean(axis=0)
         model_dist = 0.5 * np.abs(model_probs - consensus).sum(axis=1)
         risk = np.array([float(failure_row.get(name, 0.0)) for name in self.model_names], dtype=float)
