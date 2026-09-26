@@ -173,7 +173,14 @@ def failure_memory(
     work["_pt"] = pd.to_datetime(work["prediction_time"], errors="coerce", utc=True)
     work["_at"] = pd.to_datetime(work["available_at"], errors="coerce", utc=True)
     work["_failure"] = work["failure"].astype(bool)
-    work = work[(work["_pt"] < pt) & (work["_at"] <= pt) & work["_failure"]]
+    if work["_pt"].isna().any() or work["_at"].isna().any():
+        return {"status": "BLOCKED", "reason": "invalid_pit_timestamp", "neighbors": []}
+    work = work[
+        (work["_pt"] < pt)
+        & (work["_at"] <= work["_pt"])
+        & (work["_at"] <= pt)
+        & work["_failure"]
+    ]
     rows = []
     for idx, row in work.iterrows():
         vals = []
@@ -204,7 +211,13 @@ def strategy_failure_rate(
     work = history.copy()
     work["_pt"] = pd.to_datetime(work["prediction_time"], errors="coerce", utc=True)
     work["_at"] = pd.to_datetime(work["available_at"], errors="coerce", utc=True)
-    work = work[(work["_pt"] < pt) & (work["_at"] <= pt)]
+    if work["_pt"].isna().any() or work["_at"].isna().any():
+        raise ValueError("strategy history contains invalid PIT timestamps")
+    work = work[
+        (work["_pt"] < pt)
+        & (work["_at"] <= work["_pt"])
+        & (work["_at"] <= pt)
+    ]
     out = {}
     for strategy, group in work.groupby(strategy_col, dropna=False):
         n = len(group)
