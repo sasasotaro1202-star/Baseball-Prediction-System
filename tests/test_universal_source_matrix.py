@@ -128,3 +128,11 @@ def test_germany_and_spain_age_scopes_bind_sources():
 def test_us_summer_collegiate_scopes_bind_sources():
     assert "northwoods_league" in {r["source_id"] for r in application_plan("Northwoods")}
     assert "west_coast_league" in {r["source_id"] for r in application_plan("WestCoastLeague")}
+
+
+def test_every_scope_reference_is_registered():
+    registered = {s.source_id for s in SOURCES}
+    referenced = {source_id for scope in scopes() for source_id in scope.source_ids}
+    assert referenced <= registered, (
+        f"scope references not in registry: {sorted(referenced - registered)}"
+    )
