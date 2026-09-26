@@ -2127,13 +2127,17 @@ class BaseballBacktest:
                 try:
                     mh=factory(); ma=factory()
                     self._fit_model(mh, X.iloc[:tr], y_home[:tr], self._sample_weights(tr), league); self._fit_model(ma, X.iloc[:tr], y_away[:tr], self._sample_weights(tr), league)
-                    ph=np.clip(mh.predict(X.iloc[va]), 0.05, 15)
-                    pa=np.clip(ma.predict(X.iloc[va]), 0.05, 15)
-                    nll_h=np.mean(ph - y_home[va]*np.log(ph) + np.array([math.lgamma(v+1) for v in y_home[va]]))
-                    nll_a=np.mean(pa - y_away[va]*np.log(pa) + np.array([math.lgamma(v+1) for v in y_away[va]]))
+                    va_slice = slice(tr, tr + va)
+                    X_val = X.iloc[va_slice]
+                    y_home_val = np.asarray(y_home[va_slice], dtype=float)
+                    y_away_val = np.asarray(y_away[va_slice], dtype=float)
+                    ph=np.clip(mh.predict(X_val), 0.05, 15)
+                    pa=np.clip(ma.predict(X_val), 0.05, 15)
+                    nll_h=np.mean(ph - y_home_val*np.log(ph) + np.array([math.lgamma(v+1) for v in y_home_val]))
+                    nll_a=np.mean(pa - y_away_val*np.log(pa) + np.array([math.lgamma(v+1) for v in y_away_val]))
                     losses.append(float((nll_h+nll_a)/2))
-                    residuals_by_model.setdefault(name,[[],[]])[0].extend((y_home[va]-ph).tolist())
-                    residuals_by_model.setdefault(name,[[],[]])[1].extend((y_away[va]-pa).tolist())
+                    residuals_by_model.setdefault(name,[[],[]])[0].extend((y_home_val-ph).tolist())
+                    residuals_by_model.setdefault(name,[[],[]])[1].extend((y_away_val-pa).tolist())
                 except Exception as exc:
                     self.audit.append({
                         "type": "score_model_error",
