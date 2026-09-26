@@ -61,6 +61,18 @@ SOURCES = (
     SourceSpec("iblj_official_stats", "Japan-Independent", "league_and_player_stats", "https://data.iblj.co.jp/", 1, False, "official public statistics; historical availability boundary must be audited"),
     SourceSpec("bcl_official_stats", "Japan-Independent", "league_and_player_stats", "https://www.bc-l-data.jp/", 1, False, "official public statistics; historical availability boundary must be audited"),
     SourceSpec("yahoo_ipbl_stats", "Japan-Independent", "league_and_player_stats", "Yahoo! Sports 独立リーグ", 2, False, "public statistics; publication boundary and access terms require audit"),
+    SourceSpec("lidom_mlb_winter", "LIDOM", "winter_league_stats", "MLB Winter Leagues / LIDOM", 1, False, "public stats are available; historical prediction-time publication boundary must be proven"),
+    SourceSpec("lvbp_official", "LVBP", "league_and_player_stats", "https://stats.lvbp.com/", 1, False, "public league statistics/live pages; historical PIT and structured acquisition require audit"),
+    SourceSpec("lbprc_official", "LBPRC", "league_and_player_stats", "https://www.ligapr.com/", 1, False, "public league statistics; historical PIT and structured acquisition require audit"),
+    SourceSpec("lmp_mlb_winter", "LMP", "winter_league_stats", "MLB Winter Leagues / Liga Mexicana del Pacifico", 1, False, "public stats are available; historical prediction-time publication boundary must be proven"),
+    SourceSpec("wbc_official_stats", "WBC", "international_tournament_stats", "MLB/WBC official statistics", 1, False, "official tournament stats are public; prediction-time availability and PBP granularity require audit"),
+    SourceSpec("wbsc_international_events", "WBSC+International", "tournament_schedule_results_stats", "WBSC official events and reports", 1, False, "official schedules/results/reports are public; bulk PIT/PBP availability varies by event"),
+    SourceSpec("wbsc_womens_baseball", "WBSC-WomensBaseball", "international_womens_baseball", "WBSC Women's Baseball World Cup", 1, False, "official event statistics are public; historical PIT/PBP depth varies by event"),
+    SourceSpec("little_league_world_series", "LittleLeague", "youth_tournament_results", "Little League International", 1, False, "official schedules/brackets/results are public; detailed PBP and historical PIT require validation"),
+    SourceSpec("cape_cod_league", "CCBL", "college_summer_stats", "Cape Cod Baseball League", 1, False, "official public schedule and batting/pitching statistics; historical PIT/source terms require audit"),
+    SourceSpec("wbsc_europe_baseball", "WBSC-Europe", "european_baseball_competitions", "WBSC Europe", 1, False, "official competitions/rules/reports are public; bulk PBP/PIT availability varies"),
+    SourceSpec("knbsb_baseball", "Netherlands-Baseball", "league_and_youth_competitions", "KNBSB", 2, False, "official competition schedules/results/stats and youth classes are public; structured PIT requires validation"),
+    SourceSpec("openbiomechanics", "Cross-Level-Research", "biomechanics_player_prior", "Driveline OpenBiomechanics Project", 2, False, "public research dataset; not game-time evidence, small research cohort, player linkage/PIT required"),
 )
 
 
