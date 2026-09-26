@@ -1,0 +1,104 @@
+name: Baseball Ultimate v13 Operational Controls
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'research/ultimate_v13_operational_controls.py'
+      - 'tests/test_ultimate_v13_operational_controls.py'
+      - '.github/workflows/baseball_ultimate_v13_operational.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baseball-ultimate-v13-operational
+  cancel-in-progress: false
+
+jobs:
+  operational_controls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install
+        run: python -m pip install --disable-pip-version-check --retries 5 --timeout 90 --prefer-binary -r requirements.txt
+      - name: Tests
+        run: python -m pytest -q tests/test_ultimate_v13_operational_controls.py
+      - name: Operational E2E
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import pandas as pd
+          from research.ultimate_v13_operational_controls import (
+              build_forecast_contract, error_attribution, fallback_policy,
+              output_format, prediction_freshness, rollback_target,
+              scenario_forecast,
+          )
+          now = "2026-09-26T12:00:00Z"
+          report = {
+              "schema_version": 1,
+              "evidence_scope": "synthetic_operational_e2e",
+              "output_format": output_format(predictability=.58, uncertainty=.42, ood=.12),
+              "scenarios": scenario_forecast([.58,.21,.21], scenario_shifts={"baseline":0.0,"shock":-.08}),
+              "freshness": prediction_freshness(prediction_time=now, now="2026-09-26T12:20:00Z", valid_until="2026-09-26T13:00:00Z"),
+              "error_attribution": error_attribution(
+                  data_quality=.96, label_quality=.98, drift=.12, disagreement=.25,
+                  predictability=.58, calibration_error=.04, ood=.12,
+                  router_instability=.07, information_shock=.2,
+              ),
+              "fallback": fallback_policy(health={"router":True,"calibration":True}),
+              "rollback": rollback_target("v13", ["v11","v12","v13"]),
+          }
+          report["contract"] = build_forecast_contract(
+              prediction_time=now,
+              valid_until="2026-09-26T13:00:00Z",
+              model_version="research-v13",
+              strategy="DYNAMIC",
+              output_format_name=report["output_format"],
+              confidence=.72, predictability=.58, uncertainty=.42,
+              failure_risk=.18, ood_score=.12, pit_status="PASS",
+              data_snapshot_id="synthetic-snapshot-001",
+          )
+          Path("results/ultimate_v13_operational_report.json").write_text(
+              json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False),
+              encoding="utf-8",
+          )
+          print(json.dumps(report, ensure_ascii=False, indent=2))
+          PY
+      - name: Artifact integrity
+        run: |
+          set -euo pipefail
+          test -s results/ultimate_v13_operational_report.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          obj=json.loads(Path("results/ultimate_v13_operational_report.json").read_text(encoding="utf-8"))
+          for key in ("evidence_scope","output_format","scenarios","freshness","error_attribution","fallback","rollback","contract"):
+              if key not in obj:
+                  raise SystemExit("missing key: "+key)
+          if obj["evidence_scope"] != "synthetic_operational_e2e":
+              raise SystemExit("wrong evidence scope")
+          if obj["fallback"]["action"] != "FULL_SYSTEM":
+              raise SystemExit("unexpected fallback")
+          if obj["contract"]["pit_status"] != "PASS":
+              raise SystemExit("contract PIT status failure")
+          print("Ultimate v13 operational controls E2E: PASS (synthetic; no promotion evidence)")
+          PY
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: baseball-ultimate-v13-operational-${{ github.run_id }}
+          path: results/ultimate_v13_operational_report.json
+          if-no-files-found: error
+          retention-days: 7
