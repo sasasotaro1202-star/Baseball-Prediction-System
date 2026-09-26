@@ -2440,6 +2440,11 @@ class BaseballBacktest:
                 low, high = low_high_probs(lam_h, lam_a, shared)
                 block_rows.append({
                     "league": league, "game_id": r["game_id"], "datetime": r["datetime"],
+                    # Preserve only explicitly supplied PIT timestamps. Never
+                    # infer prediction/availability time from game start or
+                    # retrieval time; missing evidence remains missing.
+                    "prediction_time": r.get("prediction_time", pd.NaT),
+                    "available_at": r.get("available_at", pd.NaT),
                     "input_fingerprint": input_fingerprints[str(r["game_id"])],
                     "home": r["home"], "away": r["away"], "home_starter": r.get("home_starter", ""), "away_starter": r.get("away_starter", ""),
                     "pred_home": float(prob[0]), "pred_draw": float(prob[1]) if league == "NPB" else np.nan,
