@@ -99,3 +99,13 @@ def test_netherlands_youth_scope_is_explicit():
 
 def test_czech_baseball_scope_binds_official_source():
     assert "czech_baseball_assoc" in {r["source_id"] for r in application_plan("Czechia_Baseball")}
+
+
+def test_milb_levels_bind_milb_repository():
+    for scope_id in ("MiLB_AAA", "MiLB_AA", "MiLB_APlus", "MiLB_A", "MiLB_Rookie"):
+        assert "milb_data_repository" in {r["source_id"] for r in application_plan(scope_id)}
+
+
+def test_new_international_sources_bind():
+    assert "ffbs_d1_official" in {r["source_id"] for r in application_plan("France_D1")}
+    assert "wbc_scouting_public_dataset" in {r["source_id"] for r in application_plan("WBC_PlayerPrior")}
