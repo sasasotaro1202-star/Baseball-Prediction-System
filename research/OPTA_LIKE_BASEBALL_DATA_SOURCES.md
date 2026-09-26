@@ -378,3 +378,103 @@ The universal catalog now additionally includes:
 Every newly added source is required to have:
 source registration → capability mapping → scope binding → PIT gate → OOS/calibration/robustness gate
 before any production eligibility.
+
+
+## Newly discovered development and regional layers — 2026-09-27
+
+### MiLB public repository
+The public `armstjc/milb-data-repository` contains schedules, season batting/pitching,
+player-game statistics and PBP for AAA, AA, A+, A and Rookie levels. Its PBP guide
+exposes play timestamps, pitch type and release speed, making this a high-value
+development-layer source.
+Source:
+https://github.com/armstjc/milb-data-repository
+Status: HIGH-VALUE RESEARCH SOURCE; historical publication/PIT boundary remains separate.
+
+### CPBL advanced tracking research implementation
+The public `lin-junyou/cpbl-savant-py-app` documents extraction from the CPBL
+advanced-data site, including player records, per-game tables and TrackMan
+pitch-level fields. The current public snapshot is explicitly a 2026-season
+dataset, so it should be treated as a current/recent research layer rather than
+a historical corpus unless older snapshots are proven.
+Source:
+https://github.com/lin-junyou/cpbl-savant-py-app
+Status: HIGH-VALUE RESEARCH CANDIDATE; historical coverage limited/unverified.
+
+### KBO public collector
+The `kbo-data-portal/collector` project supports game, schedule and player
+collection and documents season/stage filters, including a stated 1982-present
+range. This is a useful independent acquisition path for KBO validation and
+source redundancy.
+Source:
+https://github.com/kbo-data-portal/collector
+Status: RESEARCH CANDIDATE; source terms and prediction-time availability require audit.
+
+### Germany
+The Deutsche Baseball Liga official site publishes schedules, boxscore links,
+standings and statistics for the 2026 season; DBV/BBSV also publish second-tier
+and youth age-class schedules, rules and historical archives.
+Sources:
+https://www.baseball.de/
+https://www.baseball-softball.de/spielbetrieb/2-baseball-bundesliga/statistiken-2-baseball-bundesliga-2/
+https://www.bbsv.de/spielbetrieb/spielklassen/
+Status: HIGH-VALUE EUROPEAN SOURCE FAMILY.
+
+### Spain
+RFEBS publishes 2026 senior leagues and multiple youth competitions including
+U12, U15 and U18 events, both club and autonomous-selection formats.
+Source:
+https://www.rfebs.es/es/disciplines/baseball
+Status: HIGH-VALUE MULTI-AGE EUROPEAN SOURCE.
+
+### France
+The French federation publishes 2026 Division 1 competition news and directs
+users to schedules, results and statistics in its competition system.
+Source:
+https://ffbs.fr/baseball/d1-baseball/
+Status: HIGH-VALUE EUROPEAN SOURCE; structured PBP/PIT depth still requires validation.
+
+### Colombia
+The Liga Profesional de Béisbol Colombiana publishes schedule, live statistics,
+results and standings through its official site.
+Sources:
+https://www.lpbcol.com.co/calendario/
+https://www.lpbcol.com.co/transmisiones/
+https://www.lpbcol.com.co/posiciones/
+Status: HIGH-VALUE LATIN-AMERICAN RESEARCH SOURCE; historical PIT remains unverified.
+
+### US summer collegiate
+Northwoods League and West Coast League provide dedicated 2026 schedules and
+statistics for summer collegiate baseball, expanding the collegiate development
+environment beyond the NCAA regular season.
+Sources:
+https://northwoodsleague.com/scorebook/statistics/
+https://westcoastleague.com/
+Status: HIGH-VALUE COLLEGE-SUMMER SOURCE FAMILY.
+
+### WBC player-prior dataset
+A public 2026 WBC scouting dataset packages player-level Statcast-derived
+regular-season information and roster/country metadata. It can be useful for
+pre-event country/player priors but must not be treated as event-time WBC evidence.
+Source:
+https://github.com/yasumorishima/kaggle-datasets
+Status: RESEARCH-ONLY DERIVED PRIOR.
+
+## Discovery Frontier — still unverified
+The current system should continue searching for machine-readable, public or
+free-first sources for:
+- Canadian Intercounty and provincial baseball
+- Latin American summer/provincial circuits beyond the registered winter leagues
+- Cuban Serie Nacional
+- Nicaragua LBPN
+- Panama Probeis
+- Chinese mainland professional/amateur baseball
+- Italy Serie A, Czech lower divisions, German lower divisions below 2BL
+- Japanese regional university leagues and local club competitions
+- U18/U15/U12 domestic leagues in Europe and Latin America
+- women’s domestic leagues outside the currently registered Japan/WBSC scopes
+- African and Middle-Eastern baseball competitions
+- additional collegiate summer leagues in the US/Canada
+
+These remain Discovery Targets until public data depth, terms, provenance and
+prediction-time availability can be established.
