@@ -125,3 +125,116 @@ Priority is now:
 8. Historical Retrosheet/Lahman layers for long-horizon modeling
 
 No source moves into production solely because a public website exposes a metric. Production/OOS eligibility still requires schema integrity, PIT availability evidence, chronological validation, calibration and robustness evidence.
+
+
+## Youth / high-school / age-group expansion — 2026-09-27
+
+### 一球速報.com / OmyuTech — CROSS-AGE DISCOVERY SOURCE
+The OmyuTech platform currently separates baseball into high school, university,
+junior, JABA, amateur/softball, women's baseball, independent leagues and
+regional categories. Its 2026 pages show:
+- High school: prefectural, regional and national tournaments, with game,
+  box-score, text/PBP, starting-information and pitch-level pages.
+- Junior: Giants Cup and other junior tournaments; Little Senior, Boys, Young
+  League and Pony organizations are represented.
+- Women's baseball: national high-school women's tournaments and national
+  junior women's tournaments.
+- Youth/other: junior organizations can expose member, season and game histories.
+This makes OmyuTech unusually valuable as a discovery layer for competitions
+that are not covered by MLB/NPB-style professional feeds.
+Sources:
+https://baseball.omyutech.com/HomePageMain.action
+https://baseball.omyutech.com/CupHomePageSokuhou.action?gameId=20261175013
+https://baseball.omyutech.com/CupHomePageSeiseki.action?gameId=20260248306
+https://baseball.omyutech.com/leagueCup.action?leagueId=70
+Status: HIGH-VALUE FREE PUBLIC WEB RESEARCH CANDIDATE; scraping/API access,
+terms and PIT availability require explicit validation.
+
+### 日本高校野球連盟 (JHBF)
+The official JHBF site publishes national high-school tournament schedules and
+game results, including inning-by-inning score lines, game times, venues and
+attendance for the Summer Koshien and related competitions.
+Source:
+https://jhbf.or.jp/sensyuken/2026/schedule/
+Status: AUTHORITATIVE FREE PUBLIC RESULTS / strong target-label and schedule
+source; pitch-level and historical PIT availability are not guaranteed.
+
+### 高校野球 — OmyuTech detail depth
+A 2026 Koshien box-score page exposes player batting rows, pitch counts per
+plate appearance, individual pitch sequence/result text, pitch type and pitch
+speed in km/h, along with game-level box score. This is substantially richer
+than final-score-only sources.
+Source:
+https://baseball.omyutech.com/CupHomePageSeiseki.action?gameId=20261175013
+Status: HIGH-VALUE RESEARCH CANDIDATE.
+
+### 中学硬式 — Giants Cup / Boys + Little Senior
+The 2026 Giants Cup page contains games between organizations such as Boys and
+Little Senior. The box-score layer contains player-level batting and pitch
+sequence details. This can create a cross-organization U-15-ish player/game
+research corpus.
+Source:
+https://baseball.omyutech.com/CupHomePageSeiseki.action?gameId=20260248306
+Status: HIGH-VALUE RESEARCH CANDIDATE.
+
+### Young League / Pony / Little Senior
+OmyuTech indexes multiple years of Young League competitions, Pony competitions,
+and Little Senior team histories. Current 2026 examples include Young League
+Junior Championship, Young League Championship, Pony national championships,
+and Little Senior tournament histories.
+Sources:
+https://baseball.omyutech.com/leagueCup.action?leagueId=70
+https://baseball.omyutech.com/teamGames.action?teamId=89725
+Status: HIGH-VALUE DISCOVERY SOURCE; coverage varies by organizer and event.
+
+### 学童 (elementary-age baseball)
+OmyuTech indexes national and prefectural elementary-school baseball
+competitions, including 2026 national tournaments. These pages include
+tournament brackets, schedules/results and, where provided by the organizer,
+live-score/game pages.
+Sources:
+https://baseball.omyutech.com/CupHomePageTournament.action?cupId=20260000894
+https://baseball.omyutech.com/CupHomePageMain.action?cupId=20260010134
+Status: FREE PUBLIC RESEARCH CANDIDATE; player identity/PIT quality likely more
+variable than high-school/elite competitions.
+
+### Women's high-school / junior
+OmyuTech indexes 2026 national high-school women's tournaments and national
+junior women's tournaments. Its junior women's pages can expose player,
+batting, pitch-sequence and live text details.
+Sources:
+https://baseball.omyutech.com/teamGames.action?teamId=104226
+https://baseball.omyutech.com/CupHomePageTextLive.action?gameId=20268716598
+Status: HIGH-VALUE RESEARCH CANDIDATE.
+
+### Samurai Japan age-group teams
+The Japan national baseball team site publishes U-18, U-15 and other age-group
+rosters, tournament schedules/results and detailed game tables. The 2026 U-15
+World Cup and 2026 U-18 Asian Championship are current examples.
+Sources:
+https://www.japan-baseball.jp/jp/team/15u/2026/worldcup/overview.html
+https://www.japan-baseball.jp/jp/team/18u/2026/asianchampionship/overview.html
+Status: AUTHORITATIVE FREE PUBLIC TOURNAMENT DATA; ideal for international
+age-group labels/results, but bulk PIT/tracking API remains unverified.
+
+### WBSC age-group competitions
+WBSC publishes official tournament statistics in structured PDF reports, including
+U-12, U-18 and U-23 batting/pitching tables. These are useful for historical
+team/player features and competition normalization, although they are not an
+Opta-like universal real-time API.
+Status: AUTHORITATIVE FREE HISTORICAL/TOURNAMENT REPORTS.
+
+## Age/competition architecture candidate
+
+The system can now discover and normalize:
+PRO: NPB / MLB / KBO / CPBL / LMB / ABL / independent leagues
+AMATEUR: NCAA / JABA / university / regional amateur
+HIGH SCHOOL: Japan prefectural -> regional -> Koshien; women's high school
+JUNIOR: U-15, Giants Cup, Little Senior, Boys, Young, Pony
+ELEMENTARY: 学童
+INTERNATIONAL AGE GROUP: WBSC U-12 / U-15 / U-18 / U-23 and national teams
+
+The same target schema should not assume identical rules. Each competition must
+carry rule metadata such as innings, tie handling, extra-inning format, mercy/run
+rule, mound/distance conventions, designated hitter usage, and age class before
+cross-competition modeling.
