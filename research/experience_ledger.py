@@ -186,6 +186,34 @@ def _expand_weights(row: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _multiclass_ece(probabilities: np.ndarray, y_true: np.ndarray, *, bins: int = 10) -> float:
+    """Compute max-probability multiclass ECE without refitting or reordering."""
+    p = np.asarray(probabilities, dtype=float)
+    y = np.asarray(y_true, dtype=int)
+    if p.ndim != 2 or y.ndim != 1 or len(p) != len(y) or len(y) == 0:
+        raise ValueError("invalid ECE inputs")
+    if not np.isfinite(p).all() or (p < 0).any() or (p > 1).any():
+        raise ValueError("invalid ECE probabilities")
+    if bins <= 0:
+        raise ValueError("bins must be positive")
+    confidence = p.max(axis=1)
+    prediction = p.argmax(axis=1)
+    correct = (prediction == y).astype(float)
+    edges = np.linspace(0.0, 1.0, bins + 1)
+    total = float(len(y))
+    ece = 0.0
+    for i in range(bins):
+        lo, hi = edges[i], edges[i + 1]
+        upper_ok = confidence < hi if i < bins - 1 else confidence <= hi
+        mask = (confidence >= lo) & upper_ok
+        if not np.any(mask):
+            continue
+        ece += (float(mask.sum()) / total) * abs(
+            float(confidence[mask].mean()) - float(correct[mask].mean())
+        )
+    return float(ece)
+
+
 def _parse_top4(row: Any) -> list[tuple[str, float]]:
     if isinstance(row, list):
         return [(str(x.get("score")), float(x.get("prob_pct", 0.0))) for x in row if isinstance(x, dict)]
@@ -364,6 +392,10 @@ def reconcile() -> dict[str, Any]:
         "outcome_accuracy": float(experience["outcome_correct"].mean()),
         "logloss": float(experience["logloss"].mean()),
         "brier": float(experience["brier"].mean()),
+        "ece": _multiclass_ece(
+            experience[["home_win_pct", "draw_pct", "away_win_pct"]].to_numpy(float) / 100.0,
+            experience["actual_outcome"].map({"HOME_WIN": 0, "DRAW": 1, "AWAY_WIN": 2}).to_numpy(int),
+        ),
         "draw_rows": int((experience["actual_outcome"] == "DRAW").sum()),
         "draw_recall": float((
             (experience["predicted_outcome"] == "DRAW")
@@ -400,6 +432,10 @@ def reconcile() -> dict[str, Any]:
                 "accuracy": float(g["outcome_correct"].mean()),
                 "logloss": float(g["logloss"].mean()),
                 "brier": float(g["brier"].mean()),
+                "ece": _multiclass_ece(
+                    g[["home_win_pct", "draw_pct", "away_win_pct"]].to_numpy(float) / 100.0,
+                    g["actual_outcome"].map({"HOME_WIN": 0, "DRAW": 1, "AWAY_WIN": 2}).to_numpy(int),
+                ),
                 "low_high_accuracy": float(g["low_high_correct"].mean()),
                 "top4_exact_hit_rate": float(g["top4_hit"].mean()),
             }
