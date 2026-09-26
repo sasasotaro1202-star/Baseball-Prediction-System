@@ -85,3 +85,13 @@ def test_global_sources_have_expected_scope_bindings():
     }
     for scope_id, source_id in checks.items():
         assert source_id in {r["source_id"] for r in application_plan(scope_id)}
+
+
+def test_domestic_amateur_scopes_bind_official_sources():
+    assert "jaba_official" in {r["source_id"] for r in application_plan("Japan_Amateur_JABA")}
+    assert "big6_scorebook" in {r["source_id"] for r in application_plan("Japan_University")}
+
+
+def test_netherlands_youth_scope_is_explicit():
+    rows = application_plan("Netherlands_Youth")
+    assert "knbsb_baseball" in {r["source_id"] for r in rows}
