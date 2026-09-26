@@ -162,3 +162,187 @@ def time_to_failure(risk: np.ndarray, warning: float=0.5, failure: float=0.7) ->
     out[r>=warning]=1.0/np.clip(r[r>=warning],1e-6,1.0)
     out[r>=failure]=np.minimum(out[r>=failure],1.0)
     return out
+
+
+
+def source_reliability(quality: pd.DataFrame) -> pd.DataFrame:
+    """Outcome-free source reliability summary from operational quality fields."""
+    required = {"freshness", "completeness", "consistency"}
+    missing = required.difference(quality.columns)
+    if missing:
+        raise ValueError("missing source quality columns: " + ",".join(sorted(missing)))
+    out = quality.copy()
+    for c in required:
+        out[c] = pd.to_numeric(out[c], errors="coerce")
+    out["source_reliability"] = out[["freshness", "completeness", "consistency"]].mean(axis=1).clip(0.0, 1.0)
+    return out
+
+
+def information_shock_score(event_counts: Sequence[float], window: int = 10) -> np.ndarray:
+    """Return a 0..1 PIT-safe shock score based on the prior rolling baseline."""
+    x = pd.Series(np.asarray(event_counts, dtype=float))
+    if len(x) == 0 or not np.all(np.isfinite(x)):
+        raise ValueError("event_counts must be finite and non-empty")
+    w = max(3, int(window))
+    med = x.shift(1).rolling(w, min_periods=2).median()
+    mad = (x.shift(1) - med).abs().rolling(w, min_periods=2).median()
+    scale = (1.4826 * mad).replace(0.0, np.nan).fillna(1.0).clip(lower=1e-6)
+    z = ((x - med.fillna(x.iloc[0])) / scale).abs().to_numpy()
+    return np.clip(z / 4.0, 0.0, 1.0)
+
+
+def regime_transition_probabilities(regimes: Sequence[str], *, smoothing: float = 1.0) -> pd.DataFrame:
+    """Chronological Markov transition estimate; no target labels required."""
+    s = [str(v) for v in regimes]
+    if len(s) < 4:
+        raise ValueError("not enough regimes")
+    if smoothing <= 0 or not np.isfinite(smoothing):
+        raise ValueError("smoothing must be positive and finite")
+    states = sorted(set(s))
+    idx = {v: i for i, v in enumerate(states)}
+    mat = np.full((len(states), len(states)), float(smoothing))
+    for a, b in zip(s[:-1], s[1:]):
+        mat[idx[a], idx[b]] += 1.0
+    mat /= mat.sum(axis=1, keepdims=True)
+    return pd.DataFrame(mat, index=states, columns=states)
+
+
+def next_regime_distribution(transition: pd.DataFrame, current: str) -> dict[str, float]:
+    if current not in transition.index:
+        p = np.full(len(transition.columns), 1.0 / len(transition.columns))
+    else:
+        p = transition.loc[current].to_numpy(dtype=float)
+    return {str(k): float(v) for k, v in zip(transition.columns, p)}
+
+
+def meta_label_features(model_probs: np.ndarray, state: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Construct individual-prediction meta features without outcomes."""
+    p = np.asarray(model_probs, dtype=float)
+    p = p / p.sum(axis=1, keepdims=True)
+    out = pd.DataFrame({
+        "base_confidence": p.max(axis=1),
+        "base_entropy": -np.sum(p * np.log(np.clip(p, EPS, 1.0)), axis=1),
+        "base_margin": np.sort(p, axis=1)[:, -1] - np.sort(p, axis=1)[:, -2],
+    })
+    if state is not None:
+        s = state.reset_index(drop=True).select_dtypes(include=[np.number]).astype(float)
+        if len(s) != len(out) or not np.all(np.isfinite(s.to_numpy())):
+            raise ValueError("meta state mismatch or non-finite values")
+        out = pd.concat([s, out], axis=1)
+    return out
+
+
+class ChronologicalMetaLabeler:
+    """Fit prediction-level correctness risk on an earlier OOS prefix only."""
+
+    def __init__(self):
+        self.model: LogisticRegression | None = None
+        self.columns: list[str] = []
+        self.fallback: float = 0.5
+
+    def fit(self, state: pd.DataFrame, y_true: np.ndarray, base_probs: np.ndarray) -> "ChronologicalMetaLabeler":
+        y = np.asarray(y_true, dtype=int)
+        x = meta_label_features(base_probs, state)
+        if len(x) != len(y):
+            raise ValueError("meta-label lengths differ")
+        target = (np.argmax(_norm(base_probs), axis=1) == y).astype(int)
+        self.columns = list(x.columns)
+        self.fallback = float(target.mean()) if len(target) else 0.5
+        if len(np.unique(target)) >= 2:
+            self.model = LogisticRegression(C=0.5, max_iter=500, random_state=42)
+            self.model.fit(x.to_numpy(), target)
+        return self
+
+    def predict(self, state: pd.DataFrame, base_probs: np.ndarray) -> np.ndarray:
+        x = meta_label_features(base_probs, state)
+        x = x[self.columns]
+        if self.model is None:
+            return np.full(len(x), self.fallback, dtype=float)
+        return self.model.predict_proba(x.to_numpy())[:, 1]
+
+
+def split_conformal_sets(
+    calibration_probs: np.ndarray,
+    calibration_y: np.ndarray,
+    query_probs: np.ndarray,
+    *,
+    alpha: float = 0.10,
+) -> dict[str, object]:
+    """Chronology-compatible split-conformal candidate; no time-series guarantee claimed."""
+    cp = _norm(calibration_probs)
+    y = np.asarray(calibration_y, dtype=int)
+    qp = _norm(query_probs)
+    if len(cp) != len(y) or cp.shape[1] != qp.shape[1] or len(y) < 20:
+        raise ValueError("invalid conformal inputs")
+    if not 0.0 < alpha < 1.0:
+        raise ValueError("alpha must be in (0,1)")
+    scores = 1.0 - cp[np.arange(len(y)), y]
+    q = float(np.quantile(scores, min(1.0, np.ceil((len(scores) + 1) * (1.0 - alpha)) / len(scores)), method="higher"))
+    sets = qp >= (1.0 - q - EPS)
+    sets[np.arange(len(sets)), np.argmax(qp, axis=1)] = True
+    return {
+        "sets": sets,
+        "set_size_mean": float(sets.sum(axis=1).mean()),
+        "threshold": q,
+        "alpha": float(alpha),
+    }
+
+
+def multi_horizon_consistency(probability_streams: Mapping[str, np.ndarray]) -> pd.DataFrame:
+    """Compare horizons on the same chronological prediction rows, label-free."""
+    if len(probability_streams) < 2:
+        raise ValueError("at least two horizons required")
+    names = list(probability_streams)
+    ps = [_norm(np.asarray(probability_streams[n])) for n in names]
+    if any(p.shape != ps[0].shape for p in ps[1:]):
+        raise ValueError("horizon shapes differ")
+    mean_p = np.mean(np.stack(ps, axis=0), axis=0)
+    mean_dist = np.mean([0.5 * np.abs(p - mean_p).sum(axis=1) for p in ps], axis=0)
+    top_agreement = np.mean([np.argmax(p, axis=1) == np.argmax(mean_p, axis=1) for p in ps], axis=0)
+    return pd.DataFrame({
+        "temporal_consistency": 1.0 - np.clip(mean_dist, 0.0, 1.0),
+        "horizon_top_class_agreement": top_agreement,
+    })
+
+
+def stress_probability_stream(
+    probabilities: np.ndarray,
+    *,
+    temperature: float = 1.5,
+    additive_noise: float = 0.02,
+    seed: int = 42,
+) -> dict[str, float]:
+    """Distribution-level robustness probe without changing production outputs."""
+    p = _norm(probabilities)
+    if temperature <= 0 or not np.isfinite(temperature):
+        raise ValueError("temperature must be positive and finite")
+    rng = np.random.default_rng(seed)
+    logits = np.log(np.clip(p, EPS, 1.0)) / temperature
+    noisy = np.clip(logits + rng.normal(0.0, additive_noise, size=logits.shape), -50, 50)
+    noisy = np.exp(noisy - noisy.max(axis=1, keepdims=True))
+    noisy /= noisy.sum(axis=1, keepdims=True)
+    return {
+        "mean_l1_change": float(np.mean(0.5 * np.abs(noisy - p).sum(axis=1))),
+        "p95_l1_change": float(np.quantile(0.5 * np.abs(noisy - p).sum(axis=1), 0.95)),
+        "unstable_rate": float(np.mean(0.5 * np.abs(noisy - p).sum(axis=1) > 0.10)),
+    }
+
+
+def probability_safety_gate(
+    probabilities: np.ndarray,
+    *,
+    max_jump: float = 0.35,
+    min_probability: float = 1e-5,
+    max_probability: float = 1.0 - 1e-5,
+) -> dict[str, object]:
+    p = _norm(probabilities)
+    valid = np.all(np.isfinite(p), axis=1)
+    valid &= np.min(p, axis=1) >= float(min_probability)
+    valid &= np.max(p, axis=1) <= float(max_probability)
+    if len(p) > 1:
+        valid[1:] &= np.max(np.abs(p[1:] - p[:-1]), axis=1) <= float(max_jump)
+    return {
+        "pass": bool(np.all(valid)),
+        "row_valid": valid,
+        "invalid_rate": float(np.mean(~valid)),
+    }
