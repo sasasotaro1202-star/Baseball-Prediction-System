@@ -71,6 +71,18 @@ def test_failure_memory_and_strategy_rate_are_pit_safe():
     )
     assert set(rates) == {"A","B"}
 
+    invalid = hist.copy()
+    invalid.loc[0, "available_at"] = "not-a-time"
+    blocked = failure_memory(
+        invalid, {"x": .1}, prediction_time=base+pd.Timedelta(hours=2), feature_cols=["x"], k=3
+    )
+    assert blocked["status"] == "BLOCKED"
+
+    bad_strategy = hist.copy()
+    bad_strategy.loc[0, "available_at"] = "not-a-time"
+    with pytest.raises(ValueError):
+        strategy_failure_rate(bad_strategy, prediction_time=base+pd.Timedelta(hours=4))
+
 
 def test_contract_rollback_and_experiment_registry():
     c = build_forecast_contract(
