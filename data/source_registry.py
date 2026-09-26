@@ -75,6 +75,7 @@ SOURCES = (
     SourceSpec("openbiomechanics", "Cross-Level-Research", "biomechanics_player_prior", "Driveline OpenBiomechanics Project", 2, False, "public research dataset; not game-time evidence, small research cohort, player linkage/PIT required"),
     SourceSpec("jaba_official", "Japan-Amateur", "corporate_baseball_competitions", "https://www.jaba.or.jp/", 1, False, "official schedules/results are public; structured PBP and historical PIT require validation"),
     SourceSpec("big6_scorebook", "Japan-University", "university_league_records", "https://big6scorebook.jp/", 1, False, "official record room exposes schedules, results and player/team records; granular PIT requires validation"),
+    SourceSpec("czech_baseball_assoc", "Czechia-Baseball", "league_and_youth_stats", "Czech Baseball Association / baseball.cz", 1, False, "official schedules/results/statistics are public; historical PIT and PBP granularity require validation"),
 )
 
 
