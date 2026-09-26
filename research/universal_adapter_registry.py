@@ -7,6 +7,7 @@ coverage audit distinguish IMPLEMENTED from UNWIRED without auto-promoting PIT/O
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from importlib import import_module
 from pathlib import Path
 from typing import Any
 
@@ -81,8 +82,15 @@ def adapter_spec(source_id: str) -> AdapterSpec | None:
 
 
 def adapter_present(source_id: str) -> bool:
+    """Return true only when both the module file and declared symbol exist."""
     spec = adapter_spec(source_id)
-    return bool(spec and _module_file(spec.module_path).is_file())
+    if spec is None or not _module_file(spec.module_path).is_file():
+        return False
+    try:
+        module = import_module(spec.module_path)
+        return callable(getattr(module, spec.symbol))
+    except Exception:
+        return False
 
 
 def adapter_metadata(source_id: str) -> dict[str, Any]:
@@ -97,10 +105,12 @@ def adapter_metadata(source_id: str) -> dict[str, Any]:
             "collection_ready": False,
             "notes": "No concrete adapter contract is registered.",
         }
-    present = _module_file(spec.module_path).is_file()
+    file_present = _module_file(spec.module_path).is_file()
+    implemented = adapter_present(source_id)
     return asdict(spec) | {
         "mapped": True,
-        "implemented": present,
+        "implemented": implemented,
+        "module_file_present": file_present,
         "module_file": str(_module_file(spec.module_path).relative_to(_repo_root())),
     }
 
