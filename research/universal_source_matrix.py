@@ -110,6 +110,11 @@ SOURCE_CAPABILITIES: dict[str, frozenset[str]] = {
     "bbf_youth_u16_u18": frozenset({"schedule_identity", "batting", "pitching", "roster", "tournament_rules"}),
     "paba_philippines": frozenset({"schedule_identity", "batting", "pitching", "roster"}),
     "asian_games_baseball": frozenset({"schedule_identity", "batting", "pitching", "roster", "tournament_rules"}),
+    "baseball_australia_youth": frozenset({"schedule_identity", "batting", "pitching", "roster", "tournament_rules"}),
+    "baseball_australia_womens": frozenset({"schedule_identity", "batting", "pitching", "roster", "tournament_rules"}),
+    "baseball_australia_womens_u16": frozenset({"schedule_identity", "batting", "pitching", "roster", "tournament_rules"}),
+    "lbda_juvenil_puerto_rico": frozenset({"schedule_identity", "batting", "pitching", "roster", "tournament_rules"}),
+
 
 
     "openbiomechanics": frozenset({"tracking", "pitching", "batting"}),
