@@ -227,6 +227,9 @@ def main() -> None:
             "regime_transition": regime_next,
             "meta_label_eval_mean_reliability": float(np.mean(meta_eval)),
             "conformal_eval_set_size": float(conformal_eval["set_size_mean"]),
+            "forward_meta_cut_rows": int(cut),
+            "forward_meta_eval_rows": int(len(y_eval)),
+            "nested_oos": True,
         },
         "diagnostics": {
             "error_correlation": error_diversity.to_dict(),
