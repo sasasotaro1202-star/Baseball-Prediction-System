@@ -2083,6 +2083,9 @@ class BaseballBacktest:
         splits = self._validation_splits(len(X))
         if fast and splits:
             splits = splits[-1:]
+        score_fast_validation = os.getenv("BASEBALL_SCORE_FAST_VALIDATION", "0") == "1"
+        if score_fast_validation and splits:
+            splits = splits[-1:]
         score_tree_estimators = self._env_int(
             "BASEBALL_SCORE_TREE_ESTIMATORS", 90 if fast else 180, minimum=1
         )
