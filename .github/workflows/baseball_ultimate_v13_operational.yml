@@ -7,6 +7,7 @@ on:
     paths:
       - 'research/ultimate_v13_operational_controls.py'
       - 'tests/test_ultimate_v13_operational_controls.py'
+      - 'research/ultimate_v13_real_oos.py'
       - '.github/workflows/baseball_ultimate_v13_operational.yml'
 
 permissions:
