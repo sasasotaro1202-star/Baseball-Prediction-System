@@ -522,3 +522,35 @@ season accumulated statistics through its official portal.
 Source:
 https://www.lbdajpr.org/itinerario/estadisticas
 Status: HIGH-VALUE YOUTH STATISTICS CANDIDATE.
+
+
+## Brazil / Israel / Argentina additions — 2026-09-27
+
+### Brazil — CBBS multi-age competitions
+CBBS publishes separate national/interclub competitions for youth levels
+including Pré-Infantil, Infantil, Juvenil and Júnior. 2026 event pages expose
+participants, schedules/results, standings and individual batting/pitching
+awards/statistics when supplied by the event.
+Sources:
+https://cbbs.com.br/2026/05/25/resultados-6o-campeonato-brasileiro-de-beisebol-pre-infantil-livre-2026/
+https://cbbs.com.br/2026/06/08/resultados-20a-taca-brasil-de-beisebol-junior-2026/
+Status: HIGH-VALUE SOUTH-AMERICAN MULTI-AGE SOURCE.
+
+### Israel Baseball — six age/competition layers
+The Israel Association of Baseball currently lists Minors (grades 1-2),
+Juveniles (3-4), Little League (5-7), Cadets (8-9), Juniors (10-12) and a
+Premier League (18+). The federation also publishes league-specific rules,
+making competition-rule metadata unusually explicit.
+Sources:
+https://baseball.org.il/en/leagues/
+https://baseball.org.il/he/resources-baseball-rules/
+Status: HIGH-VALUE MULTI-AGE SOURCE; detailed historical PBP/PIT still requires validation.
+
+### Argentina — Liga Argentina de Béisbol
+The official LAB platform publishes scoreboard, fixtures, results, statistics
+and season information. The 2026/27 season is scheduled for eight weeks
+beginning 31 October 2026.
+Sources:
+https://www.ligaargentinabeisbol.com/
+https://www.ligaargentinabeisbol.com/noticias/la-liga-argentina-de-beisbol-tendra-su-temporada-2026-2027-con-ocho-semanas-de-competencia-y-una-gran-definicion-en-salta
+Status: HIGH-VALUE SOUTH-AMERICAN SENIOR SOURCE.
