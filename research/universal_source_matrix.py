@@ -49,6 +49,12 @@ SOURCE_CAPABILITIES: dict[str, frozenset[str]] = {
     "mlb_statsapi": frozenset({"schedule_identity", "roster", "batting", "pitching", "fielding"}),
     "mlb_starters": frozenset({"starting_pitchers"}),
     "mlb_milb_statcast": frozenset({"tracking", "pitching", "batting"}),
+    "milb_data_repository": frozenset({"schedule_identity", "play_by_play", "batting", "pitching", "roster"}),
+    "cpbl_savant_tracking": frozenset({"schedule_identity", "play_by_play", "tracking", "batting", "pitching"}),
+    "kbo_data_portal_collector": frozenset({"schedule_identity", "batting", "pitching"}),
+    "ffbs_d1_official": frozenset({"schedule_identity", "batting", "pitching", "tournament_rules"}),
+    "wbc_scouting_public_dataset": frozenset({"tracking", "batting", "pitching", "roster"}),
+
     "ncaa_baseball_sportsdataverse": frozenset({"schedule_identity", "play_by_play", "batting", "pitching"}),
     "retrosheet": frozenset({"schedule_identity", "play_by_play", "batting", "pitching", "fielding"}),
     "kbo_official_tracking": frozenset({"tracking", "pitching", "batting"}),
