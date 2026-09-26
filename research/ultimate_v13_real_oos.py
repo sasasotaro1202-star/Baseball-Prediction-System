@@ -101,7 +101,7 @@ def _model_panel(df: pd.DataFrame, league: str) -> tuple[dict[str, np.ndarray], 
     game_order = df.drop_duplicates("game_id")["game_id"].astype(str).tolist()
     for name, group in df.groupby("model", sort=True):
         group = group.set_index(group["game_id"].astype(str)).loc[game_order]
-        p = group[probs].apply(pd.to_numeric, errors="coerce").to_numpy(float)
+        p = group[probs].apply(pd.to_numeric, errors="coerce").to_numpy(dtype=float, copy=True)
         if not np.isfinite(p).all() or (p < 0).any() or np.any(p.sum(axis=1) <= 0):
             return None
         p /= p.sum(axis=1, keepdims=True)
