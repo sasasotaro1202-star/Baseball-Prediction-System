@@ -92,6 +92,9 @@ SOURCE_CAPABILITIES: dict[str, frozenset[str]] = {
     "wbsc_womens_baseball": frozenset({"schedule_identity", "batting", "pitching", "roster"}),
     "little_league_world_series": frozenset({"schedule_identity", "batting", "pitching", "roster", "tournament_rules"}),
     "cape_cod_league": frozenset({"schedule_identity", "batting", "pitching", "roster"}),
+    "northwoods_league": frozenset({"schedule_identity", "batting", "pitching", "roster"}),
+    "west_coast_league": frozenset({"schedule_identity", "batting", "pitching", "roster"}),
+
     "wbsc_europe_baseball": frozenset({"schedule_identity", "batting", "pitching", "roster", "tournament_rules"}),
     "knbsb_baseball": frozenset({"schedule_identity", "batting", "pitching", "tournament_rules"}),
     "czech_baseball_assoc": frozenset({"schedule_identity", "batting", "pitching", "tournament_rules"}),
