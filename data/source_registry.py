@@ -23,6 +23,8 @@ SOURCES = (
     SourceSpec("mlb_statsapi", "MLB", "schedule_result_identity", "https://statsapi.mlb.com/api/v1", 1, True, "source availability must be <= cutoff"),
     SourceSpec("mlb_starters", "MLB", "starting_pitchers", "https://statsapi.mlb.com/api/v1", 1, True, "confirmed pre-first-pitch information only"),
     SourceSpec("statcast", "MLB", "pitch_level_and_pitcher_detail", "Baseball Savant / Statcast", 1, False, "publication/event information must be <= cutoff"),
+    SourceSpec("npb_hawkeye_npbplus", "NPB", "tracking_data", "NPB+ / NPB DMP / Hawk-Eye", 1, False, "direct public API is not verified; every feature requires explicit available_at <= prediction_time"),
+    SourceSpec("npb_public_spaia_pbp", "NPB", "pitch_level_public_research", "https://spaia.jp/baseball/npb/api/flash_atbat_history", 2, False, "current retrieval may be used only for current prediction; historical OOS requires archived available_at evidence"),
     SourceSpec("fangraphs", "MLB", "advanced_batting_pitching_reference", "FanGraphs", 2, False, "historical metric must be cutoff-safe"),
     SourceSpec("weather", "NPB+MLB", "weather", "Open-Meteo", 2, False, "archived observation/forecast snapshot only"),
     SourceSpec("x_api_recent_search", "NPB+MLB", "public_social_context_research", "https://api.x.com/2/tweets/search/recent", 3, False, "observed_available_at is the earliest safe availability boundary; historical availability is unproven"),
