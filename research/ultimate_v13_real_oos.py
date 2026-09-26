@@ -14,11 +14,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from evaluation.metrics import (
-    accuracy_score,
-    brier_score,
-    log_loss_score,
-)
+from evaluation.metrics import classification_metrics
 from research.ultimate_v13_control import model_disagreement, predictability_score
 from research.ultimate_v13_operational_controls import (
     output_format,
@@ -52,16 +48,17 @@ def _labels(df: pd.DataFrame, league: str) -> np.ndarray:
 
 
 def _metrics(y: np.ndarray, p: np.ndarray) -> dict[str, float]:
-    p = np.asarray(p, dtype=float)
-    p = np.maximum(p, 1e-12)
-    p /= p.sum(axis=1, keepdims=True)
-    pred = np.argmax(p, axis=1)
+    arr = np.asarray(p, dtype=float)
+    arr = np.maximum(arr, 1e-12)
+    arr /= arr.sum(axis=1, keepdims=True)
+    classes = list(range(arr.shape[1]))
+    metrics = classification_metrics(np.asarray(y, dtype=int), arr, classes=classes)
     return {
-        "Accuracy": float(accuracy_score(y, pred)),
-        "LogLoss": float(log_loss_score(y, p)),
-        "Brier": float(brier_score(y, p)),
+        "Accuracy": float(metrics["Accuracy"]),
+        "LogLoss": float(metrics["LogLoss"]),
+        "Brier": float(metrics["Brier"]),
+        "ECE": float(metrics["ECE"]),
     }
-
 
 def _pit_status(df: pd.DataFrame) -> dict[str, Any]:
     required = {"prediction_time", "available_at"}
