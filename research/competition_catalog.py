@@ -104,7 +104,7 @@ SCOPES: tuple[CompetitionScope, ...] = (
                      "competition_defined", "knbsb_specific", ("knbsb_baseball",), 2),
     CompetitionScope("LIDOM", "Liga de Béisbol Profesional de la República Dominicana", "winter_professional",
                      "mixed", "competition_defined", "latin_winter_specific",
-                     ("lidom_mlb_winter", "retrosheet"), 1),
+                     ("lidom_mlb_winter",), 1),
     CompetitionScope("LVBP", "Liga Venezolana de Béisbol Profesional", "winter_professional", "mixed",
                      "competition_defined", "latin_winter_specific", ("lvbp_official",), 1),
     CompetitionScope("LBPRC", "Liga de Béisbol Profesional Roberto Clemente", "winter_professional", "mixed",
