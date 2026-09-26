@@ -8,6 +8,7 @@ name: Baseball Candidate OOS Validation
 # Final replay trigger after score tuple compatibility fixes; production defaults remain unchanged.
 # Candidate screening must follow the newest main calibration/model contract before any holdout evidence is considered.
 # Fresh post-hardening replay trigger: regenerate Development OOS -> locked holdout evidence after CI-verified gate hardening.
+# Re-run after verified MLB score-validation compute bound; use latest main state.
 
 on:
   workflow_dispatch:
