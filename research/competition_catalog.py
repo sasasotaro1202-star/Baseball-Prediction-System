@@ -25,9 +25,11 @@ class CompetitionScope:
 SCOPES: tuple[CompetitionScope, ...] = (
     CompetitionScope("NPB", "NPB", "professional", "mixed", "three_way", "npb_standard",
                      ("npb_schedule", "npb_starters", "npb_lineups", "npb_hawkeye_npbplus",
-                      "npb_public_spaia_pbp", "armstjc_npb_repository", "weather"), 1),
+                      "npb_public_spaia_pbp", "wocchi09_npb_data", "armstjc_npb_repository",
+                      "x_api_recent_search", "weather"), 1),
     CompetitionScope("MLB", "MLB", "professional", "mixed", "binary", "mlb_standard",
-                     ("mlb_statsapi", "mlb_starters", "statcast", "weather"), 1),
+                     ("mlb_statsapi", "mlb_starters", "statcast", "fangraphs", "retrosheet",
+                      "x_api_recent_search", "weather"), 1),
     CompetitionScope("MiLB", "MLB Minor League", "professional", "mixed", "competition_defined",
                      "minor_league_specific", ("mlb_milb_statcast", "mlb_statsapi"), 1),
     CompetitionScope("KBO", "KBO", "professional", "mixed", "competition_defined", "kbo_standard",
