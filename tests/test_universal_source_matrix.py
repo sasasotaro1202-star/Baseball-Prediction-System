@@ -136,3 +136,17 @@ def test_every_scope_reference_is_registered():
     assert referenced <= registered, (
         f"scope references not in registry: {sorted(referenced - registered)}"
     )
+
+
+def test_canada_and_great_britain_multi_age_scopes_bind_sources():
+    checks = {
+        "Canada_ICBA": "icba_ontario",
+        "Canada_BaseballQuebec": "baseball_quebec",
+        "Canada_WomensBaseball": "lfbq_womens",
+        "GreatBritain_Senior": "bbf_senior_leagues",
+        "GreatBritain_Youth": "bbf_youth_u16_u18",
+        "Philippines_National": "paba_philippines",
+        "AsianGames_2026": "asian_games_baseball",
+    }
+    for scope_id, source_id in checks.items():
+        assert source_id in {r["source_id"] for r in application_plan(scope_id)}
