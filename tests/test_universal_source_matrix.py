@@ -61,3 +61,11 @@ def test_mlb_only_tracking_sources_are_not_applied_to_high_school():
     assert "statcast" not in source_ids
     assert "fangraphs" not in source_ids
     assert "retrosheet" not in source_ids
+
+
+def test_every_registered_source_is_applied_to_at_least_one_scope():
+    registered = {s.source_id for s in SOURCES}
+    applied = {r["source_id"] for r in application_matrix()}
+    assert registered <= applied, (
+        f"registered sources not applied to any scope: {sorted(registered - applied)}"
+    )
