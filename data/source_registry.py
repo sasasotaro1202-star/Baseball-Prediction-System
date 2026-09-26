@@ -88,6 +88,13 @@ SOURCES = (
     SourceSpec("lpbc_colombia", "Colombia-LPBC", "league_results_statistics", "https://www.lpbcol.com.co/", 1, False, "official public live statistics/results; historical PIT and structured acquisition require validation"),
     SourceSpec("northwoods_league", "USA-Summer-Collegiate", "schedule_statistics", "Northwoods League", 1, False, "official public schedule/statistics; historical PIT/PBP granularity requires validation"),
     SourceSpec("west_coast_league", "USA-Summer-Collegiate", "schedule_statistics", "West Coast League", 1, False, "official public schedule/statistics; historical PIT/PBP granularity requires validation"),
+    SourceSpec("icba_ontario", "Canada-ICBA", "multi_age_schedule_results", "Inter County Baseball Association Ontario", 1, False, "public 2026 schedule/results across 8U-22U; detailed PBP and historical PIT require validation"),
+    SourceSpec("baseball_quebec", "Canada-BaseballQuebec", "multi_age_competitions", "Baseball Québec", 1, False, "official 2026 championships span 9U-21U and female/male divisions; detailed PBP/PIT require validation"),
+    SourceSpec("lfbq_womens", "Canada-WomensBaseball", "womens_multi_age", "Ligue Féminine de Baseball du Québec", 1, False, "public 2026 standings/rules and match data; historical PIT/PBP depth require validation"),
+    SourceSpec("bbf_senior_leagues", "GreatBritain-Baseball", "senior_leagues", "British Baseball Federation", 1, False, "official 2026 divisions 1-5 schedules/results/statistics portal; historical PIT/PBP depth requires validation"),
+    SourceSpec("bbf_youth_u16_u18", "GreatBritain-Youth", "youth_u16_u18", "British Baseball Federation Youth", 1, False, "official 2026 U16 plus youth U12/U14 competitions; detailed PIT/PBP depth requires validation"),
+    SourceSpec("paba_philippines", "Philippines-Baseball", "national_and_tournament_results", "Philippine Amateur Baseball Association", 1, False, "official national-team event scoreboard/results; league-level historical PBP/PIT not yet verified"),
+    SourceSpec("asian_games_baseball", "AsianGames-Baseball", "international_event_results", "Aichi-Nagoya 2026 Asian Games baseball", 1, False, "official event results are public; prediction-time PBP/PIT provenance requires validation"),
 )
 
 
