@@ -86,6 +86,8 @@ SOURCES = (
     SourceSpec("bbsv_youth_baseball", "Germany-Youth", "age_group_competitions", "BBSV youth baseball competitions", 1, False, "official age-class schedules/rules/results are public; detailed historical PIT/PBP requires validation"),
     SourceSpec("rfebs_baseball", "Spain-Baseball", "league_and_age_group_competitions", "https://www.rfebs.es/es/disciplines/baseball", 1, False, "official Spanish baseball competition calendar/results; structured PBP and historical PIT require validation"),
     SourceSpec("lpbc_colombia", "Colombia-LPBC", "league_results_statistics", "https://www.lpbcol.com.co/", 1, False, "official public live statistics/results; historical PIT and structured acquisition require validation"),
+    SourceSpec("northwoods_league", "USA-Summer-Collegiate", "schedule_statistics", "Northwoods League", 1, False, "official public schedule/statistics; historical PIT/PBP granularity requires validation"),
+    SourceSpec("west_coast_league", "USA-Summer-Collegiate", "schedule_statistics", "West Coast League", 1, False, "official public schedule/statistics; historical PIT/PBP granularity requires validation"),
 )
 
 
