@@ -121,6 +121,7 @@ jobs:
           if [ "${{ matrix.league }}" = "MLB" ]; then
             export BASEBALL_SCORE_TREE_ESTIMATORS=60
             export BASEBALL_SCORE_HIST_MAX_ITER=100
+            export BASEBALL_SCORE_FAST_VALIDATION=1
           fi
           python -m research.real_data_validation --league "${{ matrix.league }}" --mlb-start 2020 --mlb-end 2026
 
