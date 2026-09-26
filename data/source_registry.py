@@ -76,6 +76,11 @@ SOURCES = (
     SourceSpec("jaba_official", "Japan-Amateur", "corporate_baseball_competitions", "https://www.jaba.or.jp/", 1, False, "official schedules/results are public; structured PBP and historical PIT require validation"),
     SourceSpec("big6_scorebook", "Japan-University", "university_league_records", "https://big6scorebook.jp/", 1, False, "official record room exposes schedules, results and player/team records; granular PIT requires validation"),
     SourceSpec("czech_baseball_assoc", "Czechia-Baseball", "league_and_youth_stats", "Czech Baseball Association / baseball.cz", 1, False, "official schedules/results/statistics are public; historical PIT and PBP granularity require validation"),
+    SourceSpec("milb_data_repository", "MiLB", "schedule_pbp_player_stats", "GitHub armstjc/milb-data-repository", 1, False, "public release corpus; historical prediction-time availability must be separately proven"),
+    SourceSpec("cpbl_savant_tracking", "CPBL", "trackman_pbp_tracking", "GitHub lin-junyou/cpbl-savant-py-app / stats.cpbl.com.tw", 1, False, "publicly retrievable research corpus; current 2026 scope and historical PIT must be validated"),
+    SourceSpec("kbo_data_portal_collector", "KBO", "historical_game_schedule_player_stats", "GitHub kbo-data-portal/collector", 1, False, "public collector claims 1982-present; source terms and prediction-time availability require audit"),
+    SourceSpec("ffbs_d1_official", "France-D1", "schedule_results_stats", "Fédération Française de Baseball et Softball", 1, False, "official public competition pages; structured PBP and historical PIT depth require validation"),
+    SourceSpec("wbc_scouting_public_dataset", "WBC+PlayerPrior", "player_pitch_level_pre_event_prior", "GitHub yasumorishima/kaggle-datasets WBC 2026 scouting dataset", 2, False, "derived public dataset using MLB regular-season Statcast; use only as pre-event prior with explicit temporal boundary"),
 )
 
 
