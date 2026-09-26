@@ -46,6 +46,14 @@ SOURCES = (
     SourceSpec("fangraphs", "MLB", "advanced_batting_pitching_reference", "FanGraphs", 2, False, "historical metric must be cutoff-safe"),
     SourceSpec("weather", "NPB+MLB", "weather", "Open-Meteo", 2, False, "archived observation/forecast snapshot only"),
     SourceSpec("x_api_recent_search", "NPB+MLB", "public_social_context_research", "https://api.x.com/2/tweets/search/recent", 3, False, "observed_available_at is the earliest safe availability boundary; historical availability is unproven"),
+    SourceSpec("kbo_naver_pbp_public", "KBO", "pitch_by_pitch_public_research", "GitHub slothman3878/kbo_pbp_naver_sports + public dataset", 1, False, "source event/publication boundary must be proven before historical OOS"),
+    SourceSpec("omyu_university", "Japan-University", "game_and_pitch_by_pitch", "一球速報.com / OmyuTech", 2, False, "public pages vary by organizer; machine access, terms and PIT require validation"),
+    SourceSpec("omyu_jaba", "Japan-Amateur", "game_and_pitch_by_pitch", "一球速報.com / OmyuTech", 2, False, "public pages vary by organizer; machine access, terms and PIT require validation"),
+    SourceSpec("omyu_elementary", "Japan-Elementary", "game_and_boxscore", "一球速報.com / OmyuTech", 2, False, "coverage varies by organizer; player identity and PIT require validation"),
+    SourceSpec("omyu_womens_high_school", "Japan-WomensHighSchool", "game_and_pitch_by_pitch", "一球速報.com / OmyuTech", 2, False, "public pages vary by organizer; machine access and PIT require validation"),
+    SourceSpec("omyu_womens_junior", "Japan-WomensJunior", "game_and_pitch_by_pitch", "一球速報.com / OmyuTech", 2, False, "public pages vary by organizer; machine access and PIT require validation"),
+    SourceSpec("samurai_u23", "Japan-U23", "national_team_results_and_rosters", "Japan Baseball / WBSC-related U23 competitions", 1, False, "official results are public; bulk historical PIT/PBP availability is unverified"),
+    SourceSpec("wbsc_age_group_reports", "WBSC-U12-U15-U18-U23", "tournament_reports_and_stats", "WBSC official tournament reports", 1, False, "historical reports are public; prediction-time availability and bulk PBP must be proven"),
 )
 
 
