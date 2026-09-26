@@ -111,6 +111,8 @@ jobs:
           NPB_RETRAIN_EVERY: '300'
           MLB_ENRICH_STARTERS: '0'
           PIT_SAFE_STARTER_DATA: '0'
+          # Research-only reproducibility controls for CatBoost candidate fits.
+          BASEBALL_CATBOOST_DETERMINISTIC: '1'
         run: |
           set -euo pipefail
           # MLB score validation is the remaining compute hotspot. Bound only
