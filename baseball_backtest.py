@@ -1305,7 +1305,13 @@ class BaseballBacktest:
         lgbm_estimators = self._env_int("BASEBALL_LGBM_ESTIMATORS", 180 if fast else 300, minimum=1)
         xgb_estimators = self._env_int("BASEBALL_XGB_ESTIMATORS", 120 if fast else 300, minimum=1)
         cat_iterations = self._env_int("BASEBALL_CATBOOST_ITERATIONS", 120 if fast else 300, minimum=1)
-        cat_random_strength = float(os.getenv("BASEBALL_CATBOOST_RANDOM_STRENGTH", "1.0"))
+        raw_cat_random_strength = os.getenv("BASEBALL_CATBOOST_RANDOM_STRENGTH", "1.0")
+        try:
+            cat_random_strength = float(raw_cat_random_strength)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "BASEBALL_CATBOOST_RANDOM_STRENGTH must be a finite float >= 0"
+            ) from exc
         if not np.isfinite(cat_random_strength) or cat_random_strength < 0:
             raise ValueError("BASEBALL_CATBOOST_RANDOM_STRENGTH must be finite and >= 0")
         cat_deterministic = os.getenv("BASEBALL_CATBOOST_DETERMINISTIC", "0") == "1"
