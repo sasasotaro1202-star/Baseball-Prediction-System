@@ -2199,6 +2199,7 @@ class BaseballBacktest:
         # score model pair. In the explicit fast research profile we skip that
         # second-stage refit and fall back to validated global score weights.
         # This is research-only; default/full paths retain regime routing.
+        final_router = None
         if score_fast_validation:
             regime_weights = {}
         else:
