@@ -171,7 +171,7 @@ def run_real_oos_bridge(path: str | Path, *, league: str, data_snapshot_id: str 
                 "status": "PASS",
                 "models": sorted(model_probs),
                 "model_disagreement": model_disagreement(model_probs),
-                "error_correlation": error_correlation(y, model_probs),
+                "error_correlation": error_correlation(_labels(df.drop_duplicates("game_id"), league), model_probs),
                 "loss_rows": {k: len(v) for k, v in losses.items()},
                 "router_stability": {"status": "UNAVAILABLE", "reason": "router_weights_not_present_in_checkpoint"},
             }
