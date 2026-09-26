@@ -29,7 +29,7 @@ SCOPES: tuple[CompetitionScope, ...] = (
                       "x_api_recent_search", "weather"), 1),
     CompetitionScope("MLB", "MLB", "professional", "mixed", "binary", "mlb_standard",
                      ("mlb_statsapi", "mlb_starters", "statcast", "fangraphs", "retrosheet",
-                      "x_api_recent_search", "weather"), 1),
+                      "lahman", "x_api_recent_search", "weather"), 1),
     CompetitionScope("MiLB", "MLB Minor League", "professional", "mixed", "competition_defined",
                      "minor_league_specific", ("mlb_milb_statcast", "mlb_statsapi"), 1),
     CompetitionScope("KBO", "KBO", "professional", "mixed", "competition_defined", "kbo_standard",
