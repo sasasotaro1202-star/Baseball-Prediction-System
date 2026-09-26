@@ -13,7 +13,7 @@ import pandas as pd
 
 from data.source_registry import SOURCES
 from research.competition_catalog import get_scope
-from research.universal_source_matrix import pit_safe_rows, source_capabilities
+from research.universal_source_matrix import application_plan, pit_safe_rows, source_capabilities
 
 
 IDENTITY_COLUMNS = (
@@ -54,6 +54,11 @@ def normalize_research_frame(
         raise UniversalContractError("frame must be a non-empty DataFrame")
     scope = get_scope(scope_id)
     validate_source_id(source_id)
+    applicable = {row["source_id"] for row in application_plan(scope_id)}
+    if source_id not in applicable:
+        raise UniversalContractError(
+            f"source {source_id} is not registered as applicable to scope {scope_id}"
+        )
 
     missing = {"event_id", "event_time", "prediction_time", "available_at"} - set(frame.columns)
     if missing:
