@@ -53,6 +53,10 @@ def test_invalid_model_env_fails_closed(monkeypatch):
         raise AssertionError("invalid model configuration was silently accepted")
 
 
+def test_score_fast_validation_flag_can_be_read(monkeypatch):
+    monkeypatch.setenv("BASEBALL_SCORE_FAST_VALIDATION", "1")
+    assert monkeypatch.getenv("BASEBALL_SCORE_FAST_VALIDATION") == "1"
+
 def test_configurable_hard_cap(monkeypatch):
     monkeypatch.setenv("BASEBALL_TIME_BUDGET_SEC", "7200")
     monkeypatch.setenv("BASEBALL_HARD_CAP_SEC", "12600")
