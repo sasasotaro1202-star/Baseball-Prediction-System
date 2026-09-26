@@ -150,3 +150,15 @@ def test_canada_and_great_britain_multi_age_scopes_bind_sources():
     }
     for scope_id, source_id in checks.items():
         assert source_id in {r["source_id"] for r in application_plan(scope_id)}
+
+
+def test_australia_and_puerto_rico_youth_scopes_bind_sources():
+    checks = {
+        "Australia_U18": "baseball_australia_youth",
+        "Australia_U16": "baseball_australia_youth",
+        "Australia_Womens": "baseball_australia_womens",
+        "Australia_Womens_U16": "baseball_australia_womens_u16",
+        "PuertoRico_Juvenile_DAA": "lbda_juvenil_puerto_rico",
+    }
+    for scope_id, source_id in checks.items():
+        assert source_id in {r["source_id"] for r in application_plan(scope_id)}
