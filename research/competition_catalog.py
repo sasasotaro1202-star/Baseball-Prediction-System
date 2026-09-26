@@ -107,6 +107,8 @@ SCOPES: tuple[CompetitionScope, ...] = (
                      "competition_defined", "knbsb_specific", ("knbsb_baseball",), 2),
     CompetitionScope("Netherlands_Youth", "Netherlands Youth Baseball", "youth", "mixed",
                      "competition_defined", "knbsb_youth_specific", ("knbsb_baseball",), 2),
+    CompetitionScope("Czechia_Baseball", "Czech Baseball Competitions", "professional_and_youth", "mixed",
+                     "competition_defined", "czech_baseball_specific", ("czech_baseball_assoc",), 1),
     CompetitionScope("LIDOM", "Liga de Béisbol Profesional de la República Dominicana", "winter_professional",
                      "mixed", "competition_defined", "latin_winter_specific",
                      ("lidom_mlb_winter",), 1),
