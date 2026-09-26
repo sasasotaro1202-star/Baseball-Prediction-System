@@ -40,7 +40,7 @@ def test_real_oos_executes_with_real_target_and_pit_contract():
     report = run_real_oos_bridge(path, league="MLB", data_snapshot_id="snap")
     assert report["status"] == "EXECUTED"
     assert report["promotion_status"] == "HOLD"
-    assert set(report["metrics"]) == {"Accuracy", "LogLoss", "Brier"}
+    assert set(report["metrics"]) == {"Accuracy", "LogLoss", "Brier", "ECE"}
     assert report["pit"]["status"] == "PASS"
 
 
