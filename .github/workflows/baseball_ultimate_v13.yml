@@ -1,0 +1,80 @@
+name: Baseball Ultimate Future-Generalization v13
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'research/future_generalization_v13.py'
+      - 'tests/test_future_generalization_v13.py'
+      - '.github/workflows/baseball_ultimate_v13.yml'
+      - 'baseball_backtest.py'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baseball-ultimate-v13
+  cancel-in-progress: false
+
+jobs:
+  foundation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install
+        run: python -m pip install --disable-pip-version-check --retries 5 --timeout 90 --prefer-binary -r requirements.txt
+      - name: Compile
+        run: python -m compileall -q .
+      - name: Targeted v13 tests
+        run: python -m pytest -q tests/test_future_generalization_v13.py
+      - name: Full regression suite
+        run: python -m pytest -q tests
+      - name: Research-only E2E
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from research.future_generalization_v13 import _self_test
+          result = _self_test()
+          Path('results/future_generalization_v13_report.json').write_text(
+              json.dumps(result, ensure_ascii=False, indent=2),
+              encoding='utf-8',
+          )
+          print(json.dumps(result, ensure_ascii=False, indent=2))
+          PY
+      - name: Artifact integrity
+        run: |
+          set -euo pipefail
+          test -s results/future_generalization_v13_report.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          obj = json.loads(Path('results/future_generalization_v13_report.json').read_text(encoding='utf-8'))
+          required = {'status', 'policy', 'routing', 'predictability', 'failure', 'time_to_failure', 'diagnostic_metrics'}
+          missing = required - set(obj)
+          if missing:
+              raise SystemExit('missing report keys: ' + ','.join(sorted(missing)))
+          if obj.get('status') != 'READY':
+              raise SystemExit('v13 E2E did not reach READY')
+          if abs(sum(obj['routing'].values()) - 1.0) > 1e-9:
+              raise SystemExit('routing weights do not sum to one')
+          PY
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: baseball-ultimate-v13-\${{ github.run_id }}
+          path: results/future_generalization_v13_report.json
+          if-no-files-found: error
+          retention-days: 7
