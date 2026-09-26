@@ -55,12 +55,12 @@ def test_error_router_and_fallback_controls():
 def test_failure_memory_and_strategy_rate_are_pit_safe():
     base = pd.Timestamp("2026-01-01T00:00:00Z")
     hist = pd.DataFrame({
-        "prediction_time":[base, base+pd.Timedelta(hours=1), base+pd.Timedelta(hours=3), base+pd.Timedelta(hours=5)],
-        "available_at":[base-pd.Timedelta(minutes=5), base+pd.Timedelta(minutes=30), base+pd.Timedelta(hours=3), base+pd.Timedelta(hours=5)],
-        "failure":[True, True, False, True],
-        "strategy":["A","A","B","A"],
-        "success":[False, True, True, False],
-        "x":[0.1,0.2,0.11,0.09],
+        "prediction_time":[base, base+pd.Timedelta(hours=1), base+pd.Timedelta(hours=1, minutes=30), base+pd.Timedelta(hours=3), base+pd.Timedelta(hours=5)],
+        "available_at":[base-pd.Timedelta(minutes=5), base+pd.Timedelta(minutes=30), base+pd.Timedelta(hours=1, minutes=45), base+pd.Timedelta(hours=3), base+pd.Timedelta(hours=5)],
+        "failure":[True, True, True, False, True],
+        "strategy":["A","A","A","B","A"],
+        "success":[False, True, False, True, False],
+        "x":[0.1,0.2,0.12,0.11,0.09],
     })
     q = failure_memory(
         hist, {"x":.1}, prediction_time=base+pd.Timedelta(hours=2), feature_cols=["x"], k=3
