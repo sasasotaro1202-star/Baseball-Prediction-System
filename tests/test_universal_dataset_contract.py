@@ -68,4 +68,4 @@ def test_source_not_bound_to_scope_is_rejected():
 
 def test_manifest_records_actual_capabilities():
     m = research_manifest(_frame(), scope_id="Japan_HighSchool", source_id="omyu_high_school")
-    assert "play_by_play" in m["feature_columns_present"] or m["feature_columns_present"] == ["batting"]
+    assert m["source_capabilities"] == ["batting", "lineups", "pitching", "play_by_play", "schedule_identity"]
