@@ -28,6 +28,12 @@ env:
   # Scheduled OOS uses a bounded profile; production-facing defaults remain full.
   BASEBALL_FAST_OOS: '1'
   BASEBALL_MAX_FIT_ROWS: '6000'
+  # Scheduled closed-loop research uses a bounded model portfolio/cadence.
+  # This is research-only; production defaults remain unchanged.
+  BASEBALL_FAST_MODEL_POOL: 'Logistic,HistGB,ExtraTrees,HierarchicalDrawResult'
+  BASEBALL_SCORE_FAST_VALIDATION: '1'
+  BASEBALL_SCORE_TREE_ESTIMATORS: '60'
+  BASEBALL_SCORE_HIST_MAX_ITER: '100'
 
 jobs:
   lifecycle:
@@ -261,7 +267,7 @@ jobs:
           # Leave enough wall-clock for the resumable MLB tail while still
           # staying inside the 120-minute lifecycle/job safety envelope.
           BASEBALL_TIME_BUDGET_SEC: '4800'
-          NPB_RETRAIN_EVERY: '150'
+          NPB_RETRAIN_EVERY: '300'
           MLB_ENRICH_STARTERS: '0'
         run: python -u research_runner_v6.py --league BOTH --mlb-start 2020 --mlb-end 2026 --retries 0
 

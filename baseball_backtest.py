@@ -1346,6 +1346,25 @@ class BaseballBacktest:
                 cat_kwargs["random_strength"] = 0.0
                 cat_kwargs["thread_count"] = 1
             m["CatBoost"] = CatBoostClassifier(**cat_kwargs)
+
+        # Scheduled closed-loop runs can opt into an explicit bounded research
+        # portfolio. The production/default portfolio remains unchanged, and
+        # the allow-list fails closed rather than silently falling back to a
+        # different model set.
+        pool_raw = os.getenv("BASEBALL_FAST_MODEL_POOL", "").strip()
+        if fast and pool_raw:
+            requested = [name.strip() for name in pool_raw.split(",") if name.strip()]
+            unknown = [name for name in requested if name not in m]
+            if unknown:
+                raise ValueError(
+                    "BASEBALL_FAST_MODEL_POOL contains unknown models: "
+                    + ", ".join(sorted(set(unknown)))
+                )
+            if not requested:
+                raise ValueError("BASEBALL_FAST_MODEL_POOL must not be empty")
+            m = {name: m[name] for name in requested}
+            if not m:
+                raise ValueError("BASEBALL_FAST_MODEL_POOL selected no available models")
         return m
 
     def _validation_splits(self, n: int) -> List[Tuple[int,int]]:
@@ -2176,47 +2195,51 @@ class BaseballBacktest:
             fitted.append((name,mh,ma)); weights.append(w)
         weights=np.asarray(weights,float); weights/=weights.sum()
 
-        # Validation regime boundaries are fitted independently from each
-        # chronological training prefix. The final router for deployment is
-        # fitted on the complete training prefix only after validation.
-        validation_regime_labels = self._chronological_regime_labels(X, splits)
-        regime_losses={}
-        regime_counts={}
-        for tr, va in splits:
-            self._check_time_budget(f"fit_score_ensemble:{league}:regime_split")
-            labels=validation_regime_labels[(tr, va)]
-            for regime in np.unique(labels):
-                idx=np.flatnonzero(labels==regime)
-                if len(idx) == 0:
-                    continue
-                regime_counts[str(regime)]=regime_counts.get(str(regime),0)+len(idx)
-            for loss,name,factory in top:
-                try:
-                    mh=factory(); ma=factory()
-                    self._fit_model(mh,X.iloc[:tr],y_home[:tr],self._sample_weights(tr),league)
-                    self._fit_model(ma,X.iloc[:tr],y_away[:tr],self._sample_weights(tr),league)
-                    ph=np.clip(mh.predict(X.iloc[tr:tr+va]),0.05,15)
-                    pa=np.clip(ma.predict(X.iloc[tr:tr+va]),0.05,15)
-                    nll=(ph-y_home[tr:tr+va]*np.log(ph)+np.array([math.lgamma(v+1) for v in y_home[tr:tr+va]]))
-                    nll+=(pa-y_away[tr:tr+va]*np.log(pa)+np.array([math.lgamma(v+1) for v in y_away[tr:tr+va]]))
-                    for regime in np.unique(labels):
-                        idx=np.flatnonzero(labels==regime)
-                        if len(idx):
-                            regime_losses.setdefault(str(regime),{}).setdefault(name,[]).extend((nll[idx]/2).tolist())
-                except Exception as exc:
-                    self.audit.append({
-                        "type": "score_model_error",
-                        "model": name,
-                        "stage": "score_regime_validation",
-                        "error": f"{type(exc).__name__}: {exc}",
-                    })
-                    continue
+        # Score-regime validation requires another fit of every selected
+        # score model pair. In the explicit fast research profile we skip that
+        # second-stage refit and fall back to validated global score weights.
+        # This is research-only; default/full paths retain regime routing.
+        if score_fast_validation:
+            regime_weights = {}
+        else:
+            validation_regime_labels = self._chronological_regime_labels(X, splits)
+            regime_losses={}
+            regime_counts={}
+            for tr, va in splits:
+                self._check_time_budget(f"fit_score_ensemble:{league}:regime_split")
+                labels=validation_regime_labels[(tr, va)]
+                for regime in np.unique(labels):
+                    idx=np.flatnonzero(labels==regime)
+                    if len(idx) == 0:
+                        continue
+                    regime_counts[str(regime)]=regime_counts.get(str(regime),0)+len(idx)
+                for loss,name,factory in top:
+                    try:
+                        mh=factory(); ma=factory()
+                        self._fit_model(mh,X.iloc[:tr],y_home[:tr],self._sample_weights(tr),league)
+                        self._fit_model(ma,X.iloc[:tr],y_away[:tr],self._sample_weights(tr),league)
+                        ph=np.clip(mh.predict(X.iloc[tr:tr+va]),0.05,15)
+                        pa=np.clip(ma.predict(X.iloc[tr:tr+va]),0.05,15)
+                        nll=(ph-y_home[tr:tr+va]*np.log(ph)+np.array([math.lgamma(v+1) for v in y_home[tr:tr+va]]))
+                        nll+=(pa-y_away[tr:tr+va]*np.log(pa)+np.array([math.lgamma(v+1) for v in y_away[tr:tr+va]]))
+                        for regime in np.unique(labels):
+                            idx=np.flatnonzero(labels==regime)
+                            if len(idx):
+                                regime_losses.setdefault(str(regime),{}).setdefault(name,[]).extend((nll[idx]/2).tolist())
+                    except Exception as exc:
+                        self.audit.append({
+                            "type": "score_model_error",
+                            "model": name,
+                            "stage": "score_regime_validation",
+                            "error": f"{type(exc).__name__}: {exc}",
+                        })
+                        continue
+            filtered={r:{n:float(np.mean(v)) for n,v in by.items() if n in top_names and v} for r,by in regime_losses.items()}
+            final_router=RegimeRouter().fit(X)
+            regime_weights=final_router.weights(global_losses,filtered,regime_counts) if filtered else {}
         best_score_model=top[0][1]
         residual_h,residual_a=residuals_by_model.get(best_score_model,([],[]))
         shared_lambda=estimate_shared_lambda(residual_h,residual_a)
-        filtered={r:{n:float(np.mean(v)) for n,v in by.items() if n in top_names and v} for r,by in regime_losses.items()}
-        final_router=RegimeRouter().fit(X)
-        regime_weights=final_router.weights(global_losses,filtered,regime_counts) if filtered else {}
         return {"models":fitted,"weights":weights,"scores":global_losses,
                 "regime_router":final_router,"regime_weights":regime_weights,"shared_lambda":shared_lambda}
 
