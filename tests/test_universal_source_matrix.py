@@ -109,3 +109,17 @@ def test_milb_levels_bind_milb_repository():
 def test_new_international_sources_bind():
     assert "ffbs_d1_official" in {r["source_id"] for r in application_plan("France_D1")}
     assert "wbc_scouting_public_dataset" in {r["source_id"] for r in application_plan("WBC_PlayerPrior")}
+
+
+def test_germany_and_spain_age_scopes_bind_sources():
+    for scope_id, source_id in (
+        ("Germany_DBL", "dbv_dbl_official"),
+        ("Germany_2BL", "dbsv_2bundesliga"),
+        ("Germany_U18", "bbsv_youth_baseball"),
+        ("Spain_Division_Honor", "rfebs_baseball"),
+        ("Spain_U18", "rfebs_baseball"),
+        ("Spain_U15", "rfebs_baseball"),
+        ("Spain_U12", "rfebs_baseball"),
+        ("Colombia_LPBC", "lpbc_colombia"),
+    ):
+        assert source_id in {r["source_id"] for r in application_plan(scope_id)}
