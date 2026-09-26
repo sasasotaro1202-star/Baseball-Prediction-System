@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 REQUIRED = ("schema_version", "git_commit", "dataset_hash", "pit", "development_oos", "holdout", "controller")
+NUMERIC_METRICS = ("Accuracy", "LogLoss", "Brier")
 
 
 def _check(ok: bool, reason: str) -> dict[str, Any]:
@@ -97,6 +98,10 @@ def audit_artifact(path: str | Path) -> dict[str, Any]:
         "LogLoss": float(new["LogLoss"] - baseline["LogLoss"]),
         "Brier": float(new["Brier"] - baseline["Brier"]),
     }
+    checks["Metric Completeness"] = _check(
+        _finite_metric_map(baseline, NUMERIC_METRICS) and _finite_metric_map(new, NUMERIC_METRICS),
+        "baseline and v6 metrics contain finite Accuracy/LogLoss/Brier values",
+    )
     passed = all(x["status"] == "PASS" for x in checks.values())
     return {
         "schema_version": "future-generalization-v6-audit-v2",
