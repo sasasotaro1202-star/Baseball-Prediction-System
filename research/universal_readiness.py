@@ -11,6 +11,7 @@ from typing import Any
 from data.source_registry import SOURCES
 from research.competition_catalog import scopes
 from research.universal_source_matrix import application_matrix
+from research.universal_adapter_registry import adapter_metadata
 
 
 STATES = (
@@ -89,6 +90,7 @@ def scope_readiness(scope_id: str) -> dict[str, Any]:
         "scope_id": scope_id,
         "sources": len(sources),
         "adapter_pass": sum(x.adapter_status == "PASS" for x in sources),
+        "adapter_implemented": sum(bool(adapter_metadata(x.source_id)["implemented"]) for x in sources),
         "pit_pass": sum(x.pit_status == "PASS" for x in sources),
         "oos_pass": sum(x.oos_status == "PASS" for x in sources),
         "production_pass": sum(x.production_status == "PASS" for x in sources),
@@ -106,7 +108,10 @@ def readiness_report() -> dict[str, Any]:
             state: sum(r.state == state for r in source_rows)
             for state in STATES
         },
-        "sources": [asdict(r) | {"state": r.state} for r in source_rows],
+        "sources": [
+            asdict(r) | {"state": r.state, "adapter": adapter_metadata(r.source_id)}
+            for r in source_rows
+        ],
         "scopes": scope_rows,
         "promotion_rule": "No source/scope advances without explicit adapter, PIT, chronological OOS, and production evidence.",
     }
