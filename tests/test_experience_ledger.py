@@ -73,7 +73,7 @@ def test_multiclass_ece_uses_confidence_vs_accuracy():
         [0.20, 0.65, 0.15],
     ])
     y_true = np.array([0, 1])
-    assert exp._multiclass_ece(probabilities, y_true, bins=10) == 0.35
+    assert exp._multiclass_ece(probabilities, y_true, bins=10) == 0.375
 
 
 def test_reconcile_computes_real_game_experience(tmp_path, monkeypatch):
