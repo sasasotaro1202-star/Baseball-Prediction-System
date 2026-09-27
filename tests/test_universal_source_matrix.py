@@ -182,3 +182,6 @@ def test_ncaa_divisions_are_explicitly_scoped():
     assert "ncaa_baseball_d1" in {r["source_id"] for r in application_plan("NCAA_D1")}
     assert "ncaa_baseball_d2" in {r["source_id"] for r in application_plan("NCAA_D2")}
     assert "ncaa_baseball_d3" in {r["source_id"] for r in application_plan("NCAA_D3")}
+
+def test_kbo_futures_scope_is_explicit():
+    assert "kbo_official_stats" in {r["source_id"] for r in application_plan("KBO_Futures")}
