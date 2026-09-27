@@ -225,3 +225,43 @@ def test_lagged_historical_batting_and_starter_quality_reach_feature_matrix():
     assert X.loc[1, "d_starter_team_era_3"] == pytest.approx(2.80 - 4.60)
     assert meta.loc[0, "game_id"] == "g1"
     assert meta.loc[1, "game_id"] == "g2"
+
+
+def test_market_line_is_used_only_when_pit_safe(tmp_path):
+    market = tmp_path / "market_lines.csv"
+    pd.DataFrame([{
+        "event_id": "g_market",
+        "league": "NPB",
+        "line": 7.5,
+        "source": "test-market",
+        "observed_at": "2026-09-01T07:00:00Z",
+        "available_at": "2026-09-01T07:30:00Z",
+        "status": "KNOWN",
+    }]).to_csv(market, index=False)
+
+    bt = BaseballBacktest(tmp_path)
+    games = pd.DataFrame([{
+        "league": "NPB",
+        "game_id": "g_market",
+        "event_id": "g_market",
+        "datetime": pd.Timestamp("2026-09-01T09:00:00Z"),
+        "prediction_cutoff": pd.Timestamp("2026-09-01T08:00:00Z"),
+        "home": "A",
+        "away": "B",
+        "home_score": 3,
+        "away_score": 2,
+        "home_starter": "",
+        "away_starter": "",
+    }])
+
+    X, _, _ = bt.build_features(games)
+    assert X.loc[0, "market_line_known"] == pytest.approx(1.0)
+    assert X.loc[0, "market_total_runs_line"] == pytest.approx(7.5)
+    assert X.loc[0, "market_total_runs_line_delta"] == pytest.approx(7.5 - X.loc[0, "expected_env"])
+
+    games_late = games.copy()
+    games_late.loc[0, "prediction_cutoff"] = pd.Timestamp("2026-09-01T07:15:00Z")
+    bt2 = BaseballBacktest(tmp_path)
+    X2, _, _ = bt2.build_features(games_late)
+    assert X2.loc[0, "market_line_known"] == pytest.approx(0.0)
+    assert X2.loc[0, "market_total_runs_line_delta"] == pytest.approx(0.0)
