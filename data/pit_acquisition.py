@@ -202,81 +202,49 @@ def _explicit_announcement(g: dict[str, Any], side: str) -> str | None:
 
 
 
-class _NpbScheduleHTMLParser(HTMLParser):
-    """Parse NPB.jp month-detail rows using only the Python standard library.
-
-    NPB.jp groups multiple games under one date, so later rows can omit the
-    visible date cell. We retain the last explicit date within the table and
-    apply it only to subsequent rows that otherwise have valid team fields.
-    """
-
-    _TARGETS = {"team1", "team2", "place"}
+class _NpbScheduleTableParser(HTMLParser):
+    """Parse NPB.jp schedule tables without relying on mutable CSS classes."""
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
-        self.rows: list[dict[str, Any]] = []
-        self._row: dict[str, Any] | None = None
-        self._tag_targets: list[str | None] = []
-
-    @staticmethod
-    def _attrs(attrs: list[tuple[str, str | None]]) -> dict[str, str]:
-        return {str(k).lower(): str(v or "") for k, v in attrs}
+        self.rows: list[list[str]] = []
+        self._row: list[str] | None = None
+        self._cell: list[str] | None = None
+        self._cell_tag: str | None = None
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
         if tag == "tr":
-            if self._row is not None:
-                self._finish_row()
-            attr_map = self._attrs(attrs)
-            self._row = {
-                "row_id": attr_map.get("id", ""),
-                "team1": [],
-                "team2": [],
-                "place": [],
-                "raw": [],
-            }
-            self._tag_targets = []
+            self._finish_row()
+            self._row = []
+            self._cell = None
+            self._cell_tag = None
             return
-
-        if self._row is None:
+        if tag in {"td", "th"} and self._row is not None:
+            self._cell = []
+            self._cell_tag = tag
             return
-        if tag in {
-            "area", "base", "br", "col", "embed", "hr", "img", "input",
-            "link", "meta", "param", "source", "track", "wbr",
-        }:
-            return
-        attr_map = self._attrs(attrs)
-        classes = set(attr_map.get("class", "").split())
-        target = next((name for name in self._TARGETS if name in classes), None)
-        self._tag_targets.append(target)
-
-    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        return
 
     def handle_endtag(self, tag: str) -> None:
         tag = tag.lower()
-        if tag == "tr":
+        if tag in {"td", "th"} and self._cell is not None and self._row is not None:
+            self._row.append(_clean_npb_text(" ".join(self._cell)))
+            self._cell = None
+            self._cell_tag = None
+        elif tag == "tr":
             self._finish_row()
-            self._row = None
-            self._tag_targets = []
-            return
-        if self._row is not None and self._tag_targets:
-            self._tag_targets.pop()
 
     def handle_data(self, data: str) -> None:
-        if self._row is None:
-            return
-        if data.strip():
-            self._row["raw"].append(data)
-        active = {target for target in self._tag_targets if target}
-        for target in active:
-            self._row[target].append(data)
+        if self._cell is not None:
+            self._cell.append(data)
 
     def _finish_row(self) -> None:
-        if self._row is None:
-            return
-        if self._row.get("team1") or self._row.get("team2"):
+        if self._row:
             self.rows.append(self._row)
+        self._row = None
+        self._cell = None
+        self._cell_tag = None
+
 
 
 def _clean_npb_text(value: Any) -> str:
@@ -292,8 +260,9 @@ def _parse_npb_schedule_html(
     start_date: datetime | None = None,
     end_date: datetime | None = None,
 ) -> list[dict[str, Any]]:
-    """Extract exact NPB.jp scheduled games from a month-detail HTML page."""
-    parser = _NpbScheduleHTMLParser()
+    """Extract scheduled games from the NPB.jp month-detail table."""
+
+    parser = _NpbScheduleTableParser()
     parser.feed(html_text)
     parser.close()
 
@@ -303,29 +272,49 @@ def _parse_npb_schedule_html(
     out: list[dict[str, Any]] = []
     last_explicit_date: tuple[int, int] | None = None
 
-    for row in parser.rows:
-        team1 = _clean_npb_text(" ".join(row.get("team1", [])))
-        team2 = _clean_npb_text(" ".join(row.get("team2", [])))
-        place = _clean_npb_text(" ".join(row.get("place", [])))
-        raw = _clean_npb_text(" ".join(row.get("raw", [])))
-        if not team1 or not team2:
+    for row_index, cells in enumerate(parser.rows):
+        if len(cells) < 2:
             continue
+        cell0 = _clean_npb_text(cells[0])
+        matchup = _clean_npb_text(cells[1])
+        venue_cell = _clean_npb_text(cells[2]) if len(cells) >= 3 else ""
 
-        combined = f"{team1} {team2}"
-        if "予備日" in combined or team1 in {"セ・リーグ", "パ・リーグ"}:
+        date_match = re.search(r"(?<!\d)(\d{1,2})/(\d{1,2})(?!\d)", cell0)
+        if date_match:
+            last_explicit_date = (int(date_match.group(1)), int(date_match.group(2)))
+        if last_explicit_date is None:
             continue
-
-        date_match = re.search(r"(?<!\d)(\d{1,2})/(\d{1,2})(?!\d)", raw)
-        if date_match is not None:
-            row_month, day = int(date_match.group(1)), int(date_match.group(2))
-            last_explicit_date = (row_month, day)
-        elif last_explicit_date is not None:
-            row_month, day = last_explicit_date
-        else:
-            continue
-
+        row_month, day = last_explicit_date
         if row_month != month or not 1 <= day <= 31:
             continue
+
+        # Accept future "Team - Team" rows and realized "Team score - score Team"
+        # rows. Cancelled/reserve-day rows are not treated as playable games.
+        if any(token in matchup for token in ("予備日", "中止", "延期", "中断")):
+            continue
+        if matchup in {"", "-", "nan"}:
+            continue
+
+        score_match = re.match(
+            r"^\s*(.+?)\s+(\d+)\s*-\s*(\d+)\s+(.+?)\s*$", matchup
+        )
+        if score_match:
+            home_team, _, _, away_team = score_match.groups()
+        else:
+            basic_match = re.match(r"^\s*(.+?)\s+-\s+(.+?)\s*$", matchup)
+            if basic_match is None:
+                basic_match = re.match(r"^\s*(.+?)\s*-\s*(.+?)\s*$", matchup)
+            if basic_match is None:
+                continue
+            home_team, away_team = basic_match.groups()
+
+        home_team = _clean_npb_text(home_team)
+        away_team = _clean_npb_text(away_team)
+        if not home_team or not away_team or home_team == away_team:
+            continue
+        if home_team in {"セ・リーグ", "パ・リーグ"}:
+            continue
+
         try:
             game_date = datetime(year, row_month, day).date()
         except ValueError:
@@ -335,25 +324,35 @@ def _parse_npb_schedule_html(
         if end_day and game_date > end_day:
             continue
 
-        time_match = re.search(r"(?<!\d)(\d{1,2}:\d{2})(?!\d)", place)
+        time_match = re.search(r"(?<!\d)(\d{1,2}:\d{2})(?!\d)", venue_cell)
         start_time = time_match.group(1) if time_match else None
-        venue = _clean_npb_text(place[:time_match.start()] if time_match else place).strip(" -/")
-        base_key = "|".join([game_date.isoformat(), team1, team2, venue, start_time or ""])
+        venue = _clean_npb_text(
+            venue_cell[:time_match.start()] if time_match else venue_cell
+        ).strip(" -/")
+
+        base_key = "|".join([
+            game_date.isoformat(),
+            home_team,
+            away_team,
+            venue,
+            start_time or "",
+        ])
         seen_keys[base_key] = seen_keys.get(base_key, 0) + 1
         occurrence = seen_keys[base_key]
         identity_key = f"{base_key}|occurrence={occurrence}"
         digest = hashlib.sha256(identity_key.encode("utf-8")).hexdigest()[:24]
+
         out.append({
             "source_event_key": base_key,
             "event_id": "NPB:official:" + digest,
             "game_id": "NPB-OFFICIAL-" + digest,
             "league": "NPB",
-            "home_team": team1,
-            "away_team": team2,
+            "home_team": home_team,
+            "away_team": away_team,
             "event_date": game_date.isoformat(),
             "start_time_local": start_time,
             "venue": venue,
-            "source_row_id": str(row.get("row_id", "")),
+            "source_row_id": str(row_index),
         })
     return out
 
