@@ -13,6 +13,10 @@ from research.ultimate_v18_intelligence import (
     resource_priority,
     silent_degradation,
     validation_depth,
+    latency_intelligence,
+    error_budget,
+    adaptive_stop,
+    graceful_degradation,
 )
 
 
@@ -356,3 +360,63 @@ def test_silent_degradation_detects_multi_axis_shift():
     assert out["status"] == "ALERT"
     assert "data_quality" in out["degraded_metrics"]
     assert "calibration" in out["degraded_metrics"]
+
+
+def test_latency_intelligence_separates_deadline_risk():
+    out = latency_intelligence(
+        latency_seconds=5,
+        time_to_first_valid_seconds=10,
+        deadline_seconds=30,
+        deadline_success_rate=.98,
+    )
+    assert out["status"] == "ON_TIME"
+    assert out["time_to_first_valid_score"] > 0.6
+
+
+def test_error_budget_tightens_for_important_risky_cases():
+    low = error_budget(
+        case_importance=.1, regime_risk=.1, horizon_risk=.1, operational_impact=.1
+    )
+    high = error_budget(
+        case_importance=.9, regime_risk=.9, horizon_risk=.8, operational_impact=.9
+    )
+    assert high["allowed_error"] < low["allowed_error"]
+    assert high["deep_validation_recommended"] is True
+
+
+def test_adaptive_stop_only_stops_when_evidence_is_strong_and_value_low():
+    stop = adaptive_stop(
+        evidence_strength=.95,
+        expected_incremental_value=.01,
+        remaining_resource_fraction=.5,
+    )
+    cont = adaptive_stop(
+        evidence_strength=.95,
+        expected_incremental_value=.20,
+        remaining_resource_fraction=.5,
+    )
+    assert stop["stop"] is True
+    assert cont["stop"] is False
+
+
+def test_graceful_degradation_is_monotone_and_safe():
+    assert graceful_degradation(
+        source_health=True, information_complete=True, router_health=True,
+        calibration_health=True, verified_baseline_ready=True,
+    )["action"] == "FULL"
+    assert graceful_degradation(
+        source_health=True, information_complete=False, router_health=True,
+        calibration_health=True, verified_baseline_ready=True,
+    )["action"] == "REDUCED"
+    assert graceful_degradation(
+        source_health=False, information_complete=False, router_health=False,
+        calibration_health=False, verified_baseline_ready=True,
+    )["action"] == "STABLE"
+    assert graceful_degradation(
+        source_health=False, information_complete=False, router_health=False,
+        calibration_health=False, verified_baseline_ready=False,
+    )["action"] == "ABSTAIN"
+    assert graceful_degradation(
+        source_health=True, information_complete=True, router_health=True,
+        calibration_health=True, verified_baseline_ready=True, kill_switch=True,
+    )["action"] == "VERIFIED_BASELINE"
