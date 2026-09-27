@@ -1007,8 +1007,8 @@ class BaseballBacktest:
         # observation is exposed as market information; unknown rows use the
         # endogenous expected environment with an explicit gate flag.
         market_known = float(num(row.get("market_line_known", 0.0), 0.0))
-        market_line = float(num(row.get("market_total_runs_line", out["expected_env"]), out["expected_env"]))
         if market_known > 0.5:
+            market_line = float(num(row.get("market_total_runs_line"), out["expected_env"]))
             out["market_total_runs_line"] = market_line
             out["market_total_runs_line_delta"] = market_line - out["expected_env"]
         else:
