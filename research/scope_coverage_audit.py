@@ -82,11 +82,52 @@ def _stage(*, registry: bool, source_count: int, adapter_count: int, discovered:
     return "CATALOG_ONLY"
 
 
+def _frontier_game_metrics() -> dict[str, dict[str, int]]:
+    root = ROOT / "results" / "24h"
+    totals: dict[str, dict[str, int]] = {}
+    if not root.exists():
+        return totals
+    for path in root.glob("cycle_*/*.json"):
+        name = path.stem
+        try:
+            obj = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        key = {
+            "kbo": "KBO",
+            "cpbl": "CPBL",
+            "espn_mlb": "MLB",
+            "espn_ncaa": "NCAA_D1_BASEBALL",
+            "iblj": "JAPAN_INDEPENDENT",
+            "bcl": "JAPAN_INDEPENDENT",
+        }.get(name)
+        if not key:
+            continue
+        row = totals.setdefault(key, {
+            "observations": 0,
+            "games_discovered": 0,
+            "event_count": 0,
+            "token_count": 0,
+            "deferred_or_unparsed": 0,
+            "source_failures": 0,
+        })
+        row["observations"] += 1
+        row["games_discovered"] += int(obj.get("game_count", 0) or 0)
+        row["event_count"] += int(obj.get("event_count", 0) or 0)
+        row["token_count"] += int(obj.get("game_token_count", 0) or 0)
+        if str(obj.get("availability_status", "")).startswith("DISCOVERED_NOT"):
+            row["deferred_or_unparsed"] += int(obj.get("game_token_count", 0) or obj.get("game_count", 0) or obj.get("event_count", 0) or 1)
+        if str(obj.get("status", "")).upper() not in {"EXECUTED", "PASS", "OK"}:
+            row["source_failures"] += 1
+    return totals
+
+
 def audit() -> dict[str, Any]:
     registry_by_id = {x.competition_id: x for x in COMPETITIONS}
     sources_by_id = {x.source_id: x for x in SOURCES}
     discovery, catalog_discovery = _discovery_indexes()
     pit_counts = _pit_counts()
+    frontier_metrics = _frontier_game_metrics()
 
     rows: list[dict[str, Any]] = []
     for scope in scopes():
@@ -135,6 +176,14 @@ def audit() -> dict[str, Any]:
                 discovery_row.get("probe", {}).get("status") == "REACHABLE"
             ) if discovery_row else int(catalog_row.get("reachable_source_count", 0)),
             "pit_snapshot_rows": pit_count,
+            "frontier_game_metrics": frontier_metrics.get(scope.scope_id, {
+                "observations": 0,
+                "games_discovered": 0,
+                "event_count": 0,
+                "token_count": 0,
+                "deferred_or_unparsed": 0,
+                "source_failures": 0,
+            }),
             "oos_pass": oos_pass,
             "production_pass": production_pass,
             "stage": stage,
@@ -159,6 +208,7 @@ def audit() -> dict[str, Any]:
         "status": "AUDIT_COMPLETE",
         "scope_count": len(rows),
         "stage_counts": dict(sorted(counts.items())),
+        "frontier_game_metrics": frontier_metrics,
         "scopes": rows,
         "policy": {
             "coverage_goal": "continuously increase supported/safely researchable game scope",
