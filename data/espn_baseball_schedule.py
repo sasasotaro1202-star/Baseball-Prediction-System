@@ -33,7 +33,8 @@ def fetch_espn_scoreboard(
 ) -> dict[str, Any]:
     if competition not in LEAGUE_SLUGS:
         raise ValueError(f"unsupported ESPN baseball competition: {competition}")
-    params = {"limit": str(max(1, min(int(limit), 500)))}
+    effective_date = date or datetime.now(timezone.utc).date().isoformat()
+    params = {"limit": str(max(1, min(int(limit), 500))), "dates": effective_date.replace("-", "")}
     if date:
         compact = str(date).replace("-", "")
         if len(compact) != 8 or not compact.isdigit():
@@ -59,18 +60,23 @@ def fetch_espn_scoreboard(
                 "abbreviation": team.get("abbreviation"),
                 "home_away": item.get("homeAway"),
             })
+        probables: list[dict[str, Any]] = []
+        for p in (comp.get("probables") or []):
+            athlete = p.get("athlete") or {}
+            name = p.get("displayName") or athlete.get("displayName")
+            player_id = p.get("playerId") or athlete.get("id")
+            if name:
+                probables.append({"player_id": player_id, "name": name, "team_id": (p.get("team") or {}).get("id")})
         events.append({
             "event_id": event.get("id"),
             "name": event.get("name"),
             "date": event.get("date"),
             "status": ((event.get("status") or {}).get("type") or {}).get("name"),
+            "status_detail": ((event.get("status") or {}).get("type") or {}).get("detail"),
+            "play_by_play_available": bool(comp.get("playByPlayAvailable")),
             "teams": teams,
             "venue": ((comp.get("venue") or {}).get("fullName")),
-            "probable_pitchers": [
-                p.get("displayName")
-                for p in (comp.get("probables") or [])
-                if p.get("displayName")
-            ],
+            "probables": probables,
         })
 
     return {
