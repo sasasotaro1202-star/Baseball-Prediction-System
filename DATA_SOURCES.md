@@ -13,6 +13,7 @@ The system does not force every feature through one provider. Each feature uses 
 | NPB PBP | SPAIA game PBP | Nippon-Baseball-Data-Repository bulk PBP | Chronological, game-level data only |
 | Historical NPB reference stats | NPB.jp official statistics | public NPB data repository | Respect publication/availability date in backtests |
 | Historical weather | Open-Meteo archive | none | Venue/date cache; no synthetic weather |
+| Historical market total-runs line | PIT-safe corpus via `data/market_line_loader.py` | multiple snapshots may be retained | `prediction_cutoff` + `available_at` are mandatory; otherwise market signal is blocked |
 | MLB schedule/results/game IDs | MLB Stats API / MLB.com | Yahoo! Sports Navi MLB | MLB remains canonical for IDs/results; Yahoo is a secondary operational source |
 | MLB probable starters | MLB.com / MLB Stats API | Yahoo! Sports Navi MLB, FanGraphs RosterResource, ESPN | Cross-source agreement is useful, but does not prove historical official announcement time |
 | MLB pitch/batted-ball features | Baseball Savant / Statcast | MLB data | Apply explicit PIT availability policy |
