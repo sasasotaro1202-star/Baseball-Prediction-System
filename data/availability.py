@@ -100,14 +100,15 @@ def from_mapping(row: Mapping[str, Any]) -> AvailabilityRecord:
 def prediction_eligible(record: AvailabilityRecord) -> tuple[bool, list[str]]:
     record.validate()
     reasons: list[str] = []
-    if not record.home_starter:
-        reasons.append("home_starter_not_confirmed")
-    elif not record.home_starter_announced_at:
-        reasons.append("home_starter_announcement_time_unverified")
-    if not record.away_starter:
-        reasons.append("away_starter_not_confirmed")
-    elif not record.away_starter_announced_at:
-        reasons.append("away_starter_announcement_time_unverified")
+    if spec.requires_starter_announcement:
+        if not record.home_starter:
+            reasons.append("home_starter_not_confirmed")
+        elif not record.home_starter_announced_at:
+            reasons.append("home_starter_announcement_time_unverified")
+        if not record.away_starter:
+            reasons.append("away_starter_not_confirmed")
+        elif not record.away_starter_announced_at:
+            reasons.append("away_starter_announcement_time_unverified")
     return (not reasons, reasons)
 
 
@@ -119,6 +120,7 @@ def production_prediction_eligible(record: AvailabilityRecord) -> tuple[bool, li
     production until their competition-specific evidence and OOS/holdout gates
     have been promoted.
     """
+    spec = get_competition(record.league)
     ok, reasons = prediction_eligible(record)
     if not record.event_start_at:
         reasons.append("event_start_time_missing")
