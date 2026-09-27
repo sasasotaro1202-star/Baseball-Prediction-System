@@ -1279,10 +1279,9 @@ class BaseballBacktest:
             value = fv(column_name, default)
             if np.isfinite(value):
                 queue_name.append(value)
-            elif queue_name:
-                queue_name.append(float(list(queue_name)[-1]))
-            else:
-                queue_name.append(0.0)
+            # Missing starter metrics are omitted, not encoded as zero. A zero
+            # ERA/K9/IP would be a fabricated performance observation and would
+            # distort future rolling features.
 
         s.pa.append(fv(f"{prefix}_bat_pa",0.0))
         s.ab.append(fv(f"{prefix}_bat_ab",0.0))
