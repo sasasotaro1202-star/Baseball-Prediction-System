@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import json
 
 import pandas as pd
 import pytest
@@ -122,7 +123,7 @@ def test_lagged_historical_batting_and_starter_quality_reach_feature_matrix():
                 "game_id": "g2",
                 "datetime": pd.Timestamp("2026-09-02T09:00:00Z"),
                 "home": "A",
-                "away": "C",
+                "away": "B",
                 "home_score": 3,
                 "away_score": 4,
                 "home_starter": "",
