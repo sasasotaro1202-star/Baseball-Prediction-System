@@ -198,6 +198,17 @@ class TeamState:
     bullpen_ip_3: float = 0.0
     bullpen_ip_7: float = 0.0
     starter_history: Dict[str, deque] = field(default_factory=lambda: defaultdict(lambda: deque(maxlen=12)))
+    # Team-level lagged starter quality. This uses only completed prior games,
+    # so it remains PIT-safe even when historical individual starter identity
+    # lacks a defensible announcement timestamp.
+    starter_era: deque = field(default_factory=lambda: deque(maxlen=30))
+    starter_whip: deque = field(default_factory=lambda: deque(maxlen=30))
+    starter_k9: deque = field(default_factory=lambda: deque(maxlen=30))
+    starter_bb9: deque = field(default_factory=lambda: deque(maxlen=30))
+    starter_hr9: deque = field(default_factory=lambda: deque(maxlen=30))
+    starter_fip: deque = field(default_factory=lambda: deque(maxlen=30))
+    starter_ip: deque = field(default_factory=lambda: deque(maxlen=30))
+    starter_pitches: deque = field(default_factory=lambda: deque(maxlen=30))
     pa: deque = field(default_factory=lambda: deque(maxlen=30))
     ab: deque = field(default_factory=lambda: deque(maxlen=30))
     h: deque = field(default_factory=lambda: deque(maxlen=30))
@@ -794,6 +805,25 @@ class BaseballBacktest:
         f["bp_bb9_10"] = 9.0 * bp_bb / max(bp_ip, 1e-6) if bp_ip > 0 else 0.0
         f["bp_hr9_10"] = 9.0 * bp_hr / max(bp_ip, 1e-6) if bp_ip > 0 else 0.0
         f["bp_actual_coverage_10"] = bp_games / max(min(10.0, s.total_matches), 1.0)
+
+        # Historical starter-quality aggregates are safe to use because they
+        # summarize completed games strictly before the current prediction.
+        # They complement, rather than replace, individual-starter features when
+        # a target starter has a verified PIT-safe identity/history.
+        for w in (3, 5, 10, 20):
+            for metric_name, queue_name, default in (
+                ("era", s.starter_era, 4.0),
+                ("whip", s.starter_whip, 1.30),
+                ("k9", s.starter_k9, 7.5),
+                ("bb9", s.starter_bb9, 3.0),
+                ("hr9", s.starter_hr9, 1.0),
+                ("fip", s.starter_fip, 4.0),
+                ("ip", s.starter_ip, 5.0),
+                ("pitches", s.starter_pitches, 80.0),
+            ):
+                vals = list(queue_name)[-w:]
+                f[f"starter_team_{metric_name}_{w}"] = float(np.mean(vals)) if vals else default
+
         for name,q in (("gf",s.gf),("ga",s.ga),("hr",s.hr),("so",s.so),("bb",s.bb)):
             vals=np.asarray(list(q)[-20:],dtype=float)
             f[f"{name}_sd_20"] = float(np.std(vals)) if len(vals) >= 2 else 0.0
@@ -1196,6 +1226,27 @@ class BaseballBacktest:
             try: return float(v) if pd.notna(v) else default
             except Exception: return default
         prefix="home" if home else "away"
+        # Append explicit starter-game metrics only after the completed game.
+        # This creates lagged team-rotation features without using the target
+        # game's realized starter performance.
+        for queue_name, column_name, default in (
+            (s.starter_era, f"{prefix}_starter_era", np.nan),
+            (s.starter_whip, f"{prefix}_starter_whip", np.nan),
+            (s.starter_k9, f"{prefix}_starter_k9", np.nan),
+            (s.starter_bb9, f"{prefix}_starter_bb9", np.nan),
+            (s.starter_hr9, f"{prefix}_starter_hr9", np.nan),
+            (s.starter_fip, f"{prefix}_starter_fip", np.nan),
+            (s.starter_ip, f"{prefix}_starter_ip", np.nan),
+            (s.starter_pitches, f"{prefix}_starter_pitches", np.nan),
+        ):
+            value = fv(column_name, default)
+            if np.isfinite(value):
+                queue_name.append(value)
+            elif queue_name:
+                queue_name.append(float(list(queue_name)[-1]))
+            else:
+                queue_name.append(0.0)
+
         s.pa.append(fv(f"{prefix}_bat_pa",0.0))
         s.ab.append(fv(f"{prefix}_bat_ab",0.0))
         s.h.append(fv(f"{prefix}_bat_h",0.0))
