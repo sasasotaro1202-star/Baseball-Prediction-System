@@ -116,9 +116,15 @@ jobs:
           BASEBALL_CATBOOST_DETERMINISTIC: '1'
         run: |
           set -euo pipefail
-          # MLB score validation is the remaining compute hotspot. Bound only
-          # the score-regression trees for MLB; classification OOS and PIT
-          # contracts remain unchanged.
+          # Score-regression regime validation is a second-stage refit of every
+          # selected score model. It is expensive and redundant for candidate
+          # screening because the global score ensemble is already validated
+          # chronologically. Skip only this research-only second-stage score
+          # regime refit; classification OOS, PIT, calibration and locked
+          # holdout contracts remain unchanged.
+          export BASEBALL_SCORE_FAST_VALIDATION=1
+          # MLB remains additionally bounded to keep the free runner inside the
+          # candidate lifecycle wall-clock budget.
           if [ "${{ matrix.league }}" = "MLB" ]; then
             export BASEBALL_SCORE_TREE_ESTIMATORS=60
             export BASEBALL_SCORE_HIST_MAX_ITER=100
