@@ -27,6 +27,9 @@ class CompetitionSpec:
     phase_type: str = "league"
     rules_profile: str = "standard_baseball"
     notes: str = ""
+    discovery_priority: int = 100
+    discovery_url: str = ""
+    starter_source_id: str = ""
 
 
 COMPETITIONS: tuple[CompetitionSpec, ...] = (
@@ -36,6 +39,107 @@ COMPETITIONS: tuple[CompetitionSpec, ...] = (
     # registry entry from becoming a production promotion by accident.
     CompetitionSpec("NPB", "Nippon Professional Baseball", "professional", "top", "mixed", "Japan", "HOME_DRAW_AWAY", "RESEARCH_ONLY", True, phase_type="league", rules_profile="npb", notes="Production promotion requires candidate lock, independent holdout, PIT starter evidence, calibration, score/Low-High checks, and explicit ADOPT evidence."),
     CompetitionSpec("MLB", "Major League Baseball", "professional", "top", "mixed", "United States/Canada", "HOME_AWAY", "RESEARCH_ONLY", True, phase_type="league", rules_profile="mlb", notes="Historical starter announcement timestamp evidence remains a production gate."),
+
+    # High-volume professional competitions being brought into the scope frontier.
+    # These remain RESEARCH_ONLY until isolated PIT/OOS/holdout gates pass.
+    CompetitionSpec(
+        "KBO", "Korea Baseball Organization", "professional", "top", "mixed", "South Korea",
+        "HOME_DRAW_AWAY", "RESEARCH_ONLY", True,
+        phase_type="league", rules_profile="kbo", discovery_priority=1,
+        discovery_url="https://eng.koreabaseball.com/Schedule/DailySchedule.aspx",
+        starter_source_id="kbo_official_stats",
+        notes="Official 2026 schedule is public; historical starter-announcement timing and feature PIT require dedicated validation.",
+    ),
+    CompetitionSpec(
+        "CPBL", "Chinese Professional Baseball League", "professional", "top", "mixed", "Taiwan",
+        "HOME_DRAW_AWAY", "RESEARCH_ONLY", True,
+        phase_type="league", rules_profile="cpbl", discovery_priority=2,
+        discovery_url="https://stats.cpbl.com.tw/schedule/2026-A-",
+        starter_source_id="cpbl_rebas",
+        notes="Official 2026 schedule/standings are public; starter and historical PIT evidence require validation.",
+    ),
+    CompetitionSpec(
+        "LMB", "Liga Mexicana de Beisbol", "professional", "top", "mixed", "Mexico",
+        "HOME_DRAW_AWAY", "RESEARCH_ONLY", True,
+        phase_type="league", rules_profile="lmb", discovery_priority=3,
+        discovery_url="https://lmb.com.mx/noticias/calendario-oficial-de-la-temporada-2026-de-la-liga-mexicana-de-beisbol",
+        starter_source_id="lmb_official",
+        notes="Official 2026 schedule is public; structured pregame/starter PIT requires validation.",
+    ),
+    CompetitionSpec(
+        "ABL", "Australian Baseball League", "professional", "top", "mixed", "Australia",
+        "HOME_DRAW_AWAY", "RESEARCH_ONLY", True,
+        phase_type="league", rules_profile="abl", discovery_priority=4,
+        discovery_url="https://plus.baseball.com.au/en-int/page/home",
+        starter_source_id="abl_official",
+        notes="Official ABL site exposes upcoming games; historical PIT and structured starter data require validation.",
+    ),
+    CompetitionSpec(
+        "MILB", "Minor League Baseball", "professional_development", "development", "mixed", "United States/Canada",
+        "HOME_AWAY", "RESEARCH_ONLY", False,
+        phase_type="league", rules_profile="milb", discovery_priority=5,
+        discovery_url="https://www.mlb.com/milb",
+        starter_source_id="milb_data_repository",
+        notes="Official MiLB schedules/statistics are public; competition/level-specific PIT and starter conventions require validation.",
+    ),
+    CompetitionSpec(
+        "KBO_FUTURES", "KBO Futures League", "professional_development", "development", "mixed", "South Korea",
+        "HOME_DRAW_AWAY", "RESEARCH_ONLY", True,
+        phase_type="league", rules_profile="kbo_futures", discovery_priority=6,
+        discovery_url="https://www.koreabaseball.com/Schedule/Futures/Index.aspx",
+        starter_source_id="kbo_official_stats",
+        notes="Separate from KBO top league; official 2026 schedule/results are public and must not be mixed with KBO.",
+    ),
+    CompetitionSpec(
+        "JAPAN_INDEPENDENT", "Japanese Independent Leagues", "professional_independent", "senior", "mixed", "Japan",
+        "HOME_DRAW_AWAY", "RESEARCH_ONLY", True,
+        phase_type="league", rules_profile="japan_independent", discovery_priority=7,
+        discovery_url="https://data.iblj.co.jp/",
+        starter_source_id="iblj_official_stats",
+        notes="Independent leagues are tracked separately; structured PIT/starter coverage must be validated per league.",
+    ),
+    CompetitionSpec(
+        "LIDOM", "Liga de Béisbol Profesional de la República Dominicana", "winter_league", "senior", "mixed", "Dominican Republic",
+        "HOME_AWAY", "RESEARCH_ONLY", True,
+        phase_type="league_and_tournament", rules_profile="winter_caribbean", discovery_priority=8,
+        discovery_url="https://www.lidom.com/",
+        starter_source_id="lidom_mlb_winter",
+    ),
+    CompetitionSpec(
+        "LMP", "Liga Mexicana del Pacífico", "winter_league", "senior", "mixed", "Mexico",
+        "HOME_AWAY", "RESEARCH_ONLY", True,
+        phase_type="league_and_tournament", rules_profile="winter_mexico", discovery_priority=9,
+        discovery_url="https://www.lmp.mx/",
+        starter_source_id="lmp_mlb_winter",
+    ),
+    CompetitionSpec(
+        "LVBP", "Liga Venezolana de Béisbol Profesional", "winter_league", "senior", "mixed", "Venezuela",
+        "HOME_AWAY", "RESEARCH_ONLY", True,
+        phase_type="league_and_tournament", rules_profile="winter_caribbean", discovery_priority=10,
+        discovery_url="https://stats.lvbp.com/",
+        starter_source_id="lvbp_official",
+    ),
+    CompetitionSpec(
+        "LBPRC", "Liga de Béisbol Profesional Roberto Clemente", "winter_league", "senior", "mixed", "Puerto Rico",
+        "HOME_AWAY", "RESEARCH_ONLY", True,
+        phase_type="league_and_tournament", rules_profile="winter_caribbean", discovery_priority=11,
+        discovery_url="https://www.ligapr.com/",
+        starter_source_id="lbprc_official",
+    ),
+    CompetitionSpec(
+        "CCBL", "Cape Cod Baseball League", "summer_collegiate", "college", "mixed", "United States",
+        "HOME_AWAY", "RESEARCH_ONLY", True,
+        phase_type="league", rules_profile="college_summer", discovery_priority=20,
+        discovery_url="https://www.capecodbaseball.org/",
+        starter_source_id="cape_cod_league",
+    ),
+    CompetitionSpec(
+        "WBSC_EUROPE", "WBSC Europe Baseball Competitions", "international_regional", "senior", "mixed", "Europe",
+        "COMPETITION_DEFINED", "RESEARCH_ONLY", True,
+        phase_type="tournament", rules_profile="wbsc_europe", discovery_priority=30,
+        discovery_url="https://www.wbsceurope.org/",
+        starter_source_id="wbsc_europe_baseball",
+    ),
 
     # Senior national-team tournaments / non-league competition.
     CompetitionSpec("WBC", "World Baseball Classic", "international_senior", "senior", "mixed", "international", "COMPETITION_DEFINED", "RESEARCH_ONLY", True, phase_type="tournament", rules_profile="wbc"),
