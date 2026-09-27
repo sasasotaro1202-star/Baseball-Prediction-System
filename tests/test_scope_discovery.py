@@ -25,6 +25,13 @@ def test_discovery_never_promotes(monkeypatch, tmp_path):
         if x["competition_id"] in {"KBO", "CPBL", "LMB", "ABL", "MILB"}
     )
     assert (tmp_path / "scope_discovery.json").exists()
-def test_source_registry_creates_unregistered_frontier():
-    payload = scope_discovery.discover_scope.__globals__
-    assert "SOURCES" in payload
+def test_source_registry_creates_unregistered_frontier(monkeypatch, tmp_path):
+    monkeypatch.setattr(scope_discovery, "RESULTS", tmp_path)
+    monkeypatch.setattr(
+        scope_discovery,
+        "_probe",
+        lambda url: {"status": "REACHABLE", "signals": {"schedule": 0, "results": 0, "game": 0, "upcoming": 0, "date_tokens": 0}},
+    )
+    payload = scope_discovery.discover_scope()
+    ids = {x["competition_id"] for x in payload["unregistered_frontier"]}
+    assert "NCAA" in ids
