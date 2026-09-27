@@ -35,3 +35,8 @@ def test_source_registry_creates_unregistered_frontier(monkeypatch, tmp_path):
     payload = scope_discovery.discover_scope()
     ids = {x["competition_id"] for x in payload["unregistered_frontier"]}
     assert "NCAA" in ids
+
+
+def test_catalog_scopes_are_exposed_as_frontier():
+    payload = scope_discovery.discover_scope.__globals__
+    assert callable(payload["catalog_scopes"])
