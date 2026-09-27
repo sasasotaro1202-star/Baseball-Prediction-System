@@ -1,0 +1,42 @@
+name: Baseball Japan Independent Frontier Discovery
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "29 3 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baseball-japan-independent-frontier
+  cancel-in-progress: true
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - name: Compile
+        run: python -m py_compile data/japan_independent_schedule.py tests/test_japan_independent_schedule.py
+      - name: Unit tests
+        run: python -m pytest -q tests/test_japan_independent_schedule.py
+      - name: Discover IBLJ
+        run: python -m data.japan_independent_schedule IBLJ > iblj_2026.json
+      - name: Discover BCL
+        run: python -m data.japan_independent_schedule BCL > bcl_2026.json
+      - name: Validate
+        run: python -c 'import json; [json.load(open(p, encoding="utf-8")) for p in ("iblj_2026.json","bcl_2026.json")]; print("independent discovery artifacts: PASS")'
+      - name: Upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: baseball-japan-independent-${{ github.run_id }}
+          path: |
+            iblj_2026.json
+            bcl_2026.json
+          if-no-files-found: error
+          retention-days: 14
