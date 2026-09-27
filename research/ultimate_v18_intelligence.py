@@ -359,6 +359,141 @@ def scope_candidate(
     }
 
 
+
+def operational_utility(
+    *,
+    accuracy: float,
+    reliability: float,
+    latency: float,
+    coverage: float,
+    cost_efficiency: float,
+    safety: float,
+) -> dict[str, Any]:
+    """Research-only utility surface; safety is a hard multiplier, not a tradeable bonus."""
+    values = {
+        "accuracy": _unit(accuracy, name="accuracy"),
+        "reliability": _unit(reliability, name="reliability"),
+        "latency": _unit(latency, name="latency"),
+        "coverage": _unit(coverage, name="coverage"),
+        "cost_efficiency": _unit(cost_efficiency, name="cost_efficiency"),
+        "safety": _unit(safety, name="safety"),
+    }
+    quality = math.fsum(
+        values[k] for k in ("accuracy", "reliability", "latency", "coverage", "cost_efficiency")
+    ) / 5.0
+    utility = quality * values["safety"]
+    return {
+        "components": values,
+        "quality": quality,
+        "utility": utility,
+        "safety_dominant": values["safety"] >= 0.99,
+        "research_only": True,
+    }
+
+
+def validation_depth(
+    *,
+    case_importance: float,
+    failure_risk: float,
+    ood: float,
+    rare_case: float,
+    operational_impact: float,
+) -> dict[str, Any]:
+    """Choose validation depth while never allowing PIT/safety gates to be skipped."""
+    values = {
+        "case_importance": _unit(case_importance, name="case_importance"),
+        "failure_risk": _unit(failure_risk, name="failure_risk"),
+        "ood": _unit(ood, name="ood"),
+        "rare_case": _unit(rare_case, name="rare_case"),
+        "operational_impact": _unit(operational_impact, name="operational_impact"),
+    }
+    pressure = math.fsum(values.values()) / len(values)
+    if max(values.values()) >= 0.85 or pressure >= 0.65:
+        depth = "DEEP"
+    elif pressure >= 0.35:
+        depth = "STANDARD"
+    else:
+        depth = "LIGHT"
+    return {
+        "depth": depth,
+        "pressure": pressure,
+        "pit_required": True,
+        "safety_required": True,
+        "research_only": True,
+    }
+
+
+def resource_priority(
+    *,
+    production_criticality: float,
+    information_value: float,
+    failure_risk: float,
+    unknown_frontier: float,
+    learning_value: float,
+    operational_risk: float,
+    cost: float,
+    dependency_risk: float,
+) -> dict[str, Any]:
+    """Prioritize scarce research resources without making high risk invisible."""
+    positives = {
+        "production_criticality": _unit(production_criticality, name="production_criticality"),
+        "information_value": _unit(information_value, name="information_value"),
+        "failure_risk": _unit(failure_risk, name="failure_risk"),
+        "unknown_frontier": _unit(unknown_frontier, name="unknown_frontier"),
+        "learning_value": _unit(learning_value, name="learning_value"),
+        "operational_risk": _unit(operational_risk, name="operational_risk"),
+    }
+    cost_v = max(0.0, _finite(cost, name="cost"))
+    dependency_v = _unit(dependency_risk, name="dependency_risk")
+    priority = (
+        math.fsum(positives[k] for k in (
+            "production_criticality", "information_value", "failure_risk",
+            "unknown_frontier", "learning_value", "operational_risk"
+        ))
+        - cost_v
+        - dependency_v
+    )
+    return {
+        "components": positives,
+        "cost": cost_v,
+        "dependency_risk": dependency_v,
+        "priority": priority,
+        "research_only": True,
+    }
+
+
+def silent_degradation(
+    baseline: Mapping[str, Any],
+    current: Mapping[str, Any],
+    *,
+    lower_is_better: Sequence[str] = (),
+    warn_delta: float = 0.08,
+    alert_count: int = 2,
+) -> dict[str, Any]:
+    """Detect multi-axis degradation before headline accuracy necessarily collapses."""
+    metrics = ("data_quality", "latency", "calibration", "disagreement", "predictability", "coverage")
+    low_better = set(lower_is_better)
+    changes: dict[str, float] = {}
+    degraded: list[str] = []
+    for key in metrics:
+        if key not in baseline or key not in current:
+            continue
+        b = _unit(baseline[key], name=f"baseline.{key}")
+        c = _unit(current[key], name=f"current.{key}")
+        delta = c - b
+        changes[key] = delta
+        worse = delta <= -warn_delta if key not in low_better else delta >= warn_delta
+        if worse:
+            degraded.append(key)
+    status = "ALERT" if len(degraded) >= alert_count else ("WARN" if degraded else "STABLE")
+    return {
+        "status": status,
+        "changes": changes,
+        "degraded_metrics": degraded,
+        "headline_accuracy_not_required": True,
+        "research_only": True,
+    }
+
 def build_decision_object(
     *,
     case_id: str,
