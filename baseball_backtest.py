@@ -419,31 +419,68 @@ class BaseballBacktest:
             if gt and not any(k in gt for k in NPB_OFFICIAL_KEYWORDS):
                 if any(k in gt.lower() for k in ("open", "spring", "farm", "allstar")):
                     continue
-            # The first pitcher appearing in PBP is a realized post-game
-            # identity, not announcement-time evidence. Preserve starter names
-            # only when explicit publication/availability timestamps are present
-            # and are at or before the prediction cutoff.
-            cutoff_col = "prediction_cutoff" if "prediction_cutoff" in g.columns else None
-            h_ann_col = "home_starter_announced_at" if "home_starter_announced_at" in g.columns else None
-            a_ann_col = "away_starter_announced_at" if "away_starter_announced_at" in g.columns else None
-            cutoff = pd.to_datetime(g[cutoff_col].iloc[0], errors="coerce", utc=True) if cutoff_col else pd.NaT
-            h_ann = pd.to_datetime(g[h_ann_col].iloc[0], errors="coerce", utc=True) if h_ann_col else pd.NaT
-            a_ann = pd.to_datetime(g[a_ann_col].iloc[0], errors="coerce", utc=True) if a_ann_col else pd.NaT
-            hp = str(g.get("home_starter", pd.Series([""])).iloc[0] or "").strip() if "home_starter" in g.columns else ""
-            ap = str(g.get("away_starter", pd.Series([""])).iloc[0] or "").strip() if "away_starter" in g.columns else ""
-            h_safe = bool(hp and pd.notna(cutoff) and pd.notna(h_ann) and h_ann <= cutoff)
-            a_safe = bool(ap and pd.notna(cutoff) and pd.notna(a_ann) and a_ann <= cutoff)
+            # Do not promote enriched collector starter identities into the
+            # prediction-time starter fields: those identities come from completed
+            # game observations and have no historical announcement timestamp.
+            # They would therefore be hindsight if used as the target starter.
+            #
+            # Other completed-game aggregates are safe to carry forward because
+            # update_after_game() consumes them only after this game and the next
+            # prediction sees them as lagged history.
+            enriched_fields = (
+                "venue", "start_time",
+                "home_starter_line_ok", "away_starter_line_ok",
+                "home_starter_era", "away_starter_era",
+                "home_starter_whip", "away_starter_whip",
+                "home_starter_k9", "away_starter_k9",
+                "home_starter_bb9", "away_starter_bb9",
+                "home_starter_hr9", "away_starter_hr9",
+                "home_starter_fip", "away_starter_fip",
+                "home_starter_ip", "away_starter_ip",
+                "home_starter_er", "away_starter_er",
+                "home_starter_h", "away_starter_h",
+                "home_starter_hr", "away_starter_hr",
+                "home_starter_bb", "away_starter_bb",
+                "home_starter_so", "away_starter_so",
+                "home_starter_pitches", "away_starter_pitches",
+                "home_starter_k_rate", "away_starter_k_rate",
+                "home_starter_bb_rate", "away_starter_bb_rate",
+                "home_bat_pa", "away_bat_pa", "home_bat_ab", "away_bat_ab",
+                "home_bat_h", "away_bat_h", "home_bat_hr", "away_bat_hr",
+                "home_bat_bb", "away_bat_bb", "home_bat_so", "away_bat_so",
+                "home_bat_2b", "away_bat_2b", "home_bat_3b", "away_bat_3b",
+                "home_bat_sb", "away_bat_sb", "home_bat_cs", "away_bat_cs",
+                "home_lineup_json", "away_lineup_json", "player_rows_count",
+                "weather_temp_c", "weather_humidity_pct",
+                "weather_precip_mm", "weather_wind_kmh",
+            )
+            enriched = {}
+            for field_name in enriched_fields:
+                if field_name not in g.columns:
+                    continue
+                value = next(
+                    (
+                        value for value in g[field_name]
+                        if pd.notna(value) and str(value).strip().lower() not in {"", "nan", "none", "nat"}
+                    ),
+                    None,
+                )
+                if value is not None:
+                    enriched[field_name] = value
+
             rows.append({
                 "league": "NPB", "game_id": str(gid), "datetime": dt,
                 "home": home, "away": away, "home_score": hscore, "away_score": ascore,
-                "home_starter": hp if h_safe else "", "away_starter": ap if a_safe else "",
-                "venue": "unknown",
-                "confirmed_starters": bool(h_safe and a_safe),
-                "starter_evidence_status": "pit_safe" if (h_safe and a_safe) else "unknown",
+                # Strict PIT: no unverified target-game starter identity.
+                "home_starter": "", "away_starter": "",
+                "venue": str(enriched.get("venue") or "unknown"),
+                "confirmed_starters": False,
+                "starter_evidence_status": "unknown",
                 "home_bullpen_apps": float(home_bullpen_apps),
                 "away_bullpen_apps": float(away_bullpen_apps),
                 "game_type": gt,
                 "series_description": "",
+                **enriched,
             })
         out = pd.DataFrame(rows)
         if out.empty:
