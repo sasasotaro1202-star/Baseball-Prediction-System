@@ -58,3 +58,9 @@ def test_espn_discovery_adapters_are_concrete():
         meta = adapter_metadata(source_id)
         assert meta["implemented"] is True
         assert meta["collection_ready"] is True
+
+def test_japanese_independent_schedule_adapters_are_concrete():
+    for source_id in ("iblj_official_stats", "bcl_official_stats"):
+        meta = adapter_metadata(source_id)
+        assert meta["implemented"] is True
+        assert meta["collection_ready"] is True
