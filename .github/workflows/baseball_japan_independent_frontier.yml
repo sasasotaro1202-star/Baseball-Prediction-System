@@ -2,6 +2,13 @@ name: Baseball Japan Independent Frontier Discovery
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - "research/**"
+    paths:
+      - "data/japan_independent_schedule.py"
+      - "tests/test_japan_independent_schedule.py"
+      - ".github/workflows/baseball_japan_independent_frontier.yml"
   schedule:
     - cron: "29 3 * * *"
 
