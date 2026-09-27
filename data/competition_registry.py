@@ -141,6 +141,72 @@ COMPETITIONS: tuple[CompetitionSpec, ...] = (
         starter_source_id="wbsc_europe_baseball",
     ),
 
+    # Additional high-coverage collegiate, youth, women's and amateur scope.
+    CompetitionSpec(
+        "NCAA_D1_BASEBALL", "NCAA Division I Baseball", "collegiate", "college", "mixed", "United States",
+        "COMPETITION_DEFINED", "RESEARCH_ONLY", False,
+        phase_type="league_and_tournament", rules_profile="ncaa_baseball_d1", discovery_priority=12,
+        discovery_url="https://www.ncaa.com/sports/baseball/d1",
+        starter_source_id="ncaa_baseball_d1",
+        notes="Official NCAA schedule/results are public; team/roster/starter PIT must be validated independently.",
+    ),
+    CompetitionSpec(
+        "NCAA_D2_BASEBALL", "NCAA Division II Baseball", "collegiate", "college", "mixed", "United States",
+        "COMPETITION_DEFINED", "RESEARCH_ONLY", False,
+        phase_type="league_and_tournament", rules_profile="ncaa_baseball_d2", discovery_priority=13,
+        discovery_url="https://www.ncaa.com/sports/baseball/d2",
+        starter_source_id="ncaa_baseball_d2",
+    ),
+    CompetitionSpec(
+        "NCAA_D3_BASEBALL", "NCAA Division III Baseball", "collegiate", "college", "mixed", "United States",
+        "COMPETITION_DEFINED", "RESEARCH_ONLY", False,
+        phase_type="league_and_tournament", rules_profile="ncaa_baseball_d3", discovery_priority=14,
+        discovery_url="https://www.ncaa.com/sports/baseball/d3",
+        starter_source_id="ncaa_baseball_d3",
+    ),
+    CompetitionSpec(
+        "WBSC_U12", "WBSC U-12 Baseball", "international_youth", "U12", "mixed", "international",
+        "COMPETITION_DEFINED", "RESEARCH_ONLY", False,
+        phase_type="tournament", rules_profile="wbsc_age_group", discovery_priority=31,
+        discovery_url="https://www.wbsc.org/",
+        starter_source_id="wbsc_age_group_reports",
+    ),
+    CompetitionSpec(
+        "WBSC_U15", "WBSC U-15 Baseball", "international_youth", "U15", "mixed", "international",
+        "COMPETITION_DEFINED", "RESEARCH_ONLY", False,
+        phase_type="tournament", rules_profile="wbsc_age_group", discovery_priority=32,
+        discovery_url="https://www.wbsc.org/",
+        starter_source_id="wbsc_age_group_reports",
+    ),
+    CompetitionSpec(
+        "WBSC_WOMENS_BASEBALL", "WBSC Women's Baseball World Cup", "international_womens", "senior", "female", "international",
+        "COMPETITION_DEFINED", "RESEARCH_ONLY", False,
+        phase_type="tournament", rules_profile="wbsc_womens_baseball", discovery_priority=33,
+        discovery_url="https://www.wbsc.org/",
+        starter_source_id="wbsc_womens_baseball",
+    ),
+    CompetitionSpec(
+        "JAPAN_WOMENS_HIGH_SCHOOL", "Japan Women's High School Baseball", "high_school", "U18", "female", "Japan",
+        "COMPETITION_DEFINED", "RESEARCH_ONLY", False,
+        phase_type="tournament", rules_profile="japan_womens_high_school", discovery_priority=34,
+        discovery_url="https://www.baseballjapan.org/",
+        starter_source_id="omyu_womens_high_school",
+    ),
+    CompetitionSpec(
+        "LITTLE_LEAGUE_WORLD_SERIES", "Little League World Series", "youth", "youth", "mixed", "international",
+        "COMPETITION_DEFINED", "RESEARCH_ONLY", False,
+        phase_type="tournament", rules_profile="little_league", discovery_priority=35,
+        discovery_url="https://www.littleleague.org/world-series/",
+        starter_source_id="little_league_world_series",
+    ),
+    CompetitionSpec(
+        "JABA_CORPORATE", "Japan Amateur Baseball Association Corporate Baseball", "amateur", "senior", "mixed", "Japan",
+        "COMPETITION_DEFINED", "RESEARCH_ONLY", False,
+        phase_type="league_and_tournament", rules_profile="jaba_corporate", discovery_priority=36,
+        discovery_url="https://www.jaba.or.jp/",
+        starter_source_id="jaba_official",
+    ),
+
     # Senior national-team tournaments / non-league competition.
     CompetitionSpec("WBC", "World Baseball Classic", "international_senior", "senior", "mixed", "international", "COMPETITION_DEFINED", "RESEARCH_ONLY", True, phase_type="tournament", rules_profile="wbc"),
     CompetitionSpec("WBSC_PREMIER12", "WBSC Premier12", "international_senior", "senior", "mixed", "international", "COMPETITION_DEFINED", "RESEARCH_ONLY", True, phase_type="tournament", rules_profile="wbsc_senior"),
