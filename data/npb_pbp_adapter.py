@@ -315,7 +315,6 @@ def _repair_scores_from_official(out: pd.DataFrame, data_dir: Path) -> pd.DataFr
 
 ENRICHED_GAME_FIELDS = (
     "league", "venue", "start_time",
-    "home_starter", "away_starter",
     "home_starter_line_ok", "away_starter_line_ok",
     "home_starter_era", "away_starter_era", "home_starter_whip", "away_starter_whip",
     "home_starter_k9", "away_starter_k9", "home_starter_bb9", "away_starter_bb9",
