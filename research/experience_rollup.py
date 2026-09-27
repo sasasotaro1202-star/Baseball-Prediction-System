@@ -67,6 +67,40 @@ def _top4(row: Any) -> list[str]:
     ]
 
 
+def _normalize_probability_rows(
+    values: pd.DataFrame,
+    *,
+    label: str,
+    row_ids: pd.Series | None = None,
+) -> np.ndarray:
+    """Validate percentage probabilities and normalize serialization-rounding drift.
+
+    Production snapshots store percentages rounded to four decimals. The exact
+    row sum can therefore differ from 100 by up to the rounding error. Only a
+    tiny, explicit tolerance is accepted; materially inconsistent rows remain
+    fail-closed.
+    """
+    arr = values.apply(pd.to_numeric, errors="coerce").to_numpy(float)
+    if arr.ndim != 2 or arr.shape[1] != 3:
+        raise RuntimeError(f"{label} probability matrix must have exactly 3 columns")
+    if not np.isfinite(arr).all() or (arr < 0.0).any() or (arr > 100.0).any():
+        raise RuntimeError(f"{label} probabilities contain invalid values")
+    sums = arr.sum(axis=1)
+    # Three four-decimal percentage fields have <=0.00015 percentage-point
+    # aggregate rounding drift. Keep a small safety margin for binary floats.
+    rounding_tolerance_pct = 0.0003
+    bad = np.abs(sums - 100.0) > rounding_tolerance_pct
+    if bad.any():
+        idx = int(np.flatnonzero(bad)[0])
+        ident = row_ids.iloc[idx] if row_ids is not None and len(row_ids) > idx else idx
+        raise RuntimeError(
+            f"{label} probabilities are not row-normalized: "
+            f"row={ident!r} sum_pct={sums[idx]:.8f}"
+        )
+    arr = arr / sums[:, None]
+    return arr
+
+
 def _weight_dict(row: pd.Series) -> dict[str, float]:
     raw = _parse_json_value(row.get("classification_regime_model_weights"))
     if not isinstance(raw, dict):
@@ -159,19 +193,11 @@ def _evaluate(merged: pd.DataFrame) -> pd.DataFrame:
         np.where(x["actual_home_score"] == x["actual_away_score"], "DRAW", "AWAY_WIN"),
     )
 
-    for col in ("home_win_pct", "draw_pct", "away_win_pct", "low_pct", "high_pct"):
-        x[col] = pd.to_numeric(x[col], errors="coerce") / 100.0
-    probs = x[["home_win_pct", "draw_pct", "away_win_pct"]].to_numpy(float)
-    if (
-        not np.isfinite(probs).all()
-        or (probs < 0.0).any()
-        or (probs > 1.0).any()
-        or (np.abs(probs.sum(axis=1) - 1.0) > 1e-6).any()
-    ):
-        raise RuntimeError(
-            "experience snapshot contains invalid win probabilities "
-            "(must be finite, in [0,1], and row-normalized)"
-        )
+    probs = _normalize_probability_rows(
+        x[["home_win_pct", "draw_pct", "away_win_pct"]],
+        label="win",
+        row_ids=x.get("game_id"),
+    )
 
     y = x["actual_outcome"].map({
         "HOME_WIN": 0, "DRAW": 1, "AWAY_WIN": 2
@@ -186,20 +212,13 @@ def _evaluate(merged: pd.DataFrame) -> pd.DataFrame:
 
     # high_pct was normalized from percentage points to [0, 1] above.
     # Keep the classification threshold on the same probability scale.
-    x["high_probability"] = pd.to_numeric(x["high_pct"], errors="coerce")
-    low_probability = pd.to_numeric(x["low_pct"], errors="coerce")
-    high_probability = x["high_probability"]
-    low_high = pd.concat([low_probability, high_probability], axis=1).to_numpy(float)
-    if (
-        not np.isfinite(low_high).all()
-        or (low_high < 0.0).any()
-        or (low_high > 1.0).any()
-        or (np.abs(low_high.sum(axis=1) - 1.0) > 1e-6).any()
-    ):
-        raise RuntimeError(
-            "experience snapshot contains invalid Low/High probabilities "
-            "(must be finite, in [0,1], and row-normalized)"
-        )
+    low_high = _normalize_probability_rows(
+        x[["low_pct", "high_pct", "low_pct"]],
+        label="Low/High",
+        row_ids=x.get("game_id"),
+    )[:, :2]
+    x["high_probability"] = low_high[:, 1]
+    low_probability = low_high[:, 0]
     x["low_high_actual"] = (x["actual_total_runs"] >= 7).astype(int)
     x["low_high_predicted"] = (x["high_probability"] >= 0.5).astype(int)
     x["low_high_correct"] = (
