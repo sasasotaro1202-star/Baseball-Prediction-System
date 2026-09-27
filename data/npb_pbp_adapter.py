@@ -313,6 +313,28 @@ def _repair_scores_from_official(out: pd.DataFrame, data_dir: Path) -> pd.DataFr
     return merged.drop(columns=["date_key", "home_key", "away_key", "home_score_official", "away_score_official", "home_score_spaia", "away_score_spaia", "_score_sum"], errors="ignore")
 
 
+ENRICHED_GAME_FIELDS = (
+    "league", "venue", "start_time",
+    "home_starter", "away_starter",
+    "home_starter_line_ok", "away_starter_line_ok",
+    "home_starter_era", "away_starter_era", "home_starter_whip", "away_starter_whip",
+    "home_starter_k9", "away_starter_k9", "home_starter_bb9", "away_starter_bb9",
+    "home_starter_hr9", "away_starter_hr9", "home_starter_fip", "away_starter_fip",
+    "home_starter_ip", "away_starter_ip", "home_starter_er", "away_starter_er",
+    "home_starter_h", "away_starter_h", "home_starter_hr", "away_starter_hr",
+    "home_starter_bb", "away_starter_bb", "home_starter_so", "away_starter_so",
+    "home_starter_pitches", "away_starter_pitches",
+    "home_starter_k_rate", "away_starter_k_rate", "home_starter_bb_rate", "away_starter_bb_rate",
+    "home_bat_pa", "away_bat_pa", "home_bat_ab", "away_bat_ab",
+    "home_bat_h", "away_bat_h", "home_bat_hr", "away_bat_hr",
+    "home_bat_bb", "away_bat_bb", "home_bat_so", "away_bat_so",
+    "home_bat_2b", "away_bat_2b", "home_bat_3b", "away_bat_3b",
+    "home_bat_sb", "away_bat_sb", "home_bat_cs", "away_bat_cs",
+    "home_lineup_json", "away_lineup_json", "player_rows_count",
+    "weather_temp_c", "weather_humidity_pct", "weather_precip_mm", "weather_wind_kmh",
+)
+
+
 def normalize_pbp_frame(raw: pd.DataFrame, *, data_dir: str | Path | None = None) -> pd.DataFrame:
     if raw.empty:
         return pd.DataFrame(columns=["game_id", "row_order", "date", "home", "away", "home_score", "away_score", "game_type", "home_pitcher", "away_pitcher"])
@@ -331,6 +353,15 @@ def normalize_pbp_frame(raw: pd.DataFrame, *, data_dir: str | Path | None = None
     # before the prediction timestamp.
     out["pitcher_id"] = _first_existing(raw, ["pitcher", "PitID"]).astype(str)
     out["half_inning"] = _first_existing(raw, ["TB", "half", "Half"], "").astype(str)
+
+    # Preserve fields produced by the resumable multi-source game enrichment
+    # pipeline. Previously these columns were silently discarded here, so
+    # downstream chronological feature construction could only see the small
+    # normalized PBP contract and the acquired data never reached the model.
+    for column in ENRICHED_GAME_FIELDS:
+        if column in raw.columns and column not in out.columns:
+            out[column] = raw[column]
+
     starter_df = _starter_from_descriptions(raw)
     out = out.merge(starter_df, on="game_id", how="left")
     out["home_pitcher"] = out["home_pitcher"].fillna("").astype(str)
