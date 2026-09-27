@@ -617,6 +617,48 @@ def graceful_degradation(
         "research_only": True,
     }
 
+
+def self_refutation_audit(
+    *,
+    chance_edge: float,
+    overfit_signal: float,
+    selection_bias: float,
+    period_luck: float,
+    data_artifact: float,
+    metric_gaming: float,
+    multiple_testing: float,
+    evaluation_dependence: float,
+    deployment_mismatch: float,
+    hidden_harm: float,
+    policy_bias: float,
+    scope_bias: float,
+    shared_blind_spot: float,
+) -> dict[str, Any]:
+    """Adversarially search for reasons an apparent improvement should not be trusted."""
+    names = (
+        "chance_edge", "overfit_signal", "selection_bias", "period_luck",
+        "data_artifact", "metric_gaming", "multiple_testing",
+        "evaluation_dependence", "deployment_mismatch", "hidden_harm",
+        "policy_bias", "scope_bias", "shared_blind_spot",
+    )
+    values = {
+        name: _unit(locals()[name], name=name)
+        for name in names
+    }
+    flagged = [name for name in names if values[name] >= 0.50]
+    severity = math.fsum(values.values()) / len(values)
+    return {
+        "severity": severity,
+        "flags": flagged,
+        "status": "REVIEW_REQUIRED" if flagged else "NO_FLAG",
+        "promotion_block_recommended": bool(
+            values["data_artifact"] >= 0.80
+            or values["deployment_mismatch"] >= 0.80
+            or values["hidden_harm"] >= 0.80
+        ),
+        "research_only": True,
+    }
+
 def build_decision_object(
     *,
     case_id: str,
