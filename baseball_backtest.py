@@ -70,6 +70,7 @@ from research.correlated_score import estimate_shared_lambda, low_high as correl
 from evaluation.calibration import fit_temperature, TemperatureCalibration
 from core.atomic_io import atomic_write_text
 from data.npb_enrichment_contract import ENRICHED_GAME_FIELDS
+from data.market_line_loader import attach_pit_safe_market_lines
 
 RANDOM_STATE = 42
 ROOT = Path(__file__).resolve().parent
@@ -301,6 +302,7 @@ class BaseballBacktest:
         self.player_game = pd.DataFrame()
         self.player_history = defaultdict(list)
         self.player_index = {}
+        self.market_line_cache = None
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
     # ------------------------------------------------------------------
@@ -1000,6 +1002,19 @@ class BaseballBacktest:
             + out.get("weather_wind_kmh",0.0)/30.0
             - out.get("weather_precip_mm",0.0)/5.0
         ) if context_pit_safe else 0.0
+
+        # Market total is an exogenous pregame signal. Only a PIT-safe KNOWN
+        # observation is exposed as market information; unknown rows use the
+        # endogenous expected environment with an explicit gate flag.
+        market_known = float(num(row.get("market_line_known", 0.0), 0.0))
+        market_line = float(num(row.get("market_total_runs_line", out["expected_env"]), out["expected_env"]))
+        if market_known > 0.5:
+            out["market_total_runs_line"] = market_line
+            out["market_total_runs_line_delta"] = market_line - out["expected_env"]
+        else:
+            out["market_total_runs_line"] = out["expected_env"]
+            out["market_total_runs_line_delta"] = 0.0
+        out["market_line_known"] = 1.0 if market_known > 0.5 else 0.0
         out["starter_x_quality_proxy"] = (out.get("hs_k9",7.5)-out.get("hs_bb9",3.0)-out.get("hs_hr9",1.0)) - (out.get("as_k9",7.5)-out.get("as_bb9",3.0)-out.get("as_hr9",1.0))
         out["starter_recency_gap"] = out.get("hs_recent_era",4.0)-out.get("as_recent_era",4.0)
         out["starter_experience_gap"] = out.get("hs_starts",0.0)-out.get("as_starts",0.0)
@@ -1143,6 +1158,9 @@ class BaseballBacktest:
 
     def build_features(self, games: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, pd.DataFrame]:
         self.states.clear(); self.elo_ratings.clear(); self.pitcher_history = defaultdict(list); self.player_history = defaultdict(list)
+        # Attach only PIT-safe market snapshots. Missing/invalid market data
+        # remains explicitly unknown and cannot become a synthetic signal.
+        games = attach_pit_safe_market_lines(games, self.data_dir)
         if self.player_game.empty:
             self.player_game = self.load_npb_player_features()
         self.player_index = {}
