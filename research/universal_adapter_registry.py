@@ -28,6 +28,22 @@ class AdapterSpec:
 # listed. Absence from this table is intentionally equivalent to UNWIRED.
 ADAPTERS: tuple[AdapterSpec, ...] = (
     AdapterSpec(
+        "kbo_official_stats",
+        "data.kbo_public_schedule",
+        "fetch_kbo_schedule",
+        "collector",
+        True,
+        "Public KBO daily schedule discovery; starter announcement/PIT/OOS remain separate gates.",
+    ),
+    AdapterSpec(
+        "cpbl_rebas",
+        "data.cpbl_public_schedule",
+        "discover_cpbl",
+        "collector",
+        True,
+        "Public CPBL schedule discovery; page-rendering/starter/PIT/OOS remain separate gates.",
+    ),
+    AdapterSpec(
         "statcast",
         "data.mlb_statcast",
         "fetch_statcast",
