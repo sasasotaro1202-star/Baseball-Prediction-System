@@ -1,0 +1,66 @@
+name: Baseball 24h Research Keeper
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/15 * * * *'
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: baseball-24h-research-keeper
+  cancel-in-progress: true
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check 24h autopilot state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TARGET: baseball_24h_research_autopilot.yml
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh_retry() {
+            local attempt out rc
+            for attempt in 1 2 3 4; do
+              if out="$(gh "$@" 2>&1)"; then printf '%s\n' "$out"; return 0; fi
+              rc=$?
+              echo "gh attempt ${attempt}/4 failed rc=${rc}: ${out}" >&2
+              [ "$attempt" -lt 4 ] && sleep $((attempt * 2))
+            done
+            return "$rc"
+          }
+          runs="$(gh_retry run list --repo "$GH_REPO" --workflow "$TARGET" --limit 30 --json databaseId,status,conclusion,createdAt,updatedAt)"
+          active="$(printf '%s' "$runs" | jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+          echo "active=${active}"
+          if [ "$active" -gt 0 ]; then
+            echo '24h autopilot already active.'
+            exit 0
+          fi
+          now="$(date -u +%s)"
+          recent_failures="$(printf '%s' "$runs" | jq --argjson now "$now" '[.[] | select(.conclusion == "failure") | select(((.createdAt | fromdateiso8601) >= ($now - 86400)))] | length')"
+          echo "recent_failures_24h=${recent_failures}"
+          if [ "$recent_failures" -ge 2 ]; then
+            echo 'Circuit breaker open: two or more failed autopilot runs in the last 24h.' >&2
+            exit 1
+          fi
+          latest="$(printf '%s' "$runs" | jq 'sort_by(.createdAt) | last // {}')"
+          latest_conclusion="$(printf '%s' "$latest" | jq -r '.conclusion // empty')"
+          echo "latest_conclusion=${latest_conclusion:-<none>}"
+          echo 'No active 24h run; dispatching a fresh research window.'
+          gh_retry workflow run "$TARGET" --repo "$GH_REPO" --ref main
+          verified=0
+          for i in 1 2 3 4 5; do
+            sleep 3
+            active_after="$(gh_retry run list --repo "$GH_REPO" --workflow "$TARGET" --limit 10 --json status --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+            echo "dispatch verification ${i}/5 active=${active_after}"
+            if [ "$active_after" -gt 0 ]; then verified=1; break; fi
+          done
+          test "$verified" -eq 1
+          echo '24h research autopilot dispatch verified.'
