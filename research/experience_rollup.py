@@ -81,8 +81,8 @@ def _normalize_probability_rows(
     fail-closed.
     """
     arr = values.apply(pd.to_numeric, errors="coerce").to_numpy(float)
-    if arr.ndim != 2 or arr.shape[1] != 3:
-        raise RuntimeError(f"{label} probability matrix must have exactly 3 columns")
+    if arr.ndim != 2 or arr.shape[1] not in (2, 3):
+        raise RuntimeError(f"{label} probability matrix must have 2 or 3 columns")
     if not np.isfinite(arr).all() or (arr < 0.0).any() or (arr > 100.0).any():
         raise RuntimeError(f"{label} probabilities contain invalid values")
     sums = arr.sum(axis=1)
@@ -213,7 +213,7 @@ def _evaluate(merged: pd.DataFrame) -> pd.DataFrame:
     # high_pct was normalized from percentage points to [0, 1] above.
     # Keep the classification threshold on the same probability scale.
     low_high = _normalize_probability_rows(
-        x[["low_pct", "high_pct", "low_pct"]],
+        x[["low_pct", "high_pct"]],
         label="Low/High",
         row_ids=x.get("game_id"),
     )[:, :2]
