@@ -9,6 +9,10 @@ from research.ultimate_v18_intelligence import (
     pit_gate,
     predictability_index,
     scope_candidate,
+    operational_utility,
+    resource_priority,
+    silent_degradation,
+    validation_depth,
 )
 
 
@@ -302,3 +306,53 @@ def test_predictability_index_has_seven_dimensions():
     )
     assert out["score"] == pytest.approx(0.5)
     assert out["interpretation"] != "model_confidence"
+
+
+def test_operational_utility_is_safety_dominant():
+    safe = operational_utility(
+        accuracy=.8, reliability=.8, latency=.8, coverage=.8,
+        cost_efficiency=.8, safety=1.0,
+    )
+    unsafe = operational_utility(
+        accuracy=.99, reliability=.99, latency=.99, coverage=.99,
+        cost_efficiency=.99, safety=.5,
+    )
+    assert safe["utility"] > unsafe["utility"]
+    assert safe["research_only"] is True
+
+
+def test_validation_depth_never_drops_pit_or_safety():
+    out = validation_depth(
+        case_importance=.9, failure_risk=.9, ood=.2, rare_case=.2, operational_impact=.8
+    )
+    assert out["depth"] == "DEEP"
+    assert out["pit_required"] is True
+    assert out["safety_required"] is True
+
+
+def test_resource_priority_surfaces_unknown_and_failure_frontier():
+    out = resource_priority(
+        production_criticality=.2, information_value=.8, failure_risk=.9,
+        unknown_frontier=.9, learning_value=.7, operational_risk=.5,
+        cost=.1, dependency_risk=.1,
+    )
+    assert out["priority"] > 2.0
+    assert out["research_only"] is True
+
+
+def test_silent_degradation_detects_multi_axis_shift():
+    out = silent_degradation(
+        {
+            "data_quality": .95, "latency": .9, "calibration": .9,
+            "disagreement": .2, "predictability": .8, "coverage": .9,
+        },
+        {
+            "data_quality": .80, "latency": .7, "calibration": .75,
+            "disagreement": .3, "predictability": .6, "coverage": .88,
+        },
+        lower_is_better=("latency", "disagreement"),
+        warn_delta=.08,
+    )
+    assert out["status"] == "ALERT"
+    assert "data_quality" in out["degraded_metrics"]
+    assert "calibration" in out["degraded_metrics"]
