@@ -2,6 +2,13 @@ name: Baseball Frontier Game Discovery
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - "research/**"
+    paths:
+      - "data/kbo_public_schedule.py"
+      - "data/cpbl_public_schedule.py"
+      - ".github/workflows/baseball_frontier_game_discovery.yml"
   schedule:
     - cron: "41 3 * * *"
 
