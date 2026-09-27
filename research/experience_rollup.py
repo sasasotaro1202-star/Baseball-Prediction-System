@@ -84,7 +84,10 @@ def _normalize_probability_rows(
     if arr.ndim != 2 or arr.shape[1] not in (2, 3):
         raise RuntimeError(f"{label} probability matrix must have 2 or 3 columns")
     if not np.isfinite(arr).all() or (arr < 0.0).any() or (arr > 100.0).any():
-        raise RuntimeError(f"{label} probabilities contain invalid values")
+        raise RuntimeError(
+            f"invalid {label} probabilities "
+            "(must be finite, in [0,100], and row-normalized)"
+        )
     sums = arr.sum(axis=1)
     # Three four-decimal percentage fields have <=0.00015 percentage-point
     # aggregate rounding drift. Keep a small safety margin for binary floats.
@@ -94,7 +97,7 @@ def _normalize_probability_rows(
         idx = int(np.flatnonzero(bad)[0])
         ident = row_ids.iloc[idx] if row_ids is not None and len(row_ids) > idx else idx
         raise RuntimeError(
-            f"{label} probabilities are not row-normalized: "
+            f"invalid {label} probabilities: "
             f"row={ident!r} sum_pct={sums[idx]:.8f}"
         )
     arr = arr / sums[:, None]
