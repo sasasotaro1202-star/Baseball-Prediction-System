@@ -156,6 +156,8 @@ def test_rollup_accepts_four_decimal_serialization_rounding():
     merged = pd.DataFrame(
         [{
             "game_id": "rounded",
+            "datetime_jst": pd.Timestamp("2026-09-26T14:00:00+09:00"),
+            "prediction_cutoff_utc": pd.Timestamp("2026-09-26T02:00:00+00:00"),
             "home_score": 4,
             "away_score": 2,
             # Sum is 99.9999 because three four-decimal percentages were
