@@ -81,9 +81,13 @@ def test_decision_object_separates_confidence_and_predictability():
         pit_status="PASS",
         provenance={"source": "unit-test"},
         available_at="2026-09-27T23:59:00Z",
+        now="2026-09-28T00:30:00Z",
     )
     assert obj["research_only"] is True
     assert obj["confidence_predictability_gap"] == pytest.approx(0.7)
+    assert obj["freshness"] == pytest.approx(0.5)
+    assert obj["forecast_lifetime"]["remaining_fraction"] == pytest.approx(0.5)
+    assert obj["now"].endswith("+00:00")
     assert obj["high_confidence_low_predictability"] is True
     assert sum(obj["probability"]) == pytest.approx(1.0)
 
@@ -433,3 +437,47 @@ def test_self_refutation_audit_blocks_major_integrity_risks():
     assert out["status"] == "REVIEW_REQUIRED"
     assert out["promotion_block_recommended"] is True
     assert "data_artifact" in out["flags"]
+
+def test_decision_object_rejects_now_before_prediction_time():
+    with pytest.raises(ValueError, match="now must be at or after prediction_time"):
+        build_decision_object(
+            case_id="time-order",
+            prediction_time="2026-09-28T00:00:00Z",
+            valid_until="2026-09-28T01:00:00Z",
+            target="win",
+            horizon="pregame",
+            granularity="game",
+            result="HOME",
+            probability=[0.7, 0.3],
+            distribution=None,
+            predictability=0.5,
+            confidence=0.5,
+            uncertainty=0.5,
+            current_state="x",
+            future_state="y",
+            current_regime="x",
+            future_regime="y",
+            trajectory=[],
+            scenario=[],
+            branch=[],
+            disagreement=0.2,
+            error_correlation=0.2,
+            future_failure=0.2,
+            time_to_failure_seconds=100,
+            ood=0.1,
+            novelty=0.1,
+            tail_risk=0.1,
+            reversal_risk=0.1,
+            update_need=0.1,
+            next_update_time="2026-09-28T00:30:00Z",
+            information_value_score=0,
+            model="m",
+            strategy="s",
+            compute="c",
+            output="o",
+            action="MAINTAIN",
+            pit_status="PASS",
+            provenance={},
+            available_at="2026-09-27T23:59:00Z",
+            now="2026-09-27T23:59:00Z",
+        )
