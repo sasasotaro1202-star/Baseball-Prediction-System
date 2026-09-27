@@ -117,7 +117,12 @@ def attach_pit_safe_market_lines(games: pd.DataFrame, data_dir: Path) -> pd.Data
     if corpus.empty:
         return games
 
-    cutoff_col = "prediction_cutoff" if "prediction_cutoff" in games.columns else "datetime"
+    # Historical market use is fail-closed unless the caller supplies an
+    # explicit prediction cutoff. A game start timestamp is not substituted,
+    # because it can be later than the actual prediction horizon.
+    if "prediction_cutoff" not in games.columns:
+        return games
+    cutoff_col = "prediction_cutoff"
     key_cols = [c for c in ("event_id", "game_id") if c in games.columns]
     if not key_cols:
         return games
