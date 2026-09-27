@@ -56,6 +56,9 @@ SOURCE_CAPABILITIES: dict[str, frozenset[str]] = {
     "wbc_scouting_public_dataset": frozenset({"tracking", "batting", "pitching", "roster"}),
 
     "ncaa_baseball_sportsdataverse": frozenset({"schedule_identity", "play_by_play", "batting", "pitching"}),
+    "ncaa_baseball_d1": frozenset({"schedule_identity", "batting", "pitching", "roster"}),
+    "ncaa_baseball_d2": frozenset({"schedule_identity", "batting", "pitching", "roster"}),
+    "ncaa_baseball_d3": frozenset({"schedule_identity", "batting", "pitching", "roster"}),
     "retrosheet": frozenset({"schedule_identity", "play_by_play", "batting", "pitching", "fielding"}),
     "kbo_official_tracking": frozenset({"tracking", "pitching", "batting"}),
     "kbo_official_stats": frozenset({"schedule_identity", "batting", "pitching", "fielding"}),
