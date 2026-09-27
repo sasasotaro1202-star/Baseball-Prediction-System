@@ -1,9 +1,9 @@
 {
-  "generated_at_utc": "2026-09-27T06:42:20.073248+00:00",
+  "generated_at_utc": "2026-09-27T13:09:42.206575+00:00",
   "status": "UPDATED",
-  "prediction_rows": 11,
+  "prediction_rows": 13,
   "matched_rows_total": 5,
-  "newly_matched_rows": 5,
+  "newly_matched_rows": 0,
   "outcome_accuracy": 0.6,
   "logloss": 0.6900037699068177,
   "brier": 0.4786900349762,
