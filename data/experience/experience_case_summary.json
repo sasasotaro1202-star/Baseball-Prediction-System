@@ -1,0 +1,165 @@
+{
+  "generated_at_utc": "2026-09-27T06:42:20.689609+00:00",
+  "status": "UPDATED",
+  "prediction_snapshot_rows_total": 111,
+  "matched_snapshot_rows": 55,
+  "unique_games_with_results": 5,
+  "experience_cases": {
+    "rows": 5,
+    "accuracy": 0.6,
+    "logloss": 0.6900039699067178,
+    "brier": 0.4786900264255903,
+    "draw_recall": 0.0,
+    "low_high_accuracy": 0.6,
+    "top1_exact_hit_rate": 0.0,
+    "top4_exact_hit_rate": 0.0,
+    "score_mae": 2.0657958394328952
+  },
+  "all_snapshot_experience": {
+    "rows": 55,
+    "accuracy": 0.6,
+    "logloss": 0.6977367049666885,
+    "brier": 0.48659650163512924,
+    "draw_recall": 0.0,
+    "low_high_accuracy": 0.6,
+    "top1_exact_hit_rate": 0.0,
+    "top4_exact_hit_rate": 0.0,
+    "score_mae": 2.065965626232031
+  },
+  "by_regime": {
+    "s2_e1_m2": {
+      "rows": 1,
+      "accuracy": 1.0,
+      "logloss": 0.27677378474424763,
+      "brier": 0.110896953902,
+      "draw_recall": 0.0,
+      "low_high_accuracy": 0.0,
+      "top1_exact_hit_rate": 0.0,
+      "top4_exact_hit_rate": 0.0,
+      "score_mae": 2.070222314736256
+    },
+    "s2_e2_m2": {
+      "rows": 4,
+      "accuracy": 0.5,
+      "logloss": 0.7933115161973352,
+      "brier": 0.5706382945564878,
+      "draw_recall": 0.0,
+      "low_high_accuracy": 0.75,
+      "top1_exact_hit_rate": 0.0,
+      "top4_exact_hit_rate": 0.0,
+      "score_mae": 2.064689220607055
+    }
+  },
+  "by_dominant_expert": {
+    "RandomForest": {
+      "rows": 5,
+      "accuracy": 0.6,
+      "logloss": 0.6900039699067178,
+      "brier": 0.4786900264255903,
+      "draw_recall": 0.0,
+      "low_high_accuracy": 0.6,
+      "top1_exact_hit_rate": 0.0,
+      "top4_exact_hit_rate": 0.0,
+      "score_mae": 2.0657958394328952
+    }
+  },
+  "by_situation_tag": {
+    "regime:s2_e2_m2": {
+      "rows": 4,
+      "accuracy": 0.5,
+      "logloss": 0.7933115161973352
+    },
+    "starter:balanced": {
+      "rows": 5,
+      "accuracy": 0.6,
+      "logloss": 0.6900039699067178
+    },
+    "starter_recent:balanced": {
+      "rows": 5,
+      "accuracy": 0.6,
+      "logloss": 0.6900039699067178
+    },
+    "offense:balanced": {
+      "rows": 5,
+      "accuracy": 0.6,
+      "logloss": 0.6900039699067178
+    },
+    "bullpen:balanced": {
+      "rows": 5,
+      "accuracy": 0.6,
+      "logloss": 0.6900039699067178
+    },
+    "rest:balanced": {
+      "rows": 3,
+      "accuracy": 0.3333333333333333,
+      "logloss": 0.8606395797130656
+    },
+    "environment:high": {
+      "rows": 5,
+      "accuracy": 0.6,
+      "logloss": 0.6900039699067178
+    },
+    "trend:balanced": {
+      "rows": 4,
+      "accuracy": 0.5,
+      "logloss": 0.7146731309708612
+    },
+    "rest:away": {
+      "rows": 2,
+      "accuracy": 1.0,
+      "logloss": 0.4340505551971959
+    },
+    "trend:home": {
+      "rows": 1,
+      "accuracy": 1.0,
+      "logloss": 0.5913273256501441
+    },
+    "regime:s2_e1_m2": {
+      "rows": 1,
+      "accuracy": 1.0,
+      "logloss": 0.27677378474424763
+    }
+  },
+  "rolling": {
+    "30": {
+      "rows": 5,
+      "accuracy": 0.6,
+      "logloss": 0.6900039699067178,
+      "brier": 0.4786900264255903,
+      "draw_recall": 0.0,
+      "low_high_accuracy": 0.6,
+      "top1_exact_hit_rate": 0.0,
+      "top4_exact_hit_rate": 0.0,
+      "score_mae": 2.0657958394328952
+    },
+    "100": {
+      "rows": 5,
+      "accuracy": 0.6,
+      "logloss": 0.6900039699067178,
+      "brier": 0.4786900264255903,
+      "draw_recall": 0.0,
+      "low_high_accuracy": 0.6,
+      "top1_exact_hit_rate": 0.0,
+      "top4_exact_hit_rate": 0.0,
+      "score_mae": 2.0657958394328952
+    },
+    "300": {
+      "rows": 5,
+      "accuracy": 0.6,
+      "logloss": 0.6900039699067178,
+      "brier": 0.4786900264255903,
+      "draw_recall": 0.0,
+      "low_high_accuracy": 0.6,
+      "top1_exact_hit_rate": 0.0,
+      "top4_exact_hit_rate": 0.0,
+      "score_mae": 2.0657958394328952
+    }
+  },
+  "training_contract": {
+    "usable_after_result_available_only": true,
+    "pregame_cutoff_required": true,
+    "future_target_data_after_cutoff_for_training": false,
+    "deduplicate_for_main_case_metrics_by_game": true,
+    "preserve_all_snapshots_for_research": true
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "generated_at_utc": "2026-09-27T06:42:20.073248+00:00",
+  "status": "UPDATED",
+  "prediction_rows": 11,
+  "matched_rows_total": 5,
+  "newly_matched_rows": 5,
+  "outcome_accuracy": 0.6,
+  "logloss": 0.6900037699068177,
+  "brier": 0.4786900349762,
+  "ece": 0.593768832,
+  "draw_rows": 0,
+  "draw_recall": 0.0,
+  "low_high_accuracy": 0.6,
+  "score_mae": 2.0657958394328952,
+  "top1_exact_hit_rate": 0.0,
+  "top4_exact_hit_rate": 0.0,
+  "by_regime": {
+    "s2_e1_m2": {
+      "rows": 1,
+      "accuracy": 1.0,
+      "logloss": 0.2767737847442478,
+      "brier": 0.11089695390200002
+    },
+    "s2_e2_m2": {
+      "rows": 4,
+      "accuracy": 0.5,
+      "logloss": 0.7933112661974602,
+      "brier": 0.57063830524475
+    }
+  },
+  "by_dominant_expert": {
+    "classification_weight_RandomForest": {
+      "rows": 5,
+      "accuracy": 0.6,
+      "logloss": 0.6900037699068177
+    }
+  },
+  "rolling": {
+    "30": {
+      "rows": 5,
+      "accuracy": 0.6,
+      "logloss": 0.6900037699068177,
+      "brier": 0.4786900349762,
+      "ece": 0.593768832,
+      "low_high_accuracy": 0.6,
+      "top4_exact_hit_rate": 0.0
+    },
+    "100": {
+      "rows": 5,
+      "accuracy": 0.6,
+      "logloss": 0.6900037699068177,
+      "brier": 0.4786900349762,
+      "ece": 0.593768832,
+      "low_high_accuracy": 0.6,
+      "top4_exact_hit_rate": 0.0
+    },
+    "300": {
+      "rows": 5,
+      "accuracy": 0.6,
+      "logloss": 0.6900037699068177,
+      "brier": 0.4786900349762,
+      "ece": 0.593768832,
+      "low_high_accuracy": 0.6,
+      "top4_exact_hit_rate": 0.0
+    }
+  }
+}

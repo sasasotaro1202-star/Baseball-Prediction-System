@@ -1,0 +1,13 @@
+{
+  "generated_at_utc": "2026-09-27T06:42:20.689609+00:00",
+  "status": "UPDATED",
+  "canonical_experience_cases": 5,
+  "all_prediction_snapshots": 55,
+  "artifacts": {
+    "snapshot_csv": "/home/runner/work/Baseball-Prediction-System/Baseball-Prediction-System/data/experience/snapshot_experience_ledger.csv",
+    "snapshot_jsonl": "/home/runner/work/Baseball-Prediction-System/Baseball-Prediction-System/data/experience/snapshot_experience_ledger.jsonl",
+    "canonical_csv": "/home/runner/work/Baseball-Prediction-System/Baseball-Prediction-System/data/experience/experience_ledger.csv",
+    "summary_json": "/home/runner/work/Baseball-Prediction-System/Baseball-Prediction-System/data/experience/experience_summary.json"
+  },
+  "strict_reuse_rule": "Only rows whose prediction_cutoff_utc and experience_available_at_utc are both earlier than the future research cutoff may be used as experience-derived inputs."
+}
