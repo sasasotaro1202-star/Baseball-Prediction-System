@@ -7,15 +7,20 @@ def test_parse_npb_official_schedule_rows():
     html = """
     <table>
       <tr id="date0928">
-        <td class="date">9/28（月）</td>
-        <td><div class="team1"><a>DeNA</a></div> - <div class="team2"><a>広島</a></div></td>
-        <td><div class="place">横　浜 18:00</div></td>
+        <td>9/28（月）</td>
+        <td><div>DeNA</div> - <div>広島</div></td>
+        <td><div>横　浜 18:00</div></td>
+        <td></td>
+        <td></td>
       </tr>
       <tr id="date0929">
-        <td class="date">9/29（火）</td>
-        <td><div class="team1">巨人</div> - <div class="team2">広島</div></td>
-        <td><div class="place">東京ドーム 18:00</div></td>
+        <td>9/29（火）</td>
+        <td><div>巨人</div> - <div>広島</div></td>
+        <td><div>東京ドーム 18:00</div></td>
+        <td></td>
+        <td></td>
       </tr>
+    </table>
     """
     rows = _parse_npb_schedule_html(
         html,
@@ -39,31 +44,69 @@ def test_parse_npb_schedule_rejects_reserve_days_and_wrong_month():
     <table>
       <tr id="date0928">
         <td>9/28</td>
-        <td><div class="team1">阪神 (予備日)</div> - <div class="team2">中日</div></td>
-        <td><div class="place">甲子園 18:00</div></td>
+        <td>阪神 (予備日) - 中日</td>
+        <td>甲子園 18:00</td>
+        <td></td>
+        <td></td>
       </tr>
       <tr id="date1001">
         <td>10/1</td>
-        <td><div class="team1">巨人</div> - <div class="team2">阪神</div></td>
-        <td><div class="place">東京ドーム 18:00</div></td>
+        <td>巨人 - 阪神</td>
+        <td>東京ドーム 18:00</td>
+        <td></td>
+        <td></td>
       </tr>
+    </table>
     """
     rows = _parse_npb_schedule_html(html, year=2026, month=9)
     assert rows == []
 
 
+def test_parse_npb_schedule_carries_forward_date_for_grouped_games():
+    html = """
+    <table>
+      <tr id="date0928">
+        <td>9/28（月）</td>
+        <td>DeNA - 広島</td>
+        <td>横　浜 18:00</td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td></td>
+        <td>西武 - 楽天</td>
+        <td>ベルーナドーム 18:00</td>
+        <td></td>
+        <td></td>
+      </tr>
+    </table>
+    """
+    rows = _parse_npb_schedule_html(html, year=2026, month=9)
+
+    assert len(rows) == 2
+    assert rows[1]["event_date"] == "2026-09-28"
+    assert rows[1]["home_team"] == "西武"
+    assert rows[1]["away_team"] == "楽天"
+
+
 def test_parse_npb_schedule_bounds_window_without_fabricating_starter_evidence():
     html = """
-    <tr id="date0927">
-      <td>9/27</td>
-      <td><div class="team1">巨人</div> - <div class="team2">ヤクルト</div></td>
-      <td><div class="place">東京ドーム 18:00</div></td>
-    </tr>
-    <tr id="date0928">
-      <td>9/28</td>
-      <td><div class="team1">DeNA</div> - <div class="team2">広島</div></td>
-      <td><div class="place">横　浜 18:00</div></td>
-    </tr>
+    <table>
+      <tr id="date0927">
+        <td>9/27</td>
+        <td>巨人 - ヤクルト</td>
+        <td>東京ドーム 18:00</td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr id="date0928">
+        <td>9/28</td>
+        <td>DeNA - 広島</td>
+        <td>横　浜 18:00</td>
+        <td></td>
+        <td></td>
+      </tr>
+    </table>
     """
     rows = _parse_npb_schedule_html(
         html,
@@ -77,23 +120,3 @@ def test_parse_npb_schedule_bounds_window_without_fabricating_starter_evidence()
     assert rows[0]["event_date"] == "2026-09-28"
     assert "home_starter" not in rows[0]
     assert "away_starter" not in rows[0]
-
-
-def test_parse_npb_schedule_carries_forward_date_for_grouped_games():
-    html = """
-    <tr id="date0928">
-      <td class="date">9/28（月）</td>
-      <td><div class="team1">DeNA</div> - <div class="team2">広島</div></td>
-      <td><div class="place">横　浜 18:00</div></td>
-    </tr>
-    <tr>
-      <td></td>
-      <td><div class="team1">西武</div> - <div class="team2">楽天</div></td>
-      <td><div class="place">ベルーナドーム 18:00</div></td>
-    </tr>
-    """
-    rows = _parse_npb_schedule_html(html, year=2026, month=9)
-    assert len(rows) == 2
-    assert rows[1]["event_date"] == "2026-09-28"
-    assert rows[1]["home_team"] == "西武"
-    assert rows[1]["away_team"] == "楽天"
