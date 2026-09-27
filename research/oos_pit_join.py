@@ -13,6 +13,14 @@ from typing import Any
 
 import pandas as pd
 
+
+PIT_AVAILABILITY_ALLOWED_STATUSES = {
+    "KNOWN",
+    "OBSERVED",
+    "OBSERVED_UNVERIFIABLE_ANNOUNCEMENT_TIME",
+    "ANNOUNCED",
+}
+
 ROOT = Path(__file__).resolve().parents[1]
 PIT_DIR = ROOT / "data" / "pit"
 
@@ -90,6 +98,15 @@ def attach_pit_evidence(
     av["observed_at_dt"] = pd.to_datetime(
         av.get("observed_at"), errors="coerce", utc=True
     )
+    # A PIT availability row is admissible only when its ledger status is a
+    # known/observed state. Explicit unavailable/missing/error states must never
+    # become evidence just because a game_id and cutoff happen to match.
+    if "status" in av.columns:
+        av["pit_status_allowed"] = av["status"].astype(str).isin(PIT_AVAILABILITY_ALLOWED_STATUSES)
+    else:
+        # Legacy ledgers may omit the generic status field; retain them for
+        # backward-compatible exact joins, while still requiring a valid snapshot.
+        av["pit_status_allowed"] = True
 
     snap_by_id: dict[str, list[tuple[pd.Timestamp, Any]]] = {}
     if not snap.empty and "entity_id" in snap.columns:
@@ -121,6 +138,8 @@ def attach_pit_evidence(
             & av["prediction_cutoff_dt"].notna()
             & (av["prediction_cutoff_dt"] == pt)
         ].copy()
+        if not candidates.empty and "pit_status_allowed" in candidates.columns:
+            candidates = candidates[candidates["pit_status_allowed"]]
         if candidates.empty:
             evidence.append((None, pt, "UNRESOLVED", "no_exact_pit_record_at_prediction_time"))
             continue
