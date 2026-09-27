@@ -1,6 +1,7 @@
 name: One-off Enriched Data NPB OOS Validation
 
 on:
+  # Research OOS rerun trigger: contract verified on the current branch; production remains isolated.
   push:
     branches: [research/data-integration-20260928]
     paths:
