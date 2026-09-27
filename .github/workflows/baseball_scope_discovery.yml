@@ -57,6 +57,15 @@ jobs:
           set -euo pipefail
           python research/scope_discovery.py
 
+      - name: Probe ESPN MLB and NCAA game discovery
+        timeout-minutes: 4
+        run: |
+          set -euo pipefail
+          mkdir -p results/espn
+          python -m data.espn_baseball_schedule MLB > results/espn/mlb.json
+          python -m data.espn_baseball_schedule NCAA > results/espn/ncaa.json
+          python -c 'import json; [json.load(open(p, encoding="utf-8")) for p in ("results/espn/mlb.json","results/espn/ncaa.json")]; print("ESPN discovery artifacts: PASS")'
+
       - name: Verify artifact
         timeout-minutes: 1
         run: |
@@ -68,6 +77,8 @@ jobs:
         timeout-minutes: 2
         with:
           name: baseball-scope-discovery-${{ github.sha }}
-          path: results/scope_discovery.json
+          path: |
+            results/scope_discovery.json
+            results/espn/*.json
           if-no-files-found: error
           retention-days: 14
