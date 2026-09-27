@@ -699,6 +699,7 @@ def build_decision_object(
     pit_status: str,
     provenance: Mapping[str, Any],
     available_at: Any | None = None,
+    now: Any | None = None,
 ) -> dict[str, Any]:
     pt = _dt(prediction_time, name="prediction_time")
     vu = _dt(valid_until, name="valid_until")
@@ -711,6 +712,9 @@ def build_decision_object(
     )
     if pit["status"] != "PASS":
         raise ValueError(f"decision object blocked by PIT: {pit['reason']}")
+    now_dt = pt if now is None else _dt(now, name="now")
+    if now_dt < pt:
+        raise ValueError("now must be at or after prediction_time")
     normalized_probability = (
         _normalize_probability(probability) if probability is not None else None
     )
@@ -720,6 +724,14 @@ def build_decision_object(
         and isinstance(distribution, (Mapping, Sequence))
         and not isinstance(distribution, (str, bytes, bytearray))
         else distribution
+    )
+    lifetime = forecast_lifetime(
+        prediction_time=pt,
+        valid_until=vu,
+        now=now_dt,
+        freshness=1.0,
+        value_decay=0.0,
+        revision_probability=0.0,
     )
     fields = {
         "schema_version": SCHEMA_VERSION,
@@ -752,11 +764,9 @@ def build_decision_object(
         "ood": _unit(ood, name="ood"),
         "novelty": _unit(novelty, name="novelty"),
         "tail_risk": _unit(tail_risk, name="tail_risk"),
-        "forecast_lifetime": {
-            "prediction_time": pt.isoformat(),
-            "valid_until": vu.isoformat(),
-        },
-        "freshness": 1.0,
+        "forecast_lifetime": lifetime,
+        "freshness": lifetime["remaining_fraction"],
+        "now": now_dt.isoformat(),
         "reversal_risk": _unit(reversal_risk, name="reversal_risk"),
         "update_need": _unit(update_need, name="update_need"),
         "next_update_time": _dt(
