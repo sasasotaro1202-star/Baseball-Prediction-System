@@ -55,7 +55,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m compileall -q data research core
-          python -m pytest -q tests/test_scope_discovery.py tests/test_universal_source_matrix.py tests/test_universal_adapter_registry.py tests/test_espn_baseball_schedule.py tests/test_japan_independent_schedule.py tests/test_data_intelligence_candidates.py tests/test_pit_history_expansion.py tests/test_pit_snapshot_expanded_scope.py
+          python -m pytest -q tests/test_scope_discovery.py tests/test_universal_source_matrix.py tests/test_universal_adapter_registry.py tests/test_espn_baseball_schedule.py tests/test_japan_independent_schedule.py tests/test_data_intelligence_candidates.py tests/test_pit_history_expansion.py tests/test_pit_snapshot_expanded_scope.py tests/test_scope_coverage_audit.py
       - name: Run chronological OOS
         timeout-minutes: 325
         env:
@@ -124,6 +124,7 @@ jobs:
             }
             run_one scope python research/scope_discovery.py
             run_one pit_history python -m research.pit_history_expansion
+            run_one coverage_funnel python -m research.scope_coverage_audit
             run_one kbo python -m data.kbo_public_schedule
             run_one cpbl python -m data.cpbl_public_schedule
             run_one espn_mlb python -m data.espn_baseball_schedule MLB
@@ -222,6 +223,7 @@ jobs:
           python -m research.scope_discovery > results/24h/scope_discovery_stdout.txt
           python -m research.universal_adapter_registry > results/24h/adapter_audit.json
           python -m research.universal_readiness > results/24h/readiness.json
+          python -m research.scope_coverage_audit > results/24h/scope_coverage_audit.json
       - name: Extended OOS research slice
         timeout-minutes: 300
         env:
