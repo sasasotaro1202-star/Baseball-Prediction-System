@@ -40,3 +40,18 @@ def test_source_registry_creates_unregistered_frontier(monkeypatch, tmp_path):
 def test_catalog_scopes_are_exposed_as_frontier():
     payload = scope_discovery.discover_scope.__globals__
     assert callable(payload["catalog_scopes"])
+
+
+def test_catalog_frontier_probes_sources(monkeypatch, tmp_path):
+    monkeypatch.setattr(scope_discovery, "RESULTS", tmp_path)
+    monkeypatch.setattr(
+        scope_discovery,
+        "_probe",
+        lambda url: {"status": "REACHABLE", "signals": {"schedule": 1, "results": 0, "game": 1, "upcoming": 1, "date_tokens": 1}},
+    )
+    payload = scope_discovery.discover_scope()
+    assert payload["catalog_frontier"]
+    row = payload["catalog_frontier"][0]
+    assert row["reachable_source_count"] >= 0
+    assert "source_probes" in row
+    assert row["production_eligible"] is False
