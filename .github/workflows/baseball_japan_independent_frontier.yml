@@ -37,7 +37,9 @@ jobs:
       - name: Discover BCL
         run: python -m data.japan_independent_schedule BCL > bcl_2026.json
       - name: Validate
-        run: python -c 'import json; [json.load(open(p, encoding="utf-8")) for p in ("iblj_2026.json","bcl_2026.json")]; print("independent discovery artifacts: PASS")'
+        run: |
+          set -euo pipefail
+          python -c 'import json; [json.load(open(p, encoding="utf-8")) for p in ("iblj_2026.json","bcl_2026.json")]; print("independent discovery artifacts: PASS")'
       - name: Upload
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
