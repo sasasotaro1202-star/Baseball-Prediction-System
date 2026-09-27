@@ -27,6 +27,22 @@ class AdapterSpec:
 # Only adapters whose implementation is actually present in this repository are
 # listed. Absence from this table is intentionally equivalent to UNWIRED.
 ADAPTERS: tuple[AdapterSpec, ...] = (
+    AdapterSpec(
+        "iblj_official_stats",
+        "data.japan_independent_schedule",
+        "discover_ibl_j",
+        "collector",
+        True,
+        "Official Shikoku Island League 2026 schedule/results discovery; PIT/starter validation remains separate.",
+    ),
+    AdapterSpec(
+        "bcl_official_stats",
+        "data.japan_independent_schedule",
+        "discover_bcl",
+        "collector",
+        True,
+        "Official Route-Inn BC League 2026 schedule/results discovery; PIT/starter validation remains separate.",
+    ),
     AdapterSpec("espn_mlb","data.espn_baseball_schedule","fetch_espn_scoreboard","collector",True,"Public ESPN MLB scoreboard/game discovery; field-level PIT remains separate."),
     AdapterSpec("espn_college_baseball","data.espn_baseball_schedule","fetch_espn_scoreboard","collector",True,"Public ESPN college baseball scoreboard/game discovery; field-level PIT remains separate."),
     AdapterSpec("espn_international","data.espn_baseball_schedule","fetch_espn_scoreboard","collector",True,"Public ESPN international baseball discovery; competition coverage is slug-dependent."),
