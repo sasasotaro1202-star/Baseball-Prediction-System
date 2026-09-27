@@ -2,6 +2,11 @@ name: Baseball 24h Research Autopilot
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/baseball_24h_research_autopilot.yml"
+      - ".github/workflows/baseball_24h_research_keeper.yml"
   schedule:
     - cron: '7 0 * * *'
 
