@@ -38,12 +38,13 @@ def attach_pit_evidence(
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     if "game_id" not in oos.columns:
         raise ValueError("OOS artifact requires game_id")
-    if "datetime" not in oos.columns:
-        raise ValueError("OOS artifact requires datetime")
+    event_time_column = "datetime" if "datetime" in oos.columns else "datetime_jst" if "datetime_jst" in oos.columns else None
+    if event_time_column is None:
+        raise ValueError("OOS artifact requires datetime or datetime_jst")
 
     out = oos.copy().reset_index(drop=True)
     out["game_id"] = out["game_id"].astype(str).str.strip()
-    event_dt = pd.to_datetime(out["datetime"], errors="coerce", utc=True).reset_index(drop=True)
+    event_dt = pd.to_datetime(out[event_time_column], errors="coerce", utc=True).reset_index(drop=True)
     if event_dt.isna().any():
         raise ValueError("OOS artifact contains invalid datetime")
 
