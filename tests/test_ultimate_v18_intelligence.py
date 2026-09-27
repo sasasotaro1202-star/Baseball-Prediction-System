@@ -17,6 +17,7 @@ from research.ultimate_v18_intelligence import (
     error_budget,
     adaptive_stop,
     graceful_degradation,
+    self_refutation_audit,
 )
 
 
@@ -420,3 +421,15 @@ def test_graceful_degradation_is_monotone_and_safe():
         source_health=True, information_complete=True, router_health=True,
         calibration_health=True, verified_baseline_ready=True, kill_switch=True,
     )["action"] == "VERIFIED_BASELINE"
+
+
+def test_self_refutation_audit_blocks_major_integrity_risks():
+    out = self_refutation_audit(
+        chance_edge=.1, overfit_signal=.2, selection_bias=.2, period_luck=.1,
+        data_artifact=.9, metric_gaming=.1, multiple_testing=.6,
+        evaluation_dependence=.2, deployment_mismatch=.85, hidden_harm=.1,
+        policy_bias=.1, scope_bias=.2, shared_blind_spot=.7,
+    )
+    assert out["status"] == "REVIEW_REQUIRED"
+    assert out["promotion_block_recommended"] is True
+    assert "data_artifact" in out["flags"]
