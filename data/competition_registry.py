@@ -60,7 +60,7 @@ COMPETITIONS: tuple[CompetitionSpec, ...] = (
     ),
     CompetitionSpec(
         "LMB", "Liga Mexicana de Beisbol", "professional", "top", "mixed", "Mexico",
-        "HOME_DRAW_AWAY", "RESEARCH_ONLY", True,
+        "COMPETITION_DEFINED", "RESEARCH_ONLY", True,
         phase_type="league", rules_profile="lmb", discovery_priority=3,
         discovery_url="https://lmb.com.mx/noticias/calendario-oficial-de-la-temporada-2026-de-la-liga-mexicana-de-beisbol",
         starter_source_id="lmb_official",
@@ -68,7 +68,7 @@ COMPETITIONS: tuple[CompetitionSpec, ...] = (
     ),
     CompetitionSpec(
         "ABL", "Australian Baseball League", "professional", "top", "mixed", "Australia",
-        "HOME_DRAW_AWAY", "RESEARCH_ONLY", True,
+        "COMPETITION_DEFINED", "RESEARCH_ONLY", True,
         phase_type="league", rules_profile="abl", discovery_priority=4,
         discovery_url="https://plus.baseball.com.au/en-int/page/home",
         starter_source_id="abl_official",
@@ -92,7 +92,7 @@ COMPETITIONS: tuple[CompetitionSpec, ...] = (
     ),
     CompetitionSpec(
         "JAPAN_INDEPENDENT", "Japanese Independent Leagues", "professional_independent", "senior", "mixed", "Japan",
-        "HOME_DRAW_AWAY", "RESEARCH_ONLY", True,
+        "COMPETITION_DEFINED", "RESEARCH_ONLY", True,
         phase_type="league", rules_profile="japan_independent", discovery_priority=7,
         discovery_url="https://data.iblj.co.jp/",
         starter_source_id="iblj_official_stats",
