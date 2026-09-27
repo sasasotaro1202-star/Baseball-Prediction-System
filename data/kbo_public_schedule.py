@@ -6,6 +6,7 @@ It does not infer starter announcements or production eligibility.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import re
 from html.parser import HTMLParser
 from typing import Any
 from urllib.request import Request, urlopen
@@ -55,6 +56,24 @@ def _split_game(cell: str) -> tuple[str, str] | None:
     return None
 
 
+def _extract_game(cells: list[str]) -> tuple[str, str] | None:
+    # Current KBO HTML commonly exposes: TIME, HOME, SCORE(or '-'), AWAY, ...
+    clean = [" ".join(str(x).split()) for x in cells if " ".join(str(x).split())]
+    for i, token in enumerate(clean):
+        if not (re.match(r"^\d+:\d+$", token) or token in {"-", "VS", "vs", "V", "v"}):
+            continue
+        if i > 0 and i + 1 < len(clean):
+            left, right = clean[i - 1], clean[i + 1]
+            if left and right and ":" not in left and ":" not in right:
+                return left, right
+    # Fallback for a single cell containing both teams.
+    for token in clean:
+        pair = _split_game(token)
+        if pair:
+            return pair
+    return None
+
+
 def fetch_kbo_schedule(year: int, month: int) -> dict[str, Any]:
     url = "https://eng.koreabaseball.com/Schedule/DailySchedule.aspx"
     html, retrieved_at = _fetch(url)
@@ -71,11 +90,7 @@ def fetch_kbo_schedule(year: int, month: int) -> dict[str, Any]:
                     current_date = token.replace(".", "-")
         if len(cells) < 3:
             continue
-        game_pair = None
-        for cell in cells:
-            game_pair = _split_game(cell)
-            if game_pair:
-                break
+        game_pair = _extract_game(cells)
         if not game_pair:
             continue
         home, away = game_pair
