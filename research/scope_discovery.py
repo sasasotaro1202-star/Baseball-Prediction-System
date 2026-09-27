@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from data.competition_registry import COMPETITIONS, CompetitionSpec
+from data.source_registry import SOURCES
 
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
@@ -75,6 +76,40 @@ def _priority_score(spec: CompetitionSpec, probe: dict[str, Any]) -> float:
 
 def discover_scope() -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
+
+    # The competition registry is intentionally not the sole discovery boundary.
+    # Any league/source family newly added to source_registry becomes an explicit
+    # frontier candidate until a competition contract is registered.
+    registered_ids = {spec.competition_id for spec in COMPETITIONS}
+    registered_names = {spec.name for spec in COMPETITIONS}
+    frontier: dict[str, dict[str, Any]] = {}
+    for source in SOURCES:
+        key = source.league
+        if key in {"NPB+MLB", "MLB+Historical", "Cross-Level-Research", "WBC+PlayerPrior",
+                   "WBSC-U12-U15-U18-U23", "Japan-U12-U15-U18"}:
+            continue
+        if key in registered_ids or key in registered_names:
+            continue
+        item = frontier.setdefault(key, {
+            "competition_id": key,
+            "name": key,
+            "status": "UNREGISTERED_FRONTIER",
+            "source_ids": [],
+            "features": [],
+            "urls": [],
+        })
+        item["source_ids"].append(source.source_id)
+        item["features"].append(source.feature)
+        if str(source.endpoint).startswith(("http://", "https://")):
+            item["urls"].append(source.endpoint)
+    for item in frontier.values():
+        item["source_ids"] = sorted(set(item["source_ids"]))
+        item["features"] = sorted(set(item["features"]))
+        item["urls"] = sorted(set(item["urls"]))
+        item["next_stage"] = "COMPETITION_CONTRACT_AND_DATA_PIT_VALIDATION"
+        item["production_eligible"] = False
+    discovered_frontier = sorted(frontier.values(), key=lambda x: (len(x["source_ids"]) * -1, x["competition_id"]))
+
     for spec in COMPETITIONS:
         if not spec.discovery_url:
             continue
@@ -102,6 +137,7 @@ def discover_scope() -> dict[str, Any]:
             "free_public_sources_only": True,
         },
         "candidates": rows,
+        "unregistered_frontier": discovered_frontier,
     }
     RESULTS.mkdir(parents=True, exist_ok=True)
     (RESULTS / "scope_discovery.json").write_text(
