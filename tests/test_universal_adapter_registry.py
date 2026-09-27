@@ -45,3 +45,10 @@ def test_audit_has_no_unknown_mappings_and_preserves_unwired_state():
     assert report["source_count"] == len(SOURCES)
     assert report["unwired_count"] > 0
     assert report["implemented_count"] >= 1
+
+
+def test_kbo_and_cpbl_schedule_adapters_are_concrete():
+    for source_id in ("kbo_official_stats", "cpbl_rebas"):
+        meta = adapter_metadata(source_id)
+        assert meta["implemented"] is True
+        assert meta["collection_ready"] is True
