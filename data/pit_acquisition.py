@@ -527,8 +527,6 @@ def acquire_npb() -> int:
     # First-party NPB.jp month-detail pages are the primary schedule identity
     # source for the acquisition window.
     for year, month in _npb_official_months(start_dt, end_dt):
-        if near_deadline():
-            break
         url = f"https://npb.jp/games/{year}/schedule_{month:02d}_detail.html"
         try:
             html_text, retrieved = get_text(url)
