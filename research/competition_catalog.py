@@ -59,7 +59,7 @@ SCOPES: tuple[CompetitionScope, ...] = (
     CompetitionScope("ABL", "Australian Baseball League", "professional", "mixed", "competition_defined",
                      "abl_standard", ("abl_official",), 2),
     CompetitionScope("NCAA_D1", "NCAA Division I", "college", "mixed", "competition_defined",
-                     "ncaa_standard", ("ncaa_baseball_sportsdataverse",), 1),
+                     "ncaa_standard", ("ncaa_baseball_d1", "ncaa_baseball_sportsdataverse"), 1),
     CompetitionScope("NCAA_D2", "NCAA Division II", "college", "mixed", "competition_defined",
                      "ncaa_standard", ("ncaa_baseball_d2",), 1),
     CompetitionScope("NCAA_D3", "NCAA Division III", "college", "mixed", "competition_defined",
