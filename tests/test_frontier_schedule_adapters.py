@@ -11,8 +11,9 @@ class _Resp:
     def read(self): return self.html.encode()
 
 
-def test_kbo_extracts_time_score_team_layout():
-    assert _extract_game(["18:30", "LG", "3", "SSG"]) == ("LG", "3") or _extract_game(["18:30", "LG", "VS", "SSG"]) == ("LG", "SSG")
+def test_kbo_extracts_time_and_team_layout():
+    assert _extract_game(["18:30", "LG", "-", "SSG"]) == ("LG", "SSG")
+    assert _extract_game(["18:30", "LG", "VS", "SSG"]) == ("LG", "SSG")
     assert _extract_game(["LG vs SSG"]) == ("LG", "SSG")
 
 
