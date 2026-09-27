@@ -202,6 +202,8 @@ def _evaluate(merged: pd.DataFrame) -> pd.DataFrame:
         row_ids=x.get("game_id"),
     )
 
+    x[["home_win_pct", "draw_pct", "away_win_pct"]] = probs
+
     y = x["actual_outcome"].map({
         "HOME_WIN": 0, "DRAW": 1, "AWAY_WIN": 2
     }).to_numpy(int)
@@ -220,6 +222,7 @@ def _evaluate(merged: pd.DataFrame) -> pd.DataFrame:
         label="Low/High",
         row_ids=x.get("game_id"),
     )[:, :2]
+    x[["low_pct", "high_pct"]] = low_high
     x["low_probability"] = low_high[:, 0]
     x["high_probability"] = low_high[:, 1]
     x["low_high_actual"] = (x["actual_total_runs"] >= 7).astype(int)
