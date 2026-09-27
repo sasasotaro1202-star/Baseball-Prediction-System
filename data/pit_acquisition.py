@@ -203,7 +203,12 @@ def _explicit_announcement(g: dict[str, Any], side: str) -> str | None:
 
 
 class _NpbScheduleHTMLParser(HTMLParser):
-    """Parse NPB.jp month-detail game rows without third-party HTML packages."""
+    """Parse NPB.jp month-detail rows using only the Python standard library.
+
+    NPB.jp groups multiple games under one date, so later rows can omit the
+    visible date cell. We retain the last explicit date within the table and
+    apply it only to subsequent rows that otherwise have valid team fields.
+    """
 
     _TARGETS = {"team1", "team2", "place"}
 
@@ -223,16 +228,22 @@ class _NpbScheduleHTMLParser(HTMLParser):
             if self._row is not None:
                 self._finish_row()
             attr_map = self._attrs(attrs)
-            row_id = attr_map.get("id", "")
-            if "date" in row_id.lower():
-                self._row = {"row_id": row_id, "team1": [], "team2": [], "place": [], "raw": []}
-            else:
-                self._row = None
+            self._row = {
+                "row_id": attr_map.get("id", ""),
+                "team1": [],
+                "team2": [],
+                "place": [],
+                "raw": [],
+            }
             self._tag_targets = []
             return
+
         if self._row is None:
             return
-        if tag in {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}:
+        if tag in {
+            "area", "base", "br", "col", "embed", "hr", "img", "input",
+            "link", "meta", "param", "source", "track", "wbr",
+        }:
             return
         attr_map = self._attrs(attrs)
         classes = set(attr_map.get("class", "").split())
@@ -290,6 +301,7 @@ def _parse_npb_schedule_html(
     end_day = end_date.date() if end_date else None
     seen_keys: dict[str, int] = {}
     out: list[dict[str, Any]] = []
+    last_explicit_date: tuple[int, int] | None = None
 
     for row in parser.rows:
         team1 = _clean_npb_text(" ".join(row.get("team1", [])))
@@ -298,13 +310,20 @@ def _parse_npb_schedule_html(
         raw = _clean_npb_text(" ".join(row.get("raw", [])))
         if not team1 or not team2:
             continue
+
         combined = f"{team1} {team2}"
         if "予備日" in combined or team1 in {"セ・リーグ", "パ・リーグ"}:
             continue
+
         date_match = re.search(r"(?<!\d)(\d{1,2})/(\d{1,2})(?!\d)", raw)
-        if date_match is None:
+        if date_match is not None:
+            row_month, day = int(date_match.group(1)), int(date_match.group(2))
+            last_explicit_date = (row_month, day)
+        elif last_explicit_date is not None:
+            row_month, day = last_explicit_date
+        else:
             continue
-        row_month, day = int(date_match.group(1)), int(date_match.group(2))
+
         if row_month != month or not 1 <= day <= 31:
             continue
         try:
