@@ -1,11 +1,11 @@
 import json
 from pathlib import Path
-import json
 
 import pandas as pd
 import pytest
 
 from baseball_backtest import BaseballBacktest
+from data.npb_enrichment_contract import ENRICHED_GAME_FIELDS
 from data.npb_pbp_adapter import normalize_pbp_frame
 
 
@@ -57,6 +57,47 @@ def test_enriched_collector_fields_survive_normalization():
     aggregated = BaseballBacktest(Path("data")).aggregate_npb_games(normalized)
     assert aggregated.loc[0, "home_bullpen_ip"] == pytest.approx(3.0)
     assert aggregated.loc[0, "away_bullpen_ip"] == pytest.approx(2.0)
+
+
+def test_all_declared_enriched_fields_survive_normalization():
+    raw = pd.DataFrame([{
+        "game_id": "g_contract",
+        "game_date": "2026-09-01T09:00:00Z",
+        "home_team_name": "A",
+        "away_team_name": "B",
+        "home_total_runs": 4,
+        "away_total_runs": 3,
+        **{
+            field: (
+                json.dumps([{"player_id": "p1"}])
+                if field.endswith("_lineup_json")
+                else 1.0
+            )
+            for field in ENRICHED_GAME_FIELDS
+            if field not in {"league"}
+        },
+    }])
+    normalized = normalize_pbp_frame(raw)
+    missing = [field for field in ENRICHED_GAME_FIELDS if field not in normalized.columns]
+    assert not missing, f"declared enriched fields dropped: {missing}"
+
+
+def test_realized_starter_identity_never_becomes_target_time_identity():
+    raw = pd.DataFrame([{
+        "game_id": "g_hindsight",
+        "game_date": "2026-09-01T09:00:00Z",
+        "home_team_name": "A",
+        "away_team_name": "B",
+        "home_total_runs": 2,
+        "away_total_runs": 1,
+        "home_starter": "HINDSIGHT_HOME",
+        "away_starter": "HINDSIGHT_AWAY",
+    }])
+    normalized = normalize_pbp_frame(raw)
+    aggregated = BaseballBacktest(Path("data")).aggregate_npb_games(normalized)
+    assert aggregated.loc[0, "home_starter"] == ""
+    assert aggregated.loc[0, "away_starter"] == ""
+    assert not bool(aggregated.loc[0, "confirmed_starters"])
 
 
 def test_lagged_historical_batting_and_starter_quality_reach_feature_matrix():
