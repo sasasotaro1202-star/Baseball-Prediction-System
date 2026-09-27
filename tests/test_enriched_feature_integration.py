@@ -54,6 +54,10 @@ def test_enriched_collector_fields_survive_normalization():
     assert normalized.loc[0, "home_bat_h"] == pytest.approx(11)
     assert normalized.loc[0, "home_starter_era"] == pytest.approx(2.75)
 
+    aggregated = BaseballBacktest(Path("data")).aggregate_npb_games(normalized)
+    assert aggregated.loc[0, "home_bullpen_ip"] == pytest.approx(3.0)
+    assert aggregated.loc[0, "away_bullpen_ip"] == pytest.approx(2.0)
+
 
 def test_lagged_historical_batting_and_starter_quality_reach_feature_matrix():
     bt = BaseballBacktest(Path("data"))
