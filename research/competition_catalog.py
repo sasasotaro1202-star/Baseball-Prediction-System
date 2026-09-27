@@ -50,6 +50,8 @@ SCOPES: tuple[CompetitionScope, ...] = (
     CompetitionScope("KBO", "KBO", "professional", "mixed", "competition_defined", "kbo_standard",
                      ("kbo_official_tracking", "kbo_official_stats", "kbo_naver_pbp_public",
                       "kbo_data_portal_collector"), 1),
+    CompetitionScope("KBO_Futures", "KBO Futures League", "professional_development", "mixed", "competition_defined",
+                     "kbo_futures_specific", ("kbo_official_stats", "kbo_naver_pbp_public"), 1),
     CompetitionScope("CPBL", "CPBL", "professional", "mixed", "competition_defined", "cpbl_standard",
                      ("cpbl_rebas", "cpbl_savant_tracking"), 1),
     CompetitionScope("LMB", "Liga Mexicana de Béisbol", "professional", "mixed", "competition_defined",
