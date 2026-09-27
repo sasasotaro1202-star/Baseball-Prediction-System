@@ -152,6 +152,32 @@ def test_rollup_low_high_threshold_uses_normalized_probability_scale():
     assert scored["low_high_correct"].tolist() == [1, 1]
 
 
+def test_rollup_accepts_four_decimal_serialization_rounding():
+    merged = pd.DataFrame(
+        [{
+            "game_id": "rounded",
+            "home_score": 4,
+            "away_score": 2,
+            # Sum is 99.9999 because three four-decimal percentages were
+            # independently rounded. This is serialization drift, not a
+            # materially invalid probability vector.
+            "home_win_pct": 33.3333,
+            "draw_pct": 33.3333,
+            "away_win_pct": 33.3333,
+            "low_pct": 66.6666,
+            "high_pct": 33.3333,
+            "lambda_home": 3.2,
+            "lambda_away": 2.4,
+            "top4_exact_scores": [],
+        }]
+    )
+    scored = roll._evaluate(merged)
+    probs = scored[["home_win_pct", "draw_pct", "away_win_pct"]].iloc[0].to_numpy(float)
+    low_high = scored[["low_probability", "high_probability"]].iloc[0].to_numpy(float)
+    assert abs(float(probs.sum()) - 1.0) < 1e-12
+    assert abs(float(low_high.sum()) - 1.0) < 1e-12
+
+
 def test_rollup_rejects_invalid_probability_contract():
     merged = pd.DataFrame(
         [{
