@@ -50,8 +50,8 @@ class _RowParser(HTMLParser):
 
 
 _DATE_TIME = re.compile(r"^(\d{1,2}/\d{1,2})\s+(\d{1,2}:\d{2})$")
-_SCORE = re.compile(r"^\d+\s*[-−]\s*\d+$")
-_STATUS = re.compile(r"^(試合終了|中止|延期|中断|ノーゲーム|継続|未開始)$")
+_SCORE = re.compile(r"^\d+\s*[-−]\s*\d+(?:\s+.*)?$")
+_STATUS = re.compile(r"^(?:試合終了|中止|延期|中断|ノーゲーム|継続|未開始)$")
 
 
 def _fetch(url: str) -> tuple[str, str]:
@@ -67,9 +67,9 @@ def _row_to_game(cells: list[str], provider: str, source_url: str, retrieved_at:
         return None
 
     payload = [x for x in clean if x != date_time]
-    status = next((x for x in payload if _STATUS.match(x) or _SCORE.match(x)), "UNVERIFIED")
+    status = next((x for x in payload if _STATUS.search(x) or _SCORE.match(x)), "UNVERIFIED")
     idx = payload.index(status) if status in payload else -1
-    candidates = [x for i, x in enumerate(payload) if i != idx and not _STATUS.match(x) and not _SCORE.match(x)]
+    candidates = [x for i, x in enumerate(payload) if i != idx and not _STATUS.search(x) and not _SCORE.match(x)]
     if len(candidates) < 2:
         return None
 
