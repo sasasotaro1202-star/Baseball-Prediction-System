@@ -18,6 +18,7 @@ from typing import Any
 
 from data.competition_registry import COMPETITIONS, CompetitionSpec
 from data.source_registry import SOURCES
+from research.competition_catalog import scopes as catalog_scopes
 
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
@@ -110,6 +111,29 @@ def discover_scope() -> dict[str, Any]:
         item["production_eligible"] = False
     discovered_frontier = sorted(frontier.values(), key=lambda x: (len(x["source_ids"]) * -1, x["competition_id"]))
 
+    registered_labels = {spec.competition_id for spec in COMPETITIONS} | {spec.name for spec in COMPETITIONS}
+    catalog_frontier: list[dict[str, Any]] = []
+    source_by_id = {source.source_id: source for source in SOURCES}
+    for scope in catalog_scopes():
+        if scope.scope_id in registered_labels or scope.label in registered_labels:
+            continue
+        sources = [source_by_id[sid] for sid in scope.source_ids if sid in source_by_id]
+        catalog_frontier.append({
+            "scope_id": scope.scope_id,
+            "label": scope.label,
+            "level": scope.level,
+            "gender": scope.gender,
+            "priority": scope.priority,
+            "source_ids": list(scope.source_ids),
+            "source_urls": sorted({
+                source.endpoint for source in sources
+                if str(source.endpoint).startswith(("http://", "https://"))
+            }),
+            "next_stage": "COMPETITION_REGISTRATION_AND_DATA_PIT_VALIDATION",
+            "production_eligible": False,
+        })
+    catalog_frontier.sort(key=lambda x: (x["priority"], x["scope_id"]))
+
     for spec in COMPETITIONS:
         if not spec.discovery_url:
             continue
@@ -138,6 +162,7 @@ def discover_scope() -> dict[str, Any]:
         },
         "candidates": rows,
         "unregistered_frontier": discovered_frontier,
+        "catalog_frontier": catalog_frontier,
     }
     RESULTS.mkdir(parents=True, exist_ok=True)
     (RESULTS / "scope_discovery.json").write_text(
