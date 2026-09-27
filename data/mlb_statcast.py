@@ -11,7 +11,6 @@ from __future__ import annotations
 from datetime import date, timedelta
 from io import StringIO
 from pathlib import Path
-from typing import Iterable
 from urllib.parse import urlencode
 
 import pandas as pd
@@ -125,18 +124,37 @@ def build_game_level_features(pitches: pd.DataFrame) -> pd.DataFrame:
                 ("pfx_z", "pitch_vertical_break_mean"),
             ):
                 vals = pd.to_numeric(s.get(col, pd.Series(dtype=float)), errors="coerce").dropna()
-                base[f"{side}_{key}"] = float(vals.mean()) if len(vals) else 0.0
+                base[f"{side}_{key}"] = float(vals.mean()) if len(vals) else float("nan")
+                if len(vals) > 1:
+                    base[f"{side}_{key}_std"] = float(vals.std(ddof=1))
+                else:
+                    base[f"{side}_{key}_std"] = float("nan")
+
+            pitch_types = s.get("pitch_type", pd.Series(dtype="object")).dropna().astype(str)
+            if len(pitch_types):
+                counts = pitch_types.value_counts(normalize=True)
+                base[f"{side}_pitch_type_count"] = float(len(counts))
+                probs = counts.to_numpy(dtype=float)
+                base[f"{side}_pitch_mix_entropy"] = float(-(probs * __import__("numpy").log(probs)).sum())
+                base[f"{side}_pitch_top_type_share"] = float(probs.max())
+            else:
+                base[f"{side}_pitch_type_count"] = float("nan")
+                base[f"{side}_pitch_mix_entropy"] = float("nan")
+                base[f"{side}_pitch_top_type_share"] = float("nan")
+
             ev = pd.to_numeric(s.get("launch_speed", pd.Series(dtype=float)), errors="coerce").dropna()
             la = pd.to_numeric(s.get("launch_angle", pd.Series(dtype=float)), errors="coerce").dropna()
             dist = pd.to_numeric(s.get("hit_distance", pd.Series(dtype=float)), errors="coerce").dropna()
-            base[f"{side}_exit_velocity_mean"] = float(ev.mean()) if len(ev) else 0.0
-            base[f"{side}_launch_angle_mean"] = float(la.mean()) if len(la) else 0.0
-            base[f"{side}_hit_distance_mean"] = float(dist.mean()) if len(dist) else 0.0
-            base[f"{side}_hard_hit_rate"] = float((ev >= 95).mean()) if len(ev) else 0.0
+            base[f"{side}_exit_velocity_mean"] = float(ev.mean()) if len(ev) else float("nan")
+            base[f"{side}_launch_angle_mean"] = float(la.mean()) if len(la) else float("nan")
+            base[f"{side}_hit_distance_mean"] = float(dist.mean()) if len(dist) else float("nan")
+            base[f"{side}_hard_hit_rate"] = float((ev >= 95).mean()) if len(ev) else float("nan")
             btype = s.get("launch_speed_angle", pd.Series(dtype=float))
             btype = pd.to_numeric(btype, errors="coerce").dropna()
-            base[f"{side}_barrel_rate"] = float((btype == 6).mean()) if len(btype) else 0.0
-            base[f"{side}_pitch_count"] = float(len(s))
+            base[f"{side}_barrel_rate"] = float((btype == 6).mean()) if len(btype) else float("nan")
+            base[f"{side}_pitch_count"] = float(len(s)) if len(s) else float("nan")
+            base[f"{side}_launch_speed_n"] = float(len(ev))
+            base[f"{side}_launch_angle_n"] = float(len(la))
         rows.append(base)
     return pd.DataFrame(rows).sort_values(["game_date", "game_pk"]).reset_index(drop=True)
 
@@ -170,8 +188,8 @@ def build_lagged_team_features(game_features: pd.DataFrame) -> pd.DataFrame:
                 if not c.startswith(f"{side}_"):
                     continue
                 key = c[len(side) + 1:]
-                vals = [h[key] for h in hist[-5:] if key in h]
-                out[f"{side}_lag_{key}"] = float(sum(vals) / len(vals)) if vals else 0.0
+                vals = [h[key] for h in hist[-5:] if key in h and pd.notna(h[key])]
+                out[f"{side}_lag_{key}"] = float(sum(vals) / len(vals)) if vals else float("nan")
         rows.append(out)
         for side in ("home", "away"):
             team = str(row[f"{side}_team"])
