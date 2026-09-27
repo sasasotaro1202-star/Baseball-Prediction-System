@@ -66,6 +66,16 @@ CANDIDATES: tuple[DataIntelligenceCandidate, ...] = (
         True,
     ),
     DataIntelligenceCandidate(
+        "sportsdataverse_mlb_raw",
+        "SportsDataverse MLB raw capture",
+        "FREE_GITHUB",
+        "MLB",
+        ("raw_statsapi", "raw_statcast", "game_manifest", "sha256_provenance"),
+        ("reproducible_raw_layer", "PIT_reconstruction", "cross_source_replay"),
+        "Per-game manifest and checksums provide strong provenance; historical capture availability still needs prediction-time reconstruction.",
+        True,
+    ),
+    DataIntelligenceCandidate(
         "sportsdataverse_ncaa",
         "SportsDataverse baseballr-data / sportsdataverse-data",
         "FREE_GITHUB",
