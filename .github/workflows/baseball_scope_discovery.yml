@@ -1,0 +1,73 @@
+name: Baseball Scope Discovery
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 2 * * 1"
+  push:
+    branches:
+      - "research/**"
+    paths:
+      - "data/competition_registry.py"
+      - "research/scope_discovery.py"
+      - "tests/test_scope_discovery.py"
+      - ".github/workflows/baseball_scope_discovery.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baseball-scope-discovery
+  cancel-in-progress: true
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONPATH: .
+      PYTHONUNBUFFERED: "1"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        timeout-minutes: 5
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        timeout-minutes: 5
+        with:
+          python-version: "3.12"
+
+      - name: Compile scope discovery
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          python -m py_compile data/competition_registry.py research/scope_discovery.py tests/test_scope_discovery.py
+
+      - name: Run scope discovery tests
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          python -m pytest -q tests/test_scope_discovery.py
+
+      - name: Probe public competition sources
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          python research/scope_discovery.py
+
+      - name: Verify artifact
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          python -c 'import json; from pathlib import Path; d=json.loads(Path("results/scope_discovery.json").read_text(encoding="utf-8")); assert d["status"] == "EXECUTED"; assert d["policy"]["production_promotion"] == "NEVER_BY_DISCOVERY"; assert d["policy"]["unknown_pit"] == "FAIL_CLOSED"; print("scope discovery artifact: PASS")'
+
+      - name: Upload discovery artifact
+        uses: actions/upload-artifact@v4
+        timeout-minutes: 2
+        with:
+          name: baseball-scope-discovery-${{ github.sha }}
+          path: results/scope_discovery.json
+          if-no-files-found: error
+          retention-days: 14
