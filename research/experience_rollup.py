@@ -220,8 +220,8 @@ def _evaluate(merged: pd.DataFrame) -> pd.DataFrame:
         label="Low/High",
         row_ids=x.get("game_id"),
     )[:, :2]
+    x["low_probability"] = low_high[:, 0]
     x["high_probability"] = low_high[:, 1]
-    low_probability = low_high[:, 0]
     x["low_high_actual"] = (x["actual_total_runs"] >= 7).astype(int)
     x["low_high_predicted"] = (x["high_probability"] >= 0.5).astype(int)
     x["low_high_correct"] = (
