@@ -118,6 +118,18 @@ def discover_scope() -> dict[str, Any]:
         if scope.scope_id in registered_labels or scope.label in registered_labels:
             continue
         sources = [source_by_id[sid] for sid in scope.source_ids if sid in source_by_id]
+        source_urls = sorted({
+            source.endpoint for source in sources
+            if str(source.endpoint).startswith(("http://", "https://"))
+        })
+        probes = {url: _probe(url) for url in source_urls}
+        reachable = sum(v.get("status") == "REACHABLE" for v in probes.values())
+        signal_score = sum(
+            float(v.get("signals", {}).get("schedule", 0))
+            + float(v.get("signals", {}).get("game", 0))
+            + float(v.get("signals", {}).get("upcoming", 0))
+            for v in probes.values()
+        )
         catalog_frontier.append({
             "scope_id": scope.scope_id,
             "label": scope.label,
@@ -125,14 +137,19 @@ def discover_scope() -> dict[str, Any]:
             "gender": scope.gender,
             "priority": scope.priority,
             "source_ids": list(scope.source_ids),
-            "source_urls": sorted({
-                source.endpoint for source in sources
-                if str(source.endpoint).startswith(("http://", "https://"))
-            }),
-            "next_stage": "COMPETITION_REGISTRATION_AND_DATA_PIT_VALIDATION",
+            "source_urls": source_urls,
+            "source_probes": probes,
+            "reachable_source_count": reachable,
+            "source_signal_score": signal_score,
+            "next_stage": (
+                "DATA_PIT_VALIDATION" if reachable else
+                "SOURCE_RECOVERY_OR_ADAPTER_DISCOVERY"
+            ),
             "production_eligible": False,
         })
-    catalog_frontier.sort(key=lambda x: (x["priority"], x["scope_id"]))
+    catalog_frontier.sort(
+        key=lambda x: (-float(x["source_signal_score"]), x["priority"], x["scope_id"])
+    )
 
     for spec in COMPETITIONS:
         if not spec.discovery_url:
