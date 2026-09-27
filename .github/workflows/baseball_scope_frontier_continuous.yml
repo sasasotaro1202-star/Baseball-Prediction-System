@@ -1,0 +1,85 @@
+name: Baseball Scope Frontier Continuous Audit
+
+on:
+  schedule:
+    - cron: "20 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baseball-scope-frontier-continuous
+  cancel-in-progress: false
+
+env:
+  RESEARCH_REF: research/data-integration-20260928
+  PYTHONPATH: .
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  frontier:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout latest research branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.RESEARCH_REF }}
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+
+      - name: Install lightweight research dependencies
+        run: python -m pip install --disable-pip-version-check --retries 5 --timeout 60 pandas pytest
+
+      - name: Run targeted scope/PIT tests
+        run: |
+          set -euo pipefail
+          python -m pytest -q             tests/test_scope_discovery.py             tests/test_scope_coverage_audit.py             tests/test_pit_history_expansion.py             tests/test_pit_snapshot_expanded_scope.py             tests/test_universal_source_matrix.py             tests/test_universal_adapter_registry.py
+
+      - name: Discover current frontier
+        run: |
+          set -euo pipefail
+          python -m research.scope_discovery > scope_discovery.json
+          python -m research.scope_coverage_audit > scope_coverage_audit.json
+          python -m research.universal_readiness > universal_readiness.json
+
+      - name: Verify frontier is research-only
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          coverage=json.loads(Path("scope_coverage_audit.json").read_text(encoding="utf-8"))
+          discovery=json.loads(Path("scope_discovery.json").read_text(encoding="utf-8"))
+          readiness=json.loads(Path("universal_readiness.json").read_text(encoding="utf-8"))
+          if coverage.get("policy",{}).get("promotion_by_coverage_audit") is not False:
+              raise SystemExit("coverage audit promotion contract violated")
+          if discovery.get("policy",{}).get("production_promotion") != "NEVER_BY_DISCOVERY":
+              raise SystemExit("scope discovery promotion contract violated")
+          if coverage.get("scope_count",0) <= 0 or readiness.get("scope_count",0) <= 0:
+              raise SystemExit("scope catalog/readiness unexpectedly empty")
+          print({
+              "scope_count": coverage["scope_count"],
+              "stage_counts": coverage["stage_counts"],
+              "unregistered_frontier": len(discovery.get("unregistered_frontier",[])),
+              "catalog_frontier": len(discovery.get("catalog_frontier",[])),
+              "production_promotion": False,
+          })
+          PY
+
+      - name: Upload frontier evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: baseball-scope-frontier-${{ github.run_id }}
+          path: |
+            scope_discovery.json
+            scope_coverage_audit.json
+            universal_readiness.json
+          if-no-files-found: error
+          retention-days: 7
