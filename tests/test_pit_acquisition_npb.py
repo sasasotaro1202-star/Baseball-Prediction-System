@@ -120,3 +120,45 @@ def test_parse_npb_schedule_bounds_window_without_fabricating_starter_evidence()
     assert rows[0]["event_date"] == "2026-09-28"
     assert "home_starter" not in rows[0]
     assert "away_starter" not in rows[0]
+
+
+def test_parse_npb_schedule_supports_multiple_games_in_one_html_row():
+    html = """
+    <table>
+      <tr id="date0928">
+        <td>9/28（月）</td>
+        <td>
+          <div class="team1">DeNA</div> - <div class="team2">広島</div>
+          <div class="team1">西武</div> - <div class="team2">楽天</div>
+        </td>
+        <td>
+          <div class="place">横　浜 18:00</div>
+          <div class="place">ベルーナドーム 18:00</div>
+        </td>
+      </tr>
+    </table>
+    """
+    rows = _parse_npb_schedule_html(html, year=2026, month=9)
+
+    assert len(rows) == 2
+    assert rows[0]["home_team"] == "DeNA"
+    assert rows[0]["away_team"] == "広島"
+    assert rows[1]["home_team"] == "西武"
+    assert rows[1]["away_team"] == "楽天"
+    assert rows[0]["start_time_local"] == "18:00"
+    assert rows[1]["start_time_local"] == "18:00"
+
+
+def test_parse_npb_schedule_accepts_utf8_text():
+    html = """
+    <table>
+      <tr id="date0928">
+        <td>9/28</td>
+        <td>阪神 - 中日</td>
+        <td>甲子園 18:00</td>
+      </tr>
+    </table>
+    """
+    rows = _parse_npb_schedule_html(html.encode("utf-8").decode("utf-8"), year=2026, month=9)
+    assert rows[0]["home_team"] == "阪神"
+    assert rows[0]["away_team"] == "中日"
