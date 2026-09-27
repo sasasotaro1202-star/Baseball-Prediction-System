@@ -265,3 +265,34 @@ def test_market_line_is_used_only_when_pit_safe(tmp_path):
     X2, _, _ = bt2.build_features(games_late)
     assert X2.loc[0, "market_line_known"] == pytest.approx(0.0)
     assert X2.loc[0, "market_total_runs_line_delta"] == pytest.approx(0.0)
+
+
+def test_market_line_requires_explicit_prediction_cutoff(tmp_path):
+    market = tmp_path / "market_lines.csv"
+    pd.DataFrame([{
+        "event_id": "g_no_cutoff",
+        "league": "NPB",
+        "line": 6.5,
+        "source": "test-market",
+        "observed_at": "2026-09-01T07:00:00Z",
+        "available_at": "2026-09-01T07:30:00Z",
+        "status": "KNOWN",
+    }]).to_csv(market, index=False)
+
+    bt = BaseballBacktest(tmp_path)
+    games = pd.DataFrame([{
+        "league": "NPB",
+        "game_id": "g_no_cutoff",
+        "event_id": "g_no_cutoff",
+        "datetime": pd.Timestamp("2026-09-01T09:00:00Z"),
+        "home": "A",
+        "away": "B",
+        "home_score": 2,
+        "away_score": 1,
+        "home_starter": "",
+        "away_starter": "",
+    }])
+
+    X, _, _ = bt.build_features(games)
+    assert X.loc[0, "market_line_known"] == pytest.approx(0.0)
+    assert X.loc[0, "market_total_runs_line_delta"] == pytest.approx(0.0)
