@@ -239,7 +239,7 @@ jobs:
           python -m research.closed_loop_governance
       - name: Preserve meta evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43674a02
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: baseball-24h-wave4-${{ github.run_id }}
           path: results/**
