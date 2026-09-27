@@ -27,4 +27,5 @@ def test_schedule_row_parser_discovers_game(monkeypatch):
     assert game["start_time_local"] == "18:00"
     assert game["home_team"] == "徳島IS"
     assert game["away_team"] == "愛媛MP"
+    assert game["status_normalized"] == "COMPLETED"
     assert game["pit_status"] == "UNVERIFIED"
