@@ -52,3 +52,9 @@ def test_kbo_and_cpbl_schedule_adapters_are_concrete():
         meta = adapter_metadata(source_id)
         assert meta["implemented"] is True
         assert meta["collection_ready"] is True
+
+def test_espn_discovery_adapters_are_concrete():
+    for source_id in ("espn_mlb", "espn_college_baseball", "espn_international"):
+        meta = adapter_metadata(source_id)
+        assert meta["implemented"] is True
+        assert meta["collection_ready"] is True
