@@ -1,0 +1,295 @@
+name: Baseball 24h Research Autopilot
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '7 0 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baseball-24h-research-autopilot
+  cancel-in-progress: false
+
+env:
+  RESEARCH_REF: research/data-integration-20260928
+  PYTHONPATH: .
+  PYTHONUNBUFFERED: '1'
+  PIP_DISABLE_PIP_VERSION_CHECK: '1'
+
+jobs:
+  wave1-core-oos:
+    name: 24h Wave 1 - Core chronological OOS
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.RESEARCH_REF }}
+          fetch-depth: 1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install
+        run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
+      - name: Stage NPB historical data
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p data
+          for year in 2020 2021 2022 2023 2024 2025 2026; do
+            found=$(find data -maxdepth 1 -name "${year}-*_pbp.csv" | wc -l | tr -d ' ')
+            if [ "${found}" -gt 0 ]; then continue; fi
+            gh release download pbp --repo armstjc/Nippon-Baseball-Data-Repository --pattern "${year}-*_pbp.csv" --dir data --clobber
+          done
+      - name: Compile and targeted tests
+        run: |
+          set -euo pipefail
+          python -m compileall -q data research
+          python -m pytest -q tests/test_scope_discovery.py tests/test_universal_source_matrix.py tests/test_universal_adapter_registry.py tests/test_espn_baseball_schedule.py tests/test_japan_independent_schedule.py tests/test_data_intelligence_candidates.py
+      - name: Run chronological OOS
+        timeout-minutes: 325
+        env:
+          BASEBALL_TIME_BUDGET_SEC: '18000'
+          BASEBALL_FAST_OOS: '1'
+          BASEBALL_MAX_FIT_ROWS: '6000'
+          BASEBALL_FAST_MODEL_POOL: 'Logistic,HistGB,ExtraTrees'
+          BASEBALL_FAST_MODEL_POOL_NPB: 'Logistic,HistGB,ExtraTrees,HierarchicalDrawResult'
+          BASEBALL_SCORE_FAST_VALIDATION: '1'
+          BASEBALL_SCORE_TREE_ESTIMATORS: '60'
+          BASEBALL_SCORE_HIST_MAX_ITER: '100'
+          NPB_RETRAIN_EVERY: '300'
+          MLB_ENRICH_STARTERS: '0'
+        run: python -u research_runner_v6.py --league BOTH --mlb-start 2020 --mlb-end 2026 --retries 0
+      - name: Preserve wave evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: baseball-24h-wave1-${{ github.run_id }}
+          path: |
+            results/**
+            data/pit/**
+            data/.npb_stage_ready
+            data/*_pbp.csv
+          if-no-files-found: warn
+          retention-days: 2
+
+  wave2-frontier:
+    name: 24h Wave 2 - Frontier game/source expansion
+    needs: wave1-core-oos
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.RESEARCH_REF }}
+          fetch-depth: 1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - name: Install minimal research dependencies
+        run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 pandas pytest
+      - name: Baseline parser tests
+        run: python -m pytest -q tests/test_scope_discovery.py tests/test_espn_baseball_schedule.py tests/test_japan_independent_schedule.py tests/test_frontier_schedule_adapters.py
+      - name: Run frontier discovery loop
+        timeout-minutes: 335
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p results/24h
+          start=$(date +%s)
+          deadline=$((start + 20100))
+          cycle=0
+          failures=0
+          while [ "$(date +%s)" -lt "${deadline}" ]; do
+            cycle=$((cycle + 1))
+            cycle_start=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            status=PASS
+            mkdir -p "results/24h/cycle_${cycle}"
+            run_one() {
+              name="$1"; shift
+              timeout 90s "$@" >"results/24h/cycle_${cycle}/${name}.json" 2>"results/24h/cycle_${cycle}/${name}.stderr"
+              rc=$?
+              if [ "${rc}" -ne 0 ]; then failures=$((failures + 1)); status=DEGRADED; fi
+            }
+            run_one scope python research/scope_discovery.py
+            run_one kbo python -m data.kbo_public_schedule
+            run_one cpbl python -m data.cpbl_public_schedule
+            run_one espn_mlb python -m data.espn_baseball_schedule MLB
+            run_one espn_ncaa python -m data.espn_baseball_schedule NCAA
+            run_one iblj python -m data.japan_independent_schedule IBLJ
+            run_one bcl python -m data.japan_independent_schedule BCL
+            printf '%s\n' "{\"cycle\":${cycle},\"started_at\":\"${cycle_start}\",\"status\":\"${status}\"}" >> results/24h/frontier_cycles.jsonl
+            sleep 120
+          done
+          printf '%s\n' "frontier loop finished: cycles=${cycle} failures=${failures}"
+          test "${cycle}" -gt 0
+          if [ "${failures}" -gt 0 ]; then exit 1; fi
+      - name: Preserve frontier evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: baseball-24h-wave2-${{ github.run_id }}
+          path: results/24h/**
+          if-no-files-found: warn
+          retention-days: 2
+
+  wave3-candidate-oos:
+    name: 24h Wave 3 - Candidate OOS / robustness
+    needs: wave2-frontier
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.RESEARCH_REF }}
+          fetch-depth: 1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install
+        run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
+      - name: Candidate NPB
+        timeout-minutes: 150
+        env:
+          BASEBALL_TIME_BUDGET_SEC: '8100'
+          NPB_RETRAIN_EVERY: '300'
+          MLB_ENRICH_STARTERS: '0'
+          PIT_SAFE_STARTER_DATA: '0'
+        run: python -m research.real_data_validation --league NPB --mlb-start 2020 --mlb-end 2026
+      - name: Candidate MLB
+        timeout-minutes: 150
+        env:
+          BASEBALL_TIME_BUDGET_SEC: '8100'
+          NPB_RETRAIN_EVERY: '300'
+          MLB_ENRICH_STARTERS: '0'
+          PIT_SAFE_STARTER_DATA: '0'
+        run: python -m research.real_data_validation --league MLB --mlb-start 2020 --mlb-end 2026
+      - name: Governance snapshot
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p results/24h
+          python -m research.closed_loop_governance > results/24h/wave3_governance.txt
+      - name: Preserve candidate evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: baseball-24h-wave3-${{ github.run_id }}
+          path: results/**
+          if-no-files-found: warn
+          retention-days: 2
+
+  wave4-meta-research:
+    name: 24h Wave 4 - Meta research / verification
+    needs: wave3-candidate-oos
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.RESEARCH_REF }}
+          fetch-depth: 1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install
+        run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
+      - name: Full regression
+        run: python -m pytest -q tests
+      - name: Scope and adapter audits
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          mkdir -p results/24h
+          python -m research.scope_discovery > results/24h/scope_discovery_stdout.txt
+          python -m research.universal_adapter_registry > results/24h/adapter_audit.json
+          python -m research.universal_readiness > results/24h/readiness.json
+      - name: Extended OOS research slice
+        timeout-minutes: 300
+        env:
+          BASEBALL_TIME_BUDGET_SEC: '16800'
+          BASEBALL_FAST_OOS: '1'
+          BASEBALL_MAX_FIT_ROWS: '8000'
+          BASEBALL_FAST_MODEL_POOL: 'Logistic,HistGB,ExtraTrees'
+          BASEBALL_FAST_MODEL_POOL_NPB: 'Logistic,HistGB,ExtraTrees,HierarchicalDrawResult'
+          BASEBALL_SCORE_FAST_VALIDATION: '1'
+          BASEBALL_SCORE_TREE_ESTIMATORS: '80'
+          BASEBALL_SCORE_HIST_MAX_ITER: '120'
+          NPB_RETRAIN_EVERY: '250'
+          MLB_ENRICH_STARTERS: '0'
+        run: python -u research_runner_v6.py --league BOTH --mlb-start 2020 --mlb-end 2026 --retries 0
+      - name: Final governance
+        if: always()
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          python -m research.closed_loop_execute
+          python -m research.closed_loop_governance
+      - name: Preserve meta evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43674a02
+        with:
+          name: baseball-24h-wave4-${{ github.run_id }}
+          path: results/**
+          if-no-files-found: warn
+          retention-days: 2
+
+  closeout:
+    name: 24h Closeout - Evidence manifest
+    needs: [wave1-core-oos, wave2-frontier, wave3-candidate-oos, wave4-meta-research]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.RESEARCH_REF }}
+          fetch-depth: 1
+      - name: Download all wave evidence
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
+        with:
+          pattern: baseball-24h-wave*-${{ github.run_id }}
+          path: evidence
+          merge-multiple: false
+      - name: Build closeout manifest
+        run: |
+          set -euo pipefail
+          mkdir -p results/24h
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('evidence')
+          files=sorted(str(p.relative_to(root)) for p in root.rglob('*') if p.is_file()) if root.exists() else []
+          manifest={
+              'workflow':'Baseball 24h Research Autopilot',
+              'run_id':'${{ github.run_id }}',
+              'research_ref':'${{ env.RESEARCH_REF }}',
+              'max_execution_minutes':1440,
+              'evidence_file_count':len(files),
+              'evidence_files':files[:2000],
+              'production_changed':False,
+              'promotion_by_workflow':False,
+          }
+          Path('results/24h/closeout_manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(manifest,ensure_ascii=False,indent=2))
+          PY
+      - name: Upload closeout
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: baseball-24h-closeout-${{ github.run_id }}
+          path: results/24h/closeout_manifest.json
+          if-no-files-found: error
+          retention-days: 7
