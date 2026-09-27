@@ -77,3 +77,23 @@ def test_parse_npb_schedule_bounds_window_without_fabricating_starter_evidence()
     assert rows[0]["event_date"] == "2026-09-28"
     assert "home_starter" not in rows[0]
     assert "away_starter" not in rows[0]
+
+
+def test_parse_npb_schedule_carries_forward_date_for_grouped_games():
+    html = """
+    <tr id="date0928">
+      <td class="date">9/28（月）</td>
+      <td><div class="team1">DeNA</div> - <div class="team2">広島</div></td>
+      <td><div class="place">横　浜 18:00</div></td>
+    </tr>
+    <tr>
+      <td></td>
+      <td><div class="team1">西武</div> - <div class="team2">楽天</div></td>
+      <td><div class="place">ベルーナドーム 18:00</div></td>
+    </tr>
+    """
+    rows = _parse_npb_schedule_html(html, year=2026, month=9)
+    assert len(rows) == 2
+    assert rows[1]["event_date"] == "2026-09-28"
+    assert rows[1]["home_team"] == "西武"
+    assert rows[1]["away_team"] == "楽天"
