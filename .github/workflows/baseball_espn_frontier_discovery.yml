@@ -16,31 +16,25 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        competition:
-          - MLB
-          - NCAA
-          - WBC
-          - CARIBBEAN_SERIES
-          - LIDOM
-          - LVBP
-          - LBPRC
-          - OLYMPICS_BASEBALL
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"
-      - name: Discover ESPN slate
-        run: python -m data.espn_baseball_schedule "${{ matrix.competition }}" > "espn_${{ matrix.competition }}.json"
-      - name: Validate artifact
-        run: python -c 'import json; json.load(open("espn_${{ matrix.competition }}.json", encoding="utf-8")); print("ESPN discovery artifact: PASS")'
-      - name: Upload
+      - name: Discover MLB
+        run: python -m data.espn_baseball_schedule MLB > espn_MLB.json
+      - name: Discover NCAA
+        run: python -m data.espn_baseball_schedule NCAA > espn_NCAA.json
+      - name: Validate discovery artifacts
+        run: python -c 'import json; [json.load(open(name, encoding="utf-8")) for name in ("espn_MLB.json", "espn_NCAA.json")]; print("ESPN discovery artifacts: PASS")'
+      - name: Upload discovery artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: baseball-espn-frontier-${{ matrix.competition }}-${{ github.run_id }}
-          path: espn_${{ matrix.competition }}.json
+          name: baseball-espn-frontier-${{ github.run_id }}
+          path: |
+            espn_MLB.json
+            espn_NCAA.json
           if-no-files-found: error
           retention-days: 14
