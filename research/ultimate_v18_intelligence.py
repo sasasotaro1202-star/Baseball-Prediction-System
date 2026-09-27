@@ -494,6 +494,129 @@ def silent_degradation(
         "research_only": True,
     }
 
+
+def latency_intelligence(
+    *,
+    latency_seconds: float,
+    time_to_first_valid_seconds: float,
+    deadline_seconds: float,
+    deadline_success_rate: float,
+) -> dict[str, Any]:
+    """Measure deadline reliability separately from model accuracy."""
+    latency = max(0.0, _finite(latency_seconds, name="latency_seconds"))
+    first_valid = max(0.0, _finite(time_to_first_valid_seconds, name="time_to_first_valid_seconds"))
+    deadline = max(1e-9, _finite(deadline_seconds, name="deadline_seconds"))
+    success = _unit(deadline_success_rate, name="deadline_success_rate")
+    latency_score = max(0.0, 1.0 - latency / deadline)
+    first_valid_score = max(0.0, 1.0 - first_valid / deadline)
+    utility = math.fsum((latency_score, first_valid_score, success)) / 3.0
+    status = "ON_TIME" if first_valid <= deadline and success >= 0.95 else "AT_RISK"
+    return {
+        "latency_seconds": latency,
+        "time_to_first_valid_seconds": first_valid,
+        "deadline_seconds": deadline,
+        "deadline_success_rate": success,
+        "latency_score": latency_score,
+        "time_to_first_valid_score": first_valid_score,
+        "operational_utility": utility,
+        "status": status,
+        "research_only": True,
+    }
+
+
+def error_budget(
+    *,
+    case_importance: float,
+    regime_risk: float,
+    horizon_risk: float,
+    operational_impact: float,
+    base_budget: float = 0.25,
+) -> dict[str, Any]:
+    """Allocate a smaller tolerated error to more important/risky cases."""
+    severity = math.fsum(
+        _unit(v, name=k)
+        for k, v in {
+            "case_importance": case_importance,
+            "regime_risk": regime_risk,
+            "horizon_risk": horizon_risk,
+            "operational_impact": operational_impact,
+        }.items()
+    ) / 4.0
+    base = _unit(base_budget, name="base_budget")
+    allowed = max(0.01, base * (1.0 - 0.75 * severity))
+    return {
+        "severity": severity,
+        "base_budget": base,
+        "allowed_error": allowed,
+        "deep_validation_recommended": severity >= 0.65,
+        "research_only": True,
+    }
+
+
+def adaptive_stop(
+    *,
+    evidence_strength: float,
+    expected_incremental_value: float,
+    remaining_resource_fraction: float,
+    minimum_evidence: float = 0.90,
+    minimum_incremental_value: float = 0.05,
+) -> dict[str, Any]:
+    """Stop low-yield research early and reallocate resources to the next frontier."""
+    evidence = _unit(evidence_strength, name="evidence_strength")
+    value = _finite(expected_incremental_value, name="expected_incremental_value")
+    remaining = _unit(
+        remaining_resource_fraction, name="remaining_resource_fraction"
+    )
+    stop = evidence >= _unit(minimum_evidence, name="minimum_evidence") and (
+        value < _finite(minimum_incremental_value, name="minimum_incremental_value")
+    )
+    return {
+        "stop": bool(stop),
+        "evidence_strength": evidence,
+        "expected_incremental_value": value,
+        "remaining_resource_fraction": remaining,
+        "reason": "sufficient_evidence_low_incremental_value" if stop else "continue_research",
+        "research_only": True,
+    }
+
+
+def graceful_degradation(
+    *,
+    source_health: bool,
+    information_complete: bool,
+    router_health: bool,
+    calibration_health: bool,
+    verified_baseline_ready: bool,
+    kill_switch: bool = False,
+) -> dict[str, Any]:
+    """Choose a monotone safety fallback: Full -> Reduced -> Stable -> Verified Baseline -> Abstain."""
+    source = bool(source_health)
+    info = bool(information_complete)
+    router = bool(router_health)
+    calibration = bool(calibration_health)
+    baseline = bool(verified_baseline_ready)
+    if kill_switch:
+        action = "VERIFIED_BASELINE" if baseline else "ABSTAIN"
+    elif source and info and router and calibration:
+        action = "FULL"
+    elif source and router and calibration and baseline:
+        action = "REDUCED"
+    elif baseline:
+        action = "STABLE"
+    else:
+        action = "ABSTAIN"
+    return {
+        "action": action,
+        "source_health": source,
+        "information_complete": info,
+        "router_health": router,
+        "calibration_health": calibration,
+        "verified_baseline_ready": baseline,
+        "kill_switch": bool(kill_switch),
+        "safety_gate_required": True,
+        "research_only": True,
+    }
+
 def build_decision_object(
     *,
     case_id: str,
