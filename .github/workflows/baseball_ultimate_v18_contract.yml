@@ -2,6 +2,13 @@ name: Baseball Ultimate Predictive Intelligence v18 Contract
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - "research/**"
+    paths:
+      - "research/ultimate_v18_intelligence.py"
+      - "tests/test_ultimate_v18_intelligence.py"
+      - ".github/workflows/baseball_ultimate_v18_contract.yml"
   pull_request:
     paths:
       - "research/ultimate_v18_intelligence.py"
