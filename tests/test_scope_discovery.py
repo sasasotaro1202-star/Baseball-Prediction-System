@@ -25,3 +25,6 @@ def test_discovery_never_promotes(monkeypatch, tmp_path):
         if x["competition_id"] in {"KBO", "CPBL", "LMB", "ABL", "MILB"}
     )
     assert (tmp_path / "scope_discovery.json").exists()
+def test_source_registry_creates_unregistered_frontier():
+    payload = scope_discovery.discover_scope.__globals__
+    assert "SOURCES" in payload
