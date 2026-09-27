@@ -11,6 +11,15 @@ on:
       - 'research/**'
       - 'tests/test_enriched_feature_integration.py'
       - '.github/workflows/baseball_enriched_npb_oos.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'baseball_backtest.py'
+      - 'data/npb_pbp_adapter.py'
+      - 'data/npb_enrichment_contract.py'
+      - 'research/**'
+      - 'tests/test_enriched_feature_integration.py'
+      - '.github/workflows/baseball_enriched_npb_oos.yml'
   workflow_dispatch:
 
 permissions:
