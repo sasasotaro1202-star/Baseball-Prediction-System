@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import time
+from html.parser import HTMLParser
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -200,6 +201,157 @@ def _explicit_announcement(g: dict[str, Any], side: str) -> str | None:
         return None
 
 
+
+class _NpbScheduleHTMLParser(HTMLParser):
+    """Parse NPB.jp month-detail game rows without third-party HTML packages."""
+
+    _TARGETS = {"team1", "team2", "place"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.rows: list[dict[str, Any]] = []
+        self._row: dict[str, Any] | None = None
+        self._tag_targets: list[str | None] = []
+
+    @staticmethod
+    def _attrs(attrs: list[tuple[str, str | None]]) -> dict[str, str]:
+        return {str(k).lower(): str(v or "") for k, v in attrs}
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.lower()
+        if tag == "tr":
+            if self._row is not None:
+                self._finish_row()
+            attr_map = self._attrs(attrs)
+            row_id = attr_map.get("id", "")
+            if "date" in row_id.lower():
+                self._row = {"row_id": row_id, "team1": [], "team2": [], "place": [], "raw": []}
+            else:
+                self._row = None
+            self._tag_targets = []
+            return
+        if self._row is None:
+            return
+        if tag in {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}:
+            return
+        attr_map = self._attrs(attrs)
+        classes = set(attr_map.get("class", "").split())
+        target = next((name for name in self._TARGETS if name in classes), None)
+        self._tag_targets.append(target)
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        return
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag == "tr":
+            self._finish_row()
+            self._row = None
+            self._tag_targets = []
+            return
+        if self._row is not None and self._tag_targets:
+            self._tag_targets.pop()
+
+    def handle_data(self, data: str) -> None:
+        if self._row is None:
+            return
+        if data.strip():
+            self._row["raw"].append(data)
+        active = {target for target in self._tag_targets if target}
+        for target in active:
+            self._row[target].append(data)
+
+    def _finish_row(self) -> None:
+        if self._row is None:
+            return
+        if self._row.get("team1") or self._row.get("team2"):
+            self.rows.append(self._row)
+
+
+def _clean_npb_text(value: Any) -> str:
+    text = str(value or "").replace("\u3000", " ")
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _parse_npb_schedule_html(
+    html_text: str,
+    *,
+    year: int,
+    month: int,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+) -> list[dict[str, Any]]:
+    """Extract exact NPB.jp scheduled games from a month-detail HTML page."""
+    parser = _NpbScheduleHTMLParser()
+    parser.feed(html_text)
+    parser.close()
+
+    start_day = start_date.date() if start_date else None
+    end_day = end_date.date() if end_date else None
+    seen_keys: dict[str, int] = {}
+    out: list[dict[str, Any]] = []
+
+    for row in parser.rows:
+        team1 = _clean_npb_text(" ".join(row.get("team1", [])))
+        team2 = _clean_npb_text(" ".join(row.get("team2", [])))
+        place = _clean_npb_text(" ".join(row.get("place", [])))
+        raw = _clean_npb_text(" ".join(row.get("raw", [])))
+        if not team1 or not team2:
+            continue
+        combined = f"{team1} {team2}"
+        if "予備日" in combined or team1 in {"セ・リーグ", "パ・リーグ"}:
+            continue
+        date_match = re.search(r"(?<!\d)(\d{1,2})/(\d{1,2})(?!\d)", raw)
+        if date_match is None:
+            continue
+        row_month, day = int(date_match.group(1)), int(date_match.group(2))
+        if row_month != month or not 1 <= day <= 31:
+            continue
+        try:
+            game_date = datetime(year, row_month, day).date()
+        except ValueError:
+            continue
+        if start_day and game_date < start_day:
+            continue
+        if end_day and game_date > end_day:
+            continue
+
+        time_match = re.search(r"(?<!\d)(\d{1,2}:\d{2})(?!\d)", place)
+        start_time = time_match.group(1) if time_match else None
+        venue = _clean_npb_text(place[:time_match.start()] if time_match else place).strip(" -/")
+        base_key = "|".join([game_date.isoformat(), team1, team2, venue, start_time or ""])
+        seen_keys[base_key] = seen_keys.get(base_key, 0) + 1
+        occurrence = seen_keys[base_key]
+        identity_key = f"{base_key}|occurrence={occurrence}"
+        digest = hashlib.sha256(identity_key.encode("utf-8")).hexdigest()[:24]
+        out.append({
+            "source_event_key": base_key,
+            "event_id": "NPB:official:" + digest,
+            "game_id": "NPB-OFFICIAL-" + digest,
+            "league": "NPB",
+            "home_team": team1,
+            "away_team": team2,
+            "event_date": game_date.isoformat(),
+            "start_time_local": start_time,
+            "venue": venue,
+            "source_row_id": str(row.get("row_id", "")),
+        })
+    return out
+
+
+def _npb_official_months(start_date: datetime, end_date: datetime) -> list[tuple[int, int]]:
+    cursor = datetime(start_date.year, start_date.month, 1)
+    finish = datetime(end_date.year, end_date.month, 1)
+    months: list[tuple[int, int]] = []
+    while cursor <= finish:
+        months.append((cursor.year, cursor.month))
+        if cursor.month == 12:
+            cursor = datetime(cursor.year + 1, 1, 1)
+        else:
+            cursor = datetime(cursor.year, cursor.month + 1, 1)
+    return months
+
+
 def _load_last_probe_times() -> dict[tuple[str, str], datetime]:
     """Return the latest successful supporting-probe time per MLB game/entity."""
     latest: dict[tuple[str, str], datetime] = {}
@@ -364,20 +516,115 @@ def acquire_mlb() -> int:
     return count
 
 
+
 def acquire_npb() -> int:
-    start = (datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)).date()
-    end = (datetime.now(timezone.utc) + timedelta(days=LOOKAHEAD_DAYS)).date()
+    start_dt = datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)
+    end_dt = datetime.now(timezone.utc) + timedelta(days=LOOKAHEAD_DAYS)
+    start = start_dt.date()
+    end = end_dt.date()
     count = 0
-    for url in NPB_URLS:
+
+    # First-party NPB.jp month-detail pages are the primary schedule identity
+    # source for the acquisition window.
+    for year, month in _npb_official_months(start_dt, end_dt):
+        if near_deadline():
+            break
+        url = f"https://npb.jp/games/{year}/schedule_{month:02d}_detail.html"
         try:
-            if "spaia.jp" in url:
-                payload, retrieved = get_json(url)
-            else:
-                text, retrieved = get_text(url)
-                payload = {"url": url, "html_sha256": hashlib.sha256(text.encode("utf-8", "ignore")).hexdigest()}
-            _record_snapshot(event_id="NPB-SCHEDULE", league="NPB", entity_type="schedule",
-                             entity_id=f"{start}:{end}:{url}", source=url,
-                             payload=payload, retrieved_at=retrieved, available_at=retrieved)
+            html_text, retrieved = get_text(url)
+            rows = _parse_npb_schedule_html(
+                html_text, year=year, month=month, start_date=start_dt, end_date=end_dt
+            )
+            _record_snapshot(
+                event_id="NPB-SCHEDULE",
+                league="NPB",
+                entity_type="official_schedule_month",
+                entity_id=f"{year}:{month:02d}",
+                source=url,
+                payload={
+                    "html_sha256": hashlib.sha256(html_text.encode("utf-8", "ignore")).hexdigest(),
+                    "parsed_rows": len(rows),
+                    "window_start": start.isoformat(),
+                    "window_end": end.isoformat(),
+                },
+                retrieved_at=retrieved,
+                available_at=retrieved,
+            )
+            for row in rows:
+                # A current schedule observation proves visibility at retrieval,
+                # not the time a starter was first announced. Keep strict starter
+                # evidence unresolved unless another source supplies an explicit
+                # announcement timestamp.
+                base = {
+                    "event_id": row["event_id"],
+                    "league": "NPB",
+                    "game_id": row["game_id"],
+                    "home_team": row["home_team"],
+                    "away_team": row["away_team"],
+                    "home_starter": None,
+                    "away_starter": None,
+                    "home_starter_announced_at": None,
+                    "away_starter_announced_at": None,
+                    "home_starter_evidence_level": "RETRIEVAL_ONLY",
+                    "away_starter_evidence_level": "RETRIEVAL_ONLY",
+                    "observed_at": retrieved,
+                    "prediction_cutoff": retrieved,
+                    "source": url,
+                    "home_starter_source": url,
+                    "away_starter_source": url,
+                    "payload_hash": payload_hash(row),
+                    "event_date": row["event_date"],
+                    "start_time_local": row["start_time_local"],
+                    "venue": row["venue"],
+                    "source_event_key": row["source_event_key"],
+                    "source_row_id": row["source_row_id"],
+                    "starter_status": "OBSERVED_UNVERIFIABLE_ANNOUNCEMENT_TIME",
+                    "lineup_status": "UNVERIFIABLE",
+                }
+                _append_jsonl(EVENT_LOG, base)
+                _append_jsonl(AVAILABILITY_LOG, base)
+                _record_snapshot(
+                    event_id=row["event_id"],
+                    league="NPB",
+                    entity_type="official_schedule_game",
+                    entity_id=row["game_id"],
+                    source=url,
+                    payload=row,
+                    retrieved_at=retrieved,
+                    available_at=retrieved,
+                )
+                count += 1
+        except Exception as exc:
+            retrieved = now_utc()
+            _record_snapshot(
+                event_id="NPB-SCHEDULE",
+                league="NPB",
+                entity_type="official_schedule_month",
+                entity_id=f"{year}:{month:02d}",
+                source=url,
+                payload={"error": str(exc)},
+                retrieved_at=retrieved,
+                available_at=None,
+                status="UNAVAILABLE",
+            )
+            print(f"[PIT][NPB][OFFICIAL] source unavailable: {url}: {exc}")
+
+    # Keep the legacy SPAIA source as a separate research path.
+    for url in NPB_URLS:
+        if "npb.jp/" in url:
+            continue
+        try:
+            payload, retrieved = get_json(url)
+            _record_snapshot(
+                event_id="NPB-SCHEDULE",
+                league="NPB",
+                entity_type="legacy_schedule",
+                entity_id=f"{start}:{end}:{url}",
+                source=url,
+                payload=payload,
+                retrieved_at=retrieved,
+                available_at=retrieved,
+            )
             seen: set[str] = set()
             for idx, g in enumerate(_candidate_games(payload)):
                 gid = _find_value(g, {"gameid", "game_id", "gamepk", "id"})
@@ -387,40 +634,65 @@ def acquire_npb() -> int:
                 seen.add(gid)
                 home = _find_value(g, {"home", "home_team", "hometeam"})
                 away = _find_value(g, {"away", "away_team", "awayteam"})
-                if isinstance(home, dict): home = home.get("name") or home.get("team")
-                if isinstance(away, dict): away = away.get("name") or away.get("team")
+                if isinstance(home, dict):
+                    home = home.get("name") or home.get("team")
+                if isinstance(away, dict):
+                    away = away.get("name") or away.get("team")
                 if not home or not away:
                     continue
+                h_ann = _explicit_announcement(g, "home")
+                a_ann = _explicit_announcement(g, "away")
                 row = {
-                    "event_id": f"NPB:{gid}", "league": "NPB", "game_id": gid,
-                    "home_team": str(home), "away_team": str(away),
+                    "event_id": f"NPB:{gid}",
+                    "league": "NPB",
+                    "game_id": gid,
+                    "home_team": str(home),
+                    "away_team": str(away),
                     "home_starter": _find_value(g, {"homestarter", "home_starter", "homepitcher"}),
                     "away_starter": _find_value(g, {"awaystarter", "away_starter", "awaypitcher"}),
-                    "home_starter_announced_at": _explicit_announcement(g, "home"),
-                    "away_starter_announced_at": _explicit_announcement(g, "away"),
-                    "observed_at": retrieved, "prediction_cutoff": retrieved,
-                    "source": url, "payload_hash": payload_hash(g),
+                    "home_starter_announced_at": h_ann,
+                    "away_starter_announced_at": a_ann,
+                    "observed_at": retrieved,
+                    "prediction_cutoff": retrieved,
+                    "source": url,
+                    "payload_hash": payload_hash(g),
                 }
                 _append_jsonl(EVENT_LOG, row)
-                _append_jsonl(AVAILABILITY_LOG, {
-                    **row,
-                    "starter_status": "ANNOUNCED" if row["home_starter_announced_at"] and row["away_starter_announced_at"] else "OBSERVED_UNVERIFIABLE_ANNOUNCEMENT_TIME",
-                    "starter_evidence_contract": "STRICT_OFFICIAL_ANNOUNCEMENT_ONLY",
-                    "lineup_status": "UNVERIFIABLE",
-                })
-                _record_snapshot(event_id=f"NPB:{gid}", league="NPB", entity_type="game",
-                                 entity_id=gid, source=url, payload=g,
-                                 retrieved_at=retrieved, available_at=retrieved)
+                _append_jsonl(
+                    AVAILABILITY_LOG,
+                    {
+                        **row,
+                        "starter_status": "ANNOUNCED" if h_ann and a_ann else "OBSERVED_UNVERIFIABLE_ANNOUNCEMENT_TIME",
+                        "starter_evidence_contract": "STRICT_OFFICIAL_ANNOUNCEMENT_ONLY",
+                        "lineup_status": "UNVERIFIABLE",
+                    },
+                )
+                _record_snapshot(
+                    event_id=f"NPB:{gid}",
+                    league="NPB",
+                    entity_type="legacy_game",
+                    entity_id=gid,
+                    source=url,
+                    payload=g,
+                    retrieved_at=retrieved,
+                    available_at=retrieved,
+                )
                 count += 1
         except Exception as exc:
             retrieved = now_utc()
-            _record_snapshot(event_id="NPB-SCHEDULE", league="NPB", entity_type="schedule",
-                             entity_id=f"{start}:{end}:{url}", source=url,
-                             payload={"error": str(exc)}, retrieved_at=retrieved,
-                             available_at=None, status="UNAVAILABLE")
+            _record_snapshot(
+                event_id="NPB-SCHEDULE",
+                league="NPB",
+                entity_type="legacy_schedule",
+                entity_id=f"{start}:{end}:{url}",
+                source=url,
+                payload={"error": str(exc)},
+                retrieved_at=retrieved,
+                available_at=None,
+                status="UNAVAILABLE",
+            )
             print(f"[PIT][NPB] source unavailable: {url}: {exc}")
     return count
-
 
 def main() -> None:
     PIT_DIR.mkdir(parents=True, exist_ok=True)
