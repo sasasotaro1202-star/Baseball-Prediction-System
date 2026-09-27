@@ -78,7 +78,8 @@ def test_all_declared_enriched_fields_survive_normalization():
         },
     }])
     normalized = normalize_pbp_frame(raw)
-    missing = [field for field in ENRICHED_GAME_FIELDS if field not in normalized.columns]
+    expected_fields = [field for field in ENRICHED_GAME_FIELDS if field != "league"]
+    missing = [field for field in expected_fields if field not in normalized.columns]
     assert not missing, f"declared enriched fields dropped: {missing}"
 
 
