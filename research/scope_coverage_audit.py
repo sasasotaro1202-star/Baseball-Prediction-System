@@ -166,9 +166,10 @@ def audit() -> dict[str, Any]:
             sid for sid in applied_source_ids
             if adapter_metadata(sid)["implemented"]
         ]
-        discovery_row = discovery.get(scope.scope_id, {})
+        canonical_id = getattr(reg, "competition_id", scope.scope_id) if reg else scope.scope_id
+        discovery_row = discovery.get(scope.scope_id, {}) or discovery.get(canonical_id, {})
         catalog_row = catalog_discovery.get(scope.scope_id, {})
-        pit_count = pit_counts.get(scope.scope_id, 0)
+        pit_count = pit_counts.get(scope.scope_id, 0) or pit_counts.get(canonical_id, 0)
 
         oos_pass = False
         production_pass = False
