@@ -72,12 +72,31 @@ jobs:
           })
           PY
 
+      - name: Write frontier execution status
+        if: always()
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          payload={
+              'schema_version':1,
+              'workflow':'Baseball Scope Frontier Continuous Audit',
+              'run_id':int(os.environ['GITHUB_RUN_ID']),
+              'workflow_sha':os.environ.get('GITHUB_SHA',''),
+              'research_ref':os.environ.get('RESEARCH_REF',''),
+              'status':'DIAGNOSTICS_PRESERVED',
+              'production_promotion':False,
+          }
+          Path('frontier_execution_status.json').write_text(json.dumps(payload,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
       - name: Upload frontier evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: baseball-scope-frontier-${{ github.run_id }}
           path: |
+            frontier_execution_status.json
             scope_discovery.json
             scope_coverage_audit.json
             universal_readiness.json
