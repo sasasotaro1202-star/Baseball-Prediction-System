@@ -19,6 +19,45 @@ from research.universal_readiness import scope_readiness
 ROOT = Path(__file__).resolve().parents[1]
 DISCOVERY_FILE = ROOT / "results" / "scope_discovery.json"
 
+# Catalog scope IDs intentionally use human/domain-oriented names, while the
+# competition registry uses canonical production-gate IDs. Only equivalences
+# that are semantically exact are aliased here; narrower scopes remain
+# catalog-only until they receive their own registry contract.
+CATALOG_TO_REGISTRY_ID: dict[str, str] = {
+    "NCAA_D1": "NCAA_D1_BASEBALL",
+    "NCAA_D2": "NCAA_D2_BASEBALL",
+    "NCAA_D3": "NCAA_D3_BASEBALL",
+    "Japan_Independent": "JAPAN_INDEPENDENT",
+    "Japan_University": "JAPAN_UNIVERSITY_BASEBALL",
+    "Japan_Amateur_JABA": "JABA_CORPORATE",
+    "Japan_WomensHighSchool": "JAPAN_WOMENS_HIGH_SCHOOL",
+    "WBC": "WBC",
+    "WBSC_WomensBaseball": "WBSC_WOMENS_BASEBALL",
+    "LittleLeague_WorldSeries": "LITTLE_LEAGUE_WORLD_SERIES",
+    "CapeCod": "CCBL",
+    "WBSC_Europe": "WBSC_EUROPE",
+    "AsianGames_2026": "ASIAN_GAMES_BASEBALL",
+    "LIDOM": "LIDOM",
+    "LVBP": "LVBP",
+    "LBPRC": "LBPRC",
+    "LMP": "LMP",
+    "WBSC_U12": "WBSC_U12",
+    "WBSC_U15": "WBSC_U15",
+    "WBSC_U18": "WBSC_U18",
+    "WBSC_U23": "WBSC_U23",
+}
+
+
+def _registry_for_scope(scope_id: str):
+    return COMPETITIONS and next(
+        (item for item in COMPETITIONS if item.competition_id == scope_id),
+        next(
+            (item for item in COMPETITIONS
+             if item.competition_id == CATALOG_TO_REGISTRY_ID.get(scope_id, "")),
+            None,
+        ),
+    )
+
 
 def _discovery_indexes() -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
     if not DISCOVERY_FILE.exists() or DISCOVERY_FILE.stat().st_size == 0:
@@ -131,7 +170,7 @@ def audit() -> dict[str, Any]:
 
     rows: list[dict[str, Any]] = []
     for scope in scopes():
-        reg = registry_by_id.get(scope.scope_id)
+        reg = registry_by_id.get(scope.scope_id) or registry_by_id.get(CATALOG_TO_REGISTRY_ID.get(scope.scope_id, ""))
         applied_source_ids = [sid for sid in scope.source_ids if sid in sources_by_id]
         adapter_sources = [
             sid for sid in applied_source_ids
@@ -166,6 +205,8 @@ def audit() -> dict[str, Any]:
             "scope_id": scope.scope_id,
             "label": scope.label,
             "registry_registered": bool(reg),
+            "registry_competition_id": getattr(reg, "competition_id", None),
+            "registry_alias_applied": bool(reg) and scope.scope_id != getattr(reg, "competition_id", None),
             "registry_status": getattr(reg, "status", "NOT_REGISTERED"),
             "source_count": len(applied_source_ids),
             "source_ids": applied_source_ids,
