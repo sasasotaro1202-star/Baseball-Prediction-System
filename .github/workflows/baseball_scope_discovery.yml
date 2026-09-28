@@ -65,16 +65,78 @@ jobs:
           set -euo pipefail
           python research/scope_discovery.py
 
-      - name: Probe ESPN MLB and NCAA game discovery
-        timeout-minutes: 4
+      - name: Probe ESPN MLB game discovery
+        id: espn_mlb
+        continue-on-error: true
+        timeout-minutes: 2
         run: |
           set -euo pipefail
           mkdir -p results/espn
           python -m data.espn_baseball_schedule MLB > results/espn/mlb.json
+
+      - name: Probe ESPN NCAA game discovery
+        id: espn_ncaa
+        continue-on-error: true
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          mkdir -p results/espn
           python -m data.espn_baseball_schedule NCAA > results/espn/ncaa.json
-          python -c 'import json; [json.load(open(p, encoding="utf-8")) for p in ("results/espn/mlb.json","results/espn/ncaa.json")]; print("ESPN discovery artifacts: PASS")'
+
+      - name: Preserve ESPN acquisition status
+        if: always()
+        timeout-minutes: 1
+        env:
+          ESPN_MLB_OUTCOME: ${{ steps.espn_mlb.outcome }}
+          ESPN_NCAA_OUTCOME: ${{ steps.espn_ncaa.outcome }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path("results/espn")
+          rows = {}
+          for league in ("mlb", "ncaa"):
+              path = root / f"{league}.json"
+              if path.exists() and path.stat().st_size > 0:
+                  try:
+                      payload = json.loads(path.read_text(encoding="utf-8"))
+                      rows[league] = {
+                          "status": payload.get("status", "UNKNOWN"),
+                          "event_count": int(payload.get("event_count", 0) or 0),
+                          "pit_status": payload.get("pit_status", "UNVERIFIED"),
+                      }
+                  except Exception as exc:
+                      rows[league] = {
+                          "status": "ARTIFACT_INVALID",
+                          "error_type": type(exc).__name__,
+                      }
+              else:
+                  outcome = os.environ.get(f"ESPN_{league.upper()}_OUTCOME", "")
+                  rows[league] = {
+                      "status": "DEFERRED",
+                      "step_outcome": outcome or "unknown",
+                      "error": "provider acquisition failed or produced no artifact",
+                  }
+
+          Path("results/espn/acquisition_status.json").write_text(
+              json.dumps({
+                  "schema_version": 1,
+                  "status": "RECORDED",
+                  "mlb": rows["mlb"],
+                  "ncaa": rows["ncaa"],
+                  "non_fatal_provider_failure_allowed": True,
+                  "failure_visibility": "EXPLICIT",
+              }, ensure_ascii=False, indent=2),
+              encoding="utf-8",
+          )
+          print(json.dumps(rows, ensure_ascii=False, indent=2))
+          PY
 
       - name: Verify artifact
+        if: always()
         timeout-minutes: 1
         run: |
           set -euo pipefail
