@@ -41,6 +41,12 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install lightweight test dependencies
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --retries 5 --timeout 60 pytest pandas
+
       - name: Compile scope discovery
         timeout-minutes: 2
         run: |
