@@ -25,6 +25,7 @@ import numpy as np
 import pandas as pd
 
 from research.npb_official_results import _fetch_month
+from research.experience_ledger import _prediction_target_metrics
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPERIENCE = ROOT / "data" / "experience"
@@ -431,6 +432,8 @@ def rollup() -> dict[str, Any]:
         "all_snapshot_experience": compact(scored),
         "by_regime": {},
         "by_dominant_expert": {},
+        "by_prediction_target": _prediction_target_metrics(canonical),
+        "by_prediction_target_all_snapshots": _prediction_target_metrics(scored),
         "by_situation_tag": by_tag,
         "rolling": {},
         "training_contract": {
