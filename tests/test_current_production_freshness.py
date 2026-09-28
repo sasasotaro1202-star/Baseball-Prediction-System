@@ -11,21 +11,6 @@ def test_latest_target_date_is_resolved_at_call_time_in_jst():
     assert re.fullmatch(r"20\\d{2}-\\d{2}-\\d{2}", actual)
     assert actual == expected
 
-
-def test_current_production_rejects_stale_explicit_date(monkeypatch):
-    import prediction.current_production as cp
-
-    live = cp.latest_target_date_jst()
-    monkeypatch.setattr(cp, "current_runtime", lambda league: {
-        "available": False,
-        "league": league,
-        "status": "BLOCKED_NO_CURRENT_PRODUCTION_RUNTIME",
-    })
-    # The runtime availability gate is evaluated first, but the freshness
-    # contract must remain directly testable through the live-date invariant.
-    assert live == datetime.now(timezone.utc).astimezone(ZoneInfo("Asia/Tokyo")).strftime("%Y-%m-%d")
-
-
 def test_predict_current_rejects_non_live_target_date(monkeypatch):
     import prediction.current_production as cp
 
