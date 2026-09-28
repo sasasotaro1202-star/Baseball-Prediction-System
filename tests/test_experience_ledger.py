@@ -127,3 +127,28 @@ def test_reconcile_is_idempotent(tmp_path, monkeypatch):
     exp.reconcile()
     ledger = pd.read_csv(tmp_path / "experience" / "experience_ledger.csv")
     assert len(ledger) == 1
+
+
+def test_archive_and_reconcile_expose_target_level_metrics(tmp_path, monkeypatch):
+    monkeypatch.setattr(exp, "EXPERIENCE", tmp_path / "experience")
+    monkeypatch.setattr(exp, "PRED_DIR", tmp_path / "experience" / "predictions")
+    monkeypatch.setattr(exp, "RESULT_DIR", tmp_path / "experience" / "official_results")
+    monkeypatch.setattr(exp, "LEDGER_PATH", tmp_path / "experience" / "experience_ledger.csv")
+    monkeypatch.setattr(exp, "LEDGER_JSONL", tmp_path / "experience" / "experience_ledger.jsonl")
+    monkeypatch.setattr(exp, "SUMMARY_PATH", tmp_path / "experience" / "experience_summary.json")
+    exp.archive_production_output(_prediction(tmp_path))
+    exp._load_cached_results = lambda dates: pd.DataFrame([{
+        "date": "2026-09-26",
+        "home": "横浜DeNAベイスターズ",
+        "away": "阪神タイガース",
+        "home_score": 4,
+        "away_score": 2,
+        "source_url": "test://npb",
+    }])
+    summary = exp.reconcile()
+    ledger = pd.read_csv(tmp_path / "experience" / "experience_ledger.csv")
+    assert ledger.loc[0, "target"] == "NPB"
+    assert ledger.loc[0, "competition_id"] == "NPB"
+    assert set(summary["by_target"]) == {"NPB"}
+    assert summary["by_target"]["NPB"]["rows"] == 1
+    assert summary["by_target"]["NPB"]["accuracy"] == 1.0
