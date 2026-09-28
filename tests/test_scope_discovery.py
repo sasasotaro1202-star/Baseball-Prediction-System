@@ -55,3 +55,17 @@ def test_catalog_frontier_probes_sources(monkeypatch, tmp_path):
     assert row["reachable_source_count"] >= 0
     assert "source_probes" in row
     assert row["production_eligible"] is False
+
+
+def test_exact_registry_aliases_are_not_reported_as_new_catalog_frontier(monkeypatch, tmp_path):
+    monkeypatch.setattr(scope_discovery, "RESULTS", tmp_path)
+    monkeypatch.setattr(
+        scope_discovery,
+        "_probe",
+        lambda url: {"status": "REACHABLE", "signals": {"schedule": 1, "results": 1, "game": 1, "upcoming": 1, "date_tokens": 1}},
+    )
+    payload = scope_discovery.discover_scope()
+    frontier_ids = {x["scope_id"] for x in payload["catalog_frontier"]}
+    assert "NCAA_D1" not in frontier_ids
+    assert "Japan_Independent" not in frontier_ids
+    assert "Japan_University" not in frontier_ids
