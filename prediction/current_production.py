@@ -109,9 +109,11 @@ def predict_current(
     target_date: str | None = None,
     data_dir: str = "data",
 ) -> dict[str, Any]:
-    """Run the current production runtime only.
+    """Run the current production runtime at the live call-time target date.
 
-    No research candidate, baseline, or prior model is used as a fallback.
+    A stale explicit date is fail-closed rather than silently reusing an older
+    prediction horizon. Historical dates belong to research/audit entry points,
+    not the user-facing current-production path.
     """
     info = current_runtime(league)
     if not info["available"]:
@@ -122,10 +124,22 @@ def predict_current(
             "prediction_generated_at": datetime.now(timezone.utc).isoformat(),
         }
 
+    resolved_target_date = latest_target_date_jst()
+    if target_date is not None and str(target_date) != resolved_target_date:
+        return {
+            **info,
+            "execution_status": "BLOCKED_STALE_TARGET_DATE",
+            "requested_target_date": str(target_date),
+            "resolved_target_date": resolved_target_date,
+            "predictions": [],
+            "prediction_generated_at": datetime.now(timezone.utc).isoformat(),
+            "reason": "current-production prediction requests must use the call-time JST target date",
+        }
+
     if info["entrypoint"] == "production_npb":
         from production_npb import predict
 
-        date_value = target_date or latest_target_date_jst()
+        date_value = resolved_target_date
         result = predict(date_value, data_dir)
         if not isinstance(result, Mapping):
             raise RuntimeError("current production runtime returned a non-object result")
