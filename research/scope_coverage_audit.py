@@ -48,16 +48,6 @@ CATALOG_TO_REGISTRY_ID: dict[str, str] = {
 }
 
 
-def _registry_for_scope(scope_id: str):
-    return COMPETITIONS and next(
-        (item for item in COMPETITIONS if item.competition_id == scope_id),
-        next(
-            (item for item in COMPETITIONS
-             if item.competition_id == CATALOG_TO_REGISTRY_ID.get(scope_id, "")),
-            None,
-        ),
-    )
-
 
 def _discovery_indexes() -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
     if not DISCOVERY_FILE.exists() or DISCOVERY_FILE.stat().st_size == 0:
