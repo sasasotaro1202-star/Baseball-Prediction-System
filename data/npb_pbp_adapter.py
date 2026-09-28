@@ -24,6 +24,8 @@ import numpy as np
 import pandas as pd
 import requests
 
+from data.npb_enrichment_contract import ENRICHED_GAME_FIELDS
+
 _MISSING_TEXT = {"", "nan", "none", "nat"}
 _STARTER_JP = "先発ピッチャー"
 _STARTER_EN = "starting pitcher"
@@ -331,6 +333,15 @@ def normalize_pbp_frame(raw: pd.DataFrame, *, data_dir: str | Path | None = None
     # before the prediction timestamp.
     out["pitcher_id"] = _first_existing(raw, ["pitcher", "PitID"]).astype(str)
     out["half_inning"] = _first_existing(raw, ["TB", "half", "Half"], "").astype(str)
+
+    # Preserve fields produced by the resumable multi-source game enrichment
+    # pipeline. Previously these columns were silently discarded here, so
+    # downstream chronological feature construction could only see the small
+    # normalized PBP contract and the acquired data never reached the model.
+    for column in ENRICHED_GAME_FIELDS:
+        if column in raw.columns and column not in out.columns:
+            out[column] = raw[column]
+
     starter_df = _starter_from_descriptions(raw)
     out = out.merge(starter_df, on="game_id", how="left")
     out["home_pitcher"] = out["home_pitcher"].fillna("").astype(str)

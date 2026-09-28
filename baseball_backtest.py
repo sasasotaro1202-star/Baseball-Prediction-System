@@ -69,6 +69,8 @@ from research.hierarchical_result_model import HierarchicalNPBClassifier
 from research.correlated_score import estimate_shared_lambda, low_high as correlated_low_high, top_scores as correlated_top_scores
 from evaluation.calibration import fit_temperature, TemperatureCalibration
 from core.atomic_io import atomic_write_text
+from data.npb_enrichment_contract import ENRICHED_GAME_FIELDS
+from data.market_line_loader import attach_pit_safe_market_lines
 
 RANDOM_STATE = 42
 ROOT = Path(__file__).resolve().parent
@@ -198,6 +200,17 @@ class TeamState:
     bullpen_ip_3: float = 0.0
     bullpen_ip_7: float = 0.0
     starter_history: Dict[str, deque] = field(default_factory=lambda: defaultdict(lambda: deque(maxlen=12)))
+    # Team-level lagged starter quality. This uses only completed prior games,
+    # so it remains PIT-safe even when historical individual starter identity
+    # lacks a defensible announcement timestamp.
+    starter_era: deque = field(default_factory=lambda: deque(maxlen=30))
+    starter_whip: deque = field(default_factory=lambda: deque(maxlen=30))
+    starter_k9: deque = field(default_factory=lambda: deque(maxlen=30))
+    starter_bb9: deque = field(default_factory=lambda: deque(maxlen=30))
+    starter_hr9: deque = field(default_factory=lambda: deque(maxlen=30))
+    starter_fip: deque = field(default_factory=lambda: deque(maxlen=30))
+    starter_ip: deque = field(default_factory=lambda: deque(maxlen=30))
+    starter_pitches: deque = field(default_factory=lambda: deque(maxlen=30))
     pa: deque = field(default_factory=lambda: deque(maxlen=30))
     ab: deque = field(default_factory=lambda: deque(maxlen=30))
     h: deque = field(default_factory=lambda: deque(maxlen=30))
@@ -289,6 +302,7 @@ class BaseballBacktest:
         self.player_game = pd.DataFrame()
         self.player_history = defaultdict(list)
         self.player_index = {}
+        self.market_line_cache = None
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
     # ------------------------------------------------------------------
@@ -408,31 +422,44 @@ class BaseballBacktest:
             if gt and not any(k in gt for k in NPB_OFFICIAL_KEYWORDS):
                 if any(k in gt.lower() for k in ("open", "spring", "farm", "allstar")):
                     continue
-            # The first pitcher appearing in PBP is a realized post-game
-            # identity, not announcement-time evidence. Preserve starter names
-            # only when explicit publication/availability timestamps are present
-            # and are at or before the prediction cutoff.
-            cutoff_col = "prediction_cutoff" if "prediction_cutoff" in g.columns else None
-            h_ann_col = "home_starter_announced_at" if "home_starter_announced_at" in g.columns else None
-            a_ann_col = "away_starter_announced_at" if "away_starter_announced_at" in g.columns else None
-            cutoff = pd.to_datetime(g[cutoff_col].iloc[0], errors="coerce", utc=True) if cutoff_col else pd.NaT
-            h_ann = pd.to_datetime(g[h_ann_col].iloc[0], errors="coerce", utc=True) if h_ann_col else pd.NaT
-            a_ann = pd.to_datetime(g[a_ann_col].iloc[0], errors="coerce", utc=True) if a_ann_col else pd.NaT
-            hp = str(g.get("home_starter", pd.Series([""])).iloc[0] or "").strip() if "home_starter" in g.columns else ""
-            ap = str(g.get("away_starter", pd.Series([""])).iloc[0] or "").strip() if "away_starter" in g.columns else ""
-            h_safe = bool(hp and pd.notna(cutoff) and pd.notna(h_ann) and h_ann <= cutoff)
-            a_safe = bool(ap and pd.notna(cutoff) and pd.notna(a_ann) and a_ann <= cutoff)
+            # Do not promote enriched collector starter identities into the
+            # prediction-time starter fields: those identities come from completed
+            # game observations and have no historical announcement timestamp.
+            # They would therefore be hindsight if used as the target starter.
+            #
+            # Other completed-game aggregates are safe to carry forward because
+            # update_after_game() consumes them only after this game and the next
+            # prediction sees them as lagged history.
+            # Reuse the shared acquisition/normalization contract so newly acquired
+            # fields cannot be silently dropped at game aggregation.
+            enriched_fields = tuple(field for field in ENRICHED_GAME_FIELDS if field != "league")
+            enriched = {}
+            for field_name in enriched_fields:
+                if field_name not in g.columns:
+                    continue
+                value = next(
+                    (
+                        value for value in g[field_name]
+                        if pd.notna(value) and str(value).strip().lower() not in {"", "nan", "none", "nat"}
+                    ),
+                    None,
+                )
+                if value is not None:
+                    enriched[field_name] = value
+
             rows.append({
                 "league": "NPB", "game_id": str(gid), "datetime": dt,
                 "home": home, "away": away, "home_score": hscore, "away_score": ascore,
-                "home_starter": hp if h_safe else "", "away_starter": ap if a_safe else "",
-                "venue": "unknown",
-                "confirmed_starters": bool(h_safe and a_safe),
-                "starter_evidence_status": "pit_safe" if (h_safe and a_safe) else "unknown",
+                # Strict PIT: no unverified target-game starter identity.
+                "home_starter": "", "away_starter": "",
+                "venue": str(enriched.get("venue") or "unknown"),
+                "confirmed_starters": False,
+                "starter_evidence_status": "unknown",
                 "home_bullpen_apps": float(home_bullpen_apps),
                 "away_bullpen_apps": float(away_bullpen_apps),
                 "game_type": gt,
                 "series_description": "",
+                **enriched,
             })
         out = pd.DataFrame(rows)
         if out.empty:
@@ -794,6 +821,25 @@ class BaseballBacktest:
         f["bp_bb9_10"] = 9.0 * bp_bb / max(bp_ip, 1e-6) if bp_ip > 0 else 0.0
         f["bp_hr9_10"] = 9.0 * bp_hr / max(bp_ip, 1e-6) if bp_ip > 0 else 0.0
         f["bp_actual_coverage_10"] = bp_games / max(min(10.0, s.total_matches), 1.0)
+
+        # Historical starter-quality aggregates are safe to use because they
+        # summarize completed games strictly before the current prediction.
+        # They complement, rather than replace, individual-starter features when
+        # a target starter has a verified PIT-safe identity/history.
+        for w in (3, 5, 10, 20):
+            for metric_name, queue_name, default in (
+                ("era", s.starter_era, 4.0),
+                ("whip", s.starter_whip, 1.30),
+                ("k9", s.starter_k9, 7.5),
+                ("bb9", s.starter_bb9, 3.0),
+                ("hr9", s.starter_hr9, 1.0),
+                ("fip", s.starter_fip, 4.0),
+                ("ip", s.starter_ip, 5.0),
+                ("pitches", s.starter_pitches, 80.0),
+            ):
+                vals = list(queue_name)[-w:]
+                f[f"starter_team_{metric_name}_{w}"] = float(np.mean(vals)) if vals else default
+
         for name,q in (("gf",s.gf),("ga",s.ga),("hr",s.hr),("so",s.so),("bb",s.bb)):
             vals=np.asarray(list(q)[-20:],dtype=float)
             f[f"{name}_sd_20"] = float(np.std(vals)) if len(vals) >= 2 else 0.0
@@ -956,6 +1002,19 @@ class BaseballBacktest:
             + out.get("weather_wind_kmh",0.0)/30.0
             - out.get("weather_precip_mm",0.0)/5.0
         ) if context_pit_safe else 0.0
+
+        # Market total is an exogenous pregame signal. Only a PIT-safe KNOWN
+        # observation is exposed as market information; unknown rows use the
+        # endogenous expected environment with an explicit gate flag.
+        market_known = float(num(row.get("market_line_known", 0.0), 0.0))
+        if market_known > 0.5:
+            market_line = float(num(row.get("market_total_runs_line"), out["expected_env"]))
+            out["market_total_runs_line"] = market_line
+            out["market_total_runs_line_delta"] = market_line - out["expected_env"]
+        else:
+            out["market_total_runs_line"] = out["expected_env"]
+            out["market_total_runs_line_delta"] = 0.0
+        out["market_line_known"] = 1.0 if market_known > 0.5 else 0.0
         out["starter_x_quality_proxy"] = (out.get("hs_k9",7.5)-out.get("hs_bb9",3.0)-out.get("hs_hr9",1.0)) - (out.get("as_k9",7.5)-out.get("as_bb9",3.0)-out.get("as_hr9",1.0))
         out["starter_recency_gap"] = out.get("hs_recent_era",4.0)-out.get("as_recent_era",4.0)
         out["starter_experience_gap"] = out.get("hs_starts",0.0)-out.get("as_starts",0.0)
@@ -1099,6 +1158,9 @@ class BaseballBacktest:
 
     def build_features(self, games: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, pd.DataFrame]:
         self.states.clear(); self.elo_ratings.clear(); self.pitcher_history = defaultdict(list); self.player_history = defaultdict(list)
+        # Attach only PIT-safe market snapshots. Missing/invalid market data
+        # remains explicitly unknown and cannot become a synthetic signal.
+        games = attach_pit_safe_market_lines(games, self.data_dir)
         if self.player_game.empty:
             self.player_game = self.load_npb_player_features()
         self.player_index = {}
@@ -1196,6 +1258,26 @@ class BaseballBacktest:
             try: return float(v) if pd.notna(v) else default
             except Exception: return default
         prefix="home" if home else "away"
+        # Append explicit starter-game metrics only after the completed game.
+        # This creates lagged team-rotation features without using the target
+        # game's realized starter performance.
+        for queue_name, column_name, default in (
+            (s.starter_era, f"{prefix}_starter_era", np.nan),
+            (s.starter_whip, f"{prefix}_starter_whip", np.nan),
+            (s.starter_k9, f"{prefix}_starter_k9", np.nan),
+            (s.starter_bb9, f"{prefix}_starter_bb9", np.nan),
+            (s.starter_hr9, f"{prefix}_starter_hr9", np.nan),
+            (s.starter_fip, f"{prefix}_starter_fip", np.nan),
+            (s.starter_ip, f"{prefix}_starter_ip", np.nan),
+            (s.starter_pitches, f"{prefix}_starter_pitches", np.nan),
+        ):
+            value = fv(column_name, default)
+            if np.isfinite(value):
+                queue_name.append(value)
+            # Missing starter metrics are omitted, not encoded as zero. A zero
+            # ERA/K9/IP would be a fabricated performance observation and would
+            # distort future rolling features.
+
         s.pa.append(fv(f"{prefix}_bat_pa",0.0))
         s.ab.append(fv(f"{prefix}_bat_ab",0.0))
         s.h.append(fv(f"{prefix}_bat_h",0.0))

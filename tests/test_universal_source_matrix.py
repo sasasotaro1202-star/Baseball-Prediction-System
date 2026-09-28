@@ -176,3 +176,19 @@ def test_israel_all_age_scopes_bind_iab():
 
 def test_argentina_lab_binds_official_source():
     assert "liga_argentina_beisbol" in {r["source_id"] for r in application_plan("Argentina_LAB")}
+
+
+def test_ncaa_divisions_are_explicitly_scoped():
+    assert "ncaa_baseball_d1" in {r["source_id"] for r in application_plan("NCAA_D1")}
+    assert "ncaa_baseball_d2" in {r["source_id"] for r in application_plan("NCAA_D2")}
+    assert "ncaa_baseball_d3" in {r["source_id"] for r in application_plan("NCAA_D3")}
+
+def test_kbo_futures_scope_is_explicit():
+    assert "kbo_official_stats" in {r["source_id"] for r in application_plan("KBO_Futures")}
+
+def test_espn_sources_are_bound_to_supported_scopes():
+    assert "espn_mlb" in {r["source_id"] for r in application_plan("MLB")}
+    assert "espn_college_baseball" in {r["source_id"] for r in application_plan("NCAA_D1")}
+    assert "espn_college_baseball" in {r["source_id"] for r in application_plan("NCAA_D2")}
+    assert "espn_college_baseball" in {r["source_id"] for r in application_plan("NCAA_D3")}
+    assert "espn_international" in {r["source_id"] for r in application_plan("WBC")}

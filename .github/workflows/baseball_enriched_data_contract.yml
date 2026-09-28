@@ -1,0 +1,74 @@
+name: Baseball Enriched Data Integration Contract
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "research/**"
+    paths:
+      - "baseball_backtest.py"
+      - "data/npb_pbp_adapter.py"
+      - "tests/test_enriched_feature_integration.py"
+      - ".github/workflows/baseball_enriched_data_contract.yml"
+  pull_request:
+    paths:
+      - "baseball_backtest.py"
+      - "data/npb_pbp_adapter.py"
+      - "tests/test_enriched_feature_integration.py"
+      - ".github/workflows/baseball_enriched_data_contract.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baseball-enriched-data-contract-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      PYTHONPATH: .
+      PYTHONUNBUFFERED: "1"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        timeout-minutes: 5
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        timeout-minutes: 5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+
+      - name: Install CI dependencies
+        timeout-minutes: 8
+        run: python -m pip install --disable-pip-version-check --retries 5 --timeout 90 --prefer-binary -r requirements-ci.txt
+
+      - name: Compile integration paths
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          python -m py_compile baseball_backtest.py data/npb_pbp_adapter.py tests/test_enriched_feature_integration.py
+
+      - name: Run enriched data contract tests
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          python -m pytest -q tests/test_enriched_feature_integration.py
+
+      - name: Enforce PIT isolation
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          source = Path("baseball_backtest.py").read_text(encoding="utf-8")
+          assert "target-game starter identity" in source
+          assert "Missing starter metrics are omitted" in source
+          print("enriched-data PIT isolation contract: PASS")
+          PY

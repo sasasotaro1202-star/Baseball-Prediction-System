@@ -7,7 +7,7 @@ coverage audit distinguish IMPLEMENTED from UNWIRED without auto-promoting PIT/O
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from importlib import import_module
+import ast
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +27,41 @@ class AdapterSpec:
 # Only adapters whose implementation is actually present in this repository are
 # listed. Absence from this table is intentionally equivalent to UNWIRED.
 ADAPTERS: tuple[AdapterSpec, ...] = (
+    AdapterSpec(
+        "iblj_official_stats",
+        "data.japan_independent_schedule",
+        "discover_ibl_j",
+        "collector",
+        True,
+        "Official Shikoku Island League 2026 schedule/results discovery; PIT/starter validation remains separate.",
+    ),
+    AdapterSpec(
+        "bcl_official_stats",
+        "data.japan_independent_schedule",
+        "discover_bcl",
+        "collector",
+        True,
+        "Official Route-Inn BC League 2026 schedule/results discovery; PIT/starter validation remains separate.",
+    ),
+    AdapterSpec("espn_mlb","data.espn_baseball_schedule","fetch_espn_scoreboard","collector",True,"Public ESPN MLB scoreboard/game discovery; field-level PIT remains separate."),
+    AdapterSpec("espn_college_baseball","data.espn_baseball_schedule","fetch_espn_scoreboard","collector",True,"Public ESPN college baseball scoreboard/game discovery; field-level PIT remains separate."),
+    AdapterSpec("espn_international","data.espn_baseball_schedule","fetch_espn_scoreboard","collector",True,"Public ESPN international baseball discovery; competition coverage is slug-dependent."),
+    AdapterSpec(
+        "kbo_official_stats",
+        "data.kbo_public_schedule",
+        "fetch_kbo_schedule",
+        "collector",
+        True,
+        "Public KBO daily schedule discovery; starter announcement/PIT/OOS remain separate gates.",
+    ),
+    AdapterSpec(
+        "cpbl_rebas",
+        "data.cpbl_public_schedule",
+        "discover_cpbl",
+        "collector",
+        True,
+        "Public CPBL schedule discovery; page-rendering/starter/PIT/OOS remain separate gates.",
+    ),
     AdapterSpec(
         "statcast",
         "data.mlb_statcast",
@@ -82,15 +117,28 @@ def adapter_spec(source_id: str) -> AdapterSpec | None:
 
 
 def adapter_present(source_id: str) -> bool:
-    """Return true only when both the module file and declared symbol exist."""
+    """Return true when the declared module and callable symbol exist in source.
+
+    This deliberately uses static AST inspection rather than importing the
+    adapter, because optional runtime dependencies (requests, vendor SDKs, etc.)
+    must not turn an implemented research adapter into a false UNWIRED state
+    during lightweight contract tests.
+    """
     spec = adapter_spec(source_id)
-    if spec is None or not _module_file(spec.module_path).is_file():
+    if spec is None:
+        return False
+    path = _module_file(spec.module_path)
+    if not path.is_file():
         return False
     try:
-        module = import_module(spec.module_path)
-        return callable(getattr(module, spec.symbol))
-    except Exception:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    except (OSError, SyntaxError):
         return False
+    return any(
+        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == spec.symbol
+        for node in ast.walk(tree)
+    )
 
 
 def adapter_metadata(source_id: str) -> dict[str, Any]:

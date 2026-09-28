@@ -1,4 +1,5 @@
 import pandas as pd
+import math
 import pytest
 
 from data.mlb_statcast import (
@@ -50,6 +51,7 @@ def test_statcast_game_aggregation():
     assert out.loc[0, "home_pitch_velocity_mean"] == 95
     assert out.loc[0, "home_hard_hit_rate"] == 1
     assert out.loc[0, "home_barrel_rate"] == 1
+    assert out.loc[0, "home_pitch_type_count"] != 0
 
 
 def test_statcast_lagged_features_use_prior_games_only():
@@ -66,5 +68,13 @@ def test_lagged_features_differ_by_team_side():
     games = build_game_level_features(_sample())
     out = build_lagged_team_features(games)
     row1 = out[out["game_pk"] == "1"].iloc[0]
-    assert row1["home_lag_pitch_velocity_mean"] == 0
-    assert row1["away_lag_pitch_velocity_mean"] == 0
+    assert math.isnan(row1["home_lag_pitch_velocity_mean"])
+    assert math.isnan(row1["away_lag_pitch_velocity_mean"])
+
+def test_missing_statcast_measurements_are_not_encoded_as_zero():
+    frame = _sample().copy()
+    frame.loc[0, "release_spin"] = None
+    frame.loc[0, "launch_speed"] = None
+    out = build_game_level_features(frame)
+    assert pd.isna(out.loc[0, "home_spin_rate_mean"])
+    assert pd.isna(out.loc[0, "home_exit_velocity_mean"])

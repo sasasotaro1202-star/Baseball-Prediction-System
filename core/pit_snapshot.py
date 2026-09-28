@@ -40,8 +40,8 @@ class SourceSnapshot:
     def validate(self) -> None:
         if not self.event_id or not self.entity_id or not self.source:
             raise ValueError("event_id, entity_id and source are required")
-        if self.league not in {"NPB", "MLB"}:
-            raise ValueError("league must be NPB or MLB")
+        if not self.league or not self.league.strip():
+            raise ValueError("league is required")
         if self.status not in _ALLOWED:
             raise ValueError(f"invalid snapshot status: {self.status}")
         _dt(self.retrieved_at)

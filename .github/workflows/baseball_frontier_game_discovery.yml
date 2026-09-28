@@ -1,0 +1,55 @@
+name: Baseball Frontier Game Discovery
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "research/**"
+    paths:
+      - "data/kbo_public_schedule.py"
+      - "data/cpbl_public_schedule.py"
+      - ".github/workflows/baseball_frontier_game_discovery.yml"
+  schedule:
+    - cron: "41 3 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baseball-frontier-game-discovery
+  cancel-in-progress: true
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      PYTHONPATH: .
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - name: Run adapter unit tests
+        run: python -m pytest -q tests/test_frontier_schedule_adapters.py
+
+      - name: Discover KBO slate
+        run: python -m data.kbo_public_schedule > kbo_frontier.json
+      - name: Discover CPBL slate
+        run: python -m data.cpbl_public_schedule > cpbl_frontier.json
+      - name: Validate discovery artifacts
+        run: |
+          set -euo pipefail
+          python -c 'import json; [json.load(open(p, encoding="utf-8")) for p in ("kbo_frontier.json","cpbl_frontier.json")]; print("frontier discovery artifacts: PASS")'
+      - name: Upload frontier artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: baseball-frontier-games-${{ github.run_id }}
+          path: |
+            kbo_frontier.json
+            cpbl_frontier.json
+          if-no-files-found: error
+          retention-days: 14
