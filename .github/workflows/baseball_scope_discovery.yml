@@ -53,6 +53,12 @@ jobs:
           set -euo pipefail
           python -m py_compile data/competition_registry.py research/scope_discovery.py tests/test_scope_discovery.py
 
+      - name: Install test dependencies
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --retries 5 --timeout 60 pytest pandas
+
       - name: Run scope discovery tests
         timeout-minutes: 3
         run: |
