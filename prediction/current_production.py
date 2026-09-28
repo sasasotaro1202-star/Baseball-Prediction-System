@@ -66,6 +66,8 @@ def current_runtime(league: str) -> dict[str, Any]:
             "status": "BLOCKED_NO_CURRENT_PRODUCTION_RUNTIME",
             "reason": "no current production runtime is registered for this league",
             "git_commit": _git_commit(),
+            "freshness_policy": "LIVE_CALL_TIME;DO_NOT_REUSE_PRIOR_PREDICTION_OUTPUT",
+            "prediction_requested_at_utc": datetime.now(timezone.utc).isoformat(),
         }
 
     status = str(runtime.get("formal_adoption_status", "")).strip().upper()
@@ -96,6 +98,11 @@ def current_runtime(league: str) -> dict[str, Any]:
     }
 
 
+def latest_target_date_jst() -> str:
+    """Resolve the target date at call time; stale prior prediction dates are never reused."""
+    return datetime.now(timezone.utc).astimezone(ZoneInfo("Asia/Tokyo")).strftime("%Y-%m-%d")
+
+
 def predict_current(
     *,
     league: str,
@@ -118,10 +125,7 @@ def predict_current(
     if info["entrypoint"] == "production_npb":
         from production_npb import predict
 
-        date_value = (
-            target_date
-            or datetime.now(timezone.utc).astimezone(ZoneInfo("Asia/Tokyo")).strftime("%Y-%m-%d")
-        )
+        date_value = target_date or latest_target_date_jst()
         result = predict(date_value, data_dir)
         if not isinstance(result, Mapping):
             raise RuntimeError("current production runtime returned a non-object result")
