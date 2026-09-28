@@ -272,21 +272,36 @@ jobs:
           path: evidence
           merge-multiple: false
       - name: Build closeout manifest
+        env:
+          W1: ${{ needs.wave1-core-oos.result }}
+          W2: ${{ needs.wave2-frontier.result }}
+          W3: ${{ needs.wave3-candidate-oos.result }}
+          W4: ${{ needs.wave4-meta-research.result }}
         run: |
           set -euo pipefail
           mkdir -p results/24h
           python - <<'PY'
-          import json
+          import json, os
           from pathlib import Path
           root=Path('evidence')
           files=sorted(str(p.relative_to(root)) for p in root.rglob('*') if p.is_file()) if root.exists() else []
+          lane_results={
+              'wave1_core_oos': os.environ['W1'],
+              'wave2_frontier': os.environ['W2'],
+              'wave3_candidate_oos': os.environ['W3'],
+              'wave4_meta_research': os.environ['W4'],
+          }
           manifest={
+              'schema_version':2,
               'workflow':'Baseball 24h Research Autopilot',
               'run_id':'${{ github.run_id }}',
               'research_ref':'${{ env.RESEARCH_REF }}',
               'max_execution_minutes':1440,
+              'status':'COMPLETED' if all(v == 'success' for v in lane_results.values()) else 'PARTIAL_OR_BLOCKED',
+              'lane_results':lane_results,
               'evidence_file_count':len(files),
               'evidence_files':files[:2000],
+              'research_only':True,
               'production_changed':False,
               'promotion_by_workflow':False,
           }
