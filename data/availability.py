@@ -114,14 +114,16 @@ def prediction_eligible(record: AvailabilityRecord) -> tuple[bool, list[str]]:
 
 
 def production_prediction_eligible(record: AvailabilityRecord) -> tuple[bool, list[str]]:
-    """Apply both PIT starter eligibility and the canonical production gate.
+    """Apply PIT starter eligibility and the canonical production gate fail-closed.
 
-    Registry membership is intentionally insufficient: research-only
-    competitions may pass the PIT starter checks while remaining blocked from
-    production until their competition-specific evidence and OOS/holdout gates
-    have been promoted.
+    Unknown competitions are surfaced as ValueError instead of leaking a raw
+    registry KeyError through production callers. This keeps the public gate
+    contract stable while preserving fail-closed behavior.
     """
-    spec = get_competition(record.league)
+    try:
+        spec = get_competition(record.league)
+    except KeyError as exc:
+        raise ValueError(f"unknown competition_id/league: {record.league}") from exc
     ok, reasons = prediction_eligible(record)
     if not record.event_start_at:
         reasons.append("event_start_time_missing")
@@ -132,7 +134,6 @@ def production_prediction_eligible(record: AvailabilityRecord) -> tuple[bool, li
             reasons.append("event_already_started_or_not_future")
     if not _is_official_source(record.source):
         reasons.append("starter_source_not_official")
-    spec = get_competition(record.league)
     if not spec.status == "PRODUCTION_ELIGIBLE":
         reasons.append("competition_not_production_eligible")
     return (not reasons, reasons)
