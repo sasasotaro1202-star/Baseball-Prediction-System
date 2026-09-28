@@ -1,5 +1,5 @@
 {
-  "generated_at_utc": "2026-09-28T15:41:01.079288+00:00",
+  "generated_at_utc": "2026-09-28T22:10:47.950618+00:00",
   "status": "UPDATED",
   "prediction_rows": 17,
   "matched_rows_total": 5,
@@ -26,6 +26,39 @@
       "accuracy": 0.5,
       "logloss": 0.7933112661974602,
       "brier": 0.57063830524475
+    }
+  },
+  "by_target": {
+    "NPB": {
+      "rows": 5,
+      "accuracy": 0.6,
+      "logloss": 0.6900037699068177,
+      "brier": 0.4786900349762,
+      "ece": 0.593768832,
+      "low_high_accuracy": 0.6,
+      "top4_exact_hit_rate": 0.0
+    }
+  },
+  "by_prediction_target": {
+    "win_3way": {
+      "rows": 5,
+      "accuracy": 0.6,
+      "logloss": 5.295173955894909,
+      "brier": 0.9894985932434975,
+      "ece": 0.593768832
+    },
+    "low_high": {
+      "rows": 5,
+      "accuracy": 0.6,
+      "logloss": 0.8085303353578924,
+      "brier": 0.30048724600520005,
+      "ece": 0.5222264
+    },
+    "exact_score": {
+      "rows": 5,
+      "top1_exact_hit_rate": 0.0,
+      "top4_exact_hit_rate": 0.0,
+      "score_mae": 2.0657958394328952
     }
   },
   "by_dominant_expert": {

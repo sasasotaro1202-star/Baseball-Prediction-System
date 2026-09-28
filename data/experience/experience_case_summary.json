@@ -1,7 +1,7 @@
 {
-  "generated_at_utc": "2026-09-28T15:41:01.711051+00:00",
+  "generated_at_utc": "2026-09-28T22:10:48.440062+00:00",
   "status": "UPDATED",
-  "prediction_snapshot_rows_total": 130,
+  "prediction_snapshot_rows_total": 146,
   "matched_snapshot_rows": 55,
   "unique_games_with_results": 5,
   "experience_cases": {
@@ -61,6 +61,50 @@
       "top1_exact_hit_rate": 0.0,
       "top4_exact_hit_rate": 0.0,
       "score_mae": 2.0657958394328952
+    }
+  },
+  "by_prediction_target": {
+    "win_3way": {
+      "rows": 5,
+      "accuracy": 0.6,
+      "logloss": 5.295174155894808,
+      "brier": 0.9894985950749327,
+      "ece": 0.593768833038577
+    },
+    "low_high": {
+      "rows": 5,
+      "accuracy": 0.4,
+      "logloss": 3.066143732107231,
+      "brier": 0.5927356633246006,
+      "ece": 0.593470276
+    },
+    "exact_score": {
+      "rows": 5,
+      "top1_exact_hit_rate": 0.0,
+      "top4_exact_hit_rate": 0.0,
+      "score_mae": 2.0657958394328952
+    }
+  },
+  "by_prediction_target_all_snapshots": {
+    "win_3way": {
+      "rows": 55,
+      "accuracy": 0.6,
+      "logloss": 5.30290689095478,
+      "brier": 0.9896163080573329,
+      "ece": 0.5938436964091293
+    },
+    "low_high": {
+      "rows": 55,
+      "accuracy": 0.4,
+      "logloss": 3.0596469837568483,
+      "brier": 0.5926683432753143,
+      "ece": 0.5934398665454546
+    },
+    "exact_score": {
+      "rows": 55,
+      "top1_exact_hit_rate": 0.0,
+      "top4_exact_hit_rate": 0.0,
+      "score_mae": 2.065965626232031
     }
   },
   "by_situation_tag": {
