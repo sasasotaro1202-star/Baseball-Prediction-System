@@ -7,7 +7,7 @@ coverage audit distinguish IMPLEMENTED from UNWIRED without auto-promoting PIT/O
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from importlib import import_module
+import ast
 from pathlib import Path
 from typing import Any
 
@@ -117,15 +117,28 @@ def adapter_spec(source_id: str) -> AdapterSpec | None:
 
 
 def adapter_present(source_id: str) -> bool:
-    """Return true only when both the module file and declared symbol exist."""
+    """Return true when the declared module and callable symbol exist in source.
+
+    This deliberately uses static AST inspection rather than importing the
+    adapter, because optional runtime dependencies (requests, vendor SDKs, etc.)
+    must not turn an implemented research adapter into a false UNWIRED state
+    during lightweight contract tests.
+    """
     spec = adapter_spec(source_id)
-    if spec is None or not _module_file(spec.module_path).is_file():
+    if spec is None:
+        return False
+    path = _module_file(spec.module_path)
+    if not path.is_file():
         return False
     try:
-        module = import_module(spec.module_path)
-        return callable(getattr(module, spec.symbol))
-    except Exception:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    except (OSError, SyntaxError):
         return False
+    return any(
+        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == spec.symbol
+        for node in ast.walk(tree)
+    )
 
 
 def adapter_metadata(source_id: str) -> dict[str, Any]:
