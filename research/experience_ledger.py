@@ -364,7 +364,7 @@ def reconcile() -> dict[str, Any]:
     matched["experience_available_at_utc"] = _utc_now()
 
     keep = [
-        "prediction_id", "game_id", "date_key", "datetime_jst", "prediction_cutoff_utc",
+        "prediction_id", "game_id", "target", "competition_id", "date_key", "datetime_jst", "prediction_cutoff_utc",
         "prediction_generated_at", "home", "away", "home_starter", "away_starter",
         "regime", "score_regime", "model", "situation_tags",
         "home_win_pct", "draw_pct", "away_win_pct", "predicted_outcome",
@@ -384,8 +384,16 @@ def reconcile() -> dict[str, Any]:
         existing = pd.read_csv(LEDGER_PATH)
     existing_ids = set(existing["prediction_id"].astype(str)) if "prediction_id" in existing.columns else set()
     if not existing.empty:
+        if "target" not in existing.columns:
+            existing["target"] = existing.get("league", "NPB")
+        existing["target"] = existing["target"].fillna(existing.get("league", "NPB")).fillna("NPB").astype(str)
+        if "competition_id" not in existing.columns:
+            existing["competition_id"] = existing["target"]
+        existing["competition_id"] = existing["competition_id"].fillna(existing["target"]).astype(str)
         experience = pd.concat([existing, experience], ignore_index=True)
     if not experience.empty:
+        experience["target"] = experience["target"].fillna("NPB").astype(str)
+        experience["competition_id"] = experience["competition_id"].fillna(experience["target"]).astype(str)
         experience = experience.drop_duplicates("prediction_id", keep="last").sort_values(
             ["prediction_cutoff_utc", "game_id"]
         ).reset_index(drop=True)
