@@ -23,6 +23,32 @@ from research.competition_catalog import scopes as catalog_scopes
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
 _TIMEOUT = 15
+
+# Keep discovery from treating exact catalog/registry naming differences as
+# new unsupported competitions. This is identity alignment only; it does not
+# grant PIT/OOS/production eligibility.
+CATALOG_TO_REGISTRY_ID: dict[str, str] = {
+    "NCAA_D1": "NCAA_D1_BASEBALL",
+    "NCAA_D2": "NCAA_D2_BASEBALL",
+    "NCAA_D3": "NCAA_D3_BASEBALL",
+    "Japan_Independent": "JAPAN_INDEPENDENT",
+    "Japan_University": "JAPAN_UNIVERSITY_BASEBALL",
+    "Japan_Amateur_JABA": "JABA_CORPORATE",
+    "Japan_WomensHighSchool": "JAPAN_WOMENS_HIGH_SCHOOL",
+    "WBSC_WomensBaseball": "WBSC_WOMENS_BASEBALL",
+    "LittleLeague_WorldSeries": "LITTLE_LEAGUE_WORLD_SERIES",
+    "CapeCod": "CCBL",
+    "WBSC_Europe": "WBSC_EUROPE",
+    "AsianGames_2026": "ASIAN_GAMES_BASEBALL",
+    "LIDOM": "LIDOM",
+    "LVBP": "LVBP",
+    "LBPRC": "LBPRC",
+    "LMP": "LMP",
+    "WBSC_U12": "WBSC_U12",
+    "WBSC_U15": "WBSC_U15",
+    "WBSC_U18": "WBSC_U18",
+    "WBSC_U23": "WBSC_U23",
+}
 _MAX_BYTES = 1_000_000
 _DATE_RE = re.compile(r"\b20\d{2}[-/.]\d{1,2}[-/.]\d{1,2}\b|\b\d{1,2}[/-]\d{1,2}\b")
 
@@ -111,7 +137,9 @@ def discover_scope() -> dict[str, Any]:
         item["production_eligible"] = False
     discovered_frontier = sorted(frontier.values(), key=lambda x: (len(x["source_ids"]) * -1, x["competition_id"]))
 
-    registered_labels = {spec.competition_id for spec in COMPETITIONS} | {spec.name for spec in COMPETITIONS}
+    registered_labels = ({spec.competition_id for spec in COMPETITIONS} | {spec.name for spec in COMPETITIONS}
+                         | set(CATALOG_TO_REGISTRY_ID)
+                         | set(CATALOG_TO_REGISTRY_ID.values()))
     catalog_frontier: list[dict[str, Any]] = []
     source_by_id = {source.source_id: source for source in SOURCES}
     for scope in catalog_scopes():
