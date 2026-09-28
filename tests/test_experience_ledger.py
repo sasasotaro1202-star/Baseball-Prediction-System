@@ -152,3 +152,34 @@ def test_archive_and_reconcile_expose_target_level_metrics(tmp_path, monkeypatch
     assert set(summary["by_target"]) == {"NPB"}
     assert summary["by_target"]["NPB"]["rows"] == 1
     assert summary["by_target"]["NPB"]["accuracy"] == 1.0
+
+
+def test_reconcile_reports_independent_prediction_target_metrics(tmp_path, monkeypatch):
+    monkeypatch.setattr(exp, "EXPERIENCE", tmp_path / "experience")
+    monkeypatch.setattr(exp, "PRED_DIR", tmp_path / "experience" / "predictions")
+    monkeypatch.setattr(exp, "RESULT_DIR", tmp_path / "experience" / "official_results")
+    monkeypatch.setattr(exp, "LEDGER_PATH", tmp_path / "experience" / "experience_ledger.csv")
+    monkeypatch.setattr(exp, "LEDGER_JSONL", tmp_path / "experience" / "experience_ledger.jsonl")
+    monkeypatch.setattr(exp, "SUMMARY_PATH", tmp_path / "experience" / "experience_summary.json")
+    exp.archive_production_output(_prediction(tmp_path))
+    exp._load_cached_results = lambda dates: pd.DataFrame([{
+        "date": "2026-09-26",
+        "home": "横浜DeNAベイスターズ",
+        "away": "阪神タイガース",
+        "home_score": 4,
+        "away_score": 2,
+        "source_url": "test://npb",
+    }])
+
+    summary = exp.reconcile()
+    targets = summary["by_prediction_target"]
+    assert set(targets) == {"win_3way", "low_high", "exact_score"}
+    assert targets["win_3way"]["rows"] == 1
+    assert targets["low_high"]["rows"] == 1
+    assert targets["exact_score"]["rows"] == 1
+    assert targets["win_3way"]["accuracy"] == 1.0
+    assert "logloss" in targets["win_3way"] and "ece" in targets["win_3way"]
+    assert "logloss" in targets["low_high"] and "brier" in targets["low_high"] and "ece" in targets["low_high"]
+    assert "top1_exact_hit_rate" in targets["exact_score"]
+    assert "top4_exact_hit_rate" in targets["exact_score"]
+    assert "score_mae" in targets["exact_score"]
