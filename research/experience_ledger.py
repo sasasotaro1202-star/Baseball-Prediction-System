@@ -228,6 +228,77 @@ def _multiclass_ece(probabilities: np.ndarray, y_true: np.ndarray, *, bins: int 
     return float(ece)
 
 
+def _binary_ece(probabilities: np.ndarray, y_true: np.ndarray, *, bins: int = 10) -> float:
+    """Compute calibration error for one binary target without refitting."""
+    p = np.asarray(probabilities, dtype=float)
+    y = np.asarray(y_true, dtype=int)
+    if p.ndim != 1 or y.ndim != 1 or len(p) != len(y) or len(y) == 0:
+        raise ValueError("invalid binary ECE inputs")
+    if not np.isfinite(p).all() or (p < 0).any() or (p > 1).any():
+        raise ValueError("invalid binary ECE probabilities")
+    if bins <= 0:
+        raise ValueError("bins must be positive")
+    edges = np.linspace(0.0, 1.0, bins + 1)
+    total = float(len(y))
+    ece = 0.0
+    for i in range(bins):
+        lo, hi = edges[i], edges[i + 1]
+        upper_ok = p < hi if i < bins - 1 else p <= hi
+        mask = (p >= lo) & upper_ok
+        if not np.any(mask):
+            continue
+        ece += (float(mask.sum()) / total) * abs(
+            float(p[mask].mean()) - float(y[mask].mean())
+        )
+    return float(ece)
+
+
+def _prediction_target_metrics(frame: pd.DataFrame) -> dict[str, dict[str, Any]]:
+    """Evaluate win, Low/High, and exact-score targets independently."""
+    out: dict[str, dict[str, Any]] = {}
+    required = {"home_win_pct", "draw_pct", "away_win_pct", "actual_outcome"}
+    if required.issubset(frame.columns) and len(frame):
+        probs = frame[["home_win_pct", "draw_pct", "away_win_pct"]].to_numpy(float) / 100.0
+        y = frame["actual_outcome"].map({"HOME_WIN": 0, "DRAW": 1, "AWAY_WIN": 2}).to_numpy(int)
+        pred = probs.argmax(axis=1)
+        out["win_3way"] = {
+            "rows": int(len(frame)),
+            "accuracy": float((pred == y).mean()),
+            "logloss": float(-np.log(np.clip(probs[np.arange(len(frame)), y], 1e-12, 1.0)).mean()),
+            "brier": float(np.mean(np.sum((probs - np.eye(3)[y]) ** 2, axis=1))),
+            "ece": _multiclass_ece(probs, y),
+        }
+    else:
+        out["win_3way"] = {"rows": 0, "status": "UNAVAILABLE"}
+
+    required = {"high_pct", "low_high_actual"}
+    if required.issubset(frame.columns) and len(frame):
+        p_high = frame["high_pct"].to_numpy(float) / 100.0
+        y_high = frame["low_high_actual"].to_numpy(int)
+        pred_high = (p_high >= 0.5).astype(int)
+        out["low_high"] = {
+            "rows": int(len(frame)),
+            "accuracy": float((pred_high == y_high).mean()),
+            "logloss": float(-np.mean(y_high * np.log(np.clip(p_high, 1e-12, 1.0)) + (1 - y_high) * np.log(np.clip(1 - p_high, 1e-12, 1.0)))),
+            "brier": float(np.mean((p_high - y_high) ** 2)),
+            "ece": _binary_ece(p_high, y_high),
+        }
+    else:
+        out["low_high"] = {"rows": 0, "status": "UNAVAILABLE"}
+
+    required = {"top1_exact_hit", "top4_hit", "score_mae"}
+    if required.issubset(frame.columns) and len(frame):
+        out["exact_score"] = {
+            "rows": int(len(frame)),
+            "top1_exact_hit_rate": float(frame["top1_exact_hit"].mean()),
+            "top4_exact_hit_rate": float(frame["top4_hit"].mean()),
+            "score_mae": float(frame["score_mae"].mean()),
+        }
+    else:
+        out["exact_score"] = {"rows": 0, "status": "UNAVAILABLE"}
+    return out
+
+
 def _parse_top4(row: Any) -> list[tuple[str, float]]:
     if isinstance(row, list):
         return [(str(x.get("score")), float(x.get("prob_pct", 0.0))) for x in row if isinstance(x, dict)]
@@ -429,6 +500,7 @@ def reconcile() -> dict[str, Any]:
         "top4_exact_hit_rate": float(experience["top4_hit"].mean()),
         "by_regime": {},
         "by_target": {},
+        "by_prediction_target": _prediction_target_metrics(experience),
         "by_dominant_expert": {},
         "rolling": {},
     }
