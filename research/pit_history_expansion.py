@@ -81,7 +81,11 @@ def audit() -> dict:
 
     return {
         "status": "AUDIT_COMPLETE",
-        "source_snapshot_file": str(PIT_FILE.relative_to(ROOT)),
+        "source_snapshot_file": (
+            str(PIT_FILE.relative_to(ROOT))
+            if PIT_FILE.is_relative_to(ROOT)
+            else str(PIT_FILE)
+        ),
         "snapshot_rows": len(rows),
         "leagues": leagues,
         "sources": sources,
