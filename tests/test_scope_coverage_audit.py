@@ -43,3 +43,18 @@ def test_frontier_game_metrics_counts_discovered_and_deferred(tmp_path, monkeypa
     assert metrics["KBO"]["games_discovered"] == 5
     assert metrics["CPBL"]["token_count"] == 4
     assert metrics["CPBL"]["deferred_or_unparsed"] == 4
+
+
+def test_catalog_exact_aliases_resolve_to_canonical_registry_ids():
+    assert s.CATALOG_TO_REGISTRY_ID["NCAA_D1"] == "NCAA_D1_BASEBALL"
+    assert s.CATALOG_TO_REGISTRY_ID["Japan_Independent"] == "JAPAN_INDEPENDENT"
+    assert s.CATALOG_TO_REGISTRY_ID["Japan_University"] == "JAPAN_UNIVERSITY_BASEBALL"
+    assert s.CATALOG_TO_REGISTRY_ID["AsianGames_2026"] == "ASIAN_GAMES_BASEBALL"
+
+
+def test_scope_coverage_uses_canonical_registry_alias_for_narrow_catalog_id():
+    result = s.audit()
+    row = next(x for x in result["scopes"] if x["scope_id"] == "NCAA_D1")
+    assert row["registry_registered"] is True
+    assert row["registry_competition_id"] == "NCAA_D1_BASEBALL"
+    assert row["registry_alias_applied"] is True
