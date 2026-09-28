@@ -82,6 +82,20 @@ def archive_production_output(input_json: str | Path, *, run_id: str | None = No
         if not pred.get("game_id") or not pred.get("prediction_cutoff_utc"):
             raise ValueError("prediction row missing game_id or cutoff")
         record = dict(pred)
+        # Canonical target identity is preserved for per-target metrics. Prefer
+        # an explicit target/competition/league field; the NPB production
+        # archive supplies NPB when these fields are absent.
+        target = (
+            record.get("target")
+            or record.get("competition_id")
+            or record.get("league")
+            or obj.get("target")
+            or obj.get("competition_id")
+            or obj.get("league")
+            or "NPB"
+        )
+        record["target"] = str(target)
+        record["competition_id"] = str(record.get("competition_id") or target)
         record["prediction_id"] = _prediction_id(record)
         record["source_run_id"] = str(run_id) if run_id is not None else None
         record["archived_at_utc"] = _utc_now()
@@ -406,9 +420,27 @@ def reconcile() -> dict[str, Any]:
         "top1_exact_hit_rate": float(experience["top1_exact_hit"].mean()),
         "top4_exact_hit_rate": float(experience["top4_hit"].mean()),
         "by_regime": {},
+        "by_target": {},
         "by_dominant_expert": {},
         "rolling": {},
     }
+
+    # Target/competition is a first-class evaluation axis. Never mix
+    # NPB/MLB/etc. performance into one headline when target labels exist.
+    if "target" in experience.columns:
+        for key, group in experience.groupby("target", dropna=False):
+            summary["by_target"][str(key)] = {
+                "rows": int(len(group)),
+                "accuracy": float(group["outcome_correct"].mean()),
+                "logloss": float(group["logloss"].mean()),
+                "brier": float(group["brier"].mean()),
+                "ece": _multiclass_ece(
+                    group[["home_win_pct", "draw_pct", "away_win_pct"]].to_numpy(float) / 100.0,
+                    group["actual_outcome"].map({"HOME_WIN": 0, "DRAW": 1, "AWAY_WIN": 2}).to_numpy(int),
+                ),
+                "low_high_accuracy": float(group["low_high_correct"].mean()),
+                "top4_exact_hit_rate": float(group["top4_hit"].mean()),
+            }
 
     for key, group in experience.groupby("regime", dropna=False):
         summary["by_regime"][str(key)] = {
