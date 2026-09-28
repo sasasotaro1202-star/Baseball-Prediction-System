@@ -99,6 +99,7 @@ def from_mapping(row: Mapping[str, Any]) -> AvailabilityRecord:
 
 def prediction_eligible(record: AvailabilityRecord) -> tuple[bool, list[str]]:
     record.validate()
+    spec = get_competition(record.league)
     reasons: list[str] = []
     if spec.requires_starter_announcement:
         if not record.home_starter:
