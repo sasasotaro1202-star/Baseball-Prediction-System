@@ -258,7 +258,8 @@ def _prediction_target_metrics(frame: pd.DataFrame) -> dict[str, dict[str, Any]]
     out: dict[str, dict[str, Any]] = {}
     required = {"home_win_pct", "draw_pct", "away_win_pct", "actual_outcome"}
     if required.issubset(frame.columns) and len(frame):
-        probs = frame[["home_win_pct", "draw_pct", "away_win_pct"]].to_numpy(float) / 100.0
+        # Reconciled and rolled-up experience frames store 3-way probabilities in [0,1].
+        probs = frame[["home_win_pct", "draw_pct", "away_win_pct"]].to_numpy(float)
         y = frame["actual_outcome"].map({"HOME_WIN": 0, "DRAW": 1, "AWAY_WIN": 2}).to_numpy(int)
         pred = probs.argmax(axis=1)
         out["win_3way"] = {
@@ -273,7 +274,8 @@ def _prediction_target_metrics(frame: pd.DataFrame) -> dict[str, dict[str, Any]]
 
     required = {"high_pct", "low_high_actual"}
     if required.issubset(frame.columns) and len(frame):
-        p_high = frame["high_pct"].to_numpy(float) / 100.0
+        # Reconciled and rolled-up experience frames store Low/High probabilities in [0,1].
+        p_high = frame["high_pct"].to_numpy(float)
         y_high = frame["low_high_actual"].to_numpy(int)
         pred_high = (p_high >= 0.5).astype(int)
         out["low_high"] = {
