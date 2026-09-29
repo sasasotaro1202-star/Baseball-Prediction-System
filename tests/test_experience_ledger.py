@@ -184,6 +184,25 @@ def test_reconcile_reports_independent_prediction_target_metrics(tmp_path, monke
     assert abs(targets["low_high"]["logloss"] + np.log(0.70)) < 1e-12
     assert abs(targets["low_high"]["brier"] - 0.09) < 1e-12
     assert abs(targets["low_high"]["ece"] - 0.30) < 1e-12
+
+
+def test_prediction_target_metrics_accept_normalized_snapshot_scale():
+    frame = pd.DataFrame([{
+        "home_win_pct": 0.60,
+        "draw_pct": 0.05,
+        "away_win_pct": 0.35,
+        "actual_outcome": "HOME_WIN",
+        "high_pct": 0.30,
+        "low_high_actual": 0,
+        "top1_exact_hit": 0,
+        "top4_hit": 1,
+        "score_mae": 1.0,
+    }])
+    targets = exp._prediction_target_metrics(frame)
+    assert abs(targets["win_3way"]["logloss"] + np.log(0.60)) < 1e-12
+    assert abs(targets["win_3way"]["brier"] - 0.245) < 1e-12
+    assert abs(targets["low_high"]["logloss"] + np.log(0.70)) < 1e-12
+    assert abs(targets["low_high"]["brier"] - 0.09) < 1e-12
     assert "logloss" in targets["win_3way"] and "ece" in targets["win_3way"]
     assert "logloss" in targets["low_high"] and "brier" in targets["low_high"] and "ece" in targets["low_high"]
     assert "top1_exact_hit_rate" in targets["exact_score"]
