@@ -1,7 +1,7 @@
 {
-  "generated_at_utc": "2026-09-29T18:44:01.469760+00:00",
+  "generated_at_utc": "2026-09-29T22:27:48.537950+00:00",
   "status": "UPDATED",
-  "prediction_snapshot_rows_total": 154,
+  "prediction_snapshot_rows_total": 156,
   "matched_snapshot_rows": 55,
   "unique_games_with_results": 5,
   "experience_cases": {
@@ -67,16 +67,16 @@
     "win_3way": {
       "rows": 5,
       "accuracy": 0.6,
-      "logloss": 5.295174155894808,
-      "brier": 0.9894985950749327,
-      "ece": 0.593768833038577
+      "logloss": 0.6900039699067178,
+      "brier": 0.4786900264255903,
+      "ece": 0.2568393038576962
     },
     "low_high": {
       "rows": 5,
-      "accuracy": 0.4,
-      "logloss": 3.066143732107231,
-      "brier": 0.5927356633246006,
-      "ece": 0.593470276
+      "accuracy": 0.6,
+      "logloss": 0.8085303353578924,
+      "brier": 0.30048724600520005,
+      "ece": 0.5222264
     },
     "exact_score": {
       "rows": 5,
@@ -89,16 +89,16 @@
     "win_3way": {
       "rows": 55,
       "accuracy": 0.6,
-      "logloss": 5.30290689095478,
-      "brier": 0.9896163080573329,
-      "ece": 0.5938436964091293
+      "logloss": 0.6977367049666885,
+      "brier": 0.48659650163512924,
+      "ece": 0.1705217162375997
     },
     "low_high": {
       "rows": 55,
-      "accuracy": 0.4,
-      "logloss": 3.0596469837568483,
-      "brier": 0.5926683432753143,
-      "ece": 0.5934398665454546
+      "accuracy": 0.6,
+      "logloss": 0.8011162908768034,
+      "brier": 0.2967355531425819,
+      "ece": 0.3666241818181819
     },
     "exact_score": {
       "rows": 55,

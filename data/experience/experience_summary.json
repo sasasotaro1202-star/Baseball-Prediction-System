@@ -1,5 +1,5 @@
 {
-  "generated_at_utc": "2026-09-29T18:44:00.781672+00:00",
+  "generated_at_utc": "2026-09-29T22:27:47.832934+00:00",
   "status": "UPDATED",
   "prediction_rows": 19,
   "matched_rows_total": 5,
@@ -43,9 +43,9 @@
     "win_3way": {
       "rows": 5,
       "accuracy": 0.6,
-      "logloss": 5.295173955894909,
-      "brier": 0.9894985932434975,
-      "ece": 0.593768832
+      "logloss": 0.6900037699068177,
+      "brier": 0.4786900349762,
+      "ece": 0.2568392
     },
     "low_high": {
       "rows": 5,
