@@ -256,10 +256,29 @@ def _binary_ece(probabilities: np.ndarray, y_true: np.ndarray, *, bins: int = 10
 def _prediction_target_metrics(frame: pd.DataFrame) -> dict[str, dict[str, Any]]:
     """Evaluate win, Low/High, and exact-score targets independently."""
     out: dict[str, dict[str, Any]] = {}
+
+    def _as_unit_interval(values: Any, *, label: str) -> np.ndarray:
+        arr = np.asarray(values, dtype=float)
+        if arr.ndim == 2:
+            scale = float(np.nanmax(arr)) if arr.size else 0.0
+        else:
+            scale = float(np.nanmax(arr)) if arr.size else 0.0
+        if not np.isfinite(arr).all() or (arr < 0.0).any() or scale > 100.0:
+            raise ValueError(f"invalid {label} probabilities")
+        # Experience sources may store percentage points (0..100) or
+        # normalized probabilities (0..1). Normalize once, never twice.
+        if scale > 1.0:
+            arr = arr / 100.0
+        if not np.isfinite(arr).all() or (arr > 1.0).any():
+            raise ValueError(f"invalid {label} probabilities after normalization")
+        return arr
+
     required = {"home_win_pct", "draw_pct", "away_win_pct", "actual_outcome"}
     if required.issubset(frame.columns) and len(frame):
-        # Reconciled and rolled-up experience frames store 3-way probabilities in [0,1].
-        probs = frame[["home_win_pct", "draw_pct", "away_win_pct"]].to_numpy(float)
+        probs = _as_unit_interval(
+            frame[["home_win_pct", "draw_pct", "away_win_pct"]].to_numpy(float),
+            label="win",
+        )
         y = frame["actual_outcome"].map({"HOME_WIN": 0, "DRAW": 1, "AWAY_WIN": 2}).to_numpy(int)
         pred = probs.argmax(axis=1)
         out["win_3way"] = {
@@ -274,8 +293,7 @@ def _prediction_target_metrics(frame: pd.DataFrame) -> dict[str, dict[str, Any]]
 
     required = {"high_pct", "low_high_actual"}
     if required.issubset(frame.columns) and len(frame):
-        # Reconciled and rolled-up experience frames store Low/High probabilities in [0,1].
-        p_high = frame["high_pct"].to_numpy(float)
+        p_high = _as_unit_interval(frame["high_pct"].to_numpy(float), label="Low/High")
         y_high = frame["low_high_actual"].to_numpy(int)
         pred_high = (p_high >= 0.5).astype(int)
         out["low_high"] = {
