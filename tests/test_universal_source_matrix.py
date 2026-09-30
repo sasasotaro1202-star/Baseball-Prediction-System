@@ -193,7 +193,9 @@ def test_selected_auto_discovery_source_is_fed_into_scope_matrix(tmp_path, monke
         },
         "selection_history": [],
     }
-    (tmp_path / "auto_discovery_frontier.json").write_text(json.dumps(payload), encoding="utf-8")
+    frontier_dir = tmp_path / "research"
+    frontier_dir.mkdir(parents=True)
+    (frontier_dir / "auto_discovery_frontier.json").write_text(json.dumps(payload), encoding="utf-8")
     monkeypatch.setattr(matrix, "ROOT", tmp_path)
     rows = matrix.application_plan("KBO")
     found = [row for row in rows if row["source_id"] == "AUTO_TEST"]
