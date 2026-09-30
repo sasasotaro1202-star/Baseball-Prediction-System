@@ -170,7 +170,7 @@ class BaseballResearchEngine:
             "legacy_best_model": legacy_best,
             "bridge_best_model": bridge_best,
             "legacy_model_names": legacy_names,
-            "bridge_model_names": bridge_model_names,
+            "bridge_model_names": bridge_names,
             "bridge_audit_tail": bridge_audit_tail,
             "delegated_to_existing_engine": True,
         }
