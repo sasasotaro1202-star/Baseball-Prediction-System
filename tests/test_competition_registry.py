@@ -138,3 +138,18 @@ def test_competition_metrics_include_top1_top4_and_lowhigh_probability_scores(tm
     assert np.isfinite(float(hilo["LogLoss"]))
     assert np.isfinite(float(hilo["Brier"]))
     assert np.isfinite(float(hilo["ECE"]))
+
+
+
+def test_external_data_discovery_manifest_is_unique_and_fail_closed():
+    import json
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    payload = json.loads((root / "research" / "external_data_discovery.json").read_text(encoding="utf-8"))
+    sources = payload["sources"]
+    ids = [row["source_id"] for row in sources]
+    assert len(ids) == len(set(ids))
+    assert all(row["url"].startswith(("https://", "http://")) for row in sources)
+    assert all(row["pit_status"] == "UNVERIFIED" for row in sources)
+    assert all(row["research_status"] == "DISCOVERED" for row in sources)
