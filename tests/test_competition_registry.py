@@ -102,6 +102,7 @@ def test_competition_metrics_include_top1_top4_and_lowhigh_probability_scores(tm
             "competition_classification_status": "classified",
             "prediction_strategy_id": "league_adaptive_ensemble",
             "prediction_calibration_id": "league_temperature",
+            "model": "FixtureModel",
             "actual": 0 if i == 0 else 1,
             "correct": 1,
             "pred_home": 0.6,
