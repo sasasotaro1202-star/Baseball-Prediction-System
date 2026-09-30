@@ -70,6 +70,8 @@ class PredictionRecord:
     git_commit: str
     data_snapshot_id: str
     eligibility: str = "ELIGIBLE"
+    competition_key: str | None = None
+    competition_stage: str | None = None
 
 
 def make_prediction_id(event_id: str, cutoff: str, model_version: str, git_commit: str) -> str:
@@ -77,8 +79,10 @@ def make_prediction_id(event_id: str, cutoff: str, model_version: str, git_commi
 
 
 def validate_prediction(record: PredictionRecord) -> None:
-    if record.league not in {"NPB", "MLB"}:
-        raise ValueError("league must be NPB or MLB")
+    if record.league not in {"NPB", "MLB"} and not record.competition_key:
+        raise ValueError("league/competition identity is required")
+    if record.competition_key is not None and not str(record.competition_key).strip():
+        raise ValueError("competition_key must be non-empty when supplied")
     if not record.event_id or not record.home_team or not record.away_team:
         raise ValueError("event and team identifiers are required")
     if record.eligibility != "ELIGIBLE":
