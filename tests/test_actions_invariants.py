@@ -156,3 +156,13 @@ def test_24h_supervisor_avoids_deterministic_failure_retry_loop():
     assert "compare/${latest_sha}...${current_main_sha}" in text
     assert 'startswith("data/pit/")' in text
     assert "main advanced only through PIT evidence commits" in text
+
+
+
+def test_24h_keeper_resets_failure_cooldown_after_success():
+    text = (ROOT / ".github" / "workflows" / "baseball_24h_research_keeper.yml").read_text(encoding="utf-8")
+    assert "latest_success_at" in text
+    assert "failures_after_success" in text
+    assert "failures_after_latest_success" in text
+    assert "three or more consecutive failed autopilot runs since the latest success" in text
+    assert "recent_failures_24h" not in text
