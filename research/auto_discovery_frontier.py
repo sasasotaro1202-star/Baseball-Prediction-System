@@ -24,16 +24,10 @@ from research.competition_catalog import SCOPES
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "research" / "auto_discovery_frontier.json"
 
-GITHUB_SEARCH_QUERIES = (
-    "baseball dataset play by play",
-    "baseball pitch by pitch csv",
-    "baseball statistics historical dataset",
-    "baseball tournament dataset",
-    "baseball scouting data",
-)
 FOCUS_LIMIT = int(os.getenv("BASEBALL_DISCOVERY_FOCUS_LIMIT", "12"))
 RESULTS_PER_QUERY = int(os.getenv("BASEBALL_DISCOVERY_RESULTS_PER_QUERY", "8"))
 MAX_TOTAL_RESULTS = int(os.getenv("BASEBALL_DISCOVERY_MAX_TOTAL_RESULTS", "120"))
+ROTATION_PERIOD_HOURS = int(os.getenv("BASEBALL_DISCOVERY_ROTATION_HOURS", "6"))
 
 def _get_json(url: str, *, token: str | None = None) -> Any:
     headers = {"User-Agent": "Baseball-Prediction-System-source-discovery/1.0", "Accept": "application/json"}
@@ -65,15 +59,27 @@ def _query_for_scope(scope) -> str:
     phrase = extras.get(scope.scope_id, f"{label} {sid}")
     return phrase + " dataset baseball"
 
-def _rotating_focus() -> list[Any]:
+def _rotation_slot(now: datetime | None = None) -> int:
+    current = now or datetime.now(timezone.utc)
+    return int(current.timestamp() // (max(1, ROTATION_PERIOD_HOURS) * 3600))
+
+
+def _rotating_focus(now: datetime | None = None) -> list[Any]:
     scopes = sorted(SCOPES, key=lambda s: (int(s.priority), s.scope_id))
     if not scopes:
         return []
-    # Rotate by UTC day so the full frontier is explored over consecutive cycles.
-    day = int(datetime.now(timezone.utc).strftime("%Y%m%d"))
-    start = (day * max(1, FOCUS_LIMIT)) % len(scopes)
+    # Rotate every configured discovery interval, not only once per UTC day.
+    slot = _rotation_slot(now)
+    start = (slot * max(1, FOCUS_LIMIT)) % len(scopes)
     ordered = scopes[start:] + scopes[:start]
     return ordered[: max(1, FOCUS_LIMIT)]
+
+
+def _result_budget(focus_count: int) -> int:
+    # Divide the per-cycle candidate budget across every scope/platform slot so
+    # early scopes cannot exhaust the global cap before later scopes are scanned.
+    slots = max(1, focus_count * 2)
+    return max(1, MAX_TOTAL_RESULTS // slots)
 
 def _license_text(item: dict[str, Any]) -> str:
     lic = item.get("license") or item.get("cardData", {}).get("license") or ""
@@ -147,20 +153,23 @@ def run() -> dict[str, Any]:
     frontier = load_frontier()
     existing_registered = {str(s.source_id).lower() for s in SOURCES}
     focus = _rotating_focus()
-    queries = [_query_for_scope(s) for s in focus] + list(GITHUB_SEARCH_QUERIES)
+    rotation_slot = _rotation_slot()
+    per_scope_platform_budget = _result_budget(len(focus))
     seen_cycle: set[str] = set()
     discovered = 0
     failures = []
     now = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    query_count = 0
     for scope in focus:
         query = _query_for_scope(scope)
         for platform in ("github", "huggingface"):
+            query_count += 1
             try:
                 raw = _github_candidates(query, token) if platform == "github" else _hf_candidates(query)
             except Exception as exc:
                 failures.append({"scope_id": scope.scope_id, "platform": platform, "error": f"{type(exc).__name__}:{exc}"})
                 continue
-            for item in raw:
+            for item in raw[:per_scope_platform_budget]:
                 if len(seen_cycle) >= MAX_TOTAL_RESULTS:
                     break
                 if platform == "github":
@@ -215,7 +224,9 @@ def run() -> dict[str, Any]:
         r["selected_for_next_research"] = r["source_id"] in set(sum(selected_by_scope.values(), []))
     frontier["updated_at"] = now
     frontier["last_run"] = {
-        "run_at": now, "focus_scopes": [s.scope_id for s in focus], "query_count": len(queries),
+        "run_at": now, "rotation_slot": rotation_slot, "rotation_period_hours": max(1, ROTATION_PERIOD_HOURS),
+        "focus_scopes": [s.scope_id for s in focus], "query_count": query_count,
+        "result_budget_per_scope_platform": per_scope_platform_budget,
         "discovered_records_touched": discovered, "selected_count": sum(len(v) for v in selected_by_scope.values()),
         "selected_by_scope": selected_by_scope, "failures": failures,
         "policy": {"free_only": True, "production_promotion": False, "unknown_pit": "FAIL_CLOSED"},
