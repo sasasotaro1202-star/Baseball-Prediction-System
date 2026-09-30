@@ -30,6 +30,13 @@ def strategy_for(
     key = str(competition_key or "baseball:unknown")
     ctype = str(competition_type or "unknown")
     stg = str(stage or "unknown")
+    # Structured competition keys encode league:competition:stage. Recover the
+    # stage when callers omit the explicit stage instead of routing known scopes
+    # to the unknown fail-closed strategy.
+    if stg == "unknown":
+        parts = key.split(":")
+        if len(parts) >= 3 and parts[2].strip():
+            stg = parts[2].strip()
 
     if stg in {"regular_season", "interleague"}:
         strategy_id = "league_adaptive_ensemble"
