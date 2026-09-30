@@ -65,6 +65,7 @@ from sklearn.preprocessing import StandardScaler
 
 from research.regime_router import RegimeRouter
 from research.competition_taxonomy import classify_mlb, classify_npb
+from research.competition_strategy import strategy_for, eligible_for_competition_calibration
 from research.hierarchical_result_model import HierarchicalNPBClassifier
 from research.correlated_score import estimate_shared_lambda, low_high as correlated_low_high, top_scores as correlated_top_scores
 from evaluation.calibration import fit_temperature, TemperatureCalibration
@@ -1549,7 +1550,8 @@ class BaseballBacktest:
             raise ValueError("stacker requires at least one member")
         return np.concatenate(blocks, axis=1)
 
-    def fit_ensemble(self, X: pd.DataFrame, y: np.ndarray, league: str, *, fast_oos: bool = False):
+    def fit_ensemble(self, X: pd.DataFrame, y: np.ndarray, league: str, *, fast_oos: bool = False, context_keys: Sequence[Any] | None = None):
+
         """Fit an ensemble with leakage-safe regime-specific routing.
 
         Global chronological validation remains the primary selector. A
@@ -1558,6 +1560,12 @@ class BaseballBacktest:
         completely back to the global weights.
         """
         models=self.models(league); k=3 if league=="NPB" else 2
+        if context_keys is None:
+            context = pd.Series([f"{league}:unknown:unknown"] * len(X), index=X.index, dtype=object)
+        else:
+            context = pd.Series(list(context_keys), index=X.index, dtype=object).fillna(f"{league}:unknown:unknown").astype(str)
+            if len(context) != len(X):
+                raise ValueError("context_keys length must match training rows")
         splits=self._validation_splits(len(X))
         if fast_oos and splits:
             splits=splits[-1:]
@@ -1569,6 +1577,8 @@ class BaseballBacktest:
         validation_regime_labels = self._chronological_regime_labels(X, splits)
         regime_losses={}
         regime_counts={}
+        competition_losses={}
+        competition_counts={}
         validation_predictions = {}
         for cut, val in splits:
             labels=validation_regime_labels[(cut,val)]
@@ -1587,6 +1597,13 @@ class BaseballBacktest:
                     losses.append(log_loss(yv,p,labels=list(range(k))))
                     labels=validation_regime_labels[(cut,val)]
                     row_losses=-np.log(np.clip(p[np.arange(len(yv)),yv],1e-12,1.0))
+                    validation_context = context.iloc[cut:cut+val].to_numpy(dtype=str)
+                    for competition_key in np.unique(validation_context):
+                        mask = validation_context == str(competition_key)
+                        if mask.any():
+                            key = str(competition_key)
+                            competition_counts[key] = competition_counts.get(key, 0) + int(mask.sum())
+                            competition_losses.setdefault(key,{}).setdefault(name,[]).extend(row_losses[mask].tolist())
                     for regime in np.unique(labels):
                         mask=labels==regime
                         if mask.any():
@@ -1708,6 +1725,74 @@ class BaseballBacktest:
         effective_global_losses=adjust_losses(global_losses, diversity_lambda)
         self._ensemble_diversity_lambda=float(diversity_lambda)
         self._ensemble_model_redundancy=dict(redundancy)
+
+        # Competition-aware calibration is selected from chronological
+        # validation predictions only. Small or unknown competitions remain on
+        # the league-level temperature, avoiding high-variance specialization.
+        self._competition_temperatures = {}
+        self._competition_strategy_ids = {}
+        self._competition_calibration_rows = {}
+        for competition_key, by_model in competition_losses.items():
+            strategy = strategy_for(str(competition_key))
+            rows = int(competition_counts.get(competition_key, 0))
+            self._competition_strategy_ids[str(competition_key)] = strategy.strategy_id
+            self._competition_calibration_rows[str(competition_key)] = rows
+            if not eligible_for_competition_calibration(strategy, rows):
+                continue
+            parts = []
+            yparts = []
+            for (cut, val), by_model_pred in sorted(validation_predictions.items()):
+                stored = by_model_pred
+                if not stored:
+                    continue
+                ctx = context.iloc[cut:cut+val].astype(str).to_numpy()
+                mask = ctx == str(competition_key)
+                if not mask.any():
+                    continue
+                members = {
+                    name: np.asarray(stored[name])[mask]
+                    for name in top_names_sorted
+                    if name in stored
+                }
+                if not members:
+                    continue
+                # Use the same validated blend selected for the league.
+                weights = {}
+                inv_local = np.asarray([
+                    1.0 / max(float(effective_global_losses.get(name, global_losses.get(name, 1.0))), 1e-6) ** weight_power
+                    for name in top_names_sorted
+                ], dtype=float)
+                inv_local /= max(float(inv_local.sum()), 1e-12)
+                for name, w in zip(top_names_sorted, inv_local):
+                    if name in members:
+                        weights[name] = float(w)
+                parts.append(self._blend_probability_members(members, weights, mode=self._ensemble_blend_mode))
+                yparts.append(np.asarray(y[cut:cut+val], dtype=int)[mask])
+            if parts:
+                cp = np.vstack(parts)
+                cy = np.concatenate(yparts)
+                if len(cy) >= strategy.specialist_min_validation_rows and np.unique(cy).size >= k:
+                    try:
+                        self._competition_temperatures[str(competition_key)] = float(
+                            fit_temperature(cp, cy).temperature
+                        )
+                    except Exception as exc:
+                        self.audit.append({
+                            "type": "competition_calibration_error",
+                            "competition_key": str(competition_key),
+                            "error": f"{type(exc).__name__}: {exc}",
+                        })
+        self.audit.append({
+            "type": "competition_calibration_selection",
+            "competitions": {
+                key: {
+                    "strategy_id": self._competition_strategy_ids.get(key),
+                    "validation_rows": int(self._competition_calibration_rows.get(key, 0)),
+                    "temperature": self._competition_temperatures.get(key),
+                }
+                for key in sorted(self._competition_strategy_ids)
+            },
+        })
         self.audit.append({
             "type":"ensemble_routing_selection",
             "router_params":dict(router_params),
@@ -2047,7 +2132,7 @@ class BaseballBacktest:
             raise ValueError("probability blend produced invalid normalization")
         return out / out_sum
 
-    def ensemble_proba(self, fitted, X: pd.DataFrame, league: str) -> np.ndarray:
+    def ensemble_proba(self, fitted, X: pd.DataFrame, league: str, *, context_keys: Sequence[Any] | None = None) -> np.ndarray:
         k=3 if league=="NPB" else 2
         p=np.zeros((len(X),k))
         labels=self._regime_router.labels(X) if self._regime_router is not None else np.array(["global"]*len(X))
@@ -2091,11 +2176,23 @@ class BaseballBacktest:
                 blend_mode = "linear" if self._calibration_mode == "individual" else self._ensemble_blend_mode
                 p[idx]=self._blend_probability_members(members, member_weights, mode=blend_mode)
 
-        t=float(getattr(self,"_last_temperature",1.0))
-        if abs(t-1.0)>1e-9:
-            p=np.clip(p,1e-7,1.0) ** (1.0/t)
-            p=p/p.sum(axis=1,keepdims=True)
-        return np.apply_along_axis(clip_prob,1,p)
+        global_t=float(getattr(self,"_last_temperature",1.0))
+        if context_keys is None:
+            context = np.asarray([f"{league}:unknown:unknown"] * len(X), dtype=str)
+        else:
+            context = np.asarray(list(context_keys), dtype=str)
+            if len(context) != len(X):
+                raise ValueError("context_keys length must match prediction rows")
+        # Apply competition-specific temperature where validated; otherwise use
+        # the league-level calibration selected above.
+        calibrated = np.asarray(p, dtype=float).copy()
+        for competition_key in np.unique(context):
+            idx = np.flatnonzero(context == str(competition_key))
+            t = float(self._competition_temperatures.get(str(competition_key), global_t))
+            if abs(t-1.0) > 1e-9:
+                calibrated[idx] = np.clip(calibrated[idx],1e-7,1.0) ** (1.0/t)
+                calibrated[idx] /= calibrated[idx].sum(axis=1,keepdims=True)
+        return np.apply_along_axis(clip_prob,1,calibrated)
 
     def align_proba(self, raw: np.ndarray, classes: np.ndarray, league: str) -> np.ndarray:
         k = 3 if league == "NPB" else 2
@@ -2385,11 +2482,17 @@ class BaseballBacktest:
                 print(f"[{league} HEARTBEAT] fitting block={block_number}/{total_blocks} train={bstart} eval={bend-bstart}", flush=True)
                 fast_oos = os.getenv("BASEBALL_FAST_OOS", "0") == "1"
                 fitted, val_scores, best_name = self.fit_ensemble(
-                    X.iloc[:bstart], y[:bstart], league, fast_oos=fast_oos
+                    X.iloc[:bstart], y[:bstart], league, fast_oos=fast_oos,
+                    context_keys=meta.iloc[:bstart]["competition_key"] if "competition_key" in meta.columns else None,
                 )
                 if not fitted: raise RuntimeError("ensemble fitting failed")
                 name = "Ensemble(" + "+".join(x[2] for x in fitted) + ")"
-                p = self.ensemble_proba(fitted, X.iloc[bstart:bend], league)
+                p = self.ensemble_proba(
+                    fitted,
+                    X.iloc[bstart:bend],
+                    league,
+                    context_keys=meta.iloc[bstart:bend]["competition_key"] if "competition_key" in meta.columns else None,
+                )
                 score_fit = self.fit_score_ensemble(X.iloc[:bstart], games.iloc[:bstart]["home_score"].astype(float).values, games.iloc[:bstart]["away_score"].astype(float).values, league)
             except TimeoutError:
                 raise
@@ -2438,8 +2541,25 @@ class BaseballBacktest:
                 while len(scores) < 4:
                     scores.append(("その他", 0.0))
                 low, high = low_high_probs(lam_h, lam_a, shared)
+                competition_key = str(r.get("competition_key", f"{league}:unknown:unknown"))
+                competition_label = strategy_for(
+                    competition_key,
+                    stage=str(r.get("competition_stage", "unknown")),
+                )
                 block_rows.append({
                     "league": league, "game_id": r["game_id"], "datetime": r["datetime"],
+                    "competition_key": competition_key,
+                    "competition": r.get("competition", ""),
+                    "competition_stage": r.get("competition_stage", ""),
+                    "season_type": r.get("season_type", ""),
+                    "game_class": r.get("game_class", ""),
+                    "competition_classification_status": r.get("competition_classification_status", ""),
+                    "prediction_strategy_id": competition_label.strategy_id,
+                    "prediction_calibration_id": (
+                        "competition_temperature"
+                        if competition_key in getattr(self, "_competition_temperatures", {})
+                        else "league_temperature"
+                    ),
                     # Preserve only explicitly supplied PIT timestamps. Never
                     # infer prediction/availability time from game start or
                     # retrieval time; missing evidence remains missing.
