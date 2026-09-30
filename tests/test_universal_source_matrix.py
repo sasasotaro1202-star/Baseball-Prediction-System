@@ -176,3 +176,27 @@ def test_israel_all_age_scopes_bind_iab():
 
 def test_argentina_lab_binds_official_source():
     assert "liga_argentina_beisbol" in {r["source_id"] for r in application_plan("Argentina_LAB")}
+
+
+def test_selected_auto_discovery_source_is_fed_into_scope_matrix(tmp_path, monkeypatch):
+    import json
+    import research.universal_source_matrix as matrix
+    payload = {
+        "schema_version": 1,
+        "candidates": {
+            "AUTO_TEST": {
+                "source_id": "AUTO_TEST",
+                "scope_ids": ["KBO"],
+                "selection_status": "SELECTED_RESEARCH_CANDIDATE",
+                "features": ["schedule_identity", "play_by_play", "pitching"],
+            }
+        },
+        "selection_history": [],
+    }
+    (tmp_path / "auto_discovery_frontier.json").write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr(matrix, "ROOT", tmp_path)
+    rows = matrix.application_plan("KBO")
+    found = [row for row in rows if row["source_id"] == "AUTO_TEST"]
+    assert len(found) == 1
+    assert found[0]["source_status"] == "AUTO_SELECTED_UNVERIFIED"
+    assert "play_by_play" in found[0]["features"]
