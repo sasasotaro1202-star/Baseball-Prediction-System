@@ -10,6 +10,7 @@ This module is research-safe and does not alter production model selection.
 from __future__ import annotations
 
 from datetime import datetime
+import json
 from typing import Any, Mapping
 
 import pandas as pd
@@ -140,6 +141,24 @@ SOURCE_CAPABILITIES: dict[str, frozenset[str]] = {
     "lahman": frozenset({"schedule_identity", "batting", "pitching", "fielding"}),
 }
 
+
+def _auto_selected_sources() -> list[dict[str, Any]]:
+    """Read the persisted discovery frontier without granting PIT/production status."""
+    path = ROOT / "research" / "auto_discovery_frontier.json"
+    if not path.exists():
+        return []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        candidates = payload.get("candidates", {})
+        if not isinstance(candidates, dict):
+            return []
+        return [
+            row for row in candidates.values()
+            if isinstance(row, dict) and row.get("selection_status") == "SELECTED_RESEARCH_CANDIDATE"
+        ]
+    except Exception:
+        return []
+
 _SHARED_SOURCES = {
     "weather",
 }
@@ -152,7 +171,8 @@ def source_capabilities(source_id: str) -> frozenset[str]:
 def application_plan(scope_id: str) -> list[dict[str, Any]]:
     """Return all registered sources intentionally applicable to one scope."""
     scope = get_scope(scope_id)
-    allowed = set(scope.source_ids) | _SHARED_SOURCES
+    auto_candidates = [r for r in _auto_selected_sources() if scope_id in set(r.get("scope_ids", [r.get("scope_id")]))]
+    allowed = set(scope.source_ids) | {str(r.get("source_id")) for r in auto_candidates if r.get("source_id")} | _SHARED_SOURCES
     registry_ids = {s.source_id for s in SOURCES}
     rows: list[dict[str, Any]] = []
     for source_id in sorted(allowed):
@@ -168,6 +188,7 @@ def application_plan(scope_id: str) -> list[dict[str, Any]]:
             "outcome_contract": scope.outcome_contract,
             "rule_family": scope.rule_family,
             "pit_requirement": "explicit available_at <= prediction_time",
+            "source_status": "AUTO_SELECTED_UNVERIFIED" if source_id not in {s.source_id for s in SOURCES} else "REGISTERED",
         })
     return rows
 
