@@ -81,3 +81,60 @@ def test_competition_scope_ids_are_unique():
     from research.competition_catalog import SCOPES
     ids = [spec.scope_id for spec in SCOPES]
     assert len(ids) == len(set(ids))
+
+
+
+def test_competition_metrics_include_top1_top4_and_lowhigh_probability_scores(tmp_path, monkeypatch):
+    import numpy as np
+    import pandas as pd
+    import baseball_backtest as bb
+
+    rows = []
+    for i, actual in enumerate(["3-2", "1-1"]):
+        rows.append({
+            "league": "NPB",
+            "game_id": f"g{i}",
+            "competition_key": "NPB:npb_interleague:interleague",
+            "competition": "npb_interleague",
+            "competition_stage": "interleague",
+            "season_type": "regular_season",
+            "game_class": "regular",
+            "competition_classification_status": "classified",
+            "prediction_strategy_id": "league_adaptive_ensemble",
+            "prediction_calibration_id": "league_temperature",
+            "actual": 0 if i == 0 else 1,
+            "correct": 1,
+            "pred_home": 0.6,
+            "pred_draw": 0.2,
+            "pred_away": 0.2,
+            "low": 0.4 if i == 0 else 0.7,
+            "high": 0.6 if i == 0 else 0.3,
+            "actual_home_score": int(actual.split("-")[0]),
+            "actual_away_score": int(actual.split("-")[1]),
+            "lambda_home": 2.5,
+            "lambda_away": 1.5,
+            "score1": actual if i == 0 else "2-1",
+            "score2": "2-2",
+            "score3": "3-3",
+            "score4": "4-2",
+        })
+    frame = pd.DataFrame(rows)
+
+    class Dummy:
+        _competition_calibration_rows = {"NPB:npb_interleague:interleague": 80}
+        _competition_temperatures = {"NPB:npb_interleague:interleague": 1.1}
+
+    monkeypatch.setattr(bb, "RESULTS", tmp_path)
+    Dummy.evaluate = bb.BaseballBacktest.evaluate
+    Dummy.save_reports = bb.BaseballBacktest.save_reports
+    Dummy.evaluate = lambda self, df, league: bb.BaseballBacktest.evaluate(self, df, league)
+    bb.BaseballBacktest.save_reports(Dummy(), frame, "NPB")
+
+    out = pd.read_csv(tmp_path / "npb_competition_target_metrics.csv")
+    exact = out[out["Target"] == "exact_score"].iloc[0]
+    hilo = out[out["Target"] == "low_high"].iloc[0]
+    assert exact["Top1ExactScoreHitRate"] == 0.5
+    assert exact["Top4ScoreHitRate"] == 1.0
+    assert np.isfinite(float(hilo["LogLoss"]))
+    assert np.isfinite(float(hilo["Brier"]))
+    assert np.isfinite(float(hilo["ECE"]))
