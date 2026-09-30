@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from datetime import datetime, timedelta, timezone
 
-from research.auto_discovery_frontier import _query_for_scope, _rotating_focus, _score_candidate, load_frontier
+from research.auto_discovery_frontier import (
+    _query_for_scope,
+    _result_budget,
+    _rotating_focus,
+    _rotation_slot,
+    _score_candidate,
+    load_frontier,
+)
 
 
 def test_discovery_scope_query_is_competition_specific():
@@ -42,3 +49,17 @@ def test_rotating_focus_is_bounded():
     focus = _rotating_focus()
     assert 1 <= len(focus) <= 12
     assert len({s.scope_id for s in focus}) == len(focus)
+
+
+def test_rotating_focus_changes_on_six_hour_boundary():
+    from research.competition_catalog import SCOPES
+    if len(SCOPES) <= 12:
+        return
+    first = datetime(2026, 9, 30, 0, tzinfo=timezone.utc)
+    second = first + timedelta(hours=6)
+    assert _rotation_slot(second) > _rotation_slot(first)
+    assert [s.scope_id for s in _rotating_focus(first)] != [s.scope_id for s in _rotating_focus(second)]
+
+
+def test_result_budget_distributes_global_cap_across_scope_platform_slots():
+    assert _result_budget(12) == 5
