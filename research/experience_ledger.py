@@ -281,12 +281,23 @@ def _prediction_target_metrics(frame: pd.DataFrame) -> dict[str, dict[str, Any]]
         )
         y = frame["actual_outcome"].map({"HOME_WIN": 0, "DRAW": 1, "AWAY_WIN": 2}).to_numpy(int)
         pred = probs.argmax(axis=1)
+        selective: dict[str, dict[str, Any]] = {}
+        confidence = probs.max(axis=1)
+        for threshold in (0.60, 0.70, 0.80, 0.90):
+            mask = confidence >= threshold
+            key = f"selective_{threshold:.2f}"
+            selective[key] = {
+                "coverage": float(mask.mean()),
+                "n": int(mask.sum()),
+                "accuracy": float((pred[mask] == y[mask]).mean()) if mask.any() else None,
+            }
         out["win_3way"] = {
             "rows": int(len(frame)),
             "accuracy": float((pred == y).mean()),
             "logloss": float(-np.log(np.clip(probs[np.arange(len(frame)), y], 1e-12, 1.0)).mean()),
             "brier": float(np.mean(np.sum((probs - np.eye(3)[y]) ** 2, axis=1))),
             "ece": _multiclass_ece(probs, y),
+            **selective,
         }
     else:
         out["win_3way"] = {"rows": 0, "status": "UNAVAILABLE"}
