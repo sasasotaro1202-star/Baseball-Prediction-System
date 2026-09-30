@@ -165,8 +165,12 @@ def run() -> dict[str, Any]:
                 seen_cycle.add(key)
                 score, meta = _score_candidate(scope=scope, platform=platform, name=name, description=desc, url=url, license_name=license_name, stars=stars)
                 record = frontier["candidates"].get(key, {})
+                previous_scope_ids = list(record.get("scope_ids", []))
                 record.update({
-                    "source_id": key, "scope_id": scope.scope_id, "scope_label": scope.label,
+                    "source_id": key,
+                    "scope_ids": sorted(set(previous_scope_ids + [scope.scope_id])),
+                    "scope_id": scope.scope_id,
+                    "scope_label": scope.label,
                     "platform": platform, "name": name, "description": desc, "url": url,
                     "license": license_name or None, "stars_or_likes": stars,
                     "first_seen": record.get("first_seen", now), "last_seen": now,
