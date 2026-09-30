@@ -44,10 +44,20 @@ jobs:
             exit 0
           fi
           now="$(date -u +%s)"
-          recent_failures="$(printf '%s' "$runs" | jq --argjson now "$now" '[.[] | select(.conclusion == "failure") | select(((.createdAt | fromdateiso8601) >= ($now - 86400)))] | length')"
-          echo "recent_failures_24h=${recent_failures}"
-          if [ "$recent_failures" -ge 2 ]; then
-            echo 'Circuit breaker open: two or more failed autopilot runs in the last 24h.' >&2
+          # Reset the failure cooldown after a verified successful autopilot run.
+          # Count only failures after the latest success, rather than historical
+          # failures in a rolling window that can incorrectly keep the breaker open.
+          latest_success_at="$(printf '%s' "$runs" | jq -r '[.[] | select(.conclusion == "success")] | sort_by(.createdAt) | last.createdAt // empty')"
+          if [ -n "$latest_success_at" ]; then
+            latest_success_epoch="$(date -d "$latest_success_at" +%s)"
+            failures_after_success="$(printf '%s' "$runs" | jq --argjson cutoff "$latest_success_epoch" '[.[] | select(.conclusion == "failure") | select((.createdAt | fromdateiso8601) > $cutoff)] | length')"
+          else
+            failures_after_success="$(printf '%s' "$runs" | jq '[.[] | select(.conclusion == "failure")] | length')"
+          fi
+          echo "latest_success_at=${latest_success_at:-<none>}"
+          echo "failures_after_latest_success=${failures_after_success}"
+          if [ "$failures_after_success" -ge 3 ]; then
+            echo 'Circuit breaker open: three or more consecutive failed autopilot runs since the latest success.' >&2
             exit 1
           fi
           latest="$(printf '%s' "$runs" | jq 'sort_by(.createdAt) | last // {}')"
