@@ -184,6 +184,9 @@ def test_reconcile_reports_independent_prediction_target_metrics(tmp_path, monke
     assert abs(targets["low_high"]["logloss"] + np.log(0.70)) < 1e-12
     assert abs(targets["low_high"]["brier"] - 0.09) < 1e-12
     assert abs(targets["low_high"]["ece"] - 0.30) < 1e-12
+    assert targets["win_3way"]["selective_0.60"]["n"] == 1
+    assert targets["win_3way"]["selective_0.60"]["accuracy"] == 1.0
+    assert targets["win_3way"]["selective_0.90"]["n"] == 0
 
 
 def test_prediction_target_metrics_accept_normalized_snapshot_scale():
