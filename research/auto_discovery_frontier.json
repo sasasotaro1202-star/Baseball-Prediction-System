@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "updated_at": null,
+  "candidates": {},
+  "selection_history": [],
+  "policy": {
+    "free_only": true,
+    "automatic_discovery": true,
+    "automatic_selection": true,
+    "automatic_production_promotion": false,
+    "unknown_pit": "FAIL_CLOSED"
+  }
+}
