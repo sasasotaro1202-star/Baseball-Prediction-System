@@ -39,6 +39,12 @@ CANONICAL_FEATURES = (
 # "the source can potentially provide this signal", not "the source has been
 # verified PIT-safe for historical OOS".
 SOURCE_CAPABILITIES: dict[str, frozenset[str]] = {
+    "kbo_pbp_huggingface_2023_2026": frozenset({"schedule_identity", "play_by_play", "tracking", "pitching", "batting"}),
+    "kbo_pbp_naver_github": frozenset({"play_by_play", "tracking", "pitching", "batting"}),
+    "koshien_ranking_open_data": frozenset({"schedule_identity", "tournament_rules"}),
+    "koshien_history_open_data": frozenset({"schedule_identity", "tournament_rules"}),
+    "cpbl_public_api_repository": frozenset({"schedule_identity", "play_by_play", "tracking", "pitching", "batting"}),
+    "npb_player_stats_2015_2025": frozenset({"batting", "pitching"}),
     "npb_schedule": frozenset({"schedule_identity"}),
     "npb_starters": frozenset({"starting_pitchers"}),
     "npb_lineups": frozenset({"lineups"}),
