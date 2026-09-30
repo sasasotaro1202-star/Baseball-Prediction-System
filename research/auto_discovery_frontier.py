@@ -44,7 +44,7 @@ def _get_json(url: str, *, token: str | None = None) -> Any:
         return json.loads(response.read().decode("utf-8"))
 
 def _norm(text: Any) -> str:
-    return re.sub(r"\\s+", " ", str(text or "")).strip().lower()
+    return re.sub(r"\s+", " ", str(text or "")).strip().lower()
 
 def _source_key(platform: str, url: str) -> str:
     raw = platform + "|" + url
