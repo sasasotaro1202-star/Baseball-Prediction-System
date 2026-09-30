@@ -74,3 +74,10 @@ def test_competition_strategy_profiles_are_phase_specific():
     assert unknown.strategy_id == "unknown_fail_closed"
     assert eligible_for_competition_calibration(regular, regular.specialist_min_validation_rows)
     assert not eligible_for_competition_calibration(unknown, 999999)
+
+
+
+def test_competition_scope_ids_are_unique():
+    from research.competition_catalog import SCOPES
+    ids = [spec.scope_id for spec in SCOPES]
+    assert len(ids) == len(set(ids))
