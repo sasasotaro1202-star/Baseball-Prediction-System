@@ -102,6 +102,13 @@ SOURCES = (
     SourceSpec("cbbs_brazil_competitions", "Brazil-Baseball", "national_youth_and_club_competitions", "CBBS", 1, False, "official public schedules, results and championship reports; detailed PBP/PIT depends on event"),
     SourceSpec("iab_israel_baseball", "Israel-Baseball", "multi_age_leagues_and_rules", "Israel Association of Baseball", 1, False, "official public leagues from grades 1-12 and adults, plus league rules; historical PIT/PBP depth requires validation"),
     SourceSpec("liga_argentina_beisbol", "Argentina-LAB", "national_league_schedule_results_stats", "Liga Argentina de Béisbol", 1, False, "official public scoreboard/results/statistics; historical PIT and granular PBP require validation"),
+    SourceSpec("kbo_pbp_huggingface_2023_2026", "KBO", "pitch_by_pitch_tracking_research", "https://huggingface.co/datasets/slothman3878/kbo_playbyplay", 1, False, "Public CC-BY-4.0 derived corpus; regular season 2023-2026 partial; historical PIT availability requires separate validation."),
+    SourceSpec("kbo_pbp_naver_github", "KBO", "pitch_by_pitch_research", "https://github.com/slothman3878/kbo_pbp_naver_sports", 1, False, "Public parser/source project; validates against official season totals according to project documentation; PIT requires separate validation."),
+    SourceSpec("koshien_ranking_open_data", "Japan-HighSchool", "tournament_history_and_scores", "https://github.com/yumo120921/koshien-ranking", 1, False, "Public national and prefectural tournament history; detailed score coverage varies by round/year; not sufficient alone for full PIT-safe game modeling."),
+    SourceSpec("koshien_history_open_data", "Japan-HighSchool", "historical_tournament_context", "https://github.com/chiisagosha/opendata", 2, False, "Public CC-BY-4.0 historical tournament finalist data 1948-2022; context source only, not full game-level PIT."),
+    SourceSpec("cpbl_public_api_repository", "CPBL", "game_player_pitch_research", "https://github.com/MarkHungBuddha/cpbl", 1, False, "Public API/source repository with seasons, games, player stats and strike-zone endpoints; historical PIT remains unverified."),
+    SourceSpec("npb_player_stats_2015_2025", "NPB", "player_season_prior", "https://github.com/yasumorishima/npb-prediction", 2, False, "Public 2015-2025 player/standing aggregates; useful as historical prior source but not game-level PIT evidence."),
+
 )
 
 
