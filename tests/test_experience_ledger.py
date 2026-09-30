@@ -179,7 +179,8 @@ def test_reconcile_reports_independent_prediction_target_metrics(tmp_path, monke
     assert targets["exact_score"]["rows"] == 1
     assert targets["win_3way"]["accuracy"] == 1.0
     assert abs(targets["win_3way"]["logloss"] + np.log(0.60)) < 1e-12
-    assert abs(targets["win_3way"]["brier"] - 0.245) < 1e-12
+    # Multiclass Brier sums squared probability errors over all three outcome classes.
+    assert abs(targets["win_3way"]["brier"] - 0.285) < 1e-12
     assert abs(targets["win_3way"]["ece"] - 0.40) < 1e-12
     assert abs(targets["low_high"]["logloss"] + np.log(0.70)) < 1e-12
     assert abs(targets["low_high"]["brier"] - 0.09) < 1e-12
@@ -203,7 +204,7 @@ def test_prediction_target_metrics_accept_normalized_snapshot_scale():
     }])
     targets = exp._prediction_target_metrics(frame)
     assert abs(targets["win_3way"]["logloss"] + np.log(0.60)) < 1e-12
-    assert abs(targets["win_3way"]["brier"] - 0.245) < 1e-12
+    assert abs(targets["win_3way"]["brier"] - 0.285) < 1e-12
     assert abs(targets["low_high"]["logloss"] + np.log(0.70)) < 1e-12
     assert abs(targets["low_high"]["brier"] - 0.09) < 1e-12
     assert abs(targets["win_3way"]["ece"] - 0.40) < 1e-12
