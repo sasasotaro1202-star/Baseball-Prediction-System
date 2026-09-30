@@ -152,13 +152,14 @@ def run() -> dict[str, Any]:
         raise RuntimeError("GITHUB_TOKEN is required for bounded GitHub search")
     frontier = load_frontier()
     existing_registered = {str(s.source_id).lower() for s in SOURCES}
-    focus = _rotating_focus()
-    rotation_slot = _rotation_slot()
+    run_started_at = datetime.now(timezone.utc)
+    focus = _rotating_focus(run_started_at)
+    rotation_slot = _rotation_slot(run_started_at)
     per_scope_platform_budget = _result_budget(len(focus))
     seen_cycle: set[str] = set()
     discovered = 0
     failures = []
-    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    now = run_started_at.replace(microsecond=0).isoformat()
     query_count = 0
     for scope in focus:
         query = _query_for_scope(scope)
