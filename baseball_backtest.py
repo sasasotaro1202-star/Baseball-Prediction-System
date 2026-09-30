@@ -2653,27 +2653,62 @@ class BaseballBacktest:
             rows = []
             for key, group in df.groupby("competition_key", dropna=False):
                 key = str(key)
-                target_labels = {
-                    "win_3way": {"Accuracy": float(group["correct"].mean())},
-                    "low_high": {
-                        "Accuracy": float(
-                            ((group["high"] >= 0.5).astype(int)
-                             == ((group["actual_home_score"] + group["actual_away_score"]) >= 7).astype(int)).mean()
-                        ),
-                    },
-                    "exact_score": {
-                        "Top4ScoreHitRate": float(group.apply(
-                            lambda r: f"{int(r.actual_home_score)}-{int(r.actual_away_score)}"
-                            in {str(r.score1), str(r.score2), str(r.score3), str(r.score4)},
-                            axis=1,
-                        ).mean()),
-                    },
-                }
-                probs = group[["pred_home", "pred_draw", "pred_away"]].to_numpy(float) if league == "NPB" else group[["pred_home", "pred_away"]].to_numpy(float)
+                probs = (
+                    group[["pred_home", "pred_draw", "pred_away"]].to_numpy(float)
+                    if league == "NPB"
+                    else group[["pred_home", "pred_away"]].to_numpy(float)
+                )
                 y = group["actual"].to_numpy(int)
                 probs = np.clip(probs, 1e-12, 1.0)
                 probs /= probs.sum(axis=1, keepdims=True)
                 classes = list(range(probs.shape[1]))
+
+                # Win/draw/away target.
+                win_accuracy = float(group["correct"].mean())
+                win_logloss = float(-np.log(np.clip(probs[np.arange(len(group)), y], 1e-12, 1.0)).mean())
+                win_brier = float(np.mean(np.sum((probs - np.eye(len(classes))[y]) ** 2, axis=1)))
+                win_ece = float(expected_calibration_error(y, probs, classes=classes))
+
+                # Low/High target is a genuine binary probability target. The
+                # persisted low/high probabilities are evaluated directly,
+                # not converted into a hard class before scoring.
+                totals = (
+                    pd.to_numeric(group["actual_home_score"], errors="coerce")
+                    + pd.to_numeric(group["actual_away_score"], errors="coerce")
+                ).to_numpy(float)
+                actual_high = (totals >= 7.0).astype(int)
+                low = np.clip(group["low"].to_numpy(float), 1e-12, 1.0)
+                high = np.clip(group["high"].to_numpy(float), 1e-12, 1.0)
+                hilo = np.column_stack([low, high])
+                hilo /= hilo.sum(axis=1, keepdims=True)
+                hilo_pred = np.argmax(hilo, axis=1)
+                hilo_accuracy = float(np.mean(hilo_pred == actual_high))
+                hilo_logloss = float(-np.log(np.clip(hilo[np.arange(len(group)), actual_high], 1e-12, 1.0)).mean())
+                hilo_brier = float(np.mean(np.sum((hilo - np.eye(2)[actual_high]) ** 2, axis=1)))
+                hilo_ece = float(expected_calibration_error(actual_high, hilo, classes=[0, 1]))
+
+                # Exact-score target: score1 is the highest-probability
+                # candidate after canonicalization, so Top1 is a real ranked
+                # prediction metric rather than a reconstructed label.
+                actual_scores = [
+                    str(int(h)) + "-" + str(int(a))
+                    for h, a in zip(group["actual_home_score"], group["actual_away_score"])
+                ]
+                top1 = float(np.mean([
+                    actual == str(r.score1)
+                    for actual, r in zip(actual_scores, group.itertuples(index=False))
+                ]))
+                top4 = float(np.mean([
+                    actual in {
+                        str(r.score1), str(r.score2), str(r.score3), str(r.score4)
+                    }
+                    for actual, r in zip(actual_scores, group.itertuples(index=False))
+                ]))
+                score_mae = float((
+                    np.abs(group["actual_home_score"] - group["lambda_home"])
+                    + np.abs(group["actual_away_score"] - group["lambda_away"])
+                ).mean() / 2.0)
+
                 rows.append({
                     "League": league,
                     "competition_key": key,
@@ -2683,31 +2718,54 @@ class BaseballBacktest:
                     "game_class": str(group["game_class"].iloc[0]) if "game_class" in group.columns else "",
                     "classification_status": str(group["competition_classification_status"].iloc[0]) if "competition_classification_status" in group.columns else "",
                     "rows": int(len(group)),
-                    "Accuracy": float(group["correct"].mean()),
-                    "LogLoss": float(group["logloss"].mean()),
-                    "Brier": float(np.mean(np.sum((probs - np.eye(len(classes))[y]) ** 2, axis=1))),
-                    "ECE": float(expected_calibration_error(y, probs, classes=classes)),
-                    "LowHighAccuracy": target_labels["low_high"]["Accuracy"],
-                    "ScoreMAE": float((np.abs(group["actual_home_score"] - group["lambda_home"]) + np.abs(group["actual_away_score"] - group["lambda_away"])).mean() / 2.0),
-                    "Top4ScoreHitRate": target_labels["exact_score"]["Top4ScoreHitRate"],
+                    "Accuracy": win_accuracy,
+                    "LogLoss": win_logloss,
+                    "Brier": win_brier,
+                    "ECE": win_ece,
+                    "LowHighAccuracy": hilo_accuracy,
+                    "LowHighLogLoss": hilo_logloss,
+                    "LowHighBrier": hilo_brier,
+                    "LowHighECE": hilo_ece,
+                    "ScoreMAE": score_mae,
+                    "Top1ExactScoreHitRate": top1,
+                    "Top4ScoreHitRate": top4,
                     "specialist_calibration_rows": int(getattr(self, "_competition_calibration_rows", {}).get(key, 0)),
                     "specialist_temperature": getattr(self, "_competition_temperatures", {}).get(key),
                     "prediction_strategy_id": str(group["prediction_strategy_id"].iloc[0]) if "prediction_strategy_id" in group.columns else "league_adaptive_ensemble",
+                    "prediction_calibration_id": str(group["prediction_calibration_id"].iloc[0]) if "prediction_calibration_id" in group.columns else "league_temperature",
                 })
-            comp = pd.DataFrame(rows).sort_values(["competition_key"])
-            comp.to_csv(RESULTS / f"{league.lower()}_competition_metrics.csv", index=False)
 
+            comp = pd.DataFrame(rows).sort_values(["competition_key"])
+            comp.to_csv(RESULTS / (league.lower() + "_competition_metrics.csv"), index=False)
+
+            # Preserve all three target families independently.
             target_rows = []
             for _, r in comp.iterrows():
                 target_rows.extend([
-                    {"League": r["League"], "competition_key": r["competition_key"], "Target": "win_3way" if league == "NPB" else "win_2way", "rows": r["rows"], "Accuracy": r["Accuracy"], "LogLoss": r["LogLoss"], "Brier": r["Brier"], "ECE": r["ECE"]},
-                    {"League": r["League"], "competition_key": r["competition_key"], "Target": "low_high", "rows": r["rows"], "Accuracy": r["LowHighAccuracy"], "LogLoss": np.nan, "Brier": np.nan, "ECE": np.nan},
-                    {"League": r["League"], "competition_key": r["competition_key"], "Target": "exact_score", "rows": r["rows"], "Accuracy": np.nan, "LogLoss": np.nan, "Brier": np.nan, "ECE": np.nan, "ScoreMAE": r["ScoreMAE"], "Top4ScoreHitRate": r["Top4ScoreHitRate"]},
+                    {
+                        "League": r["League"], "competition_key": r["competition_key"],
+                        "Target": "win_3way" if league == "NPB" else "win_2way",
+                        "rows": r["rows"], "Accuracy": r["Accuracy"],
+                        "LogLoss": r["LogLoss"], "Brier": r["Brier"], "ECE": r["ECE"],
+                    },
+                    {
+                        "League": r["League"], "competition_key": r["competition_key"],
+                        "Target": "low_high", "rows": r["rows"],
+                        "Accuracy": r["LowHighAccuracy"],
+                        "LogLoss": r["LowHighLogLoss"],
+                        "Brier": r["LowHighBrier"], "ECE": r["LowHighECE"],
+                    },
+                    {
+                        "League": r["League"], "competition_key": r["competition_key"],
+                        "Target": "exact_score", "rows": r["rows"],
+                        "ScoreMAE": r["ScoreMAE"],
+                        "Top1ExactScoreHitRate": r["Top1ExactScoreHitRate"],
+                        "Top4ScoreHitRate": r["Top4ScoreHitRate"],
+                    },
                 ])
             pd.DataFrame(target_rows).to_csv(
-                RESULTS / f"{league.lower()}_competition_target_metrics.csv", index=False
+                RESULTS / (league.lower() + "_competition_target_metrics.csv"), index=False
             )
-
         if league == "MLB":
             tmp = df.copy()
             tmp["bin"] = pd.cut(tmp.pred_home, np.linspace(0,1,11), include_lowest=True)
