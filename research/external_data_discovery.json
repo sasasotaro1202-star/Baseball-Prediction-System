@@ -1,0 +1,167 @@
+{
+  "schema_version": 1,
+  "discovered_at": "2026-10-01",
+  "policy": "FREE_PUBLIC_RESEARCH_SOURCES_ONLY;PIT_AND_LICENSE_MUST_BE_VALIDATED_BEFORE_OOS",
+  "sources": [
+    {
+      "source_id": "kbo_pbp_huggingface_2023_2026",
+      "competition_ids": [
+        "KBO"
+      ],
+      "data_scope": "regular_season",
+      "coverage": "2023-2026 partial through 2026-07-26",
+      "scale": "805960 pitch rows / 2630 games",
+      "features": [
+        "schedule_identity",
+        "play_by_play",
+        "pitching",
+        "batting",
+        "tracking"
+      ],
+      "access": "public",
+      "license": "CC-BY-4.0",
+      "pit_status": "UNVERIFIED",
+      "research_status": "DISCOVERED",
+      "url": "https://huggingface.co/datasets/slothman3878/kbo_playbyplay",
+      "notes": "Derived from NAVER Sports relay data. Regular season only; 2026 is partial. Historical prediction-time availability must be established before OOS."
+    },
+    {
+      "source_id": "kbo_data_portal_collector",
+      "competition_ids": [
+        "KBO"
+      ],
+      "data_scope": "regular_and_postseason_and_special_stages",
+      "coverage": "1982-present claimed by repository",
+      "features": [
+        "schedule_identity",
+        "batting",
+        "pitching"
+      ],
+      "access": "public_source_code",
+      "license": "MIT",
+      "pit_status": "UNVERIFIED",
+      "research_status": "DISCOVERED",
+      "url": "https://github.com/kbo-data-portal/collector",
+      "notes": "SR_ID separates regular, preseason, semi-playoffs, wild card, playoffs, Korean Series, international, and all-star stages. Source terms and historical publication boundaries still require audit."
+    },
+    {
+      "source_id": "kbo_pbp_naver_github",
+      "competition_ids": [
+        "KBO"
+      ],
+      "data_scope": "2023-2026",
+      "coverage": "same extraction family as published KBO PBP corpus",
+      "features": [
+        "play_by_play",
+        "tracking",
+        "pitching",
+        "batting"
+      ],
+      "access": "public_source_code",
+      "license": "repository-specific",
+      "pit_status": "UNVERIFIED",
+      "research_status": "DISCOVERED",
+      "url": "https://github.com/slothman3878/kbo_pbp_naver_sports",
+      "notes": "Validated against official season totals according to project documentation."
+    },
+    {
+      "source_id": "ncaa_baseball_sportsdataverse",
+      "competition_ids": [
+        "NCAA_D1"
+      ],
+      "data_scope": "historical_archive",
+      "coverage": "season-level releases",
+      "features": [
+        "schedule_identity",
+        "play_by_play",
+        "batting",
+        "pitching"
+      ],
+      "access": "public",
+      "license": "source/release-specific",
+      "pit_status": "UNVERIFIED",
+      "research_status": "DISCOVERED",
+      "url": "https://github.com/sportsdataverse/baseballr-data",
+      "notes": "NCAA PBP and schedules are published as yearly release assets. The releases are archival, so prediction-time publication boundaries are not automatically available."
+    },
+    {
+      "source_id": "koshien_ranking_open_data",
+      "competition_ids": [
+        "KOSHIEN_SENBATSU",
+        "KOSHIEN_SUMMER",
+        "KOSHIEN_QUALIFIERS"
+      ],
+      "data_scope": "national_and_prefectural_history",
+      "coverage": "national 2019-2025; all 49 prefectural areas and longer historical spans for some areas",
+      "features": [
+        "schedule_identity",
+        "tournament_rules"
+      ],
+      "access": "public",
+      "license": "repository-specific",
+      "pit_status": "UNVERIFIED",
+      "research_status": "DISCOVERED",
+      "url": "https://github.com/yumo120921/koshien-ranking",
+      "notes": "Useful for tournament identity, bracket history and scores. The repository documentation says detailed score data is currently strongest from quarterfinals onward, so it is not sufficient alone for complete game-level modeling."
+    },
+    {
+      "source_id": "koshien_history_open_data",
+      "competition_ids": [
+        "KOSHIEN_SUMMER",
+        "KOSHIEN_QUALIFIERS"
+      ],
+      "data_scope": "1948-2022 historical",
+      "coverage": "prefectural finalists and related tournament history",
+      "features": [
+        "schedule_identity",
+        "tournament_rules"
+      ],
+      "access": "public",
+      "license": "CC-BY-4.0",
+      "pit_status": "UNVERIFIED",
+      "research_status": "DISCOVERED",
+      "url": "https://github.com/chiisagosha/opendata",
+      "notes": "Historical context source. Not a substitute for game-level PIT-safe pregame features."
+    },
+    {
+      "source_id": "cpbl_public_api_repository",
+      "competition_ids": [
+        "CPBL"
+      ],
+      "data_scope": "multiple seasons including 2020-2025 and current season listings",
+      "coverage": "season, game, player, pitch-zone endpoints",
+      "features": [
+        "schedule_identity",
+        "play_by_play",
+        "batting",
+        "pitching",
+        "tracking"
+      ],
+      "access": "public_api_and_source_code",
+      "license": "repository-specific",
+      "pit_status": "UNVERIFIED",
+      "research_status": "DISCOVERED",
+      "url": "https://github.com/MarkHungBuddha/cpbl",
+      "notes": "Provides season IDs, game results, player stats and strike-zone data. Historical PIT/publication timestamps remain a gate."
+    },
+    {
+      "source_id": "npb_player_stats_2015_2025",
+      "competition_ids": [
+        "NPB"
+      ],
+      "data_scope": "2015-2025 season aggregates",
+      "coverage": "11 seasons",
+      "scale": "3780 hitter rows / 3773 pitcher rows reported",
+      "features": [
+        "batting",
+        "pitching"
+      ],
+      "access": "public_git_repository",
+      "license": "repository-specific",
+      "pit_status": "UNVERIFIED",
+      "research_status": "DISCOVERED",
+      "url": "https://github.com/yasumorishima/npb-prediction",
+      "notes": "Useful as a player-prior/history source. It is season aggregate data, not a replacement for game-level PIT-safe OOS data."
+    }
+  ]
+}
