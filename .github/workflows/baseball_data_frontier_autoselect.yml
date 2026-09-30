@@ -1,0 +1,107 @@
+name: Baseball Data Frontier Autoselect
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "13 */6 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: baseball-data-frontier-autoselect
+  cancel-in-progress: false
+
+jobs:
+  discover-select-persist:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONPATH: .
+      PYTHONUNBUFFERED: "1"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+
+      - name: Compile discovery path
+        run: |
+          set -euo pipefail
+          python -m py_compile research/auto_discovery_frontier.py research/universal_source_matrix.py tests/test_auto_discovery_frontier.py
+
+      - name: Run discovery invariants
+        run: |
+          set -euo pipefail
+          python -m pytest -q tests/test_auto_discovery_frontier.py tests/test_universal_source_matrix.py
+
+      - name: Search public free source frontier and select candidates
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BASEBALL_DISCOVERY_FOCUS_LIMIT: "12"
+          BASEBALL_DISCOVERY_RESULTS_PER_QUERY: "8"
+          BASEBALL_DISCOVERY_MAX_TOTAL_RESULTS: "120"
+        run: |
+          set -euo pipefail
+          python -u research/auto_discovery_frontier.py | tee discovery_run.json
+
+      - name: Validate discovery result
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path("research/auto_discovery_frontier.json").read_text(encoding="utf-8"))
+          last=p.get("last_run", {})
+          if p.get("schema_version") != 1:
+              raise SystemExit("invalid discovery schema")
+          if not isinstance(p.get("candidates"), dict):
+              raise SystemExit("candidate registry is not an object")
+          if last.get("policy", {}).get("free_only") is not True:
+              raise SystemExit("free-only policy missing")
+          if last.get("policy", {}).get("production_promotion") is not False:
+              raise SystemExit("discovery attempted production promotion")
+          for row in p["candidates"].values():
+              if row.get("research_status") == "DISCOVERED_UNVERIFIED":
+                  if row.get("pit_status") != "UNVERIFIED" or row.get("production_eligible") is not False:
+                      raise SystemExit("unverified candidate safety contract violated")
+          print({"candidates": len(p["candidates"]), "selected": last.get("selected_count", 0), "failures": len(last.get("failures", []))})
+          PY
+
+      - name: Upload discovery evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: baseball-data-frontier-${{ github.run_id }}
+          path: |
+            research/auto_discovery_frontier.json
+            discovery_run.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Persist frontier to main
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add research/auto_discovery_frontier.json
+          if git diff --cached --quiet; then
+            echo "No frontier change to persist"
+            exit 0
+          fi
+          git commit -m "chore: update autonomous baseball data frontier"
+          for attempt in 1 2 3; do
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            git fetch origin main
+            git rebase origin/main
+          done
+          echo "bounded push recovery exhausted" >&2
+          exit 1
