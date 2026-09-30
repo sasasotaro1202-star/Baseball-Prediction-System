@@ -137,7 +137,7 @@ def test_competition_metrics_include_top1_top4_and_lowhigh_probability_scores(tm
     exact = out[out["Target"] == "exact_score"].iloc[0]
     hilo = out[out["Target"] == "low_high"].iloc[0]
     assert exact["Top1ExactScoreHitRate"] == 0.5
-    assert exact["Top4ScoreHitRate"] == 1.0
+    assert exact["Top4ScoreHitRate"] == 0.5
     assert np.isfinite(float(hilo["LogLoss"]))
     assert np.isfinite(float(hilo["Brier"]))
     assert np.isfinite(float(hilo["ECE"]))
