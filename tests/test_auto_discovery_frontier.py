@@ -63,3 +63,57 @@ def test_rotating_focus_changes_on_six_hour_boundary():
 
 def test_result_budget_distributes_global_cap_across_scope_platform_slots():
     assert _result_budget(12) == 5
+
+
+
+def test_run_distributes_results_across_every_focus_scope_and_platform(tmp_path, monkeypatch):
+    import research.auto_discovery_frontier as mod
+    from types import SimpleNamespace
+
+    focus = [
+        SimpleNamespace(scope_id="KBO", label="Korea KBO", priority=1),
+        SimpleNamespace(scope_id="CPBL", label="Taiwan CPBL", priority=2),
+    ]
+    monkeypatch.setattr(mod, "OUT", tmp_path / "frontier.json")
+    monkeypatch.setattr(mod, "_rotating_focus", lambda now=None: focus)
+    monkeypatch.setattr(mod, "_rotation_slot", lambda now=None: 123)
+    monkeypatch.setattr(mod, "MAX_TOTAL_RESULTS", 4)
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+
+    calls = []
+
+    def fake_github(query, token):
+        calls.append(("github", query, token))
+        return [
+            {
+                "full_name": f"example/{query.replace(' ', '-')}",
+                "description": "historical kbo play by play csv dataset 2024",
+                "html_url": f"https://github.com/example/{query.replace(' ', '-')}",
+                "license": {"spdx": "CC-BY-4.0"},
+                "stargazers_count": 1,
+            }
+        ] * 8
+
+    def fake_hf(query):
+        calls.append(("huggingface", query, None))
+        return [
+            {
+                "id": f"example/{query.replace(' ', '-')}",
+                "description": "historical kbo play by play dataset 2024",
+                "cardData": {"license": "CC-BY-4.0"},
+                "likes": 1,
+            }
+        ] * 8
+
+    monkeypatch.setattr(mod, "_github_candidates", fake_github)
+    monkeypatch.setattr(mod, "_hf_candidates", fake_hf)
+
+    result = mod.run()
+    assert result["query_count"] == 4
+    assert result["result_budget_per_scope_platform"] == 1
+    assert result["discovered_records_touched"] == 4
+    assert len(calls) == 4
+    assert {scope for _, scope, _ in calls} == {
+        mod._query_for_scope(focus[0]),
+        mod._query_for_scope(focus[1]),
+    }
