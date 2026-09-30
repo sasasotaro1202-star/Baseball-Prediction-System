@@ -159,6 +159,10 @@ class BaseballResearchEngine:
             score_equal = keys_equal and all(np.isclose(legacy_scores[k], bridge_scores[k], rtol=1e-12, atol=1e-12) for k in legacy_scores)
         legacy_names = [item[2] for item in (legacy_fitted or [])]
         bridge_names = [item[2] for item in (bridge_fitted or [])]
+        bridge_audit_tail = [
+            row for row in bridge.audit
+            if isinstance(row, dict) and row.get("delegated_to_existing_engine") is True
+        ][-5:]
         details = {
             "score_equal": bool(score_equal),
             "best_model_equal": legacy_best == bridge_best,
@@ -166,8 +170,8 @@ class BaseballResearchEngine:
             "legacy_best_model": legacy_best,
             "bridge_best_model": bridge_best,
             "legacy_model_names": legacy_names,
-            "bridge_model_names": bridge_names,
-            "bridge_audit_tail": list(bridge.audit[-5:]),
+            "bridge_model_names": bridge_model_names,
+            "bridge_audit_tail": bridge_audit_tail,
             "delegated_to_existing_engine": True,
         }
         return CompatibilityResult(
