@@ -69,6 +69,7 @@ from research.competition_strategy import strategy_for, eligible_for_competition
 from research.hierarchical_result_model import HierarchicalNPBClassifier
 from research.correlated_score import estimate_shared_lambda, low_high as correlated_low_high, top_scores as correlated_top_scores
 from evaluation.calibration import fit_temperature, TemperatureCalibration
+from evaluation.metrics import expected_calibration_error
 from core.atomic_io import atomic_write_text
 
 RANDOM_STATE = 42
@@ -2633,15 +2634,86 @@ class BaseballBacktest:
 
     def save_reports(self, df: pd.DataFrame, league: str):
         RESULTS.mkdir(exist_ok=True)
-        if df.empty: return
+        if df.empty:
+            return
         df.to_csv(RESULTS / f"{league.lower()}_backtest_results.csv", index=False)
         summary = pd.DataFrame([self.evaluate(df, league)])
         summary.to_csv(RESULTS / f"{league.lower()}_backtest_summary.csv", index=False)
-        model = df.groupby("model").agg(Predictions=("correct", "size"), Accuracy=("correct", "mean"), LogLoss=("logloss", "mean"), Brier=("brier", "mean")).reset_index()
+        model = df.groupby("model").agg(
+            Predictions=("correct", "size"),
+            Accuracy=("correct", "mean"),
+            LogLoss=("logloss", "mean"),
+            Brier=("brier", "mean"),
+        ).reset_index()
         model.to_csv(RESULTS / f"{league.lower()}_model_comparison.csv", index=False)
+
+        # First-class competition reporting: every league/stage/competition
+        # is evaluated independently and never collapsed into the league headline.
+        if "competition_key" in df.columns:
+            rows = []
+            for key, group in df.groupby("competition_key", dropna=False):
+                key = str(key)
+                target_labels = {
+                    "win_3way": {"Accuracy": float(group["correct"].mean())},
+                    "low_high": {
+                        "Accuracy": float(
+                            ((group["high"] >= 0.5).astype(int)
+                             == ((group["actual_home_score"] + group["actual_away_score"]) >= 7).astype(int)).mean()
+                        ),
+                    },
+                    "exact_score": {
+                        "Top4ScoreHitRate": float(group.apply(
+                            lambda r: f"{int(r.actual_home_score)}-{int(r.actual_away_score)}"
+                            in {str(r.score1), str(r.score2), str(r.score3), str(r.score4)},
+                            axis=1,
+                        ).mean()),
+                    },
+                }
+                probs = group[["pred_home", "pred_draw", "pred_away"]].to_numpy(float) if league == "NPB" else group[["pred_home", "pred_away"]].to_numpy(float)
+                y = group["actual"].to_numpy(int)
+                probs = np.clip(probs, 1e-12, 1.0)
+                probs /= probs.sum(axis=1, keepdims=True)
+                classes = list(range(probs.shape[1]))
+                rows.append({
+                    "League": league,
+                    "competition_key": key,
+                    "competition": str(group["competition"].iloc[0]) if "competition" in group.columns else "",
+                    "competition_stage": str(group["competition_stage"].iloc[0]) if "competition_stage" in group.columns else "",
+                    "season_type": str(group["season_type"].iloc[0]) if "season_type" in group.columns else "",
+                    "game_class": str(group["game_class"].iloc[0]) if "game_class" in group.columns else "",
+                    "classification_status": str(group["competition_classification_status"].iloc[0]) if "competition_classification_status" in group.columns else "",
+                    "rows": int(len(group)),
+                    "Accuracy": float(group["correct"].mean()),
+                    "LogLoss": float(group["logloss"].mean()),
+                    "Brier": float(np.mean(np.sum((probs - np.eye(len(classes))[y]) ** 2, axis=1))),
+                    "ECE": float(expected_calibration_error(y, probs, classes=classes)),
+                    "LowHighAccuracy": target_labels["low_high"]["Accuracy"],
+                    "ScoreMAE": float((np.abs(group["actual_home_score"] - group["lambda_home"]) + np.abs(group["actual_away_score"] - group["lambda_away"])).mean() / 2.0),
+                    "Top4ScoreHitRate": target_labels["exact_score"]["Top4ScoreHitRate"],
+                    "specialist_calibration_rows": int(getattr(self, "_competition_calibration_rows", {}).get(key, 0)),
+                    "specialist_temperature": getattr(self, "_competition_temperatures", {}).get(key),
+                    "prediction_strategy_id": str(group["prediction_strategy_id"].iloc[0]) if "prediction_strategy_id" in group.columns else "league_adaptive_ensemble",
+                })
+            comp = pd.DataFrame(rows).sort_values(["competition_key"])
+            comp.to_csv(RESULTS / f"{league.lower()}_competition_metrics.csv", index=False)
+
+            target_rows = []
+            for _, r in comp.iterrows():
+                target_rows.extend([
+                    {"League": r["League"], "competition_key": r["competition_key"], "Target": "win_3way" if league == "NPB" else "win_2way", "rows": r["rows"], "Accuracy": r["Accuracy"], "LogLoss": r["LogLoss"], "Brier": r["Brier"], "ECE": r["ECE"]},
+                    {"League": r["League"], "competition_key": r["competition_key"], "Target": "low_high", "rows": r["rows"], "Accuracy": r["LowHighAccuracy"], "LogLoss": np.nan, "Brier": np.nan, "ECE": np.nan},
+                    {"League": r["League"], "competition_key": r["competition_key"], "Target": "exact_score", "rows": r["rows"], "Accuracy": np.nan, "LogLoss": np.nan, "Brier": np.nan, "ECE": np.nan, "ScoreMAE": r["ScoreMAE"], "Top4ScoreHitRate": r["Top4ScoreHitRate"]},
+                ])
+            pd.DataFrame(target_rows).to_csv(
+                RESULTS / f"{league.lower()}_competition_target_metrics.csv", index=False
+            )
+
         if league == "MLB":
-            tmp = df.copy(); tmp["bin"] = pd.cut(tmp.pred_home, np.linspace(0,1,11), include_lowest=True)
-            cal = tmp.groupby("bin", observed=False).agg(n=("actual","size"), predicted=("pred_home","mean"), actual=("actual","mean")).reset_index()
+            tmp = df.copy()
+            tmp["bin"] = pd.cut(tmp.pred_home, np.linspace(0,1,11), include_lowest=True)
+            cal = tmp.groupby("bin", observed=False).agg(
+                n=("actual","size"), predicted=("pred_home","mean"), actual=("actual","mean")
+            ).reset_index()
             cal.to_csv(RESULTS / "mlb_calibration.csv", index=False)
 
     def current_mlb_schedule(self, date: str) -> pd.DataFrame:
