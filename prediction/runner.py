@@ -180,6 +180,15 @@ def run_prediction(*, row: Mapping[str, Any], availability: AvailabilityRecord,
         model_version=model_version, feature_version=feature_version,
         calibration_version=calibration_version, git_commit=git_commit,
         data_snapshot_id=data_snapshot_id,
+        competition_key=(
+            str(row.get("competition_key") or "").strip()
+            or str(row.get("competition") or "").strip()
+            or str(availability.league).strip()
+        ),
+        competition_stage=(
+            str(row.get("competition_stage") or "").strip()
+            or None
+        ),
     )
     append_prediction(record, log_path)
     return {"eligible": True, "prediction": record}
