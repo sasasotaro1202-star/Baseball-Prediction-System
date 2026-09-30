@@ -107,6 +107,8 @@ def test_competition_metrics_include_top1_top4_and_lowhigh_probability_scores(tm
             "pred_home": 0.6,
             "pred_draw": 0.2,
             "pred_away": 0.2,
+            "logloss": -np.log(0.6 if i == 0 else 0.2),
+            "brier": (1.0 - 0.6) ** 2 + 0.2 ** 2 + 0.2 ** 2 if i == 0 else (1.0 - 0.2) ** 2 + 0.2 ** 2 + 0.6 ** 2,
             "low": 0.4 if i == 0 else 0.7,
             "high": 0.6 if i == 0 else 0.3,
             "actual_home_score": int(actual.split("-")[0]),
