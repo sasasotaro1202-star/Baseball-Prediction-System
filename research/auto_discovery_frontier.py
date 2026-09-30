@@ -96,8 +96,25 @@ def _score_candidate(*, scope, platform: str, name: str, description: str, url: 
     score += min(8.0, math.log1p(max(0, stars)) / 2.0)
     if any(k in text for k in ("paid api", "commercial only", "subscription required", "proprietary", "buy access")): score -= 35; reasons.append("cost_or_access_risk")
     if any(k in text for k in ("softball", "slowpitch", "fantasy only")): score -= 20; reasons.append("scope_risk")
+    feature_map = {
+        "schedule_identity": ("schedule", "game", "fixture", "score"),
+        "starting_pitchers": ("starter", "pitcher", "probable", "starting"),
+        "lineups": ("lineup", "roster", "batting order"),
+        "batting": ("batting", "hitter", "batter"),
+        "pitching": ("pitching", "pitcher", "strikeout", "earned run"),
+        "fielding": ("fielding", "defense", "defensive"),
+        "play_by_play": ("play by play", "pbp", "pitch by pitch", "game log"),
+        "tracking": ("statcast", "tracking", "trackman", "hawkeye", "pitchcast", "velocity"),
+        "weather": ("weather", "wind", "temperature"),
+        "tournament_rules": ("tournament", "bracket", "playoff", "championship", "qualifier"),
+    }
+    inferred_features = sorted(
+        feature for feature, keywords in feature_map.items()
+        if any(k in text for k in keywords)
+    )
     metadata = {
         "score": round(float(score), 3), "reasons": reasons,
+        "features": inferred_features,
         "pit_status": "UNVERIFIED", "research_status": "DISCOVERED_UNVERIFIED",
         "production_eligible": False,
     }
