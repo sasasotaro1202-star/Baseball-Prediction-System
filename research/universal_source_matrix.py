@@ -11,12 +11,15 @@ from __future__ import annotations
 
 from datetime import datetime
 import json
+from pathlib import Path
 from typing import Any, Mapping
 
 import pandas as pd
 
 from data.source_registry import SOURCES
 from research.competition_catalog import get_scope, scopes
+ROOT = Path(__file__).resolve().parents[1]
+
 
 
 CANONICAL_FEATURES = (
@@ -175,10 +178,19 @@ def application_plan(scope_id: str) -> list[dict[str, Any]]:
     allowed = set(scope.source_ids) | {str(r.get("source_id")) for r in auto_candidates if r.get("source_id")} | _SHARED_SOURCES
     registry_ids = {s.source_id for s in SOURCES}
     rows: list[dict[str, Any]] = []
+    auto_by_id = {
+        str(r.get("source_id")): r
+        for r in auto_candidates
+        if r.get("source_id")
+    }
     for source_id in sorted(allowed):
-        if source_id not in registry_ids:
-            continue
-        features = sorted(source_capabilities(source_id) & set(CANONICAL_FEATURES))
+        if source_id in registry_ids:
+            features = sorted(source_capabilities(source_id) & set(CANONICAL_FEATURES))
+            source_status = "REGISTERED"
+        else:
+            candidate = auto_by_id.get(source_id, {})
+            features = sorted(set(candidate.get("features", [])) & set(CANONICAL_FEATURES))
+            source_status = "AUTO_SELECTED_UNVERIFIED"
         if not features:
             continue
         rows.append({
@@ -188,7 +200,7 @@ def application_plan(scope_id: str) -> list[dict[str, Any]]:
             "outcome_contract": scope.outcome_contract,
             "rule_family": scope.rule_family,
             "pit_requirement": "explicit available_at <= prediction_time",
-            "source_status": "AUTO_SELECTED_UNVERIFIED" if source_id not in {s.source_id for s in SOURCES} else "REGISTERED",
+            "source_status": source_status,
         })
     return rows
 
