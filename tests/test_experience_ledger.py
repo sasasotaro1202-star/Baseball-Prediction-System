@@ -302,3 +302,77 @@ def test_reconcile_rejects_non_normalized_probabilities(tmp_path, monkeypatch):
 
     with pytest.raises(ValueError, match="invalid win probabilities"):
         exp.reconcile()
+
+
+def test_archive_tracks_only_strictly_prior_prediction_revision(tmp_path, monkeypatch):
+    monkeypatch.setattr(exp, "EXPERIENCE", tmp_path / "experience")
+    monkeypatch.setattr(exp, "PRED_DIR", tmp_path / "experience" / "predictions")
+    monkeypatch.setattr(exp, "RESULT_DIR", tmp_path / "experience" / "official_results")
+
+    base = json.loads(_prediction(tmp_path).read_text(encoding="utf-8"))
+    first = base["predictions"][0]
+    first["git_commit"] = "first"
+    first["prediction_cutoff_utc"] = "2026-09-26T02:00:00+00:00"
+    first["prediction_generated_at"] = "2026-09-26T02:00:02+00:00"
+    first["starter_evidence_observed_at_utc"] = "2026-09-26T01:59:30+00:00"
+
+    second = dict(first)
+    second["git_commit"] = "second"
+    second["prediction_cutoff_utc"] = "2026-09-26T02:30:00+00:00"
+    second["prediction_generated_at"] = "2026-09-26T02:30:02+00:00"
+    second["starter_evidence_observed_at_utc"] = "2026-09-26T02:29:30+00:00"
+    second["home_win_pct"] = 50.0
+    second["draw_pct"] = 10.0
+    second["away_win_pct"] = 40.0
+
+    same_cutoff = dict(second)
+    same_cutoff["prediction_id"] = "ignored-input-id"
+    same_cutoff["home_win_pct"] = 51.0
+    same_cutoff["draw_pct"] = 9.0
+
+    for i, row in enumerate((first,)):
+        payload = {"execution_status": "EXECUTED", "target_date": "2026-09-26", "predictions": [row]}
+        path = tmp_path / f"pred-{i}.json"
+        path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        exp.archive_production_output(path)
+
+    payload = {"execution_status": "EXECUTED", "target_date": "2026-09-26", "predictions": [second]}
+    second_path = tmp_path / "pred-second.json"
+    second_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    exp.archive_production_output(second_path)
+
+    rows = [
+        json.loads(line)
+        for line in (tmp_path / "experience" / "predictions" / "2026-09-26.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    by_cutoff = {row["prediction_cutoff_utc"]: row for row in rows}
+    revised = by_cutoff["2026-09-26T02:30:00+00:00"]
+    assert revised["revision_status"] == "REVISED"
+    assert revised["revision_outcome_changed"] is False
+    assert revised["revision_previous_prediction_id"] == by_cutoff["2026-09-26T02:00:00+00:00"]["prediction_id"]
+    assert revised["revision_l1_pct_points"] == pytest.approx(20.0)
+    assert revised["revision_max_abs_pct_points"] == pytest.approx(10.0)
+
+
+def test_revision_metadata_never_uses_future_snapshot():
+    record = {
+        "game_id": "g1",
+        "prediction_cutoff_utc": "2026-09-26T03:00:00+00:00",
+        "home_win_pct": 50.0,
+        "draw_pct": 10.0,
+        "away_win_pct": 40.0,
+    }
+    existing = {
+        "future": {
+            "game_id": "g1",
+            "prediction_id": "future",
+            "prediction_cutoff_utc": "2026-09-26T04:00:00+00:00",
+            "home_win_pct": 10.0,
+            "draw_pct": 10.0,
+            "away_win_pct": 80.0,
+        }
+    }
+    meta = exp._revision_metadata(record, existing)
+    assert meta["revision_status"] == "INITIAL"
+    assert meta["revision_previous_prediction_id"] is None
