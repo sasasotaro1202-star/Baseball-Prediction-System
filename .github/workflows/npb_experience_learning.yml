@@ -7,7 +7,7 @@ on:
       - "research/experience_learning.py"
       - "tests/test_experience_learning.py"
       - ".github/workflows/npb_experience_learning.yml"
-      - "data/experience/snapshot_experience_ledger.csv"
+      - "data/experience/experience_ledger.csv"
   workflow_run:
     workflows:
       - NPB Postgame Experience Reconciliation
@@ -58,7 +58,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m research.experience_learning \
-            --input data/experience/snapshot_experience_ledger.csv \
+            --input data/experience/experience_ledger.csv \
             --min-group-rows 30 \
             --prior-strength 50 \
             --correction-strength 0.50 \
