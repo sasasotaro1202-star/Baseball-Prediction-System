@@ -1,0 +1,77 @@
+name: Baseball Temporal Conformal Maturity Gate
+
+on:
+  push:
+    branches:
+      - 'research/*'
+    paths:
+      - 'research/temporal_conformal_prediction_sets.py'
+      - 'tests/test_temporal_conformal_prediction_sets.py'
+      - '.github/workflows/baseball_temporal_conformal_maturity.yml'
+  pull_request:
+    paths:
+      - 'research/temporal_conformal_prediction_sets.py'
+      - 'tests/test_temporal_conformal_prediction_sets.py'
+      - '.github/workflows/baseball_temporal_conformal_maturity.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baseball-temporal-conformal-maturity
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install
+        run: python -m pip install --disable-pip-version-check --retries 5 --timeout 90 --prefer-binary -r requirements.txt
+      - name: Compile
+        run: python -m compileall -q research/temporal_conformal_prediction_sets.py
+      - name: Temporal conformal tests
+        run: python -m pytest -q tests/test_temporal_conformal_prediction_sets.py
+      - name: Research-only smoke
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import numpy as np
+          import pandas as pd
+          from research.temporal_conformal_prediction_sets import (
+              temporal_prediction_set_metrics,
+              walk_forward_split_conformal,
+          )
+          n = 60
+          base = pd.Timestamp('2026-01-01T00:00:00Z')
+          prediction_times = [base + pd.Timedelta(hours=i) for i in range(n)]
+          outcome_confirmed_at = [t + pd.Timedelta(hours=1) for t in prediction_times]
+          y = np.array([0, 1, 2] * 20)
+          p = np.tile(np.array([[.80, .15, .05], [.10, .80, .10], [.05, .10, .85]]), (20, 1))
+          out = walk_forward_split_conformal(
+              y, p, prediction_times, outcome_confirmed_at,
+              alpha=.10,
+              class_names=('home', 'draw', 'away'),
+              min_calibration=30,
+              max_calibration=40,
+          )
+          report = {
+              'evidence_scope': 'synthetic_research_only',
+              'method': out['method'],
+              'maturity_contract': out['maturity_contract'],
+              'metrics': temporal_prediction_set_metrics(out, y),
+          }
+          print(json.dumps(report, ensure_ascii=False, indent=2))
+          if report['maturity_contract']['status'] != 'PASS':
+              raise SystemExit('maturity contract failed')
+          if report['metrics']['eligible_rows'] != 29.0:
+              raise SystemExit('unexpected eligible row count')
+          PY
