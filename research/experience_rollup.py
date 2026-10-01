@@ -372,6 +372,8 @@ def rollup() -> dict[str, Any]:
         "prediction_id", "source_run_id", "game_id", "date_key",
         "datetime_jst", "prediction_cutoff_utc", "prediction_generated_at",
         "prediction_horizon_minutes", "home", "away", "home_starter", "away_starter",
+        "revision_status", "revision_previous_prediction_id", "revision_l1_pct_points",
+        "revision_max_abs_pct_points", "revision_outcome_changed",
         "regime", "score_regime", "model", "situation_tags",
         "home_win_pct", "draw_pct", "away_win_pct", "predicted_outcome",
         "actual_outcome", "outcome_correct", "logloss", "brier",
