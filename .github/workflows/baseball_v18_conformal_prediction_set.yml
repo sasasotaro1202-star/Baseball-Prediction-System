@@ -52,12 +52,23 @@ jobs:
 
           y = np.array([0, 1, 2] * 20)
           p = np.tile(np.array([[.80, .15, .05], [.10, .80, .10], [.05, .10, .85]]), (20, 1))
+          p_test = np.array([[.70, .20, .10], [.25, .50, .25], [.05, .15, .80]])
+          cal_times = [f"2026-01-{1 + i // 24:02d}T{(i % 24):02d}:00:00Z" for i in range(len(y))]
+          cal_available = [f"2025-12-{28 + (i // 24):02d}T{(i % 24):02d}:00:00Z" for i in range(len(y))]
+          cal_outcomes = [f"2026-02-{1 + i // 24:02d}T{(i % 24):02d}:00:00Z" for i in range(len(y))]
+          test_times = [f"2026-03-{1 + i // 24:02d}T{(i % 24):02d}:00:00Z" for i in range(len(p_test))]
+          test_available = [f"2026-02-{28 + (i // 24):02d}T{(i % 24):02d}:00:00Z" for i in range(len(p_test))]
           out = split_conformal_prediction_sets(
               y,
               p,
-              np.array([[.70, .20, .10], [.25, .50, .25], [.05, .15, .80]]),
+              p_test,
               alpha=.10,
               class_names=("home", "draw", "away"),
+              calibration_prediction_times=cal_times,
+              test_prediction_times=test_times,
+              calibration_available_at=cal_available,
+              calibration_outcome_available_at=cal_outcomes,
+              test_available_at=test_available,
           )
           report = {
               "evidence_scope": "synthetic_research_only",
@@ -66,6 +77,7 @@ jobs:
               "prediction_sets": out["prediction_sets"],
               "actions": out["action"],
               "calibration_size": out["calibration_size"],
+              "temporal_contract": out["temporal_contract"],
           }
           with open("results/v18_conformal_prediction_set_smoke.json", "w", encoding="utf-8") as f:
               json.dump(report, f, ensure_ascii=False, indent=2)

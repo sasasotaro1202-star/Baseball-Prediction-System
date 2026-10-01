@@ -50,32 +50,50 @@ def validate_chronological_calibration(
     calibration_prediction_times: Sequence[Any],
     test_prediction_times: Sequence[Any],
     *,
-    calibration_available_at: Sequence[Any] | None = None,
-    test_available_at: Sequence[Any] | None = None,
+    calibration_available_at: Sequence[Any],
+    calibration_outcome_available_at: Sequence[Any],
+    test_available_at: Sequence[Any],
 ) -> dict[str, Any]:
-    """Fail-closed temporal contract for calibration -> future test usage."""
+    """Fail-closed temporal contract for calibration -> future test usage.
+
+    Calibration predictions, their required input availability, and their
+    realized outcomes must all be strictly earlier than the first test
+    prediction cutoff. Missing or unverifiable timestamps are rejected.
+    """
     cal = pd.to_datetime(pd.Series(calibration_prediction_times), utc=True, errors="coerce")
     test = pd.to_datetime(pd.Series(test_prediction_times), utc=True, errors="coerce")
-    if cal.empty or test.empty or cal.isna().any() or test.isna().any():
-        raise ValueError("prediction times must be non-empty and timezone-parseable")
+    ca = pd.to_datetime(pd.Series(calibration_available_at), utc=True, errors="coerce")
+    outcome = pd.to_datetime(pd.Series(calibration_outcome_available_at), utc=True, errors="coerce")
+    ta = pd.to_datetime(pd.Series(test_available_at), utc=True, errors="coerce")
+
+    series = {
+        "calibration_prediction_times": cal,
+        "test_prediction_times": test,
+        "calibration_available_at": ca,
+        "calibration_outcome_available_at": outcome,
+        "test_available_at": ta,
+    }
+    if any(s.empty for s in series.values()) or any(s.isna().any() for s in series.values()):
+        raise ValueError("all temporal evidence must be non-empty and timezone-parseable")
+    if len(ca) != len(cal) or len(outcome) != len(cal) or len(ta) != len(test):
+        raise ValueError("temporal evidence lengths must align with calibration/test rows")
     if cal.max() >= test.min():
         raise ValueError("calibration predictions must be strictly earlier than test predictions")
-
-    if calibration_available_at is not None:
-        ca = pd.to_datetime(pd.Series(calibration_available_at), utc=True, errors="coerce")
-        if len(ca) != len(cal) or ca.isna().any() or (ca > cal).any():
-            raise ValueError("calibration available_at must be valid and <= calibration prediction_time")
-
-    if test_available_at is not None:
-        ta = pd.to_datetime(pd.Series(test_available_at), utc=True, errors="coerce")
-        if len(ta) != len(test) or ta.isna().any() or (ta > test).any():
-            raise ValueError("test available_at must be valid and <= test prediction_time")
+    if (ca > cal).any():
+        raise ValueError("calibration available_at must be <= calibration prediction_time")
+    if (outcome < cal).any():
+        raise ValueError("calibration outcome availability must be >= calibration prediction_time")
+    if outcome.max() >= test.min():
+        raise ValueError("calibration outcomes must be mature before test prediction time")
+    if (ta > test).any():
+        raise ValueError("test available_at must be <= test prediction_time")
 
     return {
         "status": "PASS",
         "calibration_rows": int(len(cal)),
         "test_rows": int(len(test)),
         "calibration_latest_prediction_time": cal.max().isoformat(),
+        "calibration_latest_outcome_available_at": outcome.max().isoformat(),
         "test_earliest_prediction_time": test.min().isoformat(),
     }
 
@@ -102,6 +120,11 @@ def split_conformal_prediction_sets(
     alpha: float = 0.10,
     class_names: Sequence[str] | None = None,
     min_calibration: int = 30,
+    calibration_prediction_times: Sequence[Any],
+    test_prediction_times: Sequence[Any],
+    calibration_available_at: Sequence[Any],
+    calibration_outcome_available_at: Sequence[Any],
+    test_available_at: Sequence[Any],
 ) -> dict[str, Any]:
     """Distribution-free split-conformal prediction sets.
 
@@ -110,6 +133,13 @@ def split_conformal_prediction_sets(
     p-values using the standard +1 correction.
     """
     alpha = _validate_alpha(alpha)
+    temporal_contract = validate_chronological_calibration(
+        calibration_prediction_times,
+        test_prediction_times,
+        calibration_available_at=calibration_available_at,
+        calibration_outcome_available_at=calibration_outcome_available_at,
+        test_available_at=test_available_at,
+    )
     p_cal = _validate_probability_matrix(p_calibration, name="p_calibration")
     p_out = _validate_probability_matrix(p_test, name="p_test")
     if p_cal.shape[1] != p_out.shape[1]:
@@ -152,6 +182,7 @@ def split_conformal_prediction_sets(
         "action": actions.tolist(),
         "calibration_size": int(n),
         "finite_sample_correction": True,
+        "temporal_contract": temporal_contract,
     }
 
 
@@ -165,9 +196,21 @@ def group_split_conformal_prediction_sets(
     alpha: float = 0.10,
     class_names: Sequence[str] | None = None,
     min_group_size: int = 30,
+    calibration_prediction_times: Sequence[Any],
+    test_prediction_times: Sequence[Any],
+    calibration_available_at: Sequence[Any],
+    calibration_outcome_available_at: Sequence[Any],
+    test_available_at: Sequence[Any],
 ) -> dict[str, Any]:
     """Group-conditional conformal sets with deterministic global fallback."""
     alpha = _validate_alpha(alpha)
+    temporal_contract = validate_chronological_calibration(
+        calibration_prediction_times,
+        test_prediction_times,
+        calibration_available_at=calibration_available_at,
+        calibration_outcome_available_at=calibration_outcome_available_at,
+        test_available_at=test_available_at,
+    )
     if int(min_group_size) < 20:
         raise ValueError("min_group_size must be >= 20")
     p_cal = _validate_probability_matrix(p_calibration, name="p_calibration")
@@ -227,6 +270,7 @@ def group_split_conformal_prediction_sets(
         "group_fallback": fallback,
         "fallback_rate": float(fallback.mean()) if len(fallback) else 0.0,
         "finite_sample_correction": True,
+        "temporal_contract": temporal_contract,
     }
 
 
