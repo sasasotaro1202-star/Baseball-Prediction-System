@@ -215,3 +215,43 @@ def test_research_active_mlb_candidate_never_enters_production_due_set(monkeypat
     assert candidate["league"] == "MLB"
     assert candidate["prediction_eligibility"] == "RESEARCH_ONLY_BLOCKED_UNTIL_OFFICIAL_STARTERS"
     assert candidate["status"] == "RESEARCH_DUE"
+
+
+def test_research_api_failure_does_not_block_production_scheduler(monkeypatch):
+    _disable_external_research_discovery(monkeypatch)
+    monkeypatch.setattr(
+        scheduler,
+        "load_runtimes",
+        lambda: {
+            "NPB": {
+                "formal_adoption_status": "CURRENT_PRODUCTION",
+                "entrypoint": "production_npb",
+            }
+        },
+    )
+    monkeypatch.setattr(
+        scheduler,
+        "_schedule_for_date",
+        lambda target_date: [
+            {"home": "読売ジャイアンツ", "away": "阪神タイガース", "official_start_time": "18:00"}
+        ],
+    )
+    monkeypatch.setattr(scheduler, "_archived_prediction_keys", lambda target_date: set())
+    monkeypatch.setattr(scheduler, "load_research_active_competitions", lambda: {"MLB"})
+    def fail_mlb(_target_date):
+        raise RuntimeError("temporary MLB schedule source failure")
+    monkeypatch.setattr(scheduler, "_mlb_schedule_for_date", fail_mlb)
+
+    now = datetime(2026, 10, 1, 7, 30, tzinfo=timezone.utc)
+    result = scheduler.due_games(
+        now_utc=now,
+        min_lead_minutes=0.0,
+        preferred_lead_minutes=30.0,
+        scan_ahead_minutes=60.0,
+    )
+
+    assert result["status"] == "DUE"
+    assert len(result["due_games"]) == 1
+    assert result["research_status"] == "RESEARCH_ERROR"
+    assert result["research_due_games"] == []
+    assert result["research_errors"][0]["league"] == "MLB"
