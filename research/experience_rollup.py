@@ -435,6 +435,7 @@ def rollup() -> dict[str, Any]:
         "by_prediction_target": _prediction_target_metrics(canonical),
         "by_prediction_target_all_snapshots": _prediction_target_metrics(scored),
         "by_situation_tag": by_tag,
+        "timing_30m": ledger._timing_30m_metrics(scored),
         "rolling": {},
         "training_contract": {
             "usable_after_result_available_only": True,
