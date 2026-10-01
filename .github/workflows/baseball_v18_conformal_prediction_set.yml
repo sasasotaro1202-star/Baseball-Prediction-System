@@ -1,0 +1,89 @@
+name: Baseball v18 Conformal Prediction Set Gate
+
+on:
+  push:
+    branches:
+      - 'v18/*'
+    paths:
+      - 'research/conformal_prediction_sets.py'
+      - 'tests/test_conformal_prediction_sets.py'
+      - 'tests/test_v18_decision_metadata.py'
+      - 'prediction/prediction_log.py'
+      - 'prediction/runner.py'
+      - '.github/workflows/baseball_v18_conformal_prediction_set.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baseball-v18-conformal-prediction-set
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install
+        run: python -m pip install --disable-pip-version-check --retries 5 --timeout 90 --prefer-binary -r requirements.txt
+      - name: Compile touched modules
+        run: python -m compileall -q research/conformal_prediction_sets.py prediction/prediction_log.py prediction/runner.py
+      - name: v18 unit tests
+        run: |
+          python -m pytest -q             tests/test_conformal_prediction_sets.py             tests/test_v18_decision_metadata.py
+      - name: Existing PIT and runner regression tests
+        run: |
+          python -m pytest -q             tests/test_pit_safety_invariants.py             tests/test_probability_fail_closed.py             tests/test_production_runner_gate.py             tests/test_runner_contract_hardening.py             tests/test_runner_score_outputs.py
+      - name: Conformal smoke artifact
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          python - <<'PY'
+          import json
+          import numpy as np
+          from research.conformal_prediction_sets import split_conformal_prediction_sets
+
+          y = np.array([0, 1, 2] * 20)
+          p = np.tile(np.array([[.80, .15, .05], [.10, .80, .10], [.05, .10, .85]]), (20, 1))
+          out = split_conformal_prediction_sets(
+              y,
+              p,
+              np.array([[.70, .20, .10], [.25, .50, .25], [.05, .15, .80]]),
+              alpha=.10,
+              class_names=("home", "draw", "away"),
+          )
+          report = {
+              "evidence_scope": "synthetic_research_only",
+              "method": out["method"],
+              "alpha": out["alpha"],
+              "prediction_sets": out["prediction_sets"],
+              "actions": out["action"],
+              "calibration_size": out["calibration_size"],
+          }
+          with open("results/v18_conformal_prediction_set_smoke.json", "w", encoding="utf-8") as f:
+              json.dump(report, f, ensure_ascii=False, indent=2)
+          print(json.dumps(report, ensure_ascii=False, indent=2))
+          PY
+      - name: Artifact integrity
+        run: |
+          set -euo pipefail
+          test -s results/v18_conformal_prediction_set_smoke.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          obj = json.loads(Path("results/v18_conformal_prediction_set_smoke.json").read_text(encoding="utf-8"))
+          if obj["evidence_scope"] != "synthetic_research_only":
+              raise SystemExit("wrong evidence scope")
+          if obj["method"] != "split_conformal":
+              raise SystemExit("wrong conformal method")
+          if not obj["prediction_sets"]:
+              raise SystemExit("missing prediction sets")
+          print("v18 conformal smoke: PASS (research-only; no promotion evidence)")
+          PY
