@@ -607,7 +607,13 @@ def run(
         "max_log_ratio": policy.get("max_log_ratio", max_log_ratio),
         "policy": policy.get("policy", {}),
     }
-    policy_hash = deterministic_hash(stable)
+    # The hash represents the learned policy, not the wall-clock check time.
+    # Re-running without new matured experience therefore does not create a
+    # needless repository commit.
+    hash_basis = dict(stable)
+    hash_basis.pop("cutoff_utc", None)
+    hash_basis.pop("matured_rows", None)
+    policy_hash = deterministic_hash(hash_basis)
 
     result = {
         **stable,
