@@ -71,3 +71,19 @@ def test_experience_integrity_audit_rejects_duplicate_prediction_ids(tmp_path):
     )
     with pytest.raises(ValueError, match="duplicate prediction_id"):
         audit_prediction_directory(pred_dir)
+
+
+def test_legacy_scheduled_cutoff_is_quarantined_not_failed(tmp_path):
+    pred_dir = tmp_path / "predictions"
+    pred_dir.mkdir()
+    row = _row(
+        prediction_generated_at="2026-10-01T03:52:00+00:00",
+        prediction_cutoff_utc="2026-10-01T08:30:00+00:00",
+    )
+    _write(pred_dir / "2026-10-01.jsonl", [row])
+    result = audit_prediction_directory(pred_dir)
+    assert result["status"] == "PASS_WITH_LEGACY_QUARANTINE"
+    assert result["prediction_rows"] == 0
+    assert result["pit_pass_rows"] == 0
+    assert result["legacy_quarantined_rows"] == 1
+    assert result["unique_prediction_ids"] == 1
