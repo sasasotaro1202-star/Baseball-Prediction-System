@@ -813,6 +813,12 @@ def reconcile() -> dict[str, Any]:
     keep = [c for c in keep if c in matched.columns]
     experience = matched[keep].copy()
 
+    # Upsert by prediction_id so reruns never duplicate an experience case.
+    existing = pd.DataFrame()
+    if LEDGER_PATH.exists() and LEDGER_PATH.stat().st_size > 0:
+        existing = pd.read_csv(LEDGER_PATH)
+    existing_ids = set(existing["prediction_id"].astype(str)) if "prediction_id" in existing.columns else set()
+
     # Experience availability is the first reconciliation observation for a
     # prediction, not the wall-clock time of the latest rerun. Restore the
     # persisted value at the final ledger-row boundary so repeated runs cannot
@@ -838,11 +844,7 @@ def reconcile() -> dict[str, Any]:
                 raise ValueError("existing experience availability timestamp must be timezone-aware")
             experience.loc[experience.index[idx], "experience_available_at_utc"] = parsed_available.tz_convert("UTC").isoformat()
 
-    # Upsert by prediction_id so reruns never duplicate an experience case.
-    existing = pd.DataFrame()
-    if LEDGER_PATH.exists() and LEDGER_PATH.stat().st_size > 0:
-        existing = pd.read_csv(LEDGER_PATH)
-    existing_ids = set(existing["prediction_id"].astype(str)) if "prediction_id" in existing.columns else set()
+
 
 
     if not existing.empty:
