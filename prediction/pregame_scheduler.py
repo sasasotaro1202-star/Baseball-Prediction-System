@@ -25,6 +25,7 @@ CONFIG = ROOT / "config" / "current_production_runtime.json"
 PRED_DIR = ROOT / "data" / "experience" / "predictions"
 JST = ZoneInfo("Asia/Tokyo")
 NPB_DAY_URL = "https://npb.jp/bis/eng/{year}/games/gm{date}.html"
+MLB_SCHEDULE_URL = "https://statsapi.mlb.com/api/v1/schedule?sportId=1&startDate={start}&endDate={end}&hydrate=probablePitcher"
 TEAM_ALIASES = {
     "Yomiuri": "読売ジャイアンツ",
     "Yakult": "東京ヤクルトスワローズ",
@@ -149,6 +150,69 @@ def _schedule_for_date(target_date: str) -> list[dict]:
     return out
 
 
+
+
+def load_research_active_competitions() -> set[str]:
+    """Return active implemented research competitions without changing production state."""
+    from prediction.scope_router import build_scope
+
+    scope = build_scope()
+    return {str(x).strip().upper() for x in scope.get("research_active", []) if str(x).strip()}
+
+
+def _mlb_schedule_for_date(target_date: str) -> list[dict]:
+    """Discover MLB games whose first pitch falls on the requested JST date.
+
+    MLB schedule discovery is research-only. Probable pitchers are not treated
+    as official starter evidence and cannot unlock production.
+    """
+    target = datetime.fromisoformat(f"{target_date}T00:00:00+09:00")
+    start = (target - timedelta(days=1)).date().isoformat()
+    end = (target + timedelta(days=1)).date().isoformat()
+    raw = _fetch(MLB_SCHEDULE_URL.format(start=start, end=end))
+    payload = json.loads(raw)
+    games: list[dict] = []
+    for day in payload.get("dates", []):
+        for game in day.get("games", []):
+            game_date = str(game.get("gameDate") or "").strip()
+            if not game_date:
+                continue
+            try:
+                start_utc = datetime.fromisoformat(game_date.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            start_jst = start_utc.astimezone(JST)
+            if start_jst.date().isoformat() != target_date:
+                continue
+            teams = game.get("teams") or {}
+            home = teams.get("home") or {}
+            away = teams.get("away") or {}
+            home_team = str((home.get("team") or {}).get("name") or "").strip()
+            away_team = str((away.get("team") or {}).get("name") or "").strip()
+            if not home_team or not away_team:
+                continue
+            hp = str((home.get("probablePitcher") or {}).get("fullName") or "").strip()
+            ap = str((away.get("probablePitcher") or {}).get("fullName") or "").strip()
+            game_id = str(game.get("gamePk") or "").strip()
+            if not game_id:
+                raise RuntimeError(f"MLB research schedule contains game without stable gamePk: {target_date}")
+            games.append({
+                "game_id": game_id,
+                "home": home_team,
+                "away": away_team,
+                "official_start_time": start_jst.strftime("%H:%M"),
+                "scheduled_start_utc": start_utc.isoformat(),
+                "home_starter": hp,
+                "away_starter": ap,
+                "starter_evidence_status": "official_probable_only" if hp and ap else "missing",
+                "starter_source": "MLB Stats API schedule",
+                "pit_status": "NOT_ELIGIBLE_OFFICIAL_STARTER_REQUIRED",
+            })
+    return sorted(
+        games,
+        key=lambda g: (g["scheduled_start_utc"], g["game_id"]),
+    )
+
 def _archived_prediction_keys(target_date: str) -> set[tuple[str, str, str]]:
     path = PRED_DIR / f"{target_date}.jsonl"
     if not path.exists():
@@ -183,7 +247,16 @@ def due_games(*, now_utc: datetime | None = None, min_lead_minutes: float = 0.0,
         raise RuntimeError("no current production runtime is registered")
 
     due: list[dict] = []
+    research_due: list[dict] = []
+    research_errors: list[dict] = []
     blocked: list[dict] = []
+    research_scope_error = None
+    try:
+        research_active = load_research_active_competitions()
+    except Exception as exc:
+        # Research scope discovery is isolated from current-production scheduling.
+        research_active = set()
+        research_scope_error = f"{type(exc).__name__}: {exc}"
     # Current-production policy requires the call-time JST target date.
     # Do not precompute tomorrow's production forecast through this dispatcher.
     dates: set[str] = {now.astimezone(JST).date().isoformat()}
@@ -221,8 +294,41 @@ def due_games(*, now_utc: datetime | None = None, min_lead_minutes: float = 0.0,
                         "preferred_prediction_cutoff_utc": preferred_cutoff.isoformat(),
                         "preferred_30m_met": bool(now <= preferred_cutoff),
                         "lead_minutes": round(lead, 3),
+                        "prediction_eligibility": "CURRENT_PRODUCTION",
                         "status": "DUE",
                     })
+    # Research discovery runs alongside production scanning but can never add
+    # a row to due_games/due_dates. MLB remains research-only until the separate
+    # official-starter PIT gate and production adoption requirements are satisfied.
+    if "MLB" in research_active and "MLB" not in {league for league, _ in enabled}:
+        for target_date in sorted(dates):
+            try:
+                games = _mlb_schedule_for_date(target_date)
+            except Exception as exc:
+                research_errors.append({
+                    "league": "MLB",
+                    "target_date": target_date,
+                    "error": f"{type(exc).__name__}: {exc}",
+                })
+                continue
+            for game_index, game in enumerate(games, start=1):
+                start = datetime.fromisoformat(str(game["scheduled_start_utc"])).astimezone(timezone.utc)
+                lead = (start - now).total_seconds() / 60.0
+                if float(min_lead_minutes) < lead <= float(scan_ahead_minutes):
+                    preferred_cutoff = start - timedelta(minutes=float(preferred_lead_minutes))
+                    research_due.append({
+                        **game,
+                        "league": "MLB",
+                        "target_date": target_date,
+                        "game_index": game_index,
+                        "prediction_cutoff_utc": now.isoformat(),
+                        "preferred_prediction_cutoff_utc": preferred_cutoff.isoformat(),
+                        "preferred_30m_met": bool(now <= preferred_cutoff),
+                        "lead_minutes": round(lead, 3),
+                        "prediction_eligibility": "RESEARCH_ONLY_BLOCKED_UNTIL_OFFICIAL_STARTERS",
+                        "status": "RESEARCH_DUE",
+                    })
+
     return {
         "schema_version": "baseball-pregame-scheduler-v1",
         "checked_at_utc": now.isoformat(),
@@ -230,9 +336,21 @@ def due_games(*, now_utc: datetime | None = None, min_lead_minutes: float = 0.0,
         "preferred_lead_minutes": float(preferred_lead_minutes),
         "scan_ahead_minutes": float(scan_ahead_minutes),
         "runtimes": sorted([league for league, _ in enabled]),
+        "research_active": sorted(research_active),
         "due_games": due,
         "due_dates": sorted({row["target_date"] for row in due}),
+        "research_due_games": research_due,
+        "research_due_dates": sorted({row["target_date"] for row in research_due}),
+        "research_errors": research_errors,
+        "research_scope_error": research_scope_error,
         "blocked_runtimes": blocked,
+        "research_status": (
+            "RESEARCH_DUE"
+            if research_due
+            else "RESEARCH_ERROR"
+            if research_errors or research_scope_error
+            else "NO_RESEARCH_DUE"
+        ),
         "status": "DUE" if due else "NO_DUE_GAMES",
     }
 

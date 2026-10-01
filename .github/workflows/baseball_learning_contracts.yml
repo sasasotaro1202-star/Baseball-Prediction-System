@@ -1,0 +1,53 @@
+name: Baseball Learning Contract Tests
+
+on:
+  pull_request:
+    paths:
+      - "research/learning_streams.py"
+      - "research/target_strategy.py"
+      - "prediction/scope_router.py"
+      - "prediction/pregame_scheduler.py"
+      - "tests/test_target_strategy.py"
+      - "tests/test_scope_router.py"
+      - "tests/test_pregame_scheduler.py"
+      - ".github/workflows/baseball_learning_contracts.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - name: Install lightweight dependencies
+        run: python -m pip install --disable-pip-version-check --retries 5 --timeout 60 pandas pytest
+      - name: Compile
+        run: python -m py_compile research/learning_streams.py research/target_strategy.py prediction/scope_router.py prediction/pregame_scheduler.py tests/test_target_strategy.py tests/test_scope_router.py tests/test_pregame_scheduler.py
+      - name: Contract tests
+        run: python -m pytest -q tests/test_target_strategy.py tests/test_scope_router.py tests/test_pregame_scheduler.py
+      - name: Stream safety check
+        run: |
+          set -euo pipefail
+          python -m research.learning_streams
+          test -s results/learning_streams_manifest.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          obj=json.loads(Path("results/learning_streams_manifest.json").read_text(encoding="utf-8"))
+          c=obj["separation_contract"]
+          assert c["historical_oos_is_model_strategy_learning"] is True
+          assert c["experience_is_postgame_feedback_calibration_learning"] is True
+          assert c["future_outcomes_into_pregame_features"] is False
+          assert c["current_prediction_outcome_reuse"] is False
+          assert c["production_model_modified"] is False
+          assert c["auto_promotion"] is False
+          print("learning stream safety: PASS")
+          PY

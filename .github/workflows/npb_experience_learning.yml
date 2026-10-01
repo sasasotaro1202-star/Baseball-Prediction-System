@@ -14,12 +14,14 @@ on:
   pull_request:
     paths:
       - "research/experience_learning.py"
+      - "research/experience_learning_gate.py"
       - "tests/test_experience_learning.py"
+      - "tests/test_experience_learning_gate.py"
       - ".github/workflows/npb_experience_learning.yml"
       - "data/experience/experience_ledger.csv"
   workflow_run:
     workflows:
-      - NPB Postgame Experience Reconciliation
+      - NPB Prediction Experience Reconciliation
     types: [completed]
   schedule:
     - cron: "45 0,6,12,18 * * *"
@@ -49,10 +51,10 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: requirements-ci.txt
 
       - name: Install dependencies
-        run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
+        run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements-ci.txt
 
       - name: Compile and test experience learner
         run: |
