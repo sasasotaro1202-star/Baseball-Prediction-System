@@ -80,3 +80,31 @@ def strategy_for_target(
 
 def as_dict(strategy: TargetStrategy) -> dict[str, str]:
     return asdict(strategy)
+
+
+def standard_target_strategies(
+    competition_id: str,
+    *,
+    stage: str = "regular_season",
+    competition_type: str = "professional",
+) -> dict[str, TargetStrategy]:
+    """Return the canonical target contracts for a competition.
+
+    This helper binds prediction targets to explicit contracts without granting
+    production eligibility. Competition-specific validation remains separate.
+    """
+    targets = (
+        ("win_3way",) if str(competition_id or "").strip().upper() == "NPB"
+        else ("win_2way",) if str(competition_id or "").strip().upper() == "MLB"
+        else ()
+    ) + ("low_high", "exact_score")
+
+    return {
+        target: strategy_for_target(
+            competition_id,
+            target,
+            stage=stage,
+            competition_type=competition_type,
+        )
+        for target in targets
+    }
