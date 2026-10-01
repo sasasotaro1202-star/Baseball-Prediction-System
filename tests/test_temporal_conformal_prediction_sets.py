@@ -44,7 +44,7 @@ def test_maturity_contract_rejects_unsorted_or_impossible_timestamps():
 def test_walk_forward_excludes_same_time_and_immature_outcomes():
     y, p, pt, mature = _fixture(60)
     # One prior prediction has a late-confirmed outcome and must not enter case 40.
-    mature[39] = pt[50]
+    mature[29] = pt[50]
     out = walk_forward_split_conformal(
         y, p, pt, mature, alpha=.10,
         class_names=("home", "draw", "away"),
