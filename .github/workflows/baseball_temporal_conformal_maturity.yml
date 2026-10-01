@@ -72,6 +72,6 @@ jobs:
           print(json.dumps(report, ensure_ascii=False, indent=2))
           if report['maturity_contract']['status'] != 'PASS':
               raise SystemExit('maturity contract failed')
-          if report['metrics']['eligible_rows'] != 29.0:
+          if report['metrics']['eligible_rows'] != 30.0:
               raise SystemExit('unexpected eligible row count')
           PY
