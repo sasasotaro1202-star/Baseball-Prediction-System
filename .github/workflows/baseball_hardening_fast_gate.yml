@@ -122,7 +122,7 @@ jobs:
         run: |
           set -euo pipefail
           python research/experience_integrity_audit.py
-          echo 'Experience integrity audit: PASS'
+          echo 'Experience integrity audit completed; legacy scheduled-cutoff rows are explicitly quarantined.'
 
       - name: Automation contract scan
         timeout-minutes: 2
