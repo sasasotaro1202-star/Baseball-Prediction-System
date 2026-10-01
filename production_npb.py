@@ -22,9 +22,16 @@ from core.atomic_io import atomic_write_json
 from baseball_backtest import BaseballBacktest, norm_team, score_candidates, low_high_probs
 from research.correlated_score import npb_final_outcomes
 from core.pit_evidence import _is_official_source
+from research.target_strategy import as_dict as target_strategy_dict, standard_target_strategies
 
 ROOT = Path(__file__).resolve().parent
 TIMEOUT = 30
+
+NPB_TARGET_STRATEGIES = standard_target_strategies("NPB")
+NPB_TARGET_CONTRACTS = {
+    target: target_strategy_dict(strategy)
+    for target, strategy in NPB_TARGET_STRATEGIES.items()
+}
 NPB_STARTER_URL = "https://npb.jp/announcement/starter/"
 NPB_DAY_URL = "https://npb.jp/bis/eng/{year}/games/gm{date}.html"
 
@@ -984,7 +991,7 @@ def predict(
             "execution_status":"BLOCKED_STARTERS", "pit_status":"NOT_RUN",
             "starter_gate":"BLOCKED", "model_status":"NOT_RUN",
             "git_commit":__import__("os").environ.get("GITHUB_SHA","unknown"),
-            "predictions":[], "block_reason":message,
+            "predictions":[], "target_strategy_contracts":NPB_TARGET_CONTRACTS, "block_reason":message,
             "prediction_generated_at":datetime.now(timezone.utc).isoformat(),
         }
         out=ROOT/"results"/f"npb_production_{target_date}.json"; out.parent.mkdir(exist_ok=True)
@@ -996,7 +1003,7 @@ def predict(
             "execution_status":("NO_DUE_PREGAME_GAMES" if pregame_only else "NO_FUTURE_GAMES"), "pit_status":"PASS",
             "starter_gate":"PASS", "model_status":"NOT_RUN",
             "git_commit":__import__("os").environ.get("GITHUB_SHA","unknown"),
-            "predictions":[], "block_reason":"all scheduled games for the requested JST date have already started or finished",
+            "predictions":[], "target_strategy_contracts":NPB_TARGET_CONTRACTS, "block_reason":"all scheduled games for the requested JST date have already started or finished",
             "prediction_generated_at":datetime.now(timezone.utc).isoformat(),
         }
         out=ROOT/"results"/f"npb_production_{target_date}.json"; out.parent.mkdir(exist_ok=True)
@@ -1102,6 +1109,7 @@ def predict(
         })
     result={"schema_version":"npb-production-v1","target_date":target_date,"execution_status":"EXECUTED",
             "pit_status":"PASS","starter_gate":"PASS","model_status":"FITTED_ON_PIT_SAFE_HISTORY",
+            "target_strategy_contracts":NPB_TARGET_CONTRACTS,
             "git_commit":__import__("os").environ.get("GITHUB_SHA","unknown"),
             "data_quality_status":"PASS",
             "historical_score_mean_total":round(hist_score_mean,6),

@@ -6,9 +6,11 @@ on:
       - "research/learning_streams.py"
       - "research/target_strategy.py"
       - "prediction/scope_router.py"
+      - "production_npb.py"
       - "prediction/pregame_scheduler.py"
       - "tests/test_target_strategy.py"
       - "tests/test_scope_router.py"
+      - "tests/test_production_target_contract_binding.py"
       - "tests/test_pregame_scheduler.py"
       - ".github/workflows/baseball_learning_contracts.yml"
   workflow_dispatch:
@@ -30,9 +32,9 @@ jobs:
       - name: Install lightweight dependencies
         run: python -m pip install --disable-pip-version-check --retries 5 --timeout 60 pandas pytest
       - name: Compile
-        run: python -m py_compile research/learning_streams.py research/target_strategy.py prediction/scope_router.py prediction/pregame_scheduler.py tests/test_target_strategy.py tests/test_scope_router.py tests/test_pregame_scheduler.py
+        run: python -m py_compile research/learning_streams.py research/target_strategy.py prediction/scope_router.py prediction/pregame_scheduler.py production_npb.py tests/test_target_strategy.py tests/test_scope_router.py tests/test_pregame_scheduler.py tests/test_production_target_contract_binding.py
       - name: Contract tests
-        run: python -m pytest -q tests/test_target_strategy.py tests/test_scope_router.py tests/test_pregame_scheduler.py
+        run: python -m pytest -q tests/test_target_strategy.py tests/test_scope_router.py tests/test_pregame_scheduler.py tests/test_production_target_contract_binding.py
       - name: Stream safety check
         run: |
           set -euo pipefail
