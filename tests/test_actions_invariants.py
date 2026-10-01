@@ -159,10 +159,14 @@ def test_24h_supervisor_avoids_deterministic_failure_retry_loop():
 
 
 
-def test_24h_keeper_resets_failure_cooldown_after_success():
+def test_24h_keeper_uses_consecutive_failure_streak():
     text = (ROOT / ".github" / "workflows" / "baseball_24h_research_keeper.yml").read_text(encoding="utf-8")
-    assert "latest_success_at" in text
-    assert "failures_after_success" in text
-    assert "failures_after_latest_success" in text
-    assert "three or more consecutive failed autopilot runs since the latest success" in text
+    assert "failure_streak" in text
+    assert "consecutive_failure_streak" in text
+    assert "sort_by(.createdAt)" in text
+    assert "reverse" in text
+    assert "reduce .[] as $r" in text
+    assert 'elif $r.conclusion == "failure"' in text
+    assert ".done = true" in text
+    assert "three or more consecutive failed autopilot runs" in text
     assert "recent_failures_24h" not in text
