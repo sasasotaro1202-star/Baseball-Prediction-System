@@ -16,6 +16,7 @@ import pandas as pd
 
 from evaluation.metrics import classification_metrics
 from research.ultimate_v13_control import FutureFailureEstimator, error_correlation, model_disagreement, predictability_score
+from research.future_generalization_v13 import predictability_series
 from research.oos_pit_join import attach_pit_evidence
 from research.ultimate_v13_operational_controls import (
     output_format,
@@ -189,22 +190,57 @@ def run_real_oos_bridge(
     if pmat is not None and y is not None:
         result["metrics"] = _metrics(y, pmat)
         prior_probs = pmat[:-1] if len(pmat) > 1 else None
+        # The legacy terminal score is retained as a fallback. The primary
+        # diagnostic below is walk-forward and may use only matured outcomes.
         result["predictability"] = predictability_score(
             pmat[-1:],
             history_probs=prior_probs,
             data_quality=1.0 if pit["status"] == "PASS" else 0.0,
         )
+        try:
+            pw = predictability_series(
+                pmat,
+                y,
+                min_history=30,
+                data_quality=np.full(len(pmat), 1.0 if pit["status"] == "PASS" else 0.0),
+            )
+            result["predictability_series"] = pw
+            result["predictability"] = pw["terminal"]
+        except Exception as exc:
+            result["predictability_series"] = {
+                "status": "BLOCKED",
+                "reason": f"{type(exc).__name__}:{exc}",
+            }
+
         panel = _model_panel(df, league)
         if panel is not None:
             model_probs, losses = panel
+            disagreement_report = model_disagreement(model_probs)
             panel_out = {
                 "status": "PASS",
                 "models": sorted(model_probs),
-                "model_disagreement": model_disagreement(model_probs),
+                "model_disagreement": disagreement_report,
                 "error_correlation": error_correlation(_labels(df.drop_duplicates("game_id"), league), model_probs),
                 "loss_rows": {k: len(v) for k, v in losses.items()},
                 "router_stability": {"status": "UNAVAILABLE", "reason": "router_weights_not_present_in_checkpoint"},
             }
+            # Refine only the diagnostic score with prediction-only model
+            # disagreement. Historical correctness remains strictly prior to t.
+            try:
+                if len(disagreement_report["disagreement_score"]) == len(pmat):
+                    result["predictability_series"] = predictability_series(
+                        pmat,
+                        y,
+                        disagreement=disagreement_report["disagreement_score"],
+                        min_history=30,
+                        data_quality=np.full(len(pmat), 1.0 if pit["status"] == "PASS" else 0.0),
+                    )
+                    result["predictability"] = result["predictability_series"]["terminal"]
+            except Exception as exc:
+                panel_out["predictability_series_refinement"] = {
+                    "status": "BLOCKED",
+                    "reason": f"{type(exc).__name__}:{exc}",
+                }
             terminal_history = {name: values[:-1] for name, values in losses.items() if len(values) >= 2}
             try:
                 if terminal_history and min(map(len, terminal_history.values())) >= 32:

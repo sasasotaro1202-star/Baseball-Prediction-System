@@ -8,6 +8,7 @@ from research.future_generalization_v13 import (
     error_correlation,
     model_disagreement,
     predictability_score,
+    predictability_series,
     routing_weights,
     run_e2e_case,
     select_prediction_policy,
@@ -44,6 +45,39 @@ def test_disagreement_and_error_correlation():
     assert d["mean_pairwise_js"] >= 0
     assert set(e["mean_error_rate"]) == set(models)
 
+
+def test_predictability_series_is_walk_forward_and_calibrated():
+    rng = np.random.default_rng(21)
+    n = 90
+    y = rng.integers(0, 3, size=n)
+    p = np.full((n, 3), 1 / 3, dtype=float)
+    p[:, 0] = 0.60
+    p[:, 1] = 0.25
+    p[:, 2] = 0.15
+    p /= p.sum(axis=1, keepdims=True)
+    disagreement = np.linspace(0.05, 0.25, n)
+
+    report = predictability_series(
+        p,
+        y,
+        disagreement=disagreement,
+        min_history=10,
+    )
+    assert report["walk_forward"] is True
+    assert len(report["values"]) == n
+    assert report["calibration"]["status"] == "PASS"
+
+    # Changing future outcomes must not alter an earlier predictability value.
+    future_y = y.copy()
+    future_y[60:] = 2 - future_y[60:]
+    perturbed = predictability_series(
+        p,
+        future_y,
+        disagreement=disagreement,
+        min_history=10,
+    )
+    assert np.allclose(report["values"][:60], perturbed["values"][:60])
+    assert report["history_count"][59] < 60
 
 def test_predictability_is_bounded_and_separate():
     _, models, _ = _synthetic()
