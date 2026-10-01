@@ -678,6 +678,9 @@ def run(
         "status": policy["status"],
         "cutoff_utc": policy["cutoff_utc"],
         "matured_rows": policy["matured_rows"],
+        "raw_matured_snapshot_rows": policy.get("raw_matured_snapshot_rows", policy["matured_rows"]),
+        "independent_game_count": policy.get("independent_game_count", policy["matured_rows"]),
+        "case_selection": "latest_mature_prediction_per_game",
         "min_group_rows": policy.get("min_group_rows", min_group_rows),
         "prior_strength": policy.get("prior_strength", prior_strength),
         "correction_strength": policy.get(
@@ -703,6 +706,7 @@ def run(
             "experience_available_at_le_prediction_time": True,
             "current_row_excluded_from_learning": True,
             "future_outcomes_excluded": True,
+            "same_game_revisions_collapsed": True,
             "production_model_modified": False,
             "promotion_enabled": False,
         },
