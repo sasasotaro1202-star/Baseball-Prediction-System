@@ -2,6 +2,13 @@ name: NPB Experience Learning Loop
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - "research/experience-learning-loop-20261001"
+    paths:
+      - "research/experience_learning.py"
+      - "tests/test_experience_learning.py"
+      - ".github/workflows/npb_experience_learning.yml"
   pull_request:
     paths:
       - "research/experience_learning.py"
