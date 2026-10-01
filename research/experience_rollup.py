@@ -25,6 +25,7 @@ import numpy as np
 import pandas as pd
 
 from research.npb_official_results import _fetch_month
+from research import experience_ledger as ledger
 from research.experience_ledger import _prediction_target_metrics
 
 ROOT = Path(__file__).resolve().parents[1]
