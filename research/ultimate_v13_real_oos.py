@@ -16,6 +16,7 @@ import pandas as pd
 
 from evaluation.metrics import classification_metrics
 from research.ultimate_v13_control import FutureFailureEstimator, error_correlation, model_disagreement, predictability_score
+from research.future_generalization_v13 import predictability_series
 from research.oos_pit_join import attach_pit_evidence
 from research.ultimate_v13_operational_controls import (
     output_format,
