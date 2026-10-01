@@ -46,6 +46,14 @@ def test_load_experience_rejects_impossible_experience_time(tmp_path):
         load_experience(path)
 
 
+def test_load_experience_accepts_unit_probabilities(tmp_path):
+    frame = _toy(10)
+    path = tmp_path / "experience.csv"
+    frame.to_csv(path, index=False)
+    loaded = load_experience(path)
+    assert len(loaded) == 10
+
+
 def test_build_policy_excludes_experience_after_cutoff():
     frame = _toy()
     cutoff = pd.Timestamp("2026-09-04T00:00:00Z")
