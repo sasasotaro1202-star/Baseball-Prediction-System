@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "config" / "current_production_runtime.json"
 PRED_DIR = ROOT / "data" / "experience" / "predictions"
 JST = ZoneInfo("Asia/Tokyo")
-NPB_DAY_URL = "https://npb.jp/bis/eng/{year}/games/gm{date}.html"
+NPB_DAY_URL = "https://npb.jp/bis/eng/{year}/games/gm{date}.html"\nMLB_SCHEDULE_URL = "https://statsapi.mlb.com/api/v1/schedule?sportId=1&startDate={start}&endDate={end}&hydrate=probablePitcher"
 TEAM_ALIASES = {
     "Yomiuri": "読売ジャイアンツ",
     "Yakult": "東京ヤクルトスワローズ",
