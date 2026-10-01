@@ -87,3 +87,20 @@ def test_legacy_scheduled_cutoff_is_quarantined_not_failed(tmp_path):
     assert result["pit_pass_rows"] == 0
     assert result["legacy_quarantined_rows"] == 1
     assert result["unique_prediction_ids"] == 1
+
+
+def test_experience_integrity_audit_checks_starter_provenance(tmp_path):
+    pred_dir = tmp_path / "predictions"
+    pred_dir.mkdir()
+    row = _row(starter_evidence_status="unverified")
+    _write(pred_dir / "2026-10-01.jsonl", [row])
+    with pytest.raises(ValueError, match="unsupported starter evidence status"):
+        audit_prediction_directory(pred_dir)
+
+    row = _row(
+        prediction_id="prediction-2",
+        starter_source="https://example.com/not-npb",
+    )
+    _write(pred_dir / "2026-10-01.jsonl", [row])
+    with pytest.raises(ValueError, match="non-official starter source"):
+        audit_prediction_directory(pred_dir)
