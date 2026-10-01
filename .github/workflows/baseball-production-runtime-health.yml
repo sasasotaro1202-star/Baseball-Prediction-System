@@ -39,9 +39,9 @@ jobs:
           python -m pytest -q tests/test_production_runtime_health.py
       - name: Run live production runtime health audit
         env:
-          GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: \${{ github.repository }}
-          GITHUB_API_URL: \${{ github.api_url }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_API_URL: ${{ github.api_url }}
           PRODUCTION_WORKFLOW: npb-production.yml
         run: |
           set -euo pipefail
@@ -51,7 +51,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: npb-production-runtime-health-\${{ github.run_id }}
+          name: npb-production-runtime-health-${{ github.run_id }}
           path: results/monitoring/npb_production_runtime_health.json
           if-no-files-found: warn
           retention-days: 14
