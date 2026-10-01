@@ -114,3 +114,102 @@ def test_build_health_marks_missing_output_artifact() -> None:
     assert report["health_state"] == "SUCCESS"
     assert report["artifacts"]["production_output_present"] is False
     assert "production_output_artifact_missing" in report["warnings"]
+
+
+def test_latest_production_run_prefers_active_then_queued(monkeypatch) -> None:
+    import monitoring.production_runtime_health as health
+
+    monkeypatch.setattr(
+        health,
+        "_api_json",
+        lambda *args, **kwargs: {
+            "workflow_runs": [
+                {
+                    "id": 1,
+                    "head_branch": "main",
+                    "status": "completed",
+                    "conclusion": "success",
+                    "created_at": "2026-10-01T03:00:00Z",
+                },
+                {
+                    "id": 2,
+                    "head_branch": "main",
+                    "status": "queued",
+                    "conclusion": None,
+                    "created_at": "2026-10-01T05:00:00Z",
+                },
+                {
+                    "id": 3,
+                    "head_branch": "main",
+                    "status": "in_progress",
+                    "conclusion": None,
+                    "created_at": "2026-10-01T04:00:00Z",
+                },
+                {
+                    "id": 4,
+                    "head_branch": "feature",
+                    "status": "in_progress",
+                    "conclusion": None,
+                    "created_at": "2026-10-01T06:00:00Z",
+                },
+            ]
+        },
+    )
+    active = health._latest_production_run(
+        "https://api.github.com",
+        "owner/repo",
+        "token",
+        "npb-production.yml",
+    )
+    assert active["id"] == 3
+
+    monkeypatch.setattr(
+        health,
+        "_api_json",
+        lambda *args, **kwargs: {
+            "workflow_runs": [
+                {
+                    "id": 5,
+                    "head_branch": "main",
+                    "status": "completed",
+                    "conclusion": "success",
+                    "created_at": "2026-10-01T03:00:00Z",
+                },
+                {
+                    "id": 6,
+                    "head_branch": "main",
+                    "status": "queued",
+                    "conclusion": None,
+                    "created_at": "2026-10-01T05:00:00Z",
+                },
+            ]
+        },
+    )
+    queued = health._latest_production_run(
+        "https://api.github.com",
+        "owner/repo",
+        "token",
+        "npb-production.yml",
+    )
+    assert queued["id"] == 6
+
+
+def test_missing_github_api_context_fails_closed(monkeypatch, tmp_path) -> None:
+    import json
+    import monitoring.production_runtime_health as health
+    import sys
+
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
+    output = tmp_path / "health.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["production_runtime_health", "--output", str(output)],
+    )
+
+    assert health.main() == 1
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["status"] == "BLOCKED_LOOKUP"
+    assert payload["health_state"] == "UNKNOWN"
+    assert payload["promotion_gate"] is False
