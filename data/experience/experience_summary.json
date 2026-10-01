@@ -1,5 +1,5 @@
 {
-  "generated_at_utc": "2026-10-01T01:22:20.146874+00:00",
+  "generated_at_utc": "2026-10-01T04:15:55.537Z",
   "status": "UPDATED",
   "prediction_rows": 23,
   "matched_rows_total": 5,
@@ -7,17 +7,17 @@
   "outcome_accuracy": 0.6,
   "logloss": 0.6900037699068177,
   "brier": 0.4786900349762,
-  "ece": 0.593768832,
+  "ece": 0.2568392,
   "draw_rows": 0,
-  "draw_recall": 0.0,
+  "draw_recall": 0,
   "low_high_accuracy": 0.6,
   "score_mae": 2.0657958394328952,
-  "top1_exact_hit_rate": 0.0,
-  "top4_exact_hit_rate": 0.0,
+  "top1_exact_hit_rate": 0,
+  "top4_exact_hit_rate": 0,
   "by_regime": {
     "s2_e1_m2": {
       "rows": 1,
-      "accuracy": 1.0,
+      "accuracy": 1,
       "logloss": 0.2767737847442478,
       "brier": 0.11089695390200002
     },
@@ -34,9 +34,9 @@
       "accuracy": 0.6,
       "logloss": 0.6900037699068177,
       "brier": 0.4786900349762,
-      "ece": 0.593768832,
+      "ece": 0.2568392,
       "low_high_accuracy": 0.6,
-      "top4_exact_hit_rate": 0.0
+      "top4_exact_hit_rate": 0
     }
   },
   "by_prediction_target": {
@@ -54,15 +54,15 @@
       "selective_0.70": {
         "coverage": 0.2,
         "n": 1,
-        "accuracy": 1.0
+        "accuracy": 1
       },
       "selective_0.80": {
-        "coverage": 0.0,
+        "coverage": 0,
         "n": 0,
         "accuracy": null
       },
       "selective_0.90": {
-        "coverage": 0.0,
+        "coverage": 0,
         "n": 0,
         "accuracy": null
       }
@@ -76,8 +76,8 @@
     },
     "exact_score": {
       "rows": 5,
-      "top1_exact_hit_rate": 0.0,
-      "top4_exact_hit_rate": 0.0,
+      "top1_exact_hit_rate": 0,
+      "top4_exact_hit_rate": 0,
       "score_mae": 2.0657958394328952
     }
   },
@@ -94,27 +94,27 @@
       "accuracy": 0.6,
       "logloss": 0.6900037699068177,
       "brier": 0.4786900349762,
-      "ece": 0.593768832,
+      "ece": 0.2568392,
       "low_high_accuracy": 0.6,
-      "top4_exact_hit_rate": 0.0
+      "top4_exact_hit_rate": 0
     },
     "100": {
       "rows": 5,
       "accuracy": 0.6,
       "logloss": 0.6900037699068177,
       "brier": 0.4786900349762,
-      "ece": 0.593768832,
+      "ece": 0.2568392,
       "low_high_accuracy": 0.6,
-      "top4_exact_hit_rate": 0.0
+      "top4_exact_hit_rate": 0
     },
     "300": {
       "rows": 5,
       "accuracy": 0.6,
       "logloss": 0.6900037699068177,
       "brier": 0.4786900349762,
-      "ece": 0.593768832,
+      "ece": 0.2568392,
       "low_high_accuracy": 0.6,
-      "top4_exact_hit_rate": 0.0
+      "top4_exact_hit_rate": 0
     }
   }
 }
