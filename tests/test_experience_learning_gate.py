@@ -55,7 +55,6 @@ def test_gate_evaluates_locked_holdout_but_stays_conservative():
         bootstrap_min_cases=60,
     )
     assert result["status"] == "EVALUATED"
-    assert result["holdout_outcomes_used_to_build_policy"] if "holdout_outcomes_used_to_build_policy" in result else True
     assert result["selection_contract"]["holdout_outcomes_used_to_build_policy"] is False
     assert result["promotion_status"] == "HOLD"
     assert result["uncertainty"]["status"] == "UNAVAILABLE"
