@@ -76,6 +76,9 @@ jobs:
               "prediction.runner",
               "prediction.prediction_log",
               "evaluation.calibration",
+              "research.learning_streams",
+              "research.target_strategy",
+              "prediction.scope_router",
           ]
           for name in modules:
               importlib.import_module(name)
@@ -136,6 +139,29 @@ jobs:
             --mlb-start "${{ inputs.mlb_start }}" \
             --mlb-end "${{ inputs.mlb_end }}" \
             --retries 2
+
+      - name: Audit dual learning streams and target strategy contracts
+        run: |
+          set -euo pipefail
+          python -m research.learning_streams > results/learning_streams_stdout.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          obj=json.loads(Path("results/learning_streams_manifest.json").read_text(encoding="utf-8"))
+          assert obj["status"] == "EXECUTED"
+          contract=obj["separation_contract"]
+          assert contract["historical_oos_is_model_strategy_learning"] is True
+          assert contract["experience_is_postgame_feedback_calibration_learning"] is True
+          assert contract["future_outcomes_into_pregame_features"] is False
+          assert contract["production_model_modified"] is False
+          assert contract["auto_promotion"] is False
+          from research.target_strategy import strategy_for_target
+          assert strategy_for_target("NPB","win_3way").probability_contract == "HOME_DRAW_AWAY"
+          assert strategy_for_target("MLB","win_2way").probability_contract == "HOME_AWAY"
+          assert strategy_for_target("MLB","low_high").model_family == "run_distribution"
+          assert strategy_for_target("MLB","exact_score").model_family == "correlated_run_distribution"
+          print("dual learning + target strategy contract: PASS")
+          PY
 
       - name: Verify research manifest
         run: |
