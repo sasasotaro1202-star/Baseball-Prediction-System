@@ -188,6 +188,11 @@ def test_reconcile_reports_independent_prediction_target_metrics(tmp_path, monke
     assert targets["win_3way"]["selective_0.60"]["n"] == 1
     assert targets["win_3way"]["selective_0.60"]["accuracy"] == 1.0
     assert targets["win_3way"]["selective_0.90"]["n"] == 0
+    # The canonical ledger stores outcome probabilities on the normalized [0,1] scale.
+    # Headline, target-level, and rolling ECE must therefore all use that same scale.
+    assert abs(summary["ece"] - targets["win_3way"]["ece"]) < 1e-12
+    assert abs(summary["by_target"]["NPB"]["ece"] - targets["win_3way"]["ece"]) < 1e-12
+    assert abs(summary["rolling"]["30"]["ece"] - targets["win_3way"]["ece"]) < 1e-12
 
 
 def test_prediction_target_metrics_accept_normalized_snapshot_scale():
