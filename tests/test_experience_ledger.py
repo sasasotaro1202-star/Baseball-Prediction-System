@@ -426,3 +426,27 @@ def test_load_predictions_quarantines_legacy_scheduled_cutoff(tmp_path, monkeypa
 
     loaded = exp._load_predictions()
     assert loaded.empty
+
+
+def test_revision_metadata_ignores_quarantined_legacy_snapshot():
+    record = {
+        "game_id": "g1",
+        "prediction_cutoff_utc": "2026-09-26T03:00:00+00:00",
+        "home_win_pct": 50.0,
+        "draw_pct": 10.0,
+        "away_win_pct": 40.0,
+    }
+    existing = {
+        "legacy": {
+            "game_id": "g1",
+            "prediction_id": "legacy",
+            "prediction_cutoff_utc": "2026-09-26T02:00:00+00:00",
+            "prediction_generated_at": "2026-09-26T01:52:00+00:00",
+            "home_win_pct": 10.0,
+            "draw_pct": 10.0,
+            "away_win_pct": 80.0,
+        }
+    }
+    meta = exp._revision_metadata(record, existing)
+    assert meta["revision_status"] == "INITIAL"
+    assert meta["revision_previous_prediction_id"] is None
