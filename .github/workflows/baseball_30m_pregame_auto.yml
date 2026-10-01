@@ -167,7 +167,7 @@ jobs:
 
       - name: Upload scheduler and prediction evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75d1b98f9651f4c2fe49ce5d2db
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: baseball-pregame-30m
           path: |
