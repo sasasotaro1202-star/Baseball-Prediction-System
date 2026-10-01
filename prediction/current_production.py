@@ -108,6 +108,7 @@ def predict_current(
     league: str,
     target_date: str | None = None,
     data_dir: str = "data",
+    pregame_only: bool = False,
 ) -> dict[str, Any]:
     """Run the current production runtime at the live call-time target date.
 
@@ -140,7 +141,7 @@ def predict_current(
         from production_npb import predict
 
         date_value = resolved_target_date
-        result = predict(date_value, data_dir)
+        result = predict(date_value, data_dir, pregame_only=bool(pregame_only))
         if not isinstance(result, Mapping):
             raise RuntimeError("current production runtime returned a non-object result")
 
@@ -170,6 +171,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--league", required=True, choices=("NPB", "MLB"))
     parser.add_argument("--date", default=None)
     parser.add_argument("--data-dir", default="data")
+    parser.add_argument(
+        "--pregame-only",
+        action="store_true",
+        help="Only emit games inside the hard 30-minute pregame automation window.",
+    )
     parser.add_argument("--describe", action="store_true")
     args = parser.parse_args(argv)
 
@@ -181,6 +187,7 @@ def main(argv: list[str] | None = None) -> int:
         league=args.league,
         target_date=args.date,
         data_dir=args.data_dir,
+        pregame_only=args.pregame_only,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
     if result.get("execution_status") == "BLOCKED_NO_CURRENT_PRODUCTION_RUNTIME":
