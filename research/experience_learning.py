@@ -108,7 +108,9 @@ def load_experience(path: str | Path = EXPERIENCE_PATH) -> pd.DataFrame:
         raise ValueError("experience probabilities are invalid")
 
     sums = probs.sum(axis=1)
-    if np.any(np.abs(sums - 100.0) > 0.0003):
+    unit_rows = np.abs(sums - 1.0) <= 0.000003
+    percent_rows = np.abs(sums - 100.0) <= 0.0003
+    if np.any(~(unit_rows | percent_rows)):
         raise ValueError("experience probability rows are not normalized")
 
     frame["actual_outcome"] = frame["actual_outcome"].astype(str).str.strip()
@@ -211,7 +213,14 @@ class _Accumulator:
                 float(row["away_win_pct"]),
             ],
             dtype=float,
-        ) / 100.0
+        )
+        total = float(p.sum())
+        if abs(total - 100.0) <= 0.0003:
+            p = p / 100.0
+        elif abs(total - 1.0) <= 0.000003:
+            p = p
+        else:
+            raise ValueError("experience probability row is not normalized")
         p = _normalize(p)
         idx = OUTCOME_INDEX[str(row["actual_outcome"])]
         self.rows += 1
