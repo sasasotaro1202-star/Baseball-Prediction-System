@@ -93,11 +93,15 @@ def standard_target_strategies(
     This helper binds prediction targets to explicit contracts without granting
     production eligibility. Competition-specific validation remains separate.
     """
-    targets = (
-        ("win_3way",) if str(competition_id or "").strip().upper() == "NPB"
-        else ("win_2way",) if str(competition_id or "").strip().upper() == "MLB"
-        else ()
-    ) + ("low_high", "exact_score")
+    cid = str(competition_id or "").strip().upper()
+    if cid == "NPB":
+        targets = ("win_3way", "low_high", "exact_score")
+    elif cid == "MLB":
+        targets = ("win_2way", "low_high", "exact_score")
+    else:
+        # Deferred/unregistered competitions must not receive a target bundle.
+        # Their scope and eligibility are governed by the competition registry.
+        targets = ()
 
     return {
         target: strategy_for_target(
