@@ -47,6 +47,20 @@ def test_gate_blocks_when_holdout_is_too_small():
     assert result["promotion_status"] == "HOLD"
 
 
+def test_gate_evaluates_locked_holdout_but_stays_conservative():
+    result = evaluate_locked_holdout(
+        _frame(150),
+        min_train_cases=30,
+        min_holdout_cases=30,
+        bootstrap_min_cases=60,
+    )
+    assert result["status"] == "EVALUATED"
+    assert result["holdout_outcomes_used_to_build_policy"] if "holdout_outcomes_used_to_build_policy" in result else True
+    assert result["selection_contract"]["holdout_outcomes_used_to_build_policy"] is False
+    assert result["promotion_status"] == "HOLD"
+    assert result["uncertainty"]["status"] == "UNAVAILABLE"
+
+
 def test_gate_never_enables_auto_promotion():
     result = evaluate_locked_holdout(
         _frame(80),
