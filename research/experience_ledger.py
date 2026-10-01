@@ -145,6 +145,74 @@ def _validate_prediction_time_contract(row: dict[str, Any]) -> None:
         raise ValueError("prediction snapshot is not PIT PASS")
 
 
+def _revision_metadata(
+    record: dict[str, Any],
+    existing: Mapping[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """Compare a new snapshot only with an earlier snapshot of the same game."""
+    current_cutoff = pd.Timestamp(record["prediction_cutoff_utc"])
+    if current_cutoff.tzinfo is None:
+        raise ValueError("prediction cutoff must be timezone-aware")
+
+    prior: tuple[pd.Timestamp, dict[str, Any]] | None = None
+    for candidate in existing.values():
+        if str(candidate.get("game_id", "")) != str(record.get("game_id", "")):
+            continue
+        raw_cutoff = candidate.get("prediction_cutoff_utc")
+        if raw_cutoff in (None, ""):
+            continue
+        try:
+            cutoff = pd.Timestamp(raw_cutoff)
+        except Exception:
+            continue
+        if cutoff.tzinfo is None or cutoff >= current_cutoff:
+            continue
+        if prior is None or cutoff > prior[0]:
+            prior = (cutoff, candidate)
+
+    if prior is None:
+        return {
+            "revision_status": "INITIAL",
+            "revision_previous_prediction_id": None,
+            "revision_l1_pct_points": None,
+            "revision_max_abs_pct_points": None,
+            "revision_outcome_changed": False,
+        }
+
+    previous = prior[1]
+    fields = ("home_win_pct", "draw_pct", "away_win_pct")
+    try:
+        current = np.asarray([float(record[field]) for field in fields], dtype=float)
+        old = np.asarray([float(previous[field]) for field in fields], dtype=float)
+    except (KeyError, TypeError, ValueError):
+        return {
+            "revision_status": "NO_COMPARABLE_PREVIOUS",
+            "revision_previous_prediction_id": str(previous.get("prediction_id") or "") or None,
+            "revision_l1_pct_points": None,
+            "revision_max_abs_pct_points": None,
+            "revision_outcome_changed": False,
+        }
+
+    if (
+        not np.isfinite(current).all()
+        or not np.isfinite(old).all()
+        or (current < 0).any()
+        or (old < 0).any()
+    ):
+        raise ValueError("invalid probabilities for revision comparison")
+
+    delta = current - old
+    previous_winner = int(np.argmax(old))
+    current_winner = int(np.argmax(current))
+    return {
+        "revision_status": "REVISED",
+        "revision_previous_prediction_id": str(previous.get("prediction_id") or "") or None,
+        "revision_l1_pct_points": float(np.abs(delta).sum()),
+        "revision_max_abs_pct_points": float(np.abs(delta).max()),
+        "revision_outcome_changed": bool(previous_winner != current_winner),
+    }
+
+
 def _prediction_id(row: dict[str, Any]) -> str:
     raw = f"{row['game_id']}|{row['prediction_cutoff_utc']}|{row.get('git_commit','unknown')}"
     import hashlib
@@ -202,6 +270,8 @@ def archive_production_output(input_json: str | Path, *, run_id: str | None = No
         record["competition_id"] = str(record.get("competition_id") or target)
         record["prediction_id"] = _prediction_id(record)
         record["source_run_id"] = str(run_id) if run_id is not None else None
+        revision = _revision_metadata(record, existing)
+        record.update(revision)
         record["archived_at_utc"] = _utc_now()
         key = record["prediction_id"]
         if key not in existing:
