@@ -813,42 +813,38 @@ def reconcile() -> dict[str, Any]:
     keep = [c for c in keep if c in matched.columns]
     experience = matched[keep].copy()
 
-    # Upsert by prediction_id so reruns never duplicate an experience case.
-    existing = pd.DataFrame()
-    if LEDGER_PATH.exists() and LEDGER_PATH.stat().st_size > 0:
-        existing = pd.read_csv(LEDGER_PATH)
-    existing_ids = set(existing["prediction_id"].astype(str)) if "prediction_id" in existing.columns else set()
-
     # Experience availability is the first reconciliation observation for a
-    # prediction, not the wall-clock time of the latest rerun. Preserving this
-    # timestamp makes chronological replay deterministic across idempotent
-    # reconciliations and avoids silently moving mature-experience boundaries.
+    # prediction, not the wall-clock time of the latest rerun. Restore the
+    # persisted value at the final ledger-row boundary so repeated runs cannot
+    # move the chronological replay boundary forward.
     if not existing.empty and "experience_available_at_utc" in existing.columns:
         prior_available = (
             existing[["prediction_id", "experience_available_at_utc"]]
             .dropna(subset=["prediction_id"])
-            .astype({"prediction_id": str})
+            .assign(prediction_id=lambda frame: frame["prediction_id"].astype(str))
             .drop_duplicates("prediction_id", keep="first")
             .set_index("prediction_id")["experience_available_at_utc"]
             .to_dict()
         )
-        for idx, prediction_id in enumerate(matched["prediction_id"].astype(str)):
+        for idx, prediction_id in enumerate(experience["prediction_id"].astype(str)):
             previous_available = prior_available.get(prediction_id)
             if previous_available is None or str(previous_available).strip() in {"", "nan", "NaT"}:
                 continue
             try:
                 parsed_available = pd.Timestamp(previous_available)
             except Exception as exc:
-                raise ValueError(
-                    "existing experience availability timestamp is invalid"
-                ) from exc
+                raise ValueError("existing experience availability timestamp is invalid") from exc
             if parsed_available.tzinfo is None:
-                raise ValueError(
-                    "existing experience availability timestamp must be timezone-aware"
-                )
-            matched.loc[matched.index[idx], "experience_available_at_utc"] = (
-                parsed_available.tz_convert("UTC").isoformat()
-            )
+                raise ValueError("existing experience availability timestamp must be timezone-aware")
+            experience.loc[experience.index[idx], "experience_available_at_utc"] = parsed_available.tz_convert("UTC").isoformat()
+
+    # Upsert by prediction_id so reruns never duplicate an experience case.
+    existing = pd.DataFrame()
+    if LEDGER_PATH.exists() and LEDGER_PATH.stat().st_size > 0:
+        existing = pd.read_csv(LEDGER_PATH)
+    existing_ids = set(existing["prediction_id"].astype(str)) if "prediction_id" in existing.columns else set()
+
+
     if not existing.empty:
         if "target" not in existing.columns:
             existing["target"] = existing.get("league", "NPB")
