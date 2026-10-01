@@ -67,6 +67,7 @@ def load_experience(path: str | Path = EXPERIENCE_PATH) -> pd.DataFrame:
     frame = pd.read_csv(src)
     required = {
         "prediction_id",
+        "game_id",
         "target",
         "prediction_cutoff_utc",
         "experience_available_at_utc",
@@ -165,6 +166,43 @@ def _scope_keys(row: pd.Series) -> list[tuple[str, str]]:
     return keys
 
 
+def _canonical_matured_cases(
+    frame: pd.DataFrame,
+    *,
+    cutoff_ts: pd.Timestamp,
+) -> pd.DataFrame:
+    """Keep one latest mature pre-cutoff prediction per game.
+
+    Revisions of the same game share the same realized outcome. Counting every
+    revision as an independent experience case can overweight one game's noise,
+    so learning uses the latest prediction snapshot available at the cutoff.
+    """
+    if "game_id" not in frame.columns:
+        raise ValueError("experience ledger requires game_id for independent cases")
+    work = frame.copy()
+    game_id = work["game_id"].astype(str).str.strip()
+    if game_id.eq("").any() or game_id.isin({"nan", "None"}).any():
+        raise ValueError("experience ledger contains missing game_id")
+    eligible = work.loc[
+        (work["experience_available_at_utc"] <= cutoff_ts)
+        & (work["prediction_cutoff_utc"] < cutoff_ts)
+    ].copy()
+    if eligible.empty:
+        return eligible
+    return (
+        eligible.sort_values(
+            ["game_id", "prediction_cutoff_utc", "prediction_id"],
+            kind="mergesort",
+        )
+        .drop_duplicates("game_id", keep="last")
+        .sort_values(
+            ["prediction_cutoff_utc", "prediction_id"],
+            kind="mergesort",
+        )
+        .reset_index(drop=True)
+    )
+
+
 def _normalize(probs: np.ndarray) -> np.ndarray:
     p = np.asarray(probs, dtype=float)
     if p.shape != (3,) or not np.isfinite(p).all():
@@ -200,6 +238,7 @@ def _bounded_correct(
 class _Accumulator:
     def __init__(self) -> None:
         self.rows = 0
+        self.game_ids: set[str] = set()
         self.pred_sum = np.zeros(3, dtype=float)
         self.actual_sum = np.zeros(3, dtype=float)
         self.logloss_sum = 0.0
@@ -224,6 +263,10 @@ class _Accumulator:
         p = _normalize(p)
         idx = OUTCOME_INDEX[str(row["actual_outcome"])]
         self.rows += 1
+        game_id = str(row.get("game_id") or "").strip()
+        if not game_id:
+            raise ValueError("experience row missing game_id")
+        self.game_ids.add(game_id)
         self.pred_sum += p
         self.actual_sum[idx] += 1.0
         self.logloss_sum += float(-np.log(np.clip(p[idx], 1e-12, 1.0)))
@@ -242,6 +285,7 @@ class _Accumulator:
         delta = shrunk - mean_pred
         return {
             "rows": int(self.rows),
+            "unique_games": int(len(self.game_ids)),
             "mean_pred": [float(x) for x in mean_pred],
             "empirical_outcome_rate": [float(x) for x in empirical],
             "shrunk_outcome_rate": [float(x) for x in shrunk],
@@ -285,12 +329,23 @@ def build_policy(
         else pd.Timestamp(cutoff).tz_localize("UTC")
     ) if cutoff is not None else _utc_now()
 
-    matured = frame.loc[
-        frame["experience_available_at_utc"] <= cutoff_ts
+    raw_matured_rows = frame.loc[
+        (frame["experience_available_at_utc"] <= cutoff_ts)
+        & (frame["prediction_cutoff_utc"] < cutoff_ts)
     ].copy()
-    matured = matured.loc[
-        matured["prediction_cutoff_utc"] < cutoff_ts
-    ].copy()
+    try:
+        matured = _canonical_matured_cases(frame, cutoff_ts=cutoff_ts)
+    except ValueError as exc:
+        return {
+            "schema_version": 1,
+            "status": "BLOCKED_CASE_IDENTITY",
+            "cutoff_utc": cutoff_ts.isoformat(),
+            "matured_rows": 0,
+            "raw_matured_snapshot_rows": int(len(raw_matured_rows)),
+            "independent_game_count": 0,
+            "policy": {},
+            "reason": str(exc),
+        }
 
     if matured.empty:
         return {
@@ -298,6 +353,8 @@ def build_policy(
             "status": "NO_MATURED_EXPERIENCE",
             "cutoff_utc": cutoff_ts.isoformat(),
             "matured_rows": 0,
+            "raw_matured_snapshot_rows": int(len(raw_matured_rows)),
+            "independent_game_count": 0,
             "policy": {},
         }
 
@@ -337,6 +394,8 @@ def build_policy(
         "status": status,
         "cutoff_utc": cutoff_ts.isoformat(),
         "matured_rows": int(len(matured)),
+        "raw_matured_snapshot_rows": int(len(raw_matured_rows)),
+        "independent_game_count": int(matured["game_id"].nunique()),
         "min_group_rows": int(min_group_rows),
         "prior_strength": float(prior_strength),
         "correction_strength": float(correction_strength),
@@ -458,27 +517,37 @@ def replay(
         ["prediction_cutoff_utc", "prediction_id"], kind="mergesort"
     ).reset_index(drop=True)
 
-    matured: list[int] = []
-    used_cursor = 0
-    accs: dict[tuple[str, str], _Accumulator] = defaultdict(_Accumulator)
-    global_actual = np.zeros(3, dtype=float)
     results: list[dict[str, Any]] = []
 
     for i, row in work.iterrows():
         cutoff = pd.Timestamp(row["prediction_cutoff_utc"])
-        while used_cursor < i:
-            prior = work.iloc[used_cursor]
-            if pd.Timestamp(prior["experience_available_at_utc"]) > cutoff:
-                break
-            # A prior prediction whose cutoff is not strictly before the
-            # current prediction is never used, even if its experience file
-            # happened to be reconciled earlier due to scheduling anomalies.
-            if pd.Timestamp(prior["prediction_cutoff_utc"]) < cutoff:
-                global_actual[OUTCOME_INDEX[str(prior["actual_outcome"])]] += 1.0
-                for key in _scope_keys(prior):
-                    accs[key].add(prior)
-                matured.append(used_cursor)
-            used_cursor += 1
+        prior_rows = work.iloc[:i].copy()
+        matured_snapshot_rows = prior_rows.loc[
+            (prior_rows["experience_available_at_utc"] <= cutoff)
+            & (prior_rows["prediction_cutoff_utc"] < cutoff)
+        ].copy()
+        if not matured_snapshot_rows.empty:
+            eligible = (
+                matured_snapshot_rows.sort_values(
+                    ["game_id", "prediction_cutoff_utc", "prediction_id"],
+                    kind="mergesort",
+                )
+                .drop_duplicates("game_id", keep="last")
+                .sort_values(
+                    ["prediction_cutoff_utc", "prediction_id"],
+                    kind="mergesort",
+                )
+                .reset_index(drop=True)
+            )
+        else:
+            eligible = matured_snapshot_rows
+
+        accs: dict[tuple[str, str], _Accumulator] = defaultdict(_Accumulator)
+        global_actual = np.zeros(3, dtype=float)
+        for _, prior in eligible.iterrows():
+            global_actual[OUTCOME_INDEX[str(prior["actual_outcome"])]] += 1.0
+            for key in _scope_keys(prior):
+                accs[key].add(prior)
 
         p = np.asarray(
             [
@@ -528,7 +597,8 @@ def replay(
                 "learned_draw_probability": float(adjusted[1]),
                 "learned_away_probability": float(adjusted[2]),
                 "policy_source": source,
-                "matured_experience_rows": int(len(matured)),
+                "matured_experience_rows": int(len(eligible)),
+                "matured_experience_snapshot_rows": int(len(matured_snapshot_rows)),
             }
         )
 
