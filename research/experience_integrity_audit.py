@@ -23,8 +23,10 @@ REQUIRED_FIELDS = (
     "prediction_cutoff_utc",
     "prediction_generated_at",
     "starter_evidence_observed_at_utc",
+    "starter_evidence_status",
     "pit_status",
 )
+STARTER_EVIDENCE_STATUSES = {"official_announced", "official_announced_snapshot"}
 
 
 def _parse_ts(value: Any, *, field: str) -> datetime:
@@ -113,6 +115,11 @@ def audit_prediction_directory(pred_dir: str | Path = DEFAULT_PRED_DIR) -> dict[
                 raise ValueError(f"prediction generation timing is invalid: {path}:{line_no}")
             if observed > cutoff:
                 raise ValueError(f"starter evidence observed after cutoff: {path}:{line_no}")
+            if str(row["starter_evidence_status"]).strip() not in STARTER_EVIDENCE_STATUSES:
+                raise ValueError(f"unsupported starter evidence status: {path}:{line_no}")
+            starter_source = str(row.get("starter_source") or "").strip()
+            if starter_source and not starter_source.startswith("https://npb.jp/"):
+                raise ValueError(f"non-official starter source: {path}:{line_no}")
             if str(row["pit_status"]).upper() != "PASS":
                 raise ValueError(f"prediction is not PIT PASS: {path}:{line_no}")
             pit_pass += 1
