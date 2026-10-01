@@ -95,6 +95,9 @@ def test_real_oos_executes_with_real_target_and_pit_contract(tmp_path):
     assert set(report["metrics"]) == {"Accuracy", "LogLoss", "Brier", "ECE"}
     assert report["pit"]["status"] == "PASS"
     assert report["pit_join"]["coverage"] == 1.0
+    assert report["predictability_series"]["walk_forward"] is True
+    assert "calibration" in report["predictability_series"]
+    assert report["predictability_series"]["terminal"]["history_count"] >= 0
 
 
 def test_multi_model_panel_never_fabricates(tmp_path):
