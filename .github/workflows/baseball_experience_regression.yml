@@ -5,7 +5,9 @@ on:
     paths:
       - 'research/experience_rollup.py'
       - 'research/experience_ledger.py'
+      - 'research/experience_integrity_audit.py'
       - 'tests/test_experience_rollup.py'
+      - 'tests/test_experience_integrity_audit.py'
       - '.github/workflows/baseball_experience_regression.yml'
 
 permissions:
@@ -38,8 +40,8 @@ jobs:
 
       - name: Compile
         timeout-minutes: 2
-        run: python -m compileall -q research/experience_rollup.py research/experience_ledger.py tests/test_experience_rollup.py
+        run: python -m compileall -q research/experience_rollup.py research/experience_ledger.py research/experience_integrity_audit.py tests/test_experience_rollup.py tests/test_experience_integrity_audit.py
 
       - name: Run experience regression
         timeout-minutes: 5
-        run: python -m pytest -q tests/test_experience_rollup.py
+        run: python -m pytest -q tests/test_experience_rollup.py tests/test_experience_integrity_audit.py
