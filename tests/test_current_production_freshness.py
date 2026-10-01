@@ -28,3 +28,43 @@ def test_predict_current_rejects_non_live_target_date(monkeypatch):
     assert result["execution_status"] == "BLOCKED_STALE_TARGET_DATE"
     assert result["requested_target_date"] == "2026-09-28"
     assert result["resolved_target_date"] == "2026-09-29"
+
+
+
+def test_predict_current_forwards_pregame_only_to_registered_runtime(monkeypatch):
+    import production_npb
+    import prediction.current_production as cp
+
+    captured = {}
+
+    monkeypatch.setattr(cp, "current_runtime", lambda league: {
+        "available": True,
+        "league": league,
+        "status": "AVAILABLE",
+        "entrypoint": "production_npb",
+        "model_version": "test-model",
+        "contract": "test-contract",
+        "formal_adoption_status": "CURRENT_PRODUCTION",
+    })
+    monkeypatch.setattr(cp, "latest_target_date_jst", lambda: "2026-10-01")
+
+    def fake_predict(target_date, data_dir, *, pregame_only=False):
+        captured["target_date"] = target_date
+        captured["data_dir"] = data_dir
+        captured["pregame_only"] = pregame_only
+        return {"execution_status": "NO_DUE_PREGAME_GAMES", "predictions": []}
+
+    monkeypatch.setattr(production_npb, "predict", fake_predict)
+
+    result = cp.predict_current(
+        league="NPB",
+        target_date="2026-10-01",
+        data_dir="data",
+        pregame_only=True,
+    )
+    assert result["execution_status"] == "NO_DUE_PREGAME_GAMES"
+    assert captured == {
+        "target_date": "2026-10-01",
+        "data_dir": "data",
+        "pregame_only": True,
+    }
