@@ -98,7 +98,7 @@ jobs:
           while IFS= read -r date; do
             [ -n "$date" ] || continue
             echo "=== 30m pregame prediction: $date ==="
-            python production_npb.py --date "$date" --data-dir data --pregame-only
+            python -m prediction.current_production --league NPB --date "$date" --data-dir data --pregame-only
             output="results/npb_production_$date.json"
             test -s "$output"
             python - "$output" <<'PY'
