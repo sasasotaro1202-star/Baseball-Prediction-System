@@ -90,6 +90,9 @@ def test_rollup_preserves_multiple_pregame_snapshots(tmp_path, monkeypatch):
     assert canonical["unique_games_with_results"] == 1
     assert canonical["experience_cases"]["rows"] == 1
     assert canonical["all_snapshot_experience"]["rows"] == 2
+    assert result["timing_30m"]["eligible_rows"] == 2
+    assert result["timing_30m"]["on_time_rows"] == 2
+    assert result["timing_30m"]["compliance_rate"] == 1.0
 
 
 def test_rollup_rejects_post_start_prediction(tmp_path, monkeypatch):
