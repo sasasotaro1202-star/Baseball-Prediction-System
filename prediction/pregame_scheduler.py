@@ -149,6 +149,69 @@ def _schedule_for_date(target_date: str) -> list[dict]:
     return out
 
 
+
+
+def load_research_active_competitions() -> set[str]:
+    """Return active implemented research competitions without changing production state."""
+    from prediction.scope_router import build_scope
+
+    scope = build_scope()
+    return {str(x).strip().upper() for x in scope.get("research_active", []) if str(x).strip()}
+
+
+def _mlb_schedule_for_date(target_date: str) -> list[dict]:
+    """Discover MLB games whose first pitch falls on the requested JST date.
+
+    MLB schedule discovery is research-only. Probable pitchers are not treated
+    as official starter evidence and cannot unlock production.
+    """
+    target = datetime.fromisoformat(f"{target_date}T00:00:00+09:00")
+    start = (target - timedelta(days=1)).date().isoformat()
+    end = (target + timedelta(days=1)).date().isoformat()
+    raw = _fetch(MLB_SCHEDULE_URL.format(start=start, end=end))
+    payload = json.loads(raw)
+    games: list[dict] = []
+    for day in payload.get("dates", []):
+        for game in day.get("games", []):
+            game_date = str(game.get("gameDate") or "").strip()
+            if not game_date:
+                continue
+            try:
+                start_utc = datetime.fromisoformat(game_date.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            start_jst = start_utc.astimezone(JST)
+            if start_jst.date().isoformat() != target_date:
+                continue
+            teams = game.get("teams") or {}
+            home = teams.get("home") or {}
+            away = teams.get("away") or {}
+            home_team = str((home.get("team") or {}).get("name") or "").strip()
+            away_team = str((away.get("team") or {}).get("name") or "").strip()
+            if not home_team or not away_team:
+                continue
+            hp = str((home.get("probablePitcher") or {}).get("fullName") or "").strip()
+            ap = str((away.get("probablePitcher") or {}).get("fullName") or "").strip()
+            game_id = str(game.get("gamePk") or "").strip()
+            if not game_id:
+                raise RuntimeError(f"MLB research schedule contains game without stable gamePk: {target_date}")
+            games.append({
+                "game_id": game_id,
+                "home": home_team,
+                "away": away_team,
+                "official_start_time": start_jst.strftime("%H:%M"),
+                "scheduled_start_utc": start_utc.isoformat(),
+                "home_starter": hp,
+                "away_starter": ap,
+                "starter_evidence_status": "official_probable_only" if hp and ap else "missing",
+                "starter_source": "MLB Stats API schedule",
+                "pit_status": "NOT_ELIGIBLE_OFFICIAL_STARTER_REQUIRED",
+            })
+    return sorted(
+        games,
+        key=lambda g: (g["scheduled_start_utc"], g["game_id"]),
+    )
+
 def _archived_prediction_keys(target_date: str) -> set[tuple[str, str, str]]:
     path = PRED_DIR / f"{target_date}.jsonl"
     if not path.exists():
