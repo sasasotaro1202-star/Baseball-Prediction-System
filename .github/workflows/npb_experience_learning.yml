@@ -7,7 +7,9 @@ on:
       - "research/experience-learning-loop-20261001"
     paths:
       - "research/experience_learning.py"
+      - "research/experience_learning_gate.py"
       - "tests/test_experience_learning.py"
+      - "tests/test_experience_learning_gate.py"
       - ".github/workflows/npb_experience_learning.yml"
   pull_request:
     paths:
@@ -55,8 +57,8 @@ jobs:
       - name: Compile and test experience learner
         run: |
           set -euo pipefail
-          python -m compileall -q research/experience_learning.py tests/test_experience_learning.py
-          python -m pytest -q tests/test_experience_learning.py
+          python -m compileall -q research/experience_learning.py research/experience_learning_gate.py tests/test_experience_learning.py tests/test_experience_learning_gate.py
+          python -m pytest -q tests/test_experience_learning.py tests/test_experience_learning_gate.py
 
       - name: Build PIT-safe learned policy
         env:
@@ -71,10 +73,20 @@ jobs:
             --correction-strength 0.50 \
             --max-log-ratio 0.35
 
+      - name: Evaluate locked chronological holdout
+        env:
+          PYTHONPATH: .
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -euo pipefail
+          python -m research.experience_learning_gate \
+            --input data/experience/experience_ledger.csv
+
       - name: Validate learned-policy contract
         run: |
           set -euo pipefail
           test -s results/experience_learning_policy.json
+          test -s results/experience_learning_gate.json
           python - <<'PY'
           import json
           from pathlib import Path
@@ -83,6 +95,24 @@ jobs:
           allowed = {"READY", "INSUFFICIENT_EXPERIENCE", "NO_EXPERIENCE", "NO_MATURED_EXPERIENCE"}
           if obj.get("status") not in allowed:
               raise SystemExit(f"invalid learner status: {obj.get('status')}")
+
+          gate = json.loads(Path("results/experience_learning_gate.json").read_text(encoding="utf-8"))
+          if gate.get("promotion_status") not in {"HOLD", "PROMOTION_CANDIDATE"}:
+              raise SystemExit(f"invalid experience gate status: {gate.get('promotion_status')}")
+          gate_contract = gate.get("selection_contract", {})
+          if gate_contract.get("holdout_outcomes_used_to_build_policy") is not False:
+              raise SystemExit("holdout outcomes were allowed into policy construction")
+          if gate_contract.get("holdout_used_for_parameter_selection") is not False:
+              raise SystemExit("holdout was used for parameter selection")
+          if gate_contract.get("production_modified") is not False or gate_contract.get("auto_promotion") is not False:
+              raise SystemExit("experience gate may not modify or promote production")
+          print(json.dumps({
+              "gate_status": gate.get("status"),
+              "gate_promotion_status": gate.get("promotion_status"),
+              "holdout_cases": gate.get("holdout_cases"),
+              "improvement": gate.get("improvement"),
+              "uncertainty": gate.get("uncertainty"),
+          }, ensure_ascii=False, indent=2))
 
           contract = obj.get("replay_contract", {})
           required = {
@@ -186,6 +216,7 @@ jobs:
           path: |
             results/experience_learning_policy.json
             results/experience_learning_replay.csv
+            results/experience_learning_gate.json
             data/experience/experience_learning_policy.json
           if-no-files-found: warn
           retention-days: 14
