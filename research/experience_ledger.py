@@ -208,6 +208,11 @@ def _revision_metadata(
     for candidate in existing.values():
         if str(candidate.get("game_id", "")) != str(record.get("game_id", "")):
             continue
+        # Legacy scheduled-cutoff rows remain preserved for audit/history, but
+        # are not valid ancestors for revision analysis because their cutoff
+        # was a planned deadline rather than an observed information time.
+        if _is_legacy_scheduled_cutoff(candidate):
+            continue
         raw_cutoff = candidate.get("prediction_cutoff_utc")
         if raw_cutoff in (None, ""):
             continue
