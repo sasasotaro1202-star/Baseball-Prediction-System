@@ -25,7 +25,7 @@ def test_postgame_experience_runs_multiple_daily_reconciliations_and_rollup():
 def test_30m_pregame_automation_is_five_minute_pit_gated_and_archives_experience():
     text = (ROOT / ".github/workflows/baseball_30m_pregame_auto.yml").read_text(encoding="utf-8")
     assert 'cron: "*/5 * * * *"' in text
-    assert "production_npb.py --date \"$date\" --data-dir data --pregame-only" in text
+    assert "python -m prediction.current_production --league NPB --date \"$date\" --data-dir data --pregame-only" in text
     assert "prediction generated after 30-minute cutoff" in text
     assert "starter evidence observed after 30-minute cutoff" in text
     assert "python -m research.experience_ledger --archive" in text
