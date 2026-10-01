@@ -1078,6 +1078,7 @@ def predict(
           "game_id":r.game_id,"datetime_jst":pd.Timestamp(r.datetime).tz_convert("Asia/Tokyo").isoformat(),
           "home":r.home,"away":r.away,"home_starter":r.home_starter,"away_starter":r.away_starter,
           "starter_evidence_status":r.starter_evidence_status,
+          "starter_source":r.starter_source,
           "starter_evidence_observed_at_utc":r.starter_evidence_observed_at_utc,
           "prediction_cutoff_utc":r.prediction_cutoff_utc,
           "prediction_deadline_utc":r.prediction_deadline_utc,
