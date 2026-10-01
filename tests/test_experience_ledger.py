@@ -111,6 +111,39 @@ def test_reconcile_computes_real_game_experience(tmp_path, monkeypatch):
     assert summary["outcome_accuracy"] == 1.0
 
 
+def test_reconcile_preserves_first_experience_availability_timestamp(tmp_path, monkeypatch):
+    monkeypatch.setattr(exp, "EXPERIENCE", tmp_path / "experience")
+    monkeypatch.setattr(exp, "PRED_DIR", tmp_path / "experience" / "predictions")
+    monkeypatch.setattr(exp, "RESULT_DIR", tmp_path / "experience" / "official_results")
+    monkeypatch.setattr(exp, "LEDGER_PATH", tmp_path / "experience" / "experience_ledger.csv")
+    monkeypatch.setattr(exp, "LEDGER_JSONL", tmp_path / "experience" / "experience_ledger.jsonl")
+    monkeypatch.setattr(exp, "SUMMARY_PATH", tmp_path / "experience" / "experience_summary.json")
+    exp.archive_production_output(_prediction(tmp_path))
+    exp._load_cached_results = lambda dates: pd.DataFrame([{
+        "date": "2026-09-26",
+        "home": "横浜DeNAベイスターズ",
+        "away": "阪神タイガース",
+        "home_score": 4,
+        "away_score": 2,
+        "source_url": "test://npb",
+    }])
+
+    clock = iter([
+        "2026-09-26T05:00:00+00:00",
+        "2026-09-26T05:00:01+00:00",
+        "2026-09-26T06:00:00+00:00",
+        "2026-09-26T06:00:01+00:00",
+    ])
+    monkeypatch.setattr(exp, "_utc_now", lambda: next(clock))
+
+    exp.reconcile()
+    first = pd.read_csv(tmp_path / "experience" / "experience_ledger.csv")
+    assert first.loc[0, "experience_available_at_utc"] == "2026-09-26T05:00:00+00:00"
+
+    exp.reconcile()
+    second = pd.read_csv(tmp_path / "experience" / "experience_ledger.csv")
+    assert second.loc[0, "experience_available_at_utc"] == "2026-09-26T05:00:00+00:00"
+
 def test_reconcile_is_idempotent(tmp_path, monkeypatch):
     monkeypatch.setattr(exp, "EXPERIENCE", tmp_path / "experience")
     monkeypatch.setattr(exp, "PRED_DIR", tmp_path / "experience" / "predictions")
