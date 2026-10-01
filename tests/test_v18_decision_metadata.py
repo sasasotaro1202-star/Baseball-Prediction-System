@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from prediction.prediction_log import PredictionRecord, record_from_mapping
+from prediction.prediction_log import PredictionRecord, record_from_mapping, validate_prediction
 
 
 def _record(**overrides):
@@ -74,35 +74,41 @@ def test_prediction_record_roundtrips_v18_metadata(tmp_path):
 
 def test_prediction_set_requires_complete_metadata():
     with pytest.raises(ValueError, match="prediction-set metadata"):
-        _record(prediction_set_alpha=0.10)
+        validate_prediction(_record(prediction_set_alpha=0.10))
 
 
 def test_prediction_set_rejects_mismatched_action():
     with pytest.raises(ValueError, match="does not match"):
-        _record(
-            prediction_set=["home", "draw"],
-            prediction_set_alpha=0.10,
-            prediction_set_method="split_conformal",
-            prediction_set_action="SINGLE",
+        validate_prediction(
+            _record(
+                prediction_set=["home", "draw"],
+                prediction_set_alpha=0.10,
+                prediction_set_method="split_conformal",
+                prediction_set_action="SINGLE",
+            )
         )
 
 
 def test_prediction_intelligence_is_fail_closed_on_pit_or_time():
     with pytest.raises(ValueError, match="pit_status"):
-        _record(
-            prediction_intelligence={
-                "prediction_time": "2026-09-30T09:00:00+00:00",
-                "pit_status": "FAIL",
-                "provenance": {"source": "unit-test"},
-            }
+        validate_prediction(
+            _record(
+                prediction_intelligence={
+                    "prediction_time": "2026-09-30T09:00:00+00:00",
+                    "pit_status": "FAIL",
+                    "provenance": {"source": "unit-test"},
+                }
+            )
         )
     with pytest.raises(ValueError, match="prediction_time"):
-        _record(
-            prediction_intelligence={
-                "prediction_time": "2026-09-30T09:05:00+00:00",
-                "pit_status": "PASS",
-                "provenance": {"source": "unit-test"},
-            }
+        validate_prediction(
+            _record(
+                prediction_intelligence={
+                    "prediction_time": "2026-09-30T09:05:00+00:00",
+                    "pit_status": "PASS",
+                    "provenance": {"source": "unit-test"},
+                }
+            )
         )
 
 
