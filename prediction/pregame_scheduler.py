@@ -183,10 +183,9 @@ def due_games(*, now_utc: datetime | None = None, min_lead_minutes: float = 30.0
 
     due: list[dict] = []
     blocked: list[dict] = []
-    dates: set[str] = {
-        now.astimezone(JST).date().isoformat(),
-        (now.astimezone(JST).date() + timedelta(days=1)).isoformat(),
-    }
+    # Current-production policy requires the call-time JST target date.
+    # Do not precompute tomorrow's production forecast through this dispatcher.
+    dates: set[str] = {now.astimezone(JST).date().isoformat()}
     for league, runtime in enabled:
         if league != "NPB":
             blocked.append({
