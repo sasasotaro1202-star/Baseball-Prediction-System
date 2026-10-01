@@ -26,6 +26,13 @@ def _frame(n=10):
     return pd.DataFrame(rows)
 
 
+def test_gate_contract_is_present_on_empty_input():
+    result = evaluate_locked_holdout(pd.DataFrame())
+    assert result["promotion_status"] == "HOLD"
+    assert result["selection_contract"]["production_modified"] is False
+    assert result["selection_contract"]["auto_promotion"] is False
+
+
 def test_gate_holds_with_too_few_cases():
     result = evaluate_locked_holdout(
         _frame(10),
