@@ -257,7 +257,7 @@ def test_starter_time_parser_prefers_structural_game_card_over_average_duration(
 
 
 
-def test_target_rows_use_fixed_30_minute_cutoff_and_reject_late_generation(monkeypatch):
+def test_target_rows_uses_actual_information_cutoff_and_keeps_30m_as_preferred(monkeypatch):
     import production_npb as p
     import pandas as pd
 
@@ -280,31 +280,27 @@ def test_target_rows_use_fixed_30_minute_cutoff_and_reject_late_generation(monke
         "_official_daily_start_times",
         lambda target_date: {("広島東洋カープ", "読売ジャイアンツ"): "18:00"},
     )
-    # 30 minutes and 30 seconds before first pitch: eligible, with a fixed
-    # cutoff exactly at first_pitch - 30m.
-    monkeypatch.setattr(
-        p,
-        "_utc_now",
-        lambda: pd.Timestamp("2026-09-20 08:29:30+00:00"),
-    )
-    rows = p.build_target_rows("2026-09-20")
-    assert len(rows) == 1
-    assert rows.iloc[0]["prediction_cutoff_utc"] == "2026-09-20T08:30:00+00:00"
-    assert rows.iloc[0]["prediction_deadline_utc"] == "2026-09-20T08:30:00+00:00"
-    assert float(rows.iloc[0]["lead_minutes_at_generation"]) > 30.0
-    assert rows.iloc[0]["starter_evidence_observed_at_utc"] == "2026-09-20T08:29:30+00:00"
-
-    # One second after the deadline: no late prediction is emitted.
     monkeypatch.setattr(
         p,
         "_utc_now",
         lambda: pd.Timestamp("2026-09-20 08:30:01+00:00"),
     )
-    late = p.build_target_rows("2026-09-20")
-    assert late.empty
+    rows = p.build_target_rows(
+        "2026-09-20",
+        minimum_lead_minutes=0.0,
+        maximum_lead_minutes=60.0,
+        preferred_lead_minutes=30.0,
+    )
+    assert len(rows) == 1
+    assert rows.iloc[0]["prediction_cutoff_utc"] == "2026-09-20T08:30:01+00:00"
+    assert rows.iloc[0]["prediction_deadline_utc"] == "2026-09-20T08:30:00+00:00"
+    assert rows.iloc[0]["preferred_prediction_cutoff_utc"] == "2026-09-20T08:30:00+00:00"
+    assert bool(rows.iloc[0]["preferred_30m_met"]) is False
+    assert float(rows.iloc[0]["lead_minutes_at_generation"]) < 30.0
+    assert rows.iloc[0]["starter_evidence_observed_at_utc"] == "2026-09-20T08:30:01+00:00"
 
 
-def test_pregame_only_limits_prediction_window_to_30_60_minutes(monkeypatch):
+def test_pregame_only_limits_prediction_window_to_upcoming_60_minutes(monkeypatch):
     import production_npb as p
     import pandas as pd
 
@@ -334,4 +330,20 @@ def test_pregame_only_limits_prediction_window_to_30_60_minutes(monkeypatch):
     )
     # 75 minutes before first pitch: pregame-only should defer it to a later
     # 5-minute scheduler tick rather than predict too early.
-    assert p.build_target_rows("2026-09-20", minimum_lead_minutes=30, maximum_lead_minutes=60).empty
+    assert p.build_target_rows("2026-09-20", minimum_lead_minutes=0, maximum_lead_minutes=60).empty
+
+    # 29 minutes before first pitch: 30m is preferred, but the pregame path
+    # still permits a valid PIT-safe forecast rather than missing the game.
+    monkeypatch.setattr(
+        p,
+        "_utc_now",
+        lambda: pd.Timestamp("2026-09-20 08:31:00+00:00"),
+    )
+    rows = p.build_target_rows(
+        "2026-09-20",
+        minimum_lead_minutes=0,
+        maximum_lead_minutes=60,
+        preferred_lead_minutes=30,
+    )
+    assert len(rows) == 1
+    assert bool(rows.iloc[0]["preferred_30m_met"]) is False
