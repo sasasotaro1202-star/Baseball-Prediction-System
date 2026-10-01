@@ -15,6 +15,11 @@ on:
       - 'tests/test_ultimate_v13_real_oos.py'
       - '.github/workflows/baseball_ultimate_v13.yml'
       - 'baseball_backtest.py'
+      - 'prediction/prediction_log.py'
+      - 'prediction/runner.py'
+      - 'research/conformal_prediction_sets.py'
+      - 'tests/test_conformal_prediction_sets.py'
+      - 'tests/test_v18_decision_metadata.py'
 
 permissions:
   contents: read
