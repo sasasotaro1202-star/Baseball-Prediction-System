@@ -720,6 +720,8 @@ def reconcile() -> dict[str, Any]:
         "actual_outcome", "outcome_correct", "logloss", "brier",
         "home_probability_error", "draw_probability_error", "away_probability_error",
         "prediction_actual_lead_minutes", "prediction_30m_on_time", "scheduled_cutoff_lead_minutes",
+        "revision_status", "revision_previous_prediction_id", "revision_l1_pct_points",
+        "revision_max_abs_pct_points", "revision_outcome_changed",
         "low_pct", "high_pct", "low_high_actual", "low_high_correct",
         "score_mae", "top1_exact_hit", "top4_hit",
         "lambda_home", "lambda_away", "shared_lambda",
