@@ -787,6 +787,7 @@ def build_target_rows(
     *,
     minimum_lead_minutes: float = 30.0,
     maximum_lead_minutes: float | None = None,
+    preferred_lead_minutes: float = 30.0,
 ) -> pd.DataFrame:
     rows=official_starters(target_date)
     daily_times = _official_daily_start_times(target_date)
@@ -811,22 +812,25 @@ def build_target_rows(
         r["official_start_time"] = start_time
         r["start_time_source"] = NPB_DAY_URL.format(year=target_date[:4], date=target_date.replace("-", ""))
         r["datetime"]=pd.Timestamp(f"{target_date} {start_time}").tz_localize("Asia/Tokyo").tz_convert("UTC")
-        # The prediction cutoff is fixed to exactly 30 minutes before official
-        # first pitch. The live retrieval/generated timestamp must never exceed
-        # this cutoff, otherwise the case is not a valid 30-minute pregame
-        # experience case.
-        prediction_cutoff = r["datetime"] - pd.Timedelta(minutes=float(minimum_lead_minutes))
+        # Thirty minutes is a preferred forecast horizon, not a hard cutoff.
+        # Any still-upcoming game remains eligible so transient scheduler/runner
+        # latency does not turn into a missed case. PIT uses the actual
+        # information-observation timestamp below.
         lead_seconds = float((r["datetime"] - now_utc).total_seconds())
         if r["datetime"] <= now_utc:
             continue
         if lead_seconds <= 0:
             continue
-        if now_utc > prediction_cutoff:
+        if lead_seconds < float(minimum_lead_minutes):
             continue
         if maximum_lead_minutes is not None and lead_seconds > float(maximum_lead_minutes) * 60.0:
             continue
+        preferred_cutoff = r["datetime"] - pd.Timedelta(minutes=float(preferred_lead_minutes))
+        prediction_cutoff = pd.Timestamp(now_utc)
         r["prediction_cutoff_utc"] = prediction_cutoff.isoformat()
-        r["prediction_deadline_utc"] = prediction_cutoff.isoformat()
+        r["prediction_deadline_utc"] = preferred_cutoff.isoformat()
+        r["preferred_prediction_cutoff_utc"] = preferred_cutoff.isoformat()
+        r["preferred_30m_met"] = bool(now_utc <= preferred_cutoff)
         r["lead_minutes_at_generation"] = lead_seconds / 60.0
         r["home_score"]=float("nan"); r["away_score"]=float("nan")
         evidence_status = str(r.get("starter_evidence_status") or "").strip()
@@ -844,7 +848,7 @@ def build_target_rows(
         evidence_observed_at = pd.Timestamp(now_utc)
         if evidence_observed_at > prediction_cutoff:
             raise RuntimeError(
-                "PIT deadline failed: starter evidence was observed after the 30-minute prediction cutoff."
+                "PIT information cutoff failed: starter evidence was observed after the prediction information cutoff."
             )
         r["starter_evidence_observed_at_utc"] = evidence_observed_at.isoformat()
         output.append(r)
@@ -957,8 +961,9 @@ def predict(
     try:
         games=build_target_rows(
             target_date,
-            minimum_lead_minutes=30.0,
+            minimum_lead_minutes=(0.0 if pregame_only else 30.0),
             maximum_lead_minutes=(60.0 if pregame_only else None),
+            preferred_lead_minutes=30.0,
         )
     except RuntimeError as exc:
         # Missing/insufficient official starter evidence is a valid fail-closed
@@ -1003,9 +1008,13 @@ def predict(
     bt=BaseballBacktest(Path(data_dir))
     raw=bt.load_npb_pbp()
     hist=bt.aggregate_npb_games(raw)
-    hist=hist[hist["datetime"] < games["datetime"].min()].copy()
-    if hist["datetime"].max() >= games["datetime"].min():
-        raise RuntimeError("PIT history contamination: historical data reaches target cutoff.")
+    prediction_cutoffs = pd.to_datetime(games["prediction_cutoff_utc"], utc=True, errors="coerce")
+    if prediction_cutoffs.isna().any():
+        raise RuntimeError("PIT cutoff contract failed: malformed prediction information cutoff.")
+    min_prediction_cutoff = prediction_cutoffs.min()
+    hist=hist[hist["datetime"] < min_prediction_cutoff].copy()
+    if not hist.empty and hist["datetime"].max() >= min_prediction_cutoff:
+        raise RuntimeError("PIT history contamination: historical data reaches prediction information cutoff.")
     if hist["game_id"].isin(games["game_id"]).any():
         raise RuntimeError("PIT history contamination: target game appears in training history.")
     if len(hist) < 100:
@@ -1035,7 +1044,9 @@ def predict(
     score_fit=bt.fit_score_ensemble(X,hist["home_score"].astype(float).values,hist["away_score"].astype(float).values,"NPB")
     outputs=[]
     for _,r in games.iterrows():
-        xrow=pd.DataFrame([bt.match_features(r)]).replace([float("inf"),float("-inf")],float("nan"))
+        feature_row = r.copy()
+        feature_row["datetime"] = pd.Timestamp(r["prediction_cutoff_utc"])
+        xrow=pd.DataFrame([bt.match_features(feature_row)]).replace([float("inf"),float("-inf")],float("nan"))
         if xrow.isna().any().any() or not np.isfinite(xrow.to_numpy(dtype=float)).all():
             raise RuntimeError("Production target feature vector contains undefined/non-finite values; refusing implicit imputation.")
         xrow=xrow.astype(float)
@@ -1050,7 +1061,7 @@ def predict(
         lh,la,shared=bt.predict_scores(score_fit,xrow,"NPB")
         fallback_used = score_fit is None or (abs(lh-la)<1e-12 and abs(lh-2.35)<1e-12)
         if fallback_used:
-            lh,la,shared=direct_pit_safe_lambdas(hist,r,bt)
+            lh,la,shared=direct_pit_safe_lambdas(hist,feature_row,bt)
             model_label="Production ML ensemble + PIT-safe direct run-rate fallback (degeneracy recovery)"
         else:
             model_label="BaseballBacktest.fit_ensemble + fit_score_ensemble + NPB extra-inning result calibration"
