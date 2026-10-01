@@ -376,3 +376,37 @@ def test_revision_metadata_never_uses_future_snapshot():
     meta = exp._revision_metadata(record, existing)
     assert meta["revision_status"] == "INITIAL"
     assert meta["revision_previous_prediction_id"] is None
+
+
+def test_revision_metrics_reports_probability_motion():
+    frame = pd.DataFrame([
+        {
+            "revision_status": "INITIAL",
+            "revision_l1_pct_points": np.nan,
+            "revision_max_abs_pct_points": np.nan,
+            "revision_outcome_changed": False,
+        },
+        {
+            "revision_status": "REVISED",
+            "revision_l1_pct_points": 20.0,
+            "revision_max_abs_pct_points": 10.0,
+            "revision_outcome_changed": True,
+        },
+        {
+            "revision_status": "REVISED",
+            "revision_l1_pct_points": 8.0,
+            "revision_max_abs_pct_points": 4.0,
+            "revision_outcome_changed": False,
+        },
+    ])
+    metrics = exp._revision_metrics(frame)
+    assert metrics["status"] == "MEASURED"
+    assert metrics["eligible_rows"] == 3
+    assert metrics["revised_rows"] == 2
+    assert metrics["revision_rate"] == pytest.approx(2 / 3)
+    assert metrics["outcome_reversal_rows"] == 1
+    assert metrics["outcome_reversal_rate"] == pytest.approx(0.5)
+    assert metrics["mean_l1_pct_points"] == pytest.approx(14.0)
+    assert metrics["median_l1_pct_points"] == pytest.approx(14.0)
+    assert metrics["maximum_l1_pct_points"] == pytest.approx(20.0)
+    assert metrics["maximum_single_class_change_pct_points"] == pytest.approx(10.0)
