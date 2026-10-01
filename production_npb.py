@@ -26,7 +26,7 @@ from core.pit_evidence import _is_official_source
 ROOT = Path(__file__).resolve().parent
 TIMEOUT = 30
 NPB_STARTER_URL = "https://npb.jp/announcement/starter/"
-NPB_DAY_URL = "https://npb.jp/bis/eng/2026/games/gm{date}.html"
+NPB_DAY_URL = "https://npb.jp/bis/eng/{year}/games/gm{date}.html"
 
 TEAM_MAP = {
     "Yomiuri":"読売ジャイアンツ","Yakult":"東京ヤクルトスワローズ",
@@ -703,7 +703,7 @@ def _official_daily_start_times(target_date: str) -> dict[tuple[str, str], str]:
     The English daily page publishes each game as team -> venue/time -> team.
     Parsing is bounded to team-pair segments and rejects ambiguous evidence.
     """
-    url = NPB_DAY_URL.format(date=target_date.replace("-", ""))
+    url = NPB_DAY_URL.format(year=target_date[:4], date=target_date.replace("-", ""))
     page_html = fetch_text(url)
     parser = _DailyScheduleTextParser()
     parser.feed(page_html)
@@ -809,7 +809,7 @@ def build_target_rows(
         # used as a competing clock signal.
         start_time = schedule_time
         r["official_start_time"] = start_time
-        r["start_time_source"] = NPB_DAY_URL.format(date=target_date.replace("-", ""))
+        r["start_time_source"] = NPB_DAY_URL.format(year=target_date[:4], date=target_date.replace("-", ""))
         r["datetime"]=pd.Timestamp(f"{target_date} {start_time}").tz_localize("Asia/Tokyo").tz_convert("UTC")
         # The prediction cutoff is fixed to exactly 30 minutes before official
         # first pitch. The live retrieval/generated timestamp must never exceed
