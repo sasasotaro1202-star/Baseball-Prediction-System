@@ -64,7 +64,7 @@ def test_due_games_does_not_repeat_an_archived_30m_snapshot(monkeypatch):
         lambda target_date: {(
             "読売ジャイアンツ",
             "阪神タイガース",
-            "2026-10-01T09:30:00+00:00",
+            "2026-10-01T08:30:00+00:00",
         )},
     )
 
