@@ -74,6 +74,53 @@ def _timing_30m_metrics(frame: pd.DataFrame) -> dict[str, Any]:
     }
 
 
+def _validate_prediction_time_contract(row: dict[str, Any]) -> None:
+    """Fail closed on prediction snapshots with ambiguous or impossible timing."""
+    required = (
+        "game_id",
+        "datetime_jst",
+        "prediction_cutoff_utc",
+        "prediction_generated_at",
+        "starter_evidence_observed_at_utc",
+        "pit_status",
+    )
+    missing = [key for key in required if row.get(key) in (None, "")]
+    if missing:
+        raise ValueError(
+            "prediction snapshot missing PIT timing/provenance fields: "
+            + ", ".join(missing)
+        )
+
+    try:
+        game_time = pd.Timestamp(row["datetime_jst"])
+        cutoff = pd.Timestamp(row["prediction_cutoff_utc"])
+        generated = pd.Timestamp(row["prediction_generated_at"])
+        observed = pd.Timestamp(row["starter_evidence_observed_at_utc"])
+    except Exception as exc:
+        raise ValueError("prediction snapshot contains invalid PIT timestamps") from exc
+
+    if any(ts.tzinfo is None for ts in (game_time, cutoff, generated, observed)):
+        raise ValueError("prediction snapshot PIT timestamps must be timezone-aware")
+
+    game_time = game_time.tz_convert("UTC")
+    cutoff = cutoff.tz_convert("UTC")
+    generated = generated.tz_convert("UTC")
+    observed = observed.tz_convert("UTC")
+
+    if not cutoff < game_time:
+        raise ValueError("prediction snapshot information cutoff is not pregame")
+    if not cutoff <= generated < game_time:
+        raise ValueError(
+            "prediction snapshot generation time is inconsistent with information cutoff"
+        )
+    if observed > cutoff:
+        raise ValueError(
+            "prediction snapshot starter evidence was observed after information cutoff"
+        )
+    if str(row["pit_status"]).upper() != "PASS":
+        raise ValueError("prediction snapshot is not PIT PASS")
+
+
 def _prediction_id(row: dict[str, Any]) -> str:
     raw = f"{row['game_id']}|{row['prediction_cutoff_utc']}|{row.get('git_commit','unknown')}"
     import hashlib
@@ -114,6 +161,7 @@ def archive_production_output(input_json: str | Path, *, run_id: str | None = No
         if not pred.get("game_id") or not pred.get("prediction_cutoff_utc"):
             raise ValueError("prediction row missing game_id or cutoff")
         record = dict(pred)
+        _validate_prediction_time_contract(record)
         # Canonical target identity is preserved for per-target metrics. Prefer
         # an explicit target/competition/league field; the NPB production
         # archive supplies NPB when these fields are absent.
@@ -162,6 +210,12 @@ def _load_predictions() -> pd.DataFrame:
     df = pd.DataFrame(rows)
     if "prediction_id" not in df:
         df["prediction_id"] = df.apply(lambda r: _prediction_id(r.to_dict()), axis=1)
+
+    # Re-validate the immutable archive before any result matching or training reuse.
+    # A malformed row aborts reconciliation rather than being silently discarded.
+    for row in df.to_dict("records"):
+        _validate_prediction_time_contract(row)
+
     # Canonical production experience = latest pregame snapshot for each event.
     df["prediction_cutoff_utc"] = pd.to_datetime(df["prediction_cutoff_utc"], utc=True, errors="coerce")
     df["datetime_jst"] = pd.to_datetime(df["datetime_jst"], utc=True, errors="coerce")
