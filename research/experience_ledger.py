@@ -42,6 +42,38 @@ def _finite(v: Any) -> float:
     return x
 
 
+def _timing_30m_metrics(frame: pd.DataFrame) -> dict[str, Any]:
+    """Measure strict 30-minute pregame timing without changing headline skill metrics."""
+    required = {"datetime_jst", "prediction_generated_at", "prediction_cutoff_utc"}
+    if not required.issubset(frame.columns) or frame.empty:
+        return {"status": "UNAVAILABLE", "eligible_rows": 0}
+    game_time = pd.to_datetime(frame["datetime_jst"], utc=True, errors="coerce")
+    generated = pd.to_datetime(frame["prediction_generated_at"], utc=True, errors="coerce")
+    cutoff = pd.to_datetime(frame["prediction_cutoff_utc"], utc=True, errors="coerce")
+    valid = game_time.notna() & generated.notna() & cutoff.notna()
+    if not bool(valid.any()):
+        return {"status": "UNAVAILABLE", "eligible_rows": 0}
+    game_time = game_time.loc[valid]
+    generated = generated.loc[valid]
+    cutoff = cutoff.loc[valid]
+    required_cutoff = game_time - pd.Timedelta(minutes=30)
+    on_time = generated <= required_cutoff
+    scheduled_lead = (game_time - cutoff).dt.total_seconds() / 60.0
+    actual_lead = (game_time - generated).dt.total_seconds() / 60.0
+    return {
+        "status": "MEASURED",
+        "eligible_rows": int(len(game_time)),
+        "on_time_rows": int(on_time.sum()),
+        "late_rows": int((~on_time).sum()),
+        "compliance_rate": float(on_time.mean()),
+        "minimum_actual_lead_minutes": float(actual_lead.min()),
+        "median_actual_lead_minutes": float(actual_lead.median()),
+        "maximum_actual_lead_minutes": float(actual_lead.max()),
+        "scheduled_cutoff_minimum_lead_minutes": float(scheduled_lead.min()),
+        "scheduled_cutoff_below_30m_rows": int((scheduled_lead < 30.0).sum()),
+    }
+
+
 def _prediction_id(row: dict[str, Any]) -> str:
     raw = f"{row['game_id']}|{row['prediction_cutoff_utc']}|{row.get('git_commit','unknown')}"
     import hashlib
@@ -465,6 +497,16 @@ def reconcile() -> dict[str, Any]:
 
     matched["experience_available_at_utc"] = _utc_now()
 
+    matched["prediction_actual_lead_minutes"] = (
+        pd.to_datetime(matched["datetime_jst"], utc=True, errors="coerce")
+        - pd.to_datetime(matched["prediction_generated_at"], utc=True, errors="coerce")
+    ).dt.total_seconds() / 60.0
+    matched["prediction_30m_on_time"] = matched["prediction_actual_lead_minutes"] >= 30.0
+    matched["scheduled_cutoff_lead_minutes"] = (
+        pd.to_datetime(matched["datetime_jst"], utc=True, errors="coerce")
+        - pd.to_datetime(matched["prediction_cutoff_utc"], utc=True, errors="coerce")
+    ).dt.total_seconds() / 60.0
+
     keep = [
         "prediction_id", "game_id", "target", "competition_id", "date_key", "datetime_jst", "prediction_cutoff_utc",
         "prediction_generated_at", "home", "away", "home_starter", "away_starter",
@@ -472,6 +514,7 @@ def reconcile() -> dict[str, Any]:
         "home_win_pct", "draw_pct", "away_win_pct", "predicted_outcome",
         "actual_outcome", "outcome_correct", "logloss", "brier",
         "home_probability_error", "draw_probability_error", "away_probability_error",
+        "prediction_actual_lead_minutes", "prediction_30m_on_time", "scheduled_cutoff_lead_minutes",
         "low_pct", "high_pct", "low_high_actual", "low_high_correct",
         "score_mae", "top1_exact_hit", "top4_hit",
         "lambda_home", "lambda_away", "shared_lambda",
@@ -533,6 +576,7 @@ def reconcile() -> dict[str, Any]:
         "by_target": {},
         "by_prediction_target": _prediction_target_metrics(experience),
         "by_dominant_expert": {},
+        "timing_30m": _timing_30m_metrics(experience),
         "rolling": {},
     }
 
