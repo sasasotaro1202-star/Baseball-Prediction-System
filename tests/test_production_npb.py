@@ -298,6 +298,7 @@ def test_target_rows_uses_actual_information_cutoff_and_keeps_30m_as_preferred(m
     assert bool(rows.iloc[0]["preferred_30m_met"]) is False
     assert float(rows.iloc[0]["lead_minutes_at_generation"]) < 30.0
     assert rows.iloc[0]["starter_evidence_observed_at_utc"] == "2026-09-20T08:30:01+00:00"
+    assert rows.iloc[0]["starter_source"] == "https://npb.jp/announcement/starter/"
 
 
 def test_pregame_only_limits_prediction_window_to_upcoming_60_minutes(monkeypatch):
