@@ -192,7 +192,6 @@ def audit() -> dict:
             "latest_retrieved_at": latest_retrieved.isoformat() if latest_retrieved else None,
         },
         "provenance_coverage": provenance,
-        },
         "production_readiness": {
             "starter_announcement_evidence": "READY" if cutoff_safe_both else "BLOCKED",
             "historical_market_line_evidence": "READY" if market_like else "BLOCKED",
