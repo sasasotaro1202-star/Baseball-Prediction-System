@@ -59,7 +59,7 @@ def test_predict_persists_blocked_state_for_impossible_starter_pair(monkeypatch,
     monkeypatch.setattr(
         production_npb,
         "build_target_rows",
-        lambda target_date: (_ for _ in ()).throw(
+        lambda target_date, **kwargs: (_ for _ in ()).throw(
             RuntimeError(
                 "PIT starter gate failed: identical starter assigned to both teams "
                 "in one official game (A vs B): '投手A'."
