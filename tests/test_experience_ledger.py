@@ -249,7 +249,7 @@ def test_timing_30m_metrics_distinguishes_late_snapshot():
 
 
 
-def test_load_predictions_rejects_future_or_non_pit_snapshot(tmp_path, monkeypatch):
+def test_load_predictions_rejects_invalid_pit_timing(tmp_path, monkeypatch):
     monkeypatch.setattr(exp, "PRED_DIR", tmp_path / "predictions")
     pred_dir = tmp_path / "predictions"
     pred_dir.mkdir(parents=True)
@@ -258,7 +258,7 @@ def test_load_predictions_rejects_future_or_non_pit_snapshot(tmp_path, monkeypat
 
     bad_generated = dict(valid)
     bad_generated["prediction_id"] = "bad-generated"
-    bad_generated["prediction_generated_at"] = "2026-09-26T02:00:00+00:00"
+    bad_generated["prediction_generated_at"] = "2026-09-26T05:00:00+00:00"
 
     bad_observed = dict(valid)
     bad_observed["prediction_id"] = "bad-observed"
