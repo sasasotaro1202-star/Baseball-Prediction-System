@@ -26,7 +26,10 @@ import pandas as pd
 
 from research.npb_official_results import _fetch_month
 from research import experience_ledger as ledger
-from research.experience_ledger import _prediction_target_metrics
+from research.experience_ledger import (
+    _prediction_target_metrics,
+    _validate_prediction_time_contract,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPERIENCE = ROOT / "data" / "experience"
@@ -134,11 +137,16 @@ def _load_predictions() -> pd.DataFrame:
     if "prediction_id" not in df:
         df["prediction_id"] = df.apply(lambda r: _prediction_id(r.to_dict()), axis=1)
 
+    # Validate the raw snapshot contract before any filtering or research reuse.
+    # Invalid timing/PIT provenance is a data-integrity failure, not an ignorable row.
+    for row in df.to_dict("records"):
+        _validate_prediction_time_contract(row)
+
     df["prediction_cutoff_utc"] = pd.to_datetime(
-        df.get("prediction_cutoff_utc"), utc=True, errors="coerce"
+        df["prediction_cutoff_utc"], utc=True, errors="coerce"
     )
     df["datetime_jst"] = pd.to_datetime(
-        df.get("datetime_jst"), utc=True, errors="coerce"
+        df["datetime_jst"], utc=True, errors="coerce"
     )
     df = df.dropna(subset=["prediction_cutoff_utc", "datetime_jst", "game_id"])
 
