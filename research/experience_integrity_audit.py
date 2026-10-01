@@ -96,6 +96,13 @@ def audit_prediction_directory(pred_dir: str | Path = DEFAULT_PRED_DIR) -> dict[
                 field="starter_evidence_observed_at_utc",
             )
 
+            prediction_id = str(row.get("prediction_id", "")).strip()
+            if not prediction_id:
+                raise ValueError(f"prediction row missing prediction_id: {path}:{line_no}")
+            if prediction_id in seen_ids:
+                raise ValueError(f"duplicate prediction_id: {prediction_id}")
+            seen_ids.add(prediction_id)
+
             if is_legacy:
                 legacy_quarantined += 1
                 continue
@@ -117,12 +124,6 @@ def audit_prediction_directory(pred_dir: str | Path = DEFAULT_PRED_DIR) -> dict[
             )
             _check_probabilities(row, ("low_pct", "high_pct"), "Low/High")
 
-            prediction_id = str(row.get("prediction_id", "")).strip()
-            if not prediction_id:
-                raise ValueError(f"prediction row missing prediction_id: {path}:{line_no}")
-            if prediction_id in seen_ids:
-                raise ValueError(f"duplicate prediction_id: {prediction_id}")
-            seen_ids.add(prediction_id)
             rows += 1
 
     return {
