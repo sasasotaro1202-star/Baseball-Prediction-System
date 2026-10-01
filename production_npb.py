@@ -817,6 +817,8 @@ def build_target_rows(
         # experience case.
         prediction_cutoff = r["datetime"] - pd.Timedelta(minutes=float(minimum_lead_minutes))
         lead_seconds = float((r["datetime"] - now_utc).total_seconds())
+        if r["datetime"] <= now_utc:
+            continue
         if lead_seconds <= 0:
             continue
         if now_utc > prediction_cutoff:
