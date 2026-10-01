@@ -117,6 +117,13 @@ jobs:
           print("PIT/probability/score contract smoke: PASS")
           PY
 
+      - name: Experience integrity audit
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          python research/experience_integrity_audit.py
+          echo 'Experience integrity audit: PASS'
+
       - name: Automation contract scan
         timeout-minutes: 2
         run: |
