@@ -148,6 +148,36 @@ def _timing_30m_metrics(frame: pd.DataFrame) -> dict[str, Any]:
     }
 
 
+def _validate_prediction_probability_contract(row: Mapping[str, Any]) -> None:
+    """Fail closed on malformed serialized probability distributions."""
+    try:
+        values = np.asarray(
+            [
+                float(row["home_win_pct"]),
+                float(row["draw_pct"]),
+                float(row["away_win_pct"]),
+            ],
+            dtype=float,
+        )
+        low_high = np.asarray(
+            [float(row["low_pct"]), float(row["high_pct"])],
+            dtype=float,
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("prediction snapshot probability fields are invalid") from exc
+
+    for label, arr in (("win", values), ("Low/High", low_high)):
+        if (
+            not np.isfinite(arr).all()
+            or (arr < 0.0).any()
+            or (arr > 100.0).any()
+            or abs(float(arr.sum()) - 100.0) > 0.0003
+        ):
+            raise ValueError(
+                f"prediction snapshot {label} probabilities are not a valid normalized distribution"
+            )
+
+
 def _validate_prediction_time_contract(row: dict[str, Any]) -> None:
     """Fail closed on prediction snapshots with ambiguous or impossible timing."""
     required = (
@@ -336,6 +366,7 @@ def archive_production_output(input_json: str | Path, *, run_id: str | None = No
             raise ValueError("prediction row missing game_id or cutoff")
         record = dict(pred)
         _validate_prediction_time_contract(record)
+        _validate_prediction_probability_contract(record)
         # Canonical target identity is preserved for per-target metrics. Prefer
         # an explicit target/competition/league field; the NPB production
         # archive supplies NPB when these fields are absent.
@@ -398,6 +429,7 @@ def _load_predictions() -> pd.DataFrame:
         if idx in legacy_rows:
             continue
         _validate_prediction_time_contract(row)
+        _validate_prediction_probability_contract(row)
     if legacy_rows:
         print(json.dumps({
             "event": "EXPERIENCE_LEGACY_TIMING_QUARANTINE",
