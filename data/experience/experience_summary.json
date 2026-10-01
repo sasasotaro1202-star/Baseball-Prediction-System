@@ -127,7 +127,7 @@
     "mean_l1_pct_points": 1.20958,
     "median_l1_pct_points": 1.3795,
     "maximum_l1_pct_points": 1.9552,
-    "maximum_single_class_change_pct_points": 0
+    "maximum_single_class_change_pct_points": 0.9776
   },
   "legacy_timing_quarantined_rows": 4
 }
