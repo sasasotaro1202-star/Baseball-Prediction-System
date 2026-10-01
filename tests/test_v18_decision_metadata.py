@@ -104,3 +104,14 @@ def test_prediction_intelligence_is_fail_closed_on_pit_or_time():
                 "provenance": {"source": "unit-test"},
             }
         )
+
+
+def test_prediction_set_can_explicitly_abstain():
+    record = _record(
+        prediction_set=[],
+        prediction_set_alpha=0.10,
+        prediction_set_method="split_conformal",
+        prediction_set_action="ABSTAIN",
+    )
+    assert record.prediction_set == []
+    assert record.prediction_set_action == "ABSTAIN"
