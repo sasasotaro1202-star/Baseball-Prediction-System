@@ -214,3 +214,27 @@ def test_prediction_target_metrics_accept_normalized_snapshot_scale():
     assert "top1_exact_hit_rate" in targets["exact_score"]
     assert "top4_exact_hit_rate" in targets["exact_score"]
     assert "score_mae" in targets["exact_score"]
+
+
+
+def test_timing_30m_metrics_distinguishes_late_snapshot():
+    frame = pd.DataFrame([
+        {
+            "datetime_jst": "2026-10-01T18:00:00+09:00",
+            "prediction_generated_at": "2026-10-01T08:29:00+00:00",
+            "prediction_cutoff_utc": "2026-10-01T08:30:00+00:00",
+        },
+        {
+            "datetime_jst": "2026-10-01T18:00:00+09:00",
+            "prediction_generated_at": "2026-10-01T08:31:00+00:00",
+            "prediction_cutoff_utc": "2026-10-01T08:30:00+00:00",
+        },
+    ])
+    timing = exp._timing_30m_metrics(frame)
+    assert timing["status"] == "MEASURED"
+    assert timing["eligible_rows"] == 2
+    assert timing["on_time_rows"] == 1
+    assert timing["late_rows"] == 1
+    assert timing["compliance_rate"] == 0.5
+    assert timing["scheduled_cutoff_below_30m_rows"] == 0
+
