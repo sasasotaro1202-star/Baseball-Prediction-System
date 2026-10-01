@@ -72,6 +72,81 @@ class PredictionRecord:
     eligibility: str = "ELIGIBLE"
     competition_key: str | None = None
     competition_stage: str | None = None
+    prediction_set: list[str] | None = None
+    prediction_set_alpha: float | None = None
+    prediction_set_method: str | None = None
+    prediction_set_action: str | None = None
+    prediction_intelligence: dict[str, Any] | None = None
+
+
+def _validate_prediction_set(record: PredictionRecord, expected: set[str]) -> None:
+    values = record.prediction_set
+    related = (
+        record.prediction_set_alpha,
+        record.prediction_set_method,
+        record.prediction_set_action,
+    )
+    if values is None:
+        if any(v is not None for v in related):
+            raise ValueError("prediction-set metadata requires prediction_set")
+        return
+    if not values or len(values) != len(set(values)):
+        raise ValueError("prediction_set must be a non-empty list of unique labels")
+    if not set(values).issubset(expected):
+        raise ValueError("prediction_set contains an unknown class")
+    if record.prediction_set_alpha is None or not 0.0 < float(record.prediction_set_alpha) < 1.0:
+        raise ValueError("prediction_set_alpha must be in (0,1)")
+    if record.prediction_set_method not in {"split_conformal", "group_split_conformal"}:
+        raise ValueError("unsupported prediction_set_method")
+    if record.prediction_set_action not in {"SINGLE", "SET", "ABSTAIN"}:
+        raise ValueError("invalid prediction_set_action")
+    expected_action = "SINGLE" if len(values) == 1 else "SET"
+    if record.prediction_set_action != expected_action:
+        raise ValueError("prediction_set_action does not match prediction_set size")
+
+
+def _validate_prediction_intelligence(record: PredictionRecord) -> None:
+    value = record.prediction_intelligence
+    if value is None:
+        return
+    if not isinstance(value, Mapping):
+        raise ValueError("prediction_intelligence must be a mapping")
+    required = {"prediction_time", "pit_status", "provenance"}
+    missing = sorted(required - set(value))
+    if missing:
+        raise ValueError("prediction_intelligence missing required keys: " + ",".join(missing))
+    if str(value["prediction_time"]) != str(record.prediction_cutoff):
+        raise ValueError("prediction_intelligence prediction_time must equal prediction_cutoff")
+    if str(value["pit_status"]) != "PASS":
+        raise ValueError("prediction_intelligence pit_status must be PASS")
+    if not isinstance(value["provenance"], Mapping) or not value["provenance"]:
+        raise ValueError("prediction_intelligence provenance must be a non-empty mapping")
+    bounded = (
+        "confidence",
+        "predictability",
+        "uncertainty",
+        "disagreement",
+        "ood",
+        "failure_risk",
+        "freshness",
+        "information_value",
+    )
+    for name in bounded:
+        if name in value:
+            x = float(value[name])
+            if not math.isfinite(x) or x < 0.0 or x > 1.0:
+                raise ValueError(f"prediction_intelligence {name} must be in [0,1]")
+    if "forecast_lifetime" in value:
+        x = float(value["forecast_lifetime"])
+        if not math.isfinite(x) or x < 0.0:
+            raise ValueError("prediction_intelligence forecast_lifetime must be finite and non-negative")
+    for name in ("action", "update_need"):
+        if name in value and not str(value[name]).strip():
+            raise ValueError(f"prediction_intelligence {name} must be non-empty")
+    if "valid_until" in value:
+        valid_until = _dt(str(value["valid_until"]))
+        if valid_until < _dt(record.prediction_cutoff):
+            raise ValueError("prediction_intelligence valid_until precedes prediction_cutoff")
 
 
 def make_prediction_id(event_id: str, cutoff: str, model_version: str, git_commit: str) -> str:
@@ -103,6 +178,8 @@ def validate_prediction(record: PredictionRecord) -> None:
         raise ValueError("prediction probabilities must sum to 1")
 
     _validate_score_candidates(record.score_candidates)
+    _validate_prediction_set(record, required)
+    _validate_prediction_intelligence(record)
 
     for name, value in (("low_probability", record.low_probability),
                         ("high_probability", record.high_probability),
