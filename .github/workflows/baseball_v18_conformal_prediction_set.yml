@@ -18,7 +18,7 @@ permissions:
 
 concurrency:
   group: baseball-v18-conformal-prediction-set
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   gate:
