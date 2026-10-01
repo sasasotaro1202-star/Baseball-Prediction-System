@@ -42,6 +42,30 @@ def _finite(v: Any) -> float:
     return x
 
 
+def _normalize_percentage_rows(
+    values: pd.DataFrame,
+    *,
+    label: str,
+    row_ids: pd.Series | None = None,
+) -> np.ndarray:
+    """Validate percentage probabilities and normalize only serialization rounding."""
+    arr = values.apply(pd.to_numeric, errors="coerce").to_numpy(float)
+    if arr.ndim != 2 or arr.shape[1] not in (2, 3):
+        raise ValueError(f"{label} probability matrix must have 2 or 3 columns")
+    if not np.isfinite(arr).all() or (arr < 0.0).any() or (arr > 100.0).any():
+        raise ValueError(f"invalid {label} probabilities")
+    sums = arr.sum(axis=1)
+    rounding_tolerance_pct = 0.0003
+    bad = np.abs(sums - 100.0) > rounding_tolerance_pct
+    if bad.any():
+        idx = int(np.flatnonzero(bad)[0])
+        ident = row_ids.iloc[idx] if row_ids is not None and len(row_ids) > idx else idx
+        raise ValueError(
+            f"invalid {label} probabilities: row={ident!r} sum_pct={sums[idx]:.8f}"
+        )
+    return arr / sums[:, None]
+
+
 def _timing_30m_metrics(frame: pd.DataFrame) -> dict[str, Any]:
     """Measure strict 30-minute pregame timing without changing headline skill metrics."""
     required = {"datetime_jst", "prediction_generated_at", "prediction_cutoff_utc"}
@@ -492,10 +516,11 @@ def reconcile() -> dict[str, Any]:
         np.where(matched["actual_home_score"] == matched["actual_away_score"], "DRAW", "AWAY_WIN")
     )
     prob_cols = ["home_win_pct", "draw_pct", "away_win_pct"]
-    for c in prob_cols:
-        matched[c] = pd.to_numeric(matched[c], errors="coerce") / 100.0
-    if not np.isfinite(matched[prob_cols].to_numpy(float)).all():
-        raise RuntimeError("experience probabilities contain non-finite values")
+    matched[prob_cols] = _normalize_percentage_rows(
+        matched[prob_cols],
+        label="win",
+        row_ids=matched["game_id"],
+    )
     matched["predicted_outcome"] = np.array([
         ["HOME_WIN", "DRAW", "AWAY_WIN"][int(np.argmax(r))]
         for r in matched[prob_cols].to_numpy(float)
@@ -510,8 +535,14 @@ def reconcile() -> dict[str, Any]:
     matched["draw_probability_error"] = pp[:, 1] - (y_idx == 1)
     matched["away_probability_error"] = pp[:, 2] - (y_idx == 2)
 
-    matched["low_probability"] = pd.to_numeric(matched["low_pct"], errors="coerce") / 100.0
-    matched["high_probability"] = pd.to_numeric(matched["high_pct"], errors="coerce") / 100.0
+    low_high_cols = ["low_pct", "high_pct"]
+    low_high_probs = _normalize_percentage_rows(
+        matched[low_high_cols],
+        label="Low/High",
+        row_ids=matched["game_id"],
+    )
+    matched["low_probability"] = low_high_probs[:, 0]
+    matched["high_probability"] = low_high_probs[:, 1]
     matched["low_high_actual"] = (matched["actual_total_runs"] >= 7).astype(int)
     matched["low_high_predicted"] = (matched["high_probability"] >= 0.5).astype(int)
     matched["low_high_correct"] = (matched["low_high_predicted"] == matched["low_high_actual"]).astype(int)
