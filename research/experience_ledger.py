@@ -66,6 +66,56 @@ def _normalize_percentage_rows(
     return arr / sums[:, None]
 
 
+def _revision_metrics(frame: pd.DataFrame) -> dict[str, Any]:
+    """Summarize forecast revisions without treating stability as accuracy."""
+    required = {
+        "revision_status",
+        "revision_l1_pct_points",
+        "revision_max_abs_pct_points",
+        "revision_outcome_changed",
+    }
+    if not required.issubset(frame.columns) or frame.empty:
+        return {"status": "UNAVAILABLE", "eligible_rows": 0}
+    work = frame.loc[frame["revision_status"].astype(str) == "REVISED"].copy()
+    if work.empty:
+        return {
+            "status": "MEASURED",
+            "eligible_rows": int(len(frame)),
+            "revised_rows": 0,
+            "revision_rate": 0.0,
+            "outcome_reversal_rows": 0,
+            "outcome_reversal_rate": 0.0,
+            "mean_l1_pct_points": 0.0,
+            "median_l1_pct_points": 0.0,
+            "maximum_l1_pct_points": 0.0,
+            "maximum_single_class_change_pct_points": 0.0,
+        }
+    l1 = pd.to_numeric(work["revision_l1_pct_points"], errors="coerce")
+    max_abs = pd.to_numeric(work["revision_max_abs_pct_points"], errors="coerce")
+    valid = l1.notna() & max_abs.notna()
+    if not bool(valid.any()):
+        return {
+            "status": "UNAVAILABLE",
+            "eligible_rows": int(len(frame)),
+            "revised_rows": int(len(work)),
+        }
+    l1 = l1.loc[valid]
+    max_abs = max_abs.loc[valid]
+    reversals = work.loc[valid, "revision_outcome_changed"].astype(bool)
+    return {
+        "status": "MEASURED",
+        "eligible_rows": int(len(frame)),
+        "revised_rows": int(len(work)),
+        "revision_rate": float(len(work) / max(1, len(frame))),
+        "outcome_reversal_rows": int(reversals.sum()),
+        "outcome_reversal_rate": float(reversals.mean()),
+        "mean_l1_pct_points": float(l1.mean()),
+        "median_l1_pct_points": float(l1.median()),
+        "maximum_l1_pct_points": float(l1.max()),
+        "maximum_single_class_change_pct_points": float(max_abs.max()),
+    }
+
+
 def _timing_30m_metrics(frame: pd.DataFrame) -> dict[str, Any]:
     """Measure strict 30-minute pregame timing without changing headline skill metrics."""
     required = {"datetime_jst", "prediction_generated_at", "prediction_cutoff_utc"}
@@ -732,6 +782,7 @@ def reconcile() -> dict[str, Any]:
         "by_prediction_target": _prediction_target_metrics(experience),
         "by_dominant_expert": {},
         "timing_30m": _timing_30m_metrics(experience),
+        "revision_intelligence": _revision_metrics(experience),
         "rolling": {},
     }
 
