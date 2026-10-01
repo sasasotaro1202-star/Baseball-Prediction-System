@@ -182,6 +182,201 @@ def predictability_score(
     }
 
 
+def predictability_series(
+    probabilities: np.ndarray,
+    outcomes: Sequence[int],
+    *,
+    disagreement: Sequence[float] | None = None,
+    data_quality: Sequence[float] | None = None,
+    regime_stability: Sequence[float] | None = None,
+    drift_scores: Sequence[float] | None = None,
+    information_uncertainty: Sequence[float] | None = None,
+    min_history: int = 30,
+    confidence_band: float = 0.10,
+    disagreement_band: float = 0.15,
+    prior_strength: float = 10.0,
+) -> dict[str, object]:
+    """Build a chronological outcome-aware predictability series.
+
+    The score for case t may use current features and supervised evidence only
+    from cases with index smaller than t. Current and future outcomes never
+    contribute to the score for the current case.
+    """
+    probs = _norm(np.asarray(probabilities, dtype=float))
+    y = np.asarray(outcomes, dtype=int).reshape(-1)
+    n, k = probs.shape
+    if len(y) != n or np.any((y < 0) | (y >= k)):
+        raise ValueError("predictability outcomes must align with probability rows")
+    if min_history < 0:
+        raise ValueError("min_history must be non-negative")
+    if not 0.0 < confidence_band <= 1.0:
+        raise ValueError("confidence_band must be in (0,1]")
+    if not 0.0 < disagreement_band <= 1.0:
+        raise ValueError("disagreement_band must be in (0,1]")
+    if prior_strength < 0 or not np.isfinite(prior_strength):
+        raise ValueError("prior_strength must be finite and non-negative")
+
+    def _vector(name: str, values: Sequence[float] | None, default: float) -> np.ndarray:
+        if values is None:
+            return np.full(n, float(default), dtype=float)
+        arr = np.asarray(values, dtype=float).reshape(-1)
+        if len(arr) != n or not np.isfinite(arr).all():
+            raise ValueError(name + " must contain one finite value per case")
+        return np.clip(arr, 0.0, 1.0)
+
+    disagreement_arr = _vector("disagreement", disagreement, 0.5)
+    data_quality_arr = _vector("data_quality", data_quality, 1.0)
+    regime_arr = _vector("regime_stability", regime_stability, 1.0)
+    drift_arr = _vector("drift_scores", drift_scores, 0.0)
+    info_arr = _vector("information_uncertainty", information_uncertainty, 0.0)
+
+    confidence = probs.max(axis=1)
+    entropy = -np.sum(probs * np.log(np.clip(probs, EPS, 1.0)), axis=1)
+    entropy_norm = entropy / max(float(np.log(k)), EPS)
+    temporal_stability = np.full(n, 0.5, dtype=float)
+    if n > 1:
+        temporal_stability[1:] = 1.0 - 0.5 * np.abs(probs[1:] - probs[:-1]).sum(axis=1)
+        temporal_stability = np.clip(temporal_stability, 0.0, 1.0)
+
+    predictability = np.empty(n, dtype=float)
+    history_accuracy = np.full(n, 1.0 / k, dtype=float)
+    history_count = np.zeros(n, dtype=int)
+    warmup = np.ones(n, dtype=bool)
+    correctness = (np.argmax(probs, axis=1) == y).astype(float)
+
+    for t in range(n):
+        if t == 0:
+            matched = np.empty(0, dtype=int)
+        else:
+            prior = np.arange(t, dtype=int)
+            mask = np.abs(confidence[:t] - confidence[t]) <= confidence_band
+            if disagreement is not None:
+                mask &= np.abs(disagreement_arr[:t] - disagreement_arr[t]) <= disagreement_band
+            matched = prior[mask]
+        count = int(len(matched))
+        history_count[t] = count
+        if count > 0:
+            baseline = 1.0 / k
+            smoothed = (
+                float(correctness[matched].sum()) + float(prior_strength) * baseline
+            ) / (count + float(prior_strength))
+            history_accuracy[t] = float(np.clip(smoothed, 0.0, 1.0))
+        warmup[t] = count < min_history
+
+        score = (
+            0.20 * (1.0 - entropy_norm[t])
+            + 0.30 * history_accuracy[t]
+            + 0.20 * temporal_stability[t]
+            + 0.10 * (1.0 - disagreement_arr[t])
+            + 0.10 * data_quality_arr[t]
+            + 0.05 * regime_arr[t]
+            + 0.03 * (1.0 - drift_arr[t])
+            + 0.02 * (1.0 - info_arr[t])
+        )
+        if warmup[t]:
+            score = 0.75 * score + 0.25 * (1.0 / k)
+        predictability[t] = float(np.clip(score, 0.0, 1.0))
+
+    matured = ~warmup if min_history > 0 else np.ones(n, dtype=bool)
+    calibration = predictability_calibration(
+        correctness[matured],
+        predictability[matured],
+        min_bin_rows=5,
+    )
+    return {
+        "status": "PASS",
+        "rows": int(n),
+        "walk_forward": True,
+        "min_history": int(min_history),
+        "values": predictability.tolist(),
+        "confidence": confidence.tolist(),
+        "history_accuracy": history_accuracy.tolist(),
+        "history_count": history_count.tolist(),
+        "warmup": warmup.tolist(),
+        "terminal": {
+            "predictability": float(predictability[-1]),
+            "confidence": float(confidence[-1]),
+            "history_accuracy": float(history_accuracy[-1]),
+            "history_count": int(history_count[-1]),
+            "warmup": bool(warmup[-1]),
+            "temporal_stability": float(temporal_stability[-1]),
+            "disagreement": float(disagreement_arr[-1]),
+        },
+        "calibration": calibration,
+    }
+
+
+def predictability_calibration(
+    correctness: Sequence[float],
+    predictability: Sequence[float],
+    *,
+    min_bin_rows: int = 5,
+) -> dict[str, object]:
+    """Retrospectively evaluate predictability against realized correctness."""
+    c = np.asarray(correctness, dtype=float).reshape(-1)
+    p = np.asarray(predictability, dtype=float).reshape(-1)
+    if len(c) != len(p) or len(c) == 0:
+        return {
+            "status": "UNAVAILABLE",
+            "rows": 0,
+            "bins": [],
+            "mean_abs_calibration_gap": None,
+        }
+    if not np.isfinite(c).all() or np.any((c < 0) | (c > 1)):
+        raise ValueError("correctness values must be finite and within [0,1]")
+    if not np.isfinite(p).all() or np.any((p < 0) | (p > 1)):
+        raise ValueError("predictability values must be finite and within [0,1]")
+    if min_bin_rows < 1:
+        raise ValueError("min_bin_rows must be >= 1")
+
+    edges = np.linspace(0.0, 1.0, 6)
+    bins = []
+    weighted_gap = 0.0
+    included_rows = 0
+    for i in range(len(edges) - 1):
+        lo, hi = float(edges[i]), float(edges[i + 1])
+        mask = (p >= lo) & (p < hi if i < len(edges) - 2 else p <= hi)
+        n = int(mask.sum())
+        if n == 0:
+            bins.append({"lower": lo, "upper": hi, "n": 0})
+            continue
+        mean_pred = float(p[mask].mean())
+        empirical = float(c[mask].mean())
+        gap = empirical - mean_pred
+        eligible = n >= min_bin_rows
+        bins.append(
+            {
+                "lower": lo,
+                "upper": hi,
+                "n": n,
+                "mean_predictability": mean_pred,
+                "empirical_accuracy": empirical,
+                "calibration_gap": gap,
+                "eligible": eligible,
+            }
+        )
+        if eligible:
+            included_rows += n
+            weighted_gap += n * abs(gap)
+
+    if included_rows == 0:
+        return {
+            "status": "INSUFFICIENT_BIN_SUPPORT",
+            "rows": int(len(c)),
+            "bins": bins,
+            "mean_abs_calibration_gap": None,
+        }
+    return {
+        "status": "PASS",
+        "rows": int(included_rows),
+        "total_rows": int(len(c)),
+        "bins": bins,
+        "mean_abs_calibration_gap": float(weighted_gap / included_rows),
+        "target": "realized_prediction_correctness",
+        "retrospective_only": True,
+    }
+
+
 class FutureFailureEstimator:
     """Research-only chronological model-level future failure estimator."""
 
