@@ -3,6 +3,7 @@ import json
 
 import pandas as pd
 import numpy as np
+import pytest
 
 import research.experience_ledger as exp
 
@@ -16,6 +17,9 @@ def _prediction(tmp: Path):
             "datetime_jst": "2026-09-26T14:00:00+09:00",
             "prediction_cutoff_utc": "2026-09-26T02:00:00+00:00",
             "prediction_generated_at": "2026-09-26T02:00:02+00:00",
+            "starter_evidence_observed_at_utc": "2026-09-26T01:59:30+00:00",
+            "starter_evidence_status": "official_announced",
+            "pit_status": "PASS",
             "home": "横浜DeNAベイスターズ",
             "away": "阪神タイガース",
             "home_starter": "尾形崇斗",
@@ -243,3 +247,31 @@ def test_timing_30m_metrics_distinguishes_late_snapshot():
     assert timing["compliance_rate"] == 0.5
     assert timing["scheduled_cutoff_below_30m_rows"] == 0
 
+
+
+def test_load_predictions_rejects_future_or_non_pit_snapshot(tmp_path, monkeypatch):
+    monkeypatch.setattr(exp, "PRED_DIR", tmp_path / "predictions")
+    pred_dir = tmp_path / "predictions"
+    pred_dir.mkdir(parents=True)
+
+    valid = json.loads(_prediction(tmp_path).read_text(encoding="utf-8"))["predictions"][0]
+
+    bad_generated = dict(valid)
+    bad_generated["prediction_id"] = "bad-generated"
+    bad_generated["prediction_generated_at"] = "2026-09-26T02:00:00+00:00"
+
+    bad_observed = dict(valid)
+    bad_observed["prediction_id"] = "bad-observed"
+    bad_observed["starter_evidence_observed_at_utc"] = "2026-09-26T02:00:30+00:00"
+
+    path = pred_dir / "2026-09-26.jsonl"
+    path.write_text(
+        "".join(
+            json.dumps(row, ensure_ascii=False) + "\n"
+            for row in (bad_generated, bad_observed)
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="prediction snapshot"):
+        exp._load_predictions()
