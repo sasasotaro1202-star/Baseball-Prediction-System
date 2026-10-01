@@ -95,7 +95,7 @@ jobs:
           for i in range(120):
               pt = base + pd.Timedelta(hours=i)
               rows.append({
-                  'game_id': f'g{i}', 'prediction_time': pt,
+                  'game_id': f'g{i}', 'datetime': pt, 'prediction_time': pt,
                   'available_at': pt - pd.Timedelta(minutes=30),
                   'pred_home': .65, 'pred_away': .35,
                   'actual_home_score': 1 if i % 3 else 0,
