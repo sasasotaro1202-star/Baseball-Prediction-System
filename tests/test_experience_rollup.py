@@ -338,8 +338,8 @@ def test_rollup_quarantines_legacy_scheduled_cutoff(tmp_path, monkeypatch):
     (pdir / "2026-09-26.jsonl").write_text(
         json.dumps(legacy, ensure_ascii=False) + "\n", encoding="utf-8"
     )
-    with pytest.raises(KeyError):
-        # A quarantined-only corpus must not proceed into result evaluation.
-        # The important contract is that the legacy row is removed before
-        # prediction evaluation rather than treated as a valid PIT snapshot.
-        roll.rollup()
+    result = roll.rollup()
+    # A quarantined-only corpus is safely reduced to zero reusable snapshots.
+    # The legacy row is not treated as a valid PIT prediction.
+    assert result["status"] == "NO_PREGAME_PREDICTIONS"
+    assert result["snapshot_rows"] == 0
