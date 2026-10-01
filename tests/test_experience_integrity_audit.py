@@ -13,6 +13,10 @@ def _row(**overrides):
         "prediction_cutoff_utc": "2026-10-01T08:30:00+00:00",
         "prediction_generated_at": "2026-10-01T08:31:00+00:00",
         "starter_evidence_observed_at_utc": "2026-10-01T08:20:00+00:00",
+        "starter_evidence_status": "official_announced",
+        "prediction_deadline_utc": "2026-10-01T08:30:00+00:00",
+        "preferred_prediction_cutoff_utc": "2026-10-01T08:30:00+00:00",
+        "lead_minutes_at_generation": 29.0,
         "pit_status": "PASS",
         "home_win_pct": 45.0,
         "draw_pct": 5.0,
@@ -80,6 +84,14 @@ def test_legacy_scheduled_cutoff_is_quarantined_not_failed(tmp_path):
         prediction_generated_at="2026-10-01T03:52:00+00:00",
         prediction_cutoff_utc="2026-10-01T08:30:00+00:00",
     )
+    # Deliberately remove modern timing markers so this row exercises the
+    # pre-v18 scheduled-cutoff quarantine path.
+    for field in (
+        "lead_minutes_at_generation",
+        "prediction_deadline_utc",
+        "preferred_prediction_cutoff_utc",
+    ):
+        row.pop(field, None)
     _write(pred_dir / "2026-10-01.jsonl", [row])
     result = audit_prediction_directory(pred_dir)
     assert result["status"] == "PASS_WITH_LEGACY_QUARANTINE"

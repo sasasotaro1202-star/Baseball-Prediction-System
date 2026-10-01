@@ -496,6 +496,8 @@ def rollup() -> dict[str, Any]:
             "status": result["status"],
             "canonical_experience_cases": int(len(canonical)),
             "all_prediction_snapshots": int(len(scored)),
+            "timing_30m": result["timing_30m"],
+            "revision_intelligence": result["revision_intelligence"],
             "artifacts": {
                 "snapshot_csv": str(SNAPSHOT_PATH),
                 "snapshot_jsonl": str(SNAPSHOT_JSONL),
