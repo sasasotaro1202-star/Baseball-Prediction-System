@@ -263,6 +263,33 @@ def _revision_metadata(
     }
 
 
+def _is_legacy_scheduled_cutoff(row: Mapping[str, Any]) -> bool:
+    """Identify pre-v18 snapshots whose cutoff was a planned 30m deadline."""
+    raw_generated = row.get("prediction_generated_at")
+    raw_cutoff = row.get("prediction_cutoff_utc")
+    if raw_generated in (None, "") or raw_cutoff in (None, ""):
+        return False
+    try:
+        generated = pd.Timestamp(raw_generated)
+        cutoff = pd.Timestamp(raw_cutoff)
+    except Exception:
+        return False
+    if generated.tzinfo is None or cutoff.tzinfo is None:
+        return False
+    # Current contract records actual observation time plus explicit preferred
+    # deadline metadata. A pre-v18 row lacking those fields and generated before
+    # its stored cutoff is historical scheduled-cutoff metadata, not a verified
+    # actual observation cutoff. Preserve it but never reuse it as PIT evidence.
+    modern_markers = (
+        "lead_minutes_at_generation",
+        "prediction_deadline_utc",
+        "preferred_prediction_cutoff_utc",
+    )
+    if any(key in row for key in modern_markers):
+        return False
+    return generated < cutoff
+
+
 def _prediction_id(row: dict[str, Any]) -> str:
     raw = f"{row['game_id']}|{row['prediction_cutoff_utc']}|{row.get('git_commit','unknown')}"
     import hashlib
@@ -356,19 +383,34 @@ def _load_predictions() -> pd.DataFrame:
         df["prediction_id"] = df.apply(lambda r: _prediction_id(r.to_dict()), axis=1)
 
     # Re-validate the immutable archive before any result matching or training reuse.
-    # A malformed row aborts reconciliation rather than being silently discarded.
-    for row in df.to_dict("records"):
+    # Pre-v18 scheduled-cutoff snapshots are quarantined as unverified legacy
+    # history instead of being silently accepted or rewriting the raw archive.
+    records = df.to_dict("records")
+    legacy_rows = {
+        idx for idx, row in enumerate(records) if _is_legacy_scheduled_cutoff(row)
+    }
+    for idx, row in enumerate(records):
+        if idx in legacy_rows:
+            continue
         _validate_prediction_time_contract(row)
+    if legacy_rows:
+        print(json.dumps({
+            "event": "EXPERIENCE_LEGACY_TIMING_QUARANTINE",
+            "rows": len(legacy_rows),
+            "reason": "pre-v18 scheduled cutoff is not an actual observed prediction cutoff",
+        }, ensure_ascii=False))
 
-    # Canonical production experience = latest pregame snapshot for each event.
     df["prediction_cutoff_utc"] = pd.to_datetime(df["prediction_cutoff_utc"], utc=True, errors="coerce")
     df["datetime_jst"] = pd.to_datetime(df["datetime_jst"], utc=True, errors="coerce")
     df = df.dropna(subset=["prediction_cutoff_utc", "datetime_jst", "game_id"])
     # Only pregame predictions are valid experience. Anything made at or after
     # first pitch is excluded so late re-runs cannot masquerade as pregame skill.
     df = df.loc[
-        df["prediction_cutoff_utc"]
-        < df["datetime_jst"].dt.tz_convert("UTC")
+        (~df.index.isin(legacy_rows))
+        & (
+            df["prediction_cutoff_utc"]
+            < df["datetime_jst"].dt.tz_convert("UTC")
+        )
     ].copy()
     df = df.sort_values(["game_id", "prediction_cutoff_utc", "prediction_id"])
     df = df.drop_duplicates("game_id", keep="last").reset_index(drop=True)
