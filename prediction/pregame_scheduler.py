@@ -246,7 +246,9 @@ def due_games(*, now_utc: datetime | None = None, min_lead_minutes: float = 0.0,
         raise RuntimeError("no current production runtime is registered")
 
     due: list[dict] = []
+    research_due: list[dict] = []
     blocked: list[dict] = []
+    research_active = load_research_active_competitions()
     # Current-production policy requires the call-time JST target date.
     # Do not precompute tomorrow's production forecast through this dispatcher.
     dates: set[str] = {now.astimezone(JST).date().isoformat()}
@@ -284,8 +286,33 @@ def due_games(*, now_utc: datetime | None = None, min_lead_minutes: float = 0.0,
                         "preferred_prediction_cutoff_utc": preferred_cutoff.isoformat(),
                         "preferred_30m_met": bool(now <= preferred_cutoff),
                         "lead_minutes": round(lead, 3),
+                        "prediction_eligibility": "CURRENT_PRODUCTION",
                         "status": "DUE",
                     })
+    # Research discovery runs alongside production scanning but can never add
+    # a row to due_games/due_dates. MLB remains research-only until the separate
+    # official-starter PIT gate and production adoption requirements are satisfied.
+    if "MLB" in research_active and "MLB" not in {league for league, _ in enabled}:
+        for target_date in sorted(dates):
+            games = _mlb_schedule_for_date(target_date)
+            for game_index, game in enumerate(games, start=1):
+                start = datetime.fromisoformat(str(game["scheduled_start_utc"])).astimezone(timezone.utc)
+                lead = (start - now).total_seconds() / 60.0
+                if float(min_lead_minutes) < lead <= float(scan_ahead_minutes):
+                    preferred_cutoff = start - timedelta(minutes=float(preferred_lead_minutes))
+                    research_due.append({
+                        **game,
+                        "league": "MLB",
+                        "target_date": target_date,
+                        "game_index": game_index,
+                        "prediction_cutoff_utc": now.isoformat(),
+                        "preferred_prediction_cutoff_utc": preferred_cutoff.isoformat(),
+                        "preferred_30m_met": bool(now <= preferred_cutoff),
+                        "lead_minutes": round(lead, 3),
+                        "prediction_eligibility": "RESEARCH_ONLY_BLOCKED_UNTIL_OFFICIAL_STARTERS",
+                        "status": "RESEARCH_DUE",
+                    })
+
     return {
         "schema_version": "baseball-pregame-scheduler-v1",
         "checked_at_utc": now.isoformat(),
