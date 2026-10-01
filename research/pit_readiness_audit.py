@@ -52,6 +52,65 @@ def _dt(value):
     return dt.astimezone(timezone.utc)
 
 
+
+def _provenance_coverage(rows: list[dict], *group_fields: str) -> dict:
+    """Report PIT timestamp completeness per source/group without guessing."""
+    if not rows:
+        return {"available": False, "group_fields": list(group_fields), "groups": {}}
+
+    groups: dict[str, dict] = {}
+    for row in rows:
+        group_name = "|".join(
+            "<NA>" if row.get(field) in (None, "") else str(row.get(field))
+            for field in group_fields
+        )
+        item = groups.setdefault(
+            group_name,
+            {
+                "rows": 0,
+                "available_at_present": 0,
+                "retrieved_at_present": 0,
+                "available_at_le_retrieved_at": 0,
+                "availability_unverifiable": 0,
+                "availability_status_counts": Counter(),
+            },
+        )
+        item["rows"] += 1
+
+        available = _dt(row.get("available_at"))
+        retrieved = _dt(row.get("retrieved_at"))
+        if available is not None:
+            item["available_at_present"] += 1
+        if retrieved is not None:
+            item["retrieved_at_present"] += 1
+
+        if available is not None and retrieved is not None and available <= retrieved:
+            item["available_at_le_retrieved_at"] += 1
+        if available is None or retrieved is None:
+            item["availability_unverifiable"] += 1
+
+        status = str(row.get("status", "KNOWN")).upper()
+        item["availability_status_counts"][status] += 1
+
+    for item in groups.values():
+        rows_n = item["rows"]
+        item["available_at_coverage"] = item["available_at_present"] / rows_n if rows_n else 0.0
+        item["retrieved_at_coverage"] = item["retrieved_at_present"] / rows_n if rows_n else 0.0
+        complete_pairs = min(item["available_at_present"], item["retrieved_at_present"])
+        item["available_at_le_retrieved_at_coverage"] = (
+            item["available_at_le_retrieved_at"] / complete_pairs
+            if complete_pairs else None
+        )
+        item["availability_status_counts"] = dict(
+            sorted(item["availability_status_counts"].items())
+        )
+
+    return {
+        "available": True,
+        "group_fields": list(group_fields),
+        "groups": dict(sorted(groups.items())),
+    }
+
 def audit() -> dict:
     rows = {name: _load(path) for name, path in FILES.items()}
     allowed = {"KNOWN", "OBSERVED", "OBSERVED_UNVERIFIABLE_ANNOUNCEMENT_TIME",
@@ -94,6 +153,13 @@ def audit() -> dict:
     timestamp_like = [x for x in rows["snapshots"]
                       if str(x.get("entity_type", "")) in {"game_feed_timestamps", "game_content"}]
 
+    provenance = {
+        "availability_by_source": _provenance_coverage(availability, "league", "source"),
+        "snapshots_by_source_entity": _provenance_coverage(
+            rows["snapshots"], "league", "source", "entity_type"
+        ),
+    }
+
     latest_retrieved = None
     for row in rows["snapshots"]:
         dt = _dt(row.get("retrieved_at"))
@@ -120,6 +186,7 @@ def audit() -> dict:
             "mlb_timeline_supporting_snapshots": len(timestamp_like),
             "latest_retrieved_at": latest_retrieved.isoformat() if latest_retrieved else None,
         },
+        "provenance_coverage": provenance,
         "production_readiness": {
             "starter_announcement_evidence": "READY" if cutoff_safe_both else "BLOCKED",
             "historical_market_line_evidence": "READY" if market_like else "BLOCKED",
