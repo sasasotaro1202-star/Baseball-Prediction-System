@@ -1,0 +1,15 @@
+{
+  "generated_at_utc": "2026-10-01T04:38:20.822Z",
+  "status": "PASS_WITH_LEGACY_QUARANTINE",
+  "source_head": "03a26aa0368ce78791eb95ec1a60c81e091bc14b",
+  "scope": "data/experience/predictions/*.jsonl",
+  "files_checked": 6,
+  "rows_checked": 202,
+  "modern_rows": 198,
+  "legacy_scheduled_cutoff_rows": 4,
+  "duplicate_prediction_ids": 0,
+  "modern_pit_violations": 0,
+  "modern_win_probability_sum_violations": 0,
+  "modern_low_high_probability_sum_violations": 0,
+  "note": "Legacy scheduled-cutoff snapshots are preserved for audit/history but are excluded from Experience reuse and revision ancestry."
+}
