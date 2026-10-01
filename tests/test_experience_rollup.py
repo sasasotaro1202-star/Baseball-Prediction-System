@@ -300,8 +300,11 @@ def test_rollup_reports_independent_prediction_target_metrics(tmp_path, monkeypa
     }]))
 
     result = roll.rollup()
+    training = json.loads((exp / "experience_training_index.json").read_text(encoding="utf-8"))
     targets = result["by_prediction_target"]
     assert set(targets) == {"win_3way", "low_high", "exact_score"}
+    assert training["timing_30m"] == result["timing_30m"]
+    assert training["revision_intelligence"] == result["revision_intelligence"]
     assert targets["win_3way"]["rows"] == 1
     assert targets["low_high"]["rows"] == 1
     assert targets["exact_score"]["rows"] == 1
