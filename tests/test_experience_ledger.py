@@ -410,3 +410,19 @@ def test_revision_metrics_reports_probability_motion():
     assert metrics["median_l1_pct_points"] == pytest.approx(14.0)
     assert metrics["maximum_l1_pct_points"] == pytest.approx(20.0)
     assert metrics["maximum_single_class_change_pct_points"] == pytest.approx(10.0)
+
+
+def test_load_predictions_quarantines_legacy_scheduled_cutoff(tmp_path, monkeypatch):
+    monkeypatch.setattr(exp, "PRED_DIR", tmp_path / "predictions")
+    pred_dir = tmp_path / "predictions"
+    pred_dir.mkdir()
+
+    valid = json.loads(_prediction(tmp_path).read_text(encoding="utf-8"))["predictions"][0]
+    valid["prediction_generated_at"] = "2026-09-26T01:52:00+00:00"
+    valid["prediction_cutoff_utc"] = "2026-09-26T02:00:00+00:00"
+
+    path = pred_dir / "2026-09-26.jsonl"
+    path.write_text(json.dumps(valid, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    loaded = exp._load_predictions()
+    assert loaded.empty
