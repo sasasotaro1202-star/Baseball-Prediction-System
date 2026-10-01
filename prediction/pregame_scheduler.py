@@ -320,9 +320,13 @@ def due_games(*, now_utc: datetime | None = None, min_lead_minutes: float = 0.0,
         "preferred_lead_minutes": float(preferred_lead_minutes),
         "scan_ahead_minutes": float(scan_ahead_minutes),
         "runtimes": sorted([league for league, _ in enabled]),
+        "research_active": sorted(research_active),
         "due_games": due,
         "due_dates": sorted({row["target_date"] for row in due}),
+        "research_due_games": research_due,
+        "research_due_dates": sorted({row["target_date"] for row in research_due}),
         "blocked_runtimes": blocked,
+        "research_status": "RESEARCH_DUE" if research_due else "NO_RESEARCH_DUE",
         "status": "DUE" if due else "NO_DUE_GAMES",
     }
 
