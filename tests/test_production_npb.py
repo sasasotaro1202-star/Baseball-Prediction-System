@@ -254,3 +254,84 @@ def test_starter_time_parser_prefers_structural_game_card_over_average_duration(
     )
     assert len(rows) == 1
     assert rows[0]["official_start_time"] == "18:00"
+
+
+
+def test_target_rows_use_fixed_30_minute_cutoff_and_reject_late_generation(monkeypatch):
+    import production_npb as p
+    import pandas as pd
+
+    monkeypatch.setattr(
+        p,
+        "official_starters",
+        lambda target_date: [{
+            "home": "広島東洋カープ",
+            "away": "読売ジャイアンツ",
+            "home_starter": "投手A",
+            "away_starter": "投手B",
+            "confirmed_starters": True,
+            "starter_evidence_status": "official_announced",
+            "starter_source": "https://npb.jp/announcement/starter/",
+            "official_start_time": "18:00",
+        }],
+    )
+    monkeypatch.setattr(
+        p,
+        "_official_daily_start_times",
+        lambda target_date: {("広島東洋カープ", "読売ジャイアンツ"): "18:00"},
+    )
+    # 30 minutes and 30 seconds before first pitch: eligible, with a fixed
+    # cutoff exactly at first_pitch - 30m.
+    monkeypatch.setattr(
+        p,
+        "_utc_now",
+        lambda: pd.Timestamp("2026-09-20 08:29:30+00:00"),
+    )
+    rows = p.build_target_rows("2026-09-20")
+    assert len(rows) == 1
+    assert rows.iloc[0]["prediction_cutoff_utc"] == "2026-09-20T08:30:00+00:00"
+    assert rows.iloc[0]["prediction_deadline_utc"] == "2026-09-20T08:30:00+00:00"
+    assert float(rows.iloc[0]["lead_minutes_at_generation"]) > 30.0
+    assert rows.iloc[0]["starter_evidence_observed_at_utc"] == "2026-09-20T08:29:30+00:00"
+
+    # One second after the deadline: no late prediction is emitted.
+    monkeypatch.setattr(
+        p,
+        "_utc_now",
+        lambda: pd.Timestamp("2026-09-20 08:30:01+00:00"),
+    )
+    late = p.build_target_rows("2026-09-20")
+    assert late.empty
+
+
+def test_pregame_only_limits_prediction_window_to_30_60_minutes(monkeypatch):
+    import production_npb as p
+    import pandas as pd
+
+    monkeypatch.setattr(
+        p,
+        "official_starters",
+        lambda target_date: [{
+            "home": "広島東洋カープ",
+            "away": "読売ジャイアンツ",
+            "home_starter": "投手A",
+            "away_starter": "投手B",
+            "confirmed_starters": True,
+            "starter_evidence_status": "official_announced",
+            "starter_source": "https://npb.jp/announcement/starter/",
+            "official_start_time": "18:00",
+        }],
+    )
+    monkeypatch.setattr(
+        p,
+        "_official_daily_start_times",
+        lambda target_date: {("広島東洋カープ", "読売ジャイアンツ"): "18:00"},
+    )
+    monkeypatch.setattr(
+        p,
+        "_utc_now",
+        lambda: pd.Timestamp("2026-09-20 07:45:00+00:00"),
+    )
+    # 75 minutes before first pitch: pregame-only should defer it to a later
+    # 5-minute scheduler tick rather than predict too early.
+    assert p.build_target_rows("2026-09-20", minimum_lead_minutes=30, maximum_lead_minutes=60).empty
