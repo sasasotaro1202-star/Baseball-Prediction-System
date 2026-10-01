@@ -1,0 +1,55 @@
+name: Baseball Production Runtime Health
+
+"on":
+  pull_request:
+    paths:
+      - "monitoring/production_runtime_health.py"
+      - "tests/test_production_runtime_health.py"
+      - ".github/workflows/baseball-production-runtime-health.yml"
+      - ".github/workflows/npb-production.yml"
+  schedule:
+    - cron: "7,37 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: baseball-production-runtime-health
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - name: Compile and unit test runtime health
+        run: |
+          python -m py_compile monitoring/production_runtime_health.py tests/test_production_runtime_health.py
+          python -m pytest -q tests/test_production_runtime_health.py
+      - name: Run live production runtime health audit
+        env:
+          GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: \${{ github.repository }}
+          GITHUB_API_URL: \${{ github.api_url }}
+          PRODUCTION_WORKFLOW: npb-production.yml
+        run: |
+          set -euo pipefail
+          python -m monitoring.production_runtime_health \
+            --output results/monitoring/npb_production_runtime_health.json
+      - name: Upload runtime health artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: npb-production-runtime-health-\${{ github.run_id }}
+          path: results/monitoring/npb_production_runtime_health.json
+          if-no-files-found: warn
+          retention-days: 14
