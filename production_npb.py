@@ -991,7 +991,7 @@ def predict(
             "execution_status":"BLOCKED_STARTERS", "pit_status":"NOT_RUN",
             "starter_gate":"BLOCKED", "model_status":"NOT_RUN",
             "git_commit":__import__("os").environ.get("GITHUB_SHA","unknown"),
-            "predictions":[], "block_reason":message,
+            "predictions":[], "target_strategy_contracts":NPB_TARGET_CONTRACTS, "block_reason":message,
             "prediction_generated_at":datetime.now(timezone.utc).isoformat(),
         }
         out=ROOT/"results"/f"npb_production_{target_date}.json"; out.parent.mkdir(exist_ok=True)
@@ -1003,7 +1003,7 @@ def predict(
             "execution_status":("NO_DUE_PREGAME_GAMES" if pregame_only else "NO_FUTURE_GAMES"), "pit_status":"PASS",
             "starter_gate":"PASS", "model_status":"NOT_RUN",
             "git_commit":__import__("os").environ.get("GITHUB_SHA","unknown"),
-            "predictions":[], "block_reason":"all scheduled games for the requested JST date have already started or finished",
+            "predictions":[], "target_strategy_contracts":NPB_TARGET_CONTRACTS, "block_reason":"all scheduled games for the requested JST date have already started or finished",
             "prediction_generated_at":datetime.now(timezone.utc).isoformat(),
         }
         out=ROOT/"results"/f"npb_production_{target_date}.json"; out.parent.mkdir(exist_ok=True)
