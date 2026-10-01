@@ -176,7 +176,9 @@ def test_research_active_mlb_candidate_never_enters_production_due_set(monkeypat
     monkeypatch.setattr(
         scheduler,
         "_schedule_for_date",
-        lambda target_date: [],
+        lambda target_date: [
+            {"home": "読売ジャイアンツ", "away": "阪神タイガース", "official_start_time": "18:00"}
+        ],
     )
     monkeypatch.setattr(
         scheduler,
