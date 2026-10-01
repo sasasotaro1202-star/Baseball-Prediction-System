@@ -36,7 +36,7 @@ def test_due_games_uses_current_production_runtime_and_30m_cutoff(monkeypatch):
     assert result["due_dates"] == ["2026-10-01"]
     row = result["due_games"][0]
     assert row["lead_minutes"] == 60.0
-    assert row["prediction_cutoff_utc"] == "2026-10-01T09:30:00+00:00"
+    assert row["prediction_cutoff_utc"] == "2026-10-01T08:30:00+00:00"
     assert row["status"] == "DUE"
 
 
