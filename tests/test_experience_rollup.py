@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 import research.experience_rollup as roll
 import research.experience_ledger as ledger
@@ -15,6 +16,9 @@ def _write_prediction(root: Path, *, cutoff: str, game_id: str = "NPB-2026-09-26
         "datetime_jst": "2026-09-26T14:00:00+09:00",
         "prediction_cutoff_utc": cutoff,
         "prediction_generated_at": cutoff,
+        "starter_evidence_observed_at_utc": cutoff,
+        "starter_evidence_status": "official_announced",
+        "pit_status": "PASS",
         "source_run_id": "1",
         "home": "横浜DeNAベイスターズ",
         "away": "阪神タイガース",
@@ -108,9 +112,8 @@ def test_rollup_rejects_post_start_prediction(tmp_path, monkeypatch):
     _write_prediction(tmp_path / "stage2", cutoff="2026-09-26T06:00:00+00:00")
     obj = json.loads((tmp_path / "stage2" / "predictions" / "2026-09-26.jsonl").read_text())
     (pdir / "2026-09-26.jsonl").write_text(json.dumps(obj, ensure_ascii=False) + "\n", encoding="utf-8")
-    result = roll.rollup()
-    assert result["snapshot_rows"] == 0
-    assert result["status"] == "NO_PREGAME_PREDICTIONS"
+    with pytest.raises(ValueError, match="information cutoff is not pregame"):
+        roll.rollup()
 
 
 def test_rollup_low_high_threshold_uses_normalized_probability_scale():
