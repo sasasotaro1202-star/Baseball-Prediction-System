@@ -640,8 +640,8 @@ class BaseballBacktest:
         # pandas timezone-array comparison edge cases while keeping NaT guarded
         # separately by the explicit notna() predicates below.
         cutoff_ns = out["prediction_cutoff"].astype("int64").to_numpy()
-        home_ann_ns = out["home_starter_announced_at"].astype("int64", copy=False).to_numpy()
-        away_ann_ns = out["away_starter_announced_at"].astype("int64", copy=False).to_numpy()
+        home_ann_ns = out["home_starter_announced_at"].astype("int64").to_numpy()
+        away_ann_ns = out["away_starter_announced_at"].astype("int64").to_numpy()
         home_ok = (
             home_name.ne("")
             & out["home_starter_announced_at"].notna()
