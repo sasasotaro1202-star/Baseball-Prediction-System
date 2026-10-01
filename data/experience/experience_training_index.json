@@ -1,13 +1,39 @@
 {
-  "generated_at_utc": "2026-10-01T01:22:20.791736+00:00",
+  "generated_at_utc": "2026-10-01T04:17:02.378Z",
   "status": "UPDATED",
   "canonical_experience_cases": 5,
   "all_prediction_snapshots": 55,
+  "raw_pregame_snapshots": 182,
+  "timing_30m": {
+    "status": "MEASURED",
+    "eligible_rows": 55,
+    "on_time_rows": 55,
+    "late_rows": 0,
+    "compliance_rate": 1,
+    "minimum_actual_lead_minutes": 70.01618333333333,
+    "median_actual_lead_minutes": 448.06673333333333,
+    "maximum_actual_lead_minutes": 870.6525833333334,
+    "scheduled_cutoff_minimum_lead_minutes": 71.61203333333333,
+    "scheduled_cutoff_below_30m_rows": 0
+  },
+  "revision_intelligence": {
+    "status": "MEASURED",
+    "eligible_rows": 55,
+    "revised_rows": 50,
+    "revision_rate": 0.9090909090909091,
+    "outcome_reversal_rows": 0,
+    "outcome_reversal_rate": 0,
+    "mean_l1_pct_points": 1.51195,
+    "median_l1_pct_points": 1.1323,
+    "maximum_l1_pct_points": 7.2482,
+    "maximum_single_class_change_pct_points": 3.6241
+  },
+  "legacy_timing_quarantined_rows": 4,
   "artifacts": {
-    "snapshot_csv": "/home/runner/work/Baseball-Prediction-System/Baseball-Prediction-System/data/experience/snapshot_experience_ledger.csv",
-    "snapshot_jsonl": "/home/runner/work/Baseball-Prediction-System/Baseball-Prediction-System/data/experience/snapshot_experience_ledger.jsonl",
-    "canonical_csv": "/home/runner/work/Baseball-Prediction-System/Baseball-Prediction-System/data/experience/experience_ledger.csv",
-    "summary_json": "/home/runner/work/Baseball-Prediction-System/Baseball-Prediction-System/data/experience/experience_summary.json"
+    "snapshot_csv": "data/experience/snapshot_experience_ledger.csv",
+    "snapshot_jsonl": "data/experience/snapshot_experience_ledger.jsonl",
+    "canonical_csv": "data/experience/experience_ledger.csv",
+    "summary_json": "data/experience/experience_summary.json"
   },
   "strict_reuse_rule": "Only rows whose prediction_cutoff_utc and experience_available_at_utc are both earlier than the future research cutoff may be used as experience-derived inputs."
 }
