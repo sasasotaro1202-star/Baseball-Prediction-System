@@ -87,24 +87,57 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
+          import json
           import pandas as pd
           from research.ultimate_v13_real_oos import run_real_oos_bridge
           from pathlib import Path
           base = pd.Timestamp('2026-01-01T00:00:00Z')
           rows = []
+          availability_rows = []
+          snapshot_rows = []
           for i in range(120):
               pt = base + pd.Timedelta(hours=i)
+              available_at = pt - pd.Timedelta(minutes=30)
+              game_id = f'g{i}'
               rows.append({
-                  'game_id': f'g{i}', 'datetime': pt, 'prediction_time': pt,
-                  'available_at': pt - pd.Timedelta(minutes=30),
+                  'game_id': game_id, 'datetime': pt, 'prediction_time': pt,
+                  'available_at': available_at,
                   'pred_home': .65, 'pred_away': .35,
                   'actual_home_score': 1 if i % 3 else 0,
                   'actual_away_score': 0 if i % 3 else 1,
               })
+              availability_rows.append({
+                  'game_id': game_id,
+                  'event_id': game_id,
+                  'prediction_cutoff': pt.isoformat(),
+                  'observed_at': available_at.isoformat(),
+                  'status': 'KNOWN',
+              })
+              snapshot_rows.append({
+                  'entity_id': game_id,
+                  'status': 'KNOWN',
+                  'available_at': available_at.isoformat(),
+              })
           p = Path('results/ultimate_v13_real_oos_smoke.csv')
+          availability = Path('results/ultimate_v13_synthetic_pit_availability.jsonl')
+          snapshots = Path('results/ultimate_v13_synthetic_pit_snapshots.jsonl')
           p.parent.mkdir(parents=True, exist_ok=True)
           pd.DataFrame(rows).to_csv(p, index=False)
-          out = run_real_oos_bridge(p, league='MLB', data_snapshot_id='synthetic-v13')
+          availability.write_text(
+              ''.join(json.dumps(row, ensure_ascii=False) + '\\n' for row in availability_rows),
+              encoding='utf-8',
+          )
+          snapshots.write_text(
+              ''.join(json.dumps(row, ensure_ascii=False) + '\\n' for row in snapshot_rows),
+              encoding='utf-8',
+          )
+          out = run_real_oos_bridge(
+              p,
+              league='MLB',
+              data_snapshot_id='synthetic-v13',
+              pit_availability_path=availability,
+              pit_snapshots_path=snapshots,
+          )
           if out.get('status') != 'EXECUTED' or out.get('promotion_status') != 'HOLD':
               raise SystemExit('real OOS bridge synthetic contract failed: ' + repr(out))
           if set(out.get('metrics', {})) != {'Accuracy', 'LogLoss', 'Brier', 'ECE'}:
