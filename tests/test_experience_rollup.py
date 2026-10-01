@@ -306,3 +306,40 @@ def test_rollup_reports_independent_prediction_target_metrics(tmp_path, monkeypa
     assert targets["low_high"]["rows"] == 1
     assert targets["exact_score"]["rows"] == 1
     assert result["by_prediction_target_all_snapshots"]["win_3way"]["rows"] == 1
+
+
+def test_rollup_quarantines_legacy_scheduled_cutoff(tmp_path, monkeypatch):
+    exp = tmp_path / "experience"
+    monkeypatch.setattr(roll, "EXPERIENCE", exp)
+    monkeypatch.setattr(roll, "PRED_DIR", exp / "predictions")
+    monkeypatch.setattr(roll, "RESULT_DIR", exp / "official_results")
+
+    pdir = exp / "predictions"
+    pdir.mkdir(parents=True, exist_ok=True)
+    legacy = {
+        "game_id": "NPB-legacy-1",
+        "datetime_jst": "2026-09-26T14:00:00+09:00",
+        "prediction_cutoff_utc": "2026-09-26T02:00:00+00:00",
+        "prediction_generated_at": "2026-09-26T01:52:00+00:00",
+        "starter_evidence_observed_at_utc": "2026-09-26T01:52:00+00:00",
+        "pit_status": "PASS",
+        "prediction_id": "legacy-1",
+        "home": "横浜DeNAベイスターズ",
+        "away": "阪神タイガース",
+        "home_win_pct": 60.0,
+        "draw_pct": 5.0,
+        "away_win_pct": 35.0,
+        "low_pct": 70.0,
+        "high_pct": 30.0,
+        "lambda_home": 3.2,
+        "lambda_away": 2.4,
+        "top4_exact_scores": [],
+    }
+    (pdir / "2026-09-26.jsonl").write_text(
+        json.dumps(legacy, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    with pytest.raises(KeyError):
+        # A quarantined-only corpus must not proceed into result evaluation.
+        # The important contract is that the legacy row is removed before
+        # prediction evaluation rather than treated as a valid PIT snapshot.
+        roll.rollup()
