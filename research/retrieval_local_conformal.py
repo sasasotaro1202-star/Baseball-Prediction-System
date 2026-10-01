@@ -192,6 +192,7 @@ def retrieval_local_conformal_sets(
         "nearest_distance": nearest_distance,
         "eligible_rows": int(eligible_rows.sum()),
         "total_rows": int(n),
+        "min_calibration": int(min_calibration),
         "contract": {
             "prior_prediction_time_strictly_earlier": True,
             "outcome_confirmed_at_le_target_prediction_time": True,
