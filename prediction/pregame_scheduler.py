@@ -1,7 +1,8 @@
 """Lightweight, dependency-free pregame scheduler for production baseball predictions.
 
 The scheduler only decides whether a currently production-enabled target has a
-game inside the 30-minute pregame deadline window. It never predicts anything
+game inside the upcoming pregame window. Thirty minutes is the preferred target,
+not a hard eligibility boundary. It never predicts anything
 itself. Unknown/ambiguous schedule evidence fails closed.
 
 Currently the checked-in production runtime is NPB. When additional runtimes are
@@ -168,7 +169,7 @@ def _archived_prediction_keys(target_date: str) -> set[tuple[str, str, str]]:
     return out
 
 
-def due_games(*, now_utc: datetime | None = None, min_lead_minutes: float = 30.0, scan_ahead_minutes: float = 60.0) -> dict:
+def due_games(*, now_utc: datetime | None = None, min_lead_minutes: float = 0.0, scan_ahead_minutes: float = 60.0, preferred_lead_minutes: float = 30.0) -> dict:
     now = now_utc or datetime.now(timezone.utc)
     if now.tzinfo is None:
         now = now.replace(tzinfo=timezone.utc)
@@ -202,10 +203,11 @@ def due_games(*, now_utc: datetime | None = None, min_lead_minutes: float = 30.0
                     f"{target_date}T{game['official_start_time']}:00+09:00"
                 ).astimezone(timezone.utc)
                 lead = (start - now).total_seconds() / 60.0
-                cutoff = start - timedelta(minutes=float(min_lead_minutes))
-                cutoff_iso = cutoff.isoformat()
+                preferred_cutoff = start - timedelta(minutes=float(preferred_lead_minutes))
+                prediction_cutoff = now
+                cutoff_iso = prediction_cutoff.isoformat()
                 if (
-                    float(min_lead_minutes) <= lead <= float(scan_ahead_minutes)
+                    float(min_lead_minutes) < lead <= float(scan_ahead_minutes)
                     and (game["home"], game["away"], cutoff_iso) not in archived
                 ):
                     due.append({
@@ -216,6 +218,8 @@ def due_games(*, now_utc: datetime | None = None, min_lead_minutes: float = 30.0
                         "away": game["away"],
                         "official_start_time": game["official_start_time"],
                         "prediction_cutoff_utc": cutoff_iso,
+                        "preferred_prediction_cutoff_utc": preferred_cutoff.isoformat(),
+                        "preferred_30m_met": bool(now <= preferred_cutoff),
                         "lead_minutes": round(lead, 3),
                         "status": "DUE",
                     })
@@ -223,6 +227,7 @@ def due_games(*, now_utc: datetime | None = None, min_lead_minutes: float = 30.0
         "schema_version": "baseball-pregame-scheduler-v1",
         "checked_at_utc": now.isoformat(),
         "min_lead_minutes": float(min_lead_minutes),
+        "preferred_lead_minutes": float(preferred_lead_minutes),
         "scan_ahead_minutes": float(scan_ahead_minutes),
         "runtimes": sorted([league for league, _ in enabled]),
         "due_games": due,
@@ -235,11 +240,13 @@ def due_games(*, now_utc: datetime | None = None, min_lead_minutes: float = 30.0
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dates-only", action="store_true")
-    parser.add_argument("--min-lead-minutes", type=float, default=30.0)
+    parser.add_argument("--min-lead-minutes", type=float, default=0.0)
+    parser.add_argument("--preferred-lead-minutes", type=float, default=30.0)
     parser.add_argument("--scan-ahead-minutes", type=float, default=60.0)
     args = parser.parse_args(argv)
     result = due_games(
         min_lead_minutes=args.min_lead_minutes,
+        preferred_lead_minutes=args.preferred_lead_minutes,
         scan_ahead_minutes=args.scan_ahead_minutes,
     )
     if args.dates_only:
