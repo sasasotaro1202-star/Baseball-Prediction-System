@@ -277,32 +277,17 @@ def test_load_predictions_rejects_invalid_pit_timing(tmp_path, monkeypatch):
         exp._load_predictions()
 
 
-def test_reconcile_rejects_non_normalized_probabilities(tmp_path, monkeypatch):
+def test_archive_rejects_non_normalized_probabilities(tmp_path, monkeypatch):
     monkeypatch.setattr(exp, "EXPERIENCE", tmp_path / "experience")
     monkeypatch.setattr(exp, "PRED_DIR", tmp_path / "experience" / "predictions")
-    monkeypatch.setattr(exp, "RESULT_DIR", tmp_path / "experience" / "official_results")
-    monkeypatch.setattr(exp, "LEDGER_PATH", tmp_path / "experience" / "experience_ledger.csv")
-    monkeypatch.setattr(exp, "LEDGER_JSONL", tmp_path / "experience" / "experience_ledger.jsonl")
-    monkeypatch.setattr(exp, "SUMMARY_PATH", tmp_path / "experience" / "experience_summary.json")
 
     pred_path = _prediction(tmp_path)
     payload = json.loads(pred_path.read_text(encoding="utf-8"))
     payload["predictions"][0]["away_win_pct"] = 30.0
     pred_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-    exp.archive_production_output(pred_path)
 
-    exp._load_cached_results = lambda dates: pd.DataFrame([{
-        "date": "2026-09-26",
-        "home": "横浜DeNAベイスターズ",
-        "away": "阪神タイガース",
-        "home_score": 4,
-        "away_score": 2,
-        "source_url": "test://npb",
-    }])
-
-    with pytest.raises(ValueError, match="invalid win probabilities"):
-        exp.reconcile()
-
+    with pytest.raises(ValueError, match="valid normalized distribution"):
+        exp.archive_production_output(pred_path)
 
 def test_archive_tracks_only_strictly_prior_prediction_revision(tmp_path, monkeypatch):
     monkeypatch.setattr(exp, "EXPERIENCE", tmp_path / "experience")
