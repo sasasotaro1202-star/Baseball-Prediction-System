@@ -248,8 +248,15 @@ def due_games(*, now_utc: datetime | None = None, min_lead_minutes: float = 0.0,
 
     due: list[dict] = []
     research_due: list[dict] = []
+    research_errors: list[dict] = []
     blocked: list[dict] = []
-    research_active = load_research_active_competitions()
+    research_scope_error = None
+    try:
+        research_active = load_research_active_competitions()
+    except Exception as exc:
+        # Research scope discovery is isolated from current-production scheduling.
+        research_active = set()
+        research_scope_error = f"{type(exc).__name__}: {exc}"
     # Current-production policy requires the call-time JST target date.
     # Do not precompute tomorrow's production forecast through this dispatcher.
     dates: set[str] = {now.astimezone(JST).date().isoformat()}
@@ -295,7 +302,15 @@ def due_games(*, now_utc: datetime | None = None, min_lead_minutes: float = 0.0,
     # official-starter PIT gate and production adoption requirements are satisfied.
     if "MLB" in research_active and "MLB" not in {league for league, _ in enabled}:
         for target_date in sorted(dates):
-            games = _mlb_schedule_for_date(target_date)
+            try:
+                games = _mlb_schedule_for_date(target_date)
+            except Exception as exc:
+                research_errors.append({
+                    "league": "MLB",
+                    "target_date": target_date,
+                    "error": f"{type(exc).__name__}: {exc}",
+                })
+                continue
             for game_index, game in enumerate(games, start=1):
                 start = datetime.fromisoformat(str(game["scheduled_start_utc"])).astimezone(timezone.utc)
                 lead = (start - now).total_seconds() / 60.0
@@ -326,8 +341,16 @@ def due_games(*, now_utc: datetime | None = None, min_lead_minutes: float = 0.0,
         "due_dates": sorted({row["target_date"] for row in due}),
         "research_due_games": research_due,
         "research_due_dates": sorted({row["target_date"] for row in research_due}),
+        "research_errors": research_errors,
+        "research_scope_error": research_scope_error,
         "blocked_runtimes": blocked,
-        "research_status": "RESEARCH_DUE" if research_due else "NO_RESEARCH_DUE",
+        "research_status": (
+            "RESEARCH_DUE"
+            if research_due
+            else "RESEARCH_ERROR"
+            if research_errors or research_scope_error
+            else "NO_RESEARCH_DUE"
+        ),
         "status": "DUE" if due else "NO_DUE_GAMES",
     }
 
