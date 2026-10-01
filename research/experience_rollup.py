@@ -29,6 +29,7 @@ from research import experience_ledger as ledger
 from research.experience_ledger import (
     _prediction_target_metrics,
     _validate_prediction_time_contract,
+    _is_legacy_scheduled_cutoff,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -138,9 +139,23 @@ def _load_predictions() -> pd.DataFrame:
         df["prediction_id"] = df.apply(lambda r: _prediction_id(r.to_dict()), axis=1)
 
     # Validate the raw snapshot contract before any filtering or research reuse.
-    # Invalid timing/PIT provenance is a data-integrity failure, not an ignorable row.
-    for row in df.to_dict("records"):
+    # Pre-v18 scheduled-cutoff snapshots are preserved but quarantined from the
+    # research corpus because their stored cutoff was a planned deadline, not
+    # the actual observation time.
+    records = df.to_dict("records")
+    legacy_rows = {
+        idx for idx, row in enumerate(records) if _is_legacy_scheduled_cutoff(row)
+    }
+    for idx, row in enumerate(records):
+        if idx in legacy_rows:
+            continue
         _validate_prediction_time_contract(row)
+    if legacy_rows:
+        print(json.dumps({
+            "event": "EXPERIENCE_LEGACY_TIMING_QUARANTINE",
+            "rows": len(legacy_rows),
+            "reason": "pre-v18 scheduled cutoff is not an actual observed prediction cutoff",
+        }, ensure_ascii=False))
 
     df["prediction_cutoff_utc"] = pd.to_datetime(
         df["prediction_cutoff_utc"], utc=True, errors="coerce"
@@ -151,7 +166,10 @@ def _load_predictions() -> pd.DataFrame:
     df = df.dropna(subset=["prediction_cutoff_utc", "datetime_jst", "game_id"])
 
     # Experience must represent information available before first pitch.
-    pregame = df["prediction_cutoff_utc"] < df["datetime_jst"]
+    pregame = (
+        (~df.index.isin(legacy_rows))
+        & (df["prediction_cutoff_utc"] < df["datetime_jst"])
+    )
     df = df.loc[pregame].copy()
     if df.empty:
         return df
