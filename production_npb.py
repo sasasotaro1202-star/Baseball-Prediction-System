@@ -22,16 +22,12 @@ from core.atomic_io import atomic_write_json
 from baseball_backtest import BaseballBacktest, norm_team, score_candidates, low_high_probs
 from research.correlated_score import npb_final_outcomes
 from core.pit_evidence import _is_official_source
-from research.target_strategy import as_dict as target_strategy_dict, strategy_for_target
+from research.target_strategy import as_dict as target_strategy_dict, standard_target_strategies
 
 ROOT = Path(__file__).resolve().parent
 TIMEOUT = 30
 
-NPB_TARGET_STRATEGIES = {
-    "win_3way": strategy_for_target("NPB", "win_3way"),
-    "low_high": strategy_for_target("NPB", "low_high"),
-    "exact_score": strategy_for_target("NPB", "exact_score"),
-}
+NPB_TARGET_STRATEGIES = standard_target_strategies("NPB")
 NPB_TARGET_CONTRACTS = {
     target: target_strategy_dict(strategy)
     for target, strategy in NPB_TARGET_STRATEGIES.items()
