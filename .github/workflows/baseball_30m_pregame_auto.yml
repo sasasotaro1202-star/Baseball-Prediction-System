@@ -1,4 +1,4 @@
-name: Baseball 30m Pregame Auto Prediction
+name: Baseball Pregame Auto Prediction
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: baseball-30m-pregame-auto-prediction
+  group: baseball-pregame-auto-prediction
   cancel-in-progress: false
 
 jobs:
@@ -41,8 +41,8 @@ jobs:
           if obj.get("status") not in {"DUE", "NO_DUE_GAMES"}:
               raise SystemExit("unexpected scheduler status: " + str(obj.get("status")))
           for row in obj.get("due_games", []):
-              if float(row["lead_minutes"]) < 30.0:
-                  raise SystemExit("scheduler selected a game after the 30-minute deadline")
+              if float(row["lead_minutes"]) <= 0.0:
+                  raise SystemExit("scheduler selected a game at/after first pitch")
           Path("due_dates.txt").write_text(
               "\n".join(str(x) for x in obj.get("due_dates", [])) + ("\n" if obj.get("due_dates") else ""),
               encoding="utf-8",
@@ -84,7 +84,7 @@ jobs:
             test -s "$f"
           done
 
-      - name: Predict every due NPB game with hard 30-minute cutoff
+      - name: Predict every due NPB game before first pitch
         env:
           GITHUB_SHA: $GITHUB_SHA
           PIT_SAFE_STARTER_DATA: "1"
@@ -97,7 +97,7 @@ jobs:
           fi
           while IFS= read -r date; do
             [ -n "$date" ] || continue
-            echo "=== 30m pregame prediction: $date ==="
+            echo "=== pregame prediction: $date ==="
             python -m prediction.current_production --league NPB --date "$date" --data-dir data --pregame-only
             output="results/npb_production_$date.json"
             test -s "$output"
@@ -117,13 +117,16 @@ jobs:
               cutoff = datetime.fromisoformat(pred["prediction_cutoff_utc"].replace("Z", "+00:00"))
               generated = datetime.fromisoformat(pred["prediction_generated_at"].replace("Z", "+00:00"))
               observed = datetime.fromisoformat(pred["starter_evidence_observed_at_utc"].replace("Z", "+00:00"))
-              if generated > cutoff:
-                  raise SystemExit("prediction generated after 30-minute cutoff")
+              start = datetime.fromisoformat(pred["datetime_jst"].replace("Z", "+00:00"))
+              if generated >= start:
+                  raise SystemExit("prediction generated at/after first pitch")
               if observed > cutoff:
-                  raise SystemExit("starter evidence observed after 30-minute cutoff")
+                  raise SystemExit("starter evidence observed after prediction information cutoff")
+              if cutoff >= start:
+                  raise SystemExit("prediction information cutoff is not pregame")
               if pred.get("pit_status") != "PASS":
                   raise SystemExit("prediction is not PIT PASS")
-          print("30-minute PIT deadline validation passed")
+          print("Pregame PIT validation passed; 30m is treated as a preferred target.")
           PY
           done < due_dates.txt
 
@@ -169,7 +172,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: baseball-pregame-30m
+          name: baseball-pregame-auto
           path: |
             pregame_scheduler.json
             due_dates.txt
