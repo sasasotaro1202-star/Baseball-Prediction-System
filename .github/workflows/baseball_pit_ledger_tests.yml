@@ -13,7 +13,6 @@ on:
       - "tests/test_pit_evidence.py"
       - "tests/test_production_pit_gate.py"
       - "tests/test_pit_readiness_audit.py"
-      - "tests/test_pit_readiness_audit.py"
       - ".github/workflows/baseball_pit_ledger_tests.yml"
   pull_request:
     paths:
@@ -25,6 +24,7 @@ on:
       - "production_pit_gate.py"
       - "tests/test_pit_evidence.py"
       - "tests/test_production_pit_gate.py"
+      - "tests/test_pit_readiness_audit.py"
       - ".github/workflows/baseball_pit_ledger_tests.yml"
   workflow_dispatch:
 
