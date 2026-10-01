@@ -4,6 +4,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from research.future_generalization_v13 import predictability_series
 from research.ultimate_v13_real_oos import run_real_oos_bridge
 
 
