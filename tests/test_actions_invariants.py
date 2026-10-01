@@ -170,3 +170,16 @@ def test_24h_keeper_uses_consecutive_failure_streak():
     assert ".done = true" in text
     assert "three or more consecutive failed autopilot runs" in text
     assert "recent_failures_24h" not in text
+
+
+def test_24h_research_autopilot_uses_current_commit_snapshot_and_no_push_trigger():
+    text = (ROOT / ".github" / "workflows" / "baseball_24h_research_autopilot.yml").read_text(encoding="utf-8")
+    trigger = text.split("permissions:", 1)[0]
+    assert "workflow_dispatch:" in trigger
+    assert "schedule:" in trigger
+    assert "push:" not in trigger
+    assert "research/data-integration-20260928" not in text
+    assert "RESEARCH_REF: ${{ github.sha }}" in text
+    assert text.count("ref: ${{ github.sha }}") == 5
+    assert text.count("research_snapshot_sha=$actual") == 4
+    assert text.count("Verify research snapshot") == 4
