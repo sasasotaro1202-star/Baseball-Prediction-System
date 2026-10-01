@@ -90,8 +90,10 @@ def _validate_prediction_set(record: PredictionRecord, expected: set[str]) -> No
         if any(v is not None for v in related):
             raise ValueError("prediction-set metadata requires prediction_set")
         return
-    if not values or len(values) != len(set(values)):
-        raise ValueError("prediction_set must be a non-empty list of unique labels")
+    if not isinstance(values, list):
+        raise ValueError("prediction_set must be a list")
+    if len(values) != len(set(values)):
+        raise ValueError("prediction_set must contain unique labels")
     if not set(values).issubset(expected):
         raise ValueError("prediction_set contains an unknown class")
     if record.prediction_set_alpha is None or not 0.0 < float(record.prediction_set_alpha) < 1.0:
@@ -100,7 +102,7 @@ def _validate_prediction_set(record: PredictionRecord, expected: set[str]) -> No
         raise ValueError("unsupported prediction_set_method")
     if record.prediction_set_action not in {"SINGLE", "SET", "ABSTAIN"}:
         raise ValueError("invalid prediction_set_action")
-    expected_action = "SINGLE" if len(values) == 1 else "SET"
+    expected_action = "ABSTAIN" if len(values) == 0 else ("SINGLE" if len(values) == 1 else "SET")
     if record.prediction_set_action != expected_action:
         raise ValueError("prediction_set_action does not match prediction_set size")
 
