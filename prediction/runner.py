@@ -189,6 +189,27 @@ def run_prediction(*, row: Mapping[str, Any], availability: AvailabilityRecord,
             str(row.get("competition_stage") or "").strip()
             or None
         ),
+        prediction_set=(
+            [str(x) for x in row.get("prediction_set")]
+            if row.get("prediction_set") is not None else None
+        ),
+        prediction_set_alpha=(
+            float(row.get("prediction_set_alpha"))
+            if row.get("prediction_set_alpha") is not None else None
+        ),
+        prediction_set_method=(
+            str(row.get("prediction_set_method") or "").strip()
+            or None
+        ),
+        prediction_set_action=(
+            str(row.get("prediction_set_action") or "").strip()
+            or None
+        ),
+        prediction_intelligence=(
+            dict(row.get("prediction_intelligence"))
+            if isinstance(row.get("prediction_intelligence"), Mapping)
+            else row.get("prediction_intelligence")
+        ),
     )
     append_prediction(record, log_path)
     return {"eligible": True, "prediction": record}
