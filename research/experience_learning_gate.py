@@ -30,6 +30,17 @@ RESULTS = ROOT / "results"
 DEFAULT_INPUT = ROOT / "data" / "experience" / "experience_ledger.csv"
 
 
+def _selection_contract() -> dict[str, bool]:
+    """Return the invariant gate contract on every exit path, including HOLDs."""
+    return {
+        "holdout_outcomes_used_to_build_policy": False,
+        "holdout_used_for_parameter_selection": False,
+        "fixed_policy_hyperparameters": True,
+        "production_modified": False,
+        "auto_promotion": False,
+    }
+
+
 def _metrics(y: np.ndarray, p: np.ndarray) -> dict[str, Any]:
     p = np.asarray(p, dtype=float)
     y = np.asarray(y, dtype=int)
@@ -81,6 +92,7 @@ def evaluate_locked_holdout(
             "status": "NO_EXPERIENCE",
             "promotion_status": "HOLD",
             "reason": "no experience cases",
+            "selection_contract": _selection_contract(),
         }
     if not 0.10 <= holdout_fraction <= 0.50:
         raise ValueError("holdout_fraction must be between 0.10 and 0.50")
@@ -103,6 +115,7 @@ def evaluate_locked_holdout(
             "holdout_cases": int(len(holdout)),
             "min_train_cases": int(min_train_cases),
             "min_holdout_cases": int(min_holdout_cases),
+            "selection_contract": _selection_contract(),
         }
 
     # Policy cutoff is exactly the first holdout prediction cutoff. Outcomes
@@ -126,6 +139,7 @@ def evaluate_locked_holdout(
                 "status": policy.get("status"),
                 "matured_rows": policy.get("matured_rows"),
             },
+            "selection_contract": _selection_contract(),
         }
 
     baseline_rows: list[np.ndarray] = []
@@ -206,13 +220,7 @@ def evaluate_locked_holdout(
         "learned": learned_metrics,
         "improvement": improvement,
         "uncertainty": uncertainty,
-        "selection_contract": {
-            "holdout_outcomes_used_to_build_policy": False,
-            "holdout_used_for_parameter_selection": False,
-            "fixed_policy_hyperparameters": True,
-            "production_modified": False,
-            "auto_promotion": False,
-        },
+        "selection_contract": _selection_contract(),
     }
 
 
