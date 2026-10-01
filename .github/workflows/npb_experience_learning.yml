@@ -14,7 +14,6 @@ on:
   pull_request:
     paths:
       - "research/experience_learning.py"
-      - "tests/test_experience_learning.py"
       - "research/experience_learning_gate.py"
       - "tests/test_experience_learning.py"
       - "tests/test_experience_learning_gate.py"
