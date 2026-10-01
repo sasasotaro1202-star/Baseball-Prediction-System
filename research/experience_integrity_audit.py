@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from research.experience_ledger import _is_legacy_scheduled_cutoff
+
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PRED_DIR = ROOT / "data" / "experience" / "predictions"
 REQUIRED_FIELDS = (
@@ -66,6 +68,7 @@ def audit_prediction_directory(pred_dir: str | Path = DEFAULT_PRED_DIR) -> dict[
     seen_ids: set[str] = set()
     rows = 0
     pit_pass = 0
+    legacy_quarantined = 0
 
     for path in files:
         for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
@@ -84,6 +87,7 @@ def audit_prediction_directory(pred_dir: str | Path = DEFAULT_PRED_DIR) -> dict[
                     f"prediction row missing PIT/provenance fields: {path}:{line_no}: {missing}"
                 )
 
+            is_legacy = _is_legacy_scheduled_cutoff(row)
             game_time = _parse_ts(row["datetime_jst"], field="datetime_jst")
             cutoff = _parse_ts(row["prediction_cutoff_utc"], field="prediction_cutoff_utc")
             generated = _parse_ts(row["prediction_generated_at"], field="prediction_generated_at")
@@ -91,6 +95,10 @@ def audit_prediction_directory(pred_dir: str | Path = DEFAULT_PRED_DIR) -> dict[
                 row["starter_evidence_observed_at_utc"],
                 field="starter_evidence_observed_at_utc",
             )
+
+            if is_legacy:
+                legacy_quarantined += 1
+                continue
 
             if not cutoff < game_time:
                 raise ValueError(f"prediction cutoff is not pregame: {path}:{line_no}")
@@ -118,10 +126,11 @@ def audit_prediction_directory(pred_dir: str | Path = DEFAULT_PRED_DIR) -> dict[
             rows += 1
 
     return {
-        "status": "PASS",
+        "status": "PASS_WITH_LEGACY_QUARANTINE" if legacy_quarantined else "PASS",
         "prediction_files": len(files),
         "prediction_rows": rows,
         "pit_pass_rows": pit_pass,
+        "legacy_quarantined_rows": legacy_quarantined,
         "unique_prediction_ids": len(seen_ids),
     }
 
