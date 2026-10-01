@@ -257,5 +257,18 @@
     "maximum_actual_lead_minutes": 870.6525833333334,
     "scheduled_cutoff_minimum_lead_minutes": 71.61203333333333,
     "scheduled_cutoff_below_30m_rows": 0
-  }
+  },
+  "revision_intelligence": {
+    "status": "MEASURED",
+    "eligible_rows": 55,
+    "revised_rows": 50,
+    "revision_rate": 0.9090909090909091,
+    "outcome_reversal_rows": 0,
+    "outcome_reversal_rate": 0,
+    "mean_l1_pct_points": 1.51195,
+    "median_l1_pct_points": 1.1323,
+    "maximum_l1_pct_points": 7.2482,
+    "maximum_single_class_change_pct_points": 3.6241
+  },
+  "legacy_timing_quarantined_rows": 4
 }
