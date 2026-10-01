@@ -116,5 +116,18 @@
       "low_high_accuracy": 0.6,
       "top4_exact_hit_rate": 0
     }
-  }
+  },
+  "revision_intelligence": {
+    "status": "MEASURED",
+    "eligible_rows": 5,
+    "revised_rows": 5,
+    "revision_rate": 1,
+    "outcome_reversal_rows": 0,
+    "outcome_reversal_rate": 0,
+    "mean_l1_pct_points": 1.20958,
+    "median_l1_pct_points": 1.3795,
+    "maximum_l1_pct_points": 1.9552,
+    "maximum_single_class_change_pct_points": 0
+  },
+  "legacy_timing_quarantined_rows": 4
 }
