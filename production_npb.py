@@ -11,7 +11,7 @@ from __future__ import annotations
 import time
 import argparse, json, re, html as html_lib
 from html.parser import HTMLParser
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -782,7 +782,12 @@ def _utc_now() -> pd.Timestamp:
     return pd.Timestamp.now(tz="UTC")
 
 
-def build_target_rows(target_date: str) -> pd.DataFrame:
+def build_target_rows(
+    target_date: str,
+    *,
+    minimum_lead_minutes: float = 30.0,
+    maximum_lead_minutes: float | None = None,
+) -> pd.DataFrame:
     rows=official_starters(target_date)
     daily_times = _official_daily_start_times(target_date)
     now_utc=_utc_now()
@@ -806,11 +811,21 @@ def build_target_rows(target_date: str) -> pd.DataFrame:
         r["official_start_time"] = start_time
         r["start_time_source"] = NPB_DAY_URL.format(date=target_date.replace("-", ""))
         r["datetime"]=pd.Timestamp(f"{target_date} {start_time}").tz_localize("Asia/Tokyo").tz_convert("UTC")
-        # A completed or already-started game is never a valid future prediction
-        # target. Keeping it in the production set would turn a day-of schedule
-        # refresh into a post-start prediction.
-        if r["datetime"] <= now_utc:
+        # The prediction cutoff is fixed to exactly 30 minutes before official
+        # first pitch. The live retrieval/generated timestamp must never exceed
+        # this cutoff, otherwise the case is not a valid 30-minute pregame
+        # experience case.
+        prediction_cutoff = r["datetime"] - pd.Timedelta(minutes=float(minimum_lead_minutes))
+        lead_seconds = float((r["datetime"] - now_utc).total_seconds())
+        if lead_seconds <= 0:
             continue
+        if now_utc > prediction_cutoff:
+            continue
+        if maximum_lead_minutes is not None and lead_seconds > float(maximum_lead_minutes) * 60.0:
+            continue
+        r["prediction_cutoff_utc"] = prediction_cutoff.isoformat()
+        r["prediction_deadline_utc"] = prediction_cutoff.isoformat()
+        r["lead_minutes_at_generation"] = lead_seconds / 60.0
         r["home_score"]=float("nan"); r["away_score"]=float("nan")
         evidence_status = str(r.get("starter_evidence_status") or "").strip()
         if evidence_status not in {"official_announced", "official_announced_snapshot"}:
@@ -824,8 +839,12 @@ def build_target_rows(target_date: str) -> pd.DataFrame:
             )
         r["starter_evidence_status"] = evidence_status
         r["starter_source"] = source
-        r["starter_evidence_observed_at_utc"] = now_utc.isoformat()
-        r["prediction_cutoff_utc"] = now_utc.isoformat()
+        evidence_observed_at = pd.Timestamp(now_utc)
+        if evidence_observed_at > prediction_cutoff:
+            raise RuntimeError(
+                "PIT deadline failed: starter evidence was observed after the 30-minute prediction cutoff."
+            )
+        r["starter_evidence_observed_at_utc"] = evidence_observed_at.isoformat()
         output.append(r)
     return pd.DataFrame(output)
 
@@ -927,9 +946,18 @@ def robust_target_lambdas(bt: BaseballBacktest, hist: pd.DataFrame, row: pd.Seri
     return lh,la,0.0
 
 # Production starter ingestion hardening is regression-tested; preserve strict PIT blocking.
-def predict(target_date: str, data_dir: str) -> dict:
+def predict(
+    target_date: str,
+    data_dir: str,
+    *,
+    pregame_only: bool = False,
+) -> dict:
     try:
-        games=build_target_rows(target_date)
+        games=build_target_rows(
+            target_date,
+            minimum_lead_minutes=30.0,
+            maximum_lead_minutes=(60.0 if pregame_only else None),
+        )
     except RuntimeError as exc:
         # Missing/insufficient official starter evidence is a valid fail-closed
         # production state. Persist it as BLOCKED_STARTERS so schedulers can
@@ -958,7 +986,7 @@ def predict(target_date: str, data_dir: str) -> dict:
     if games.empty:
         result={
             "schema_version":"npb-production-v1", "target_date":target_date,
-            "execution_status":"NO_FUTURE_GAMES", "pit_status":"PASS",
+            "execution_status":("NO_DUE_PREGAME_GAMES" if pregame_only else "NO_FUTURE_GAMES"), "pit_status":"PASS",
             "starter_gate":"PASS", "model_status":"NOT_RUN",
             "git_commit":__import__("os").environ.get("GITHUB_SHA","unknown"),
             "predictions":[], "block_reason":"all scheduled games for the requested JST date have already started or finished",
@@ -1145,8 +1173,17 @@ def main():
     ap=argparse.ArgumentParser()
     ap.add_argument("--date",required=True,help="YYYY-MM-DD, JST")
     ap.add_argument("--data-dir",default="data")
+    ap.add_argument(
+        "--pregame-only",
+        action="store_true",
+        help="Only predict games currently 30-60 minutes before first pitch.",
+    )
     args=ap.parse_args()
-    print(json.dumps(predict(args.date,args.data_dir),ensure_ascii=False,indent=2))
+    print(json.dumps(
+        predict(args.date,args.data_dir,pregame_only=args.pregame_only),
+        ensure_ascii=False,
+        indent=2,
+    ))
 
 if __name__=="__main__":
     main()
