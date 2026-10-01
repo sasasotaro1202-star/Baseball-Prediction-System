@@ -560,7 +560,7 @@ def reconcile() -> dict[str, Any]:
         "logloss": float(experience["logloss"].mean()),
         "brier": float(experience["brier"].mean()),
         "ece": _multiclass_ece(
-            experience[["home_win_pct", "draw_pct", "away_win_pct"]].to_numpy(float) / 100.0,
+            experience[["home_win_pct", "draw_pct", "away_win_pct"]].to_numpy(float),
             experience["actual_outcome"].map({"HOME_WIN": 0, "DRAW": 1, "AWAY_WIN": 2}).to_numpy(int),
         ),
         "draw_rows": int((experience["actual_outcome"] == "DRAW").sum()),
@@ -590,7 +590,7 @@ def reconcile() -> dict[str, Any]:
                 "logloss": float(group["logloss"].mean()),
                 "brier": float(group["brier"].mean()),
                 "ece": _multiclass_ece(
-                    group[["home_win_pct", "draw_pct", "away_win_pct"]].to_numpy(float) / 100.0,
+                    group[["home_win_pct", "draw_pct", "away_win_pct"]].to_numpy(float),
                     group["actual_outcome"].map({"HOME_WIN": 0, "DRAW": 1, "AWAY_WIN": 2}).to_numpy(int),
                 ),
                 "low_high_accuracy": float(group["low_high_correct"].mean()),
@@ -620,7 +620,7 @@ def reconcile() -> dict[str, Any]:
                 "logloss": float(g["logloss"].mean()),
                 "brier": float(g["brier"].mean()),
                 "ece": _multiclass_ece(
-                    g[["home_win_pct", "draw_pct", "away_win_pct"]].to_numpy(float) / 100.0,
+                    g[["home_win_pct", "draw_pct", "away_win_pct"]].to_numpy(float),
                     g["actual_outcome"].map({"HOME_WIN": 0, "DRAW": 1, "AWAY_WIN": 2}).to_numpy(int),
                 ),
                 "low_high_accuracy": float(g["low_high_correct"].mean()),
