@@ -244,7 +244,7 @@ def test_research_api_failure_does_not_block_production_scheduler(monkeypatch):
         raise RuntimeError("temporary MLB schedule source failure")
     monkeypatch.setattr(scheduler, "_mlb_schedule_for_date", fail_mlb)
 
-    now = datetime(2026, 10, 1, 7, 30, tzinfo=timezone.utc)
+    now = datetime(2026, 10, 1, 8, 0, tzinfo=timezone.utc)
     result = scheduler.due_games(
         now_utc=now,
         min_lead_minutes=0.0,
