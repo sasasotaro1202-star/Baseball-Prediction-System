@@ -13,6 +13,7 @@ def _row(**overrides):
         "prediction_cutoff_utc": "2026-10-01T08:30:00+00:00",
         "prediction_generated_at": "2026-10-01T08:31:00+00:00",
         "starter_evidence_observed_at_utc": "2026-10-01T08:20:00+00:00",
+        "starter_evidence_status": "official_announced",
         "pit_status": "PASS",
         "home_win_pct": 45.0,
         "draw_pct": 5.0,
