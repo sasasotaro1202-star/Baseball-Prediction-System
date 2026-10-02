@@ -11,6 +11,8 @@ def _frame(n=10):
     for i,(c,a) in enumerate(zip(cutoffs,available)):
         rows.append({
             "prediction_id":f"p{i}",
+            "game_id":f"g{i}",
+            "game_id":f"g{i}",
             "target":"NPB",
             "prediction_cutoff_utc":c,
             "experience_available_at_utc":a,

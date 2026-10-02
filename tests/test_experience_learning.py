@@ -19,6 +19,7 @@ def _toy(n: int = 80) -> pd.DataFrame:
         rows.append(
             {
                 "prediction_id": f"p{i}",
+                "game_id": f"g{i}",
                 "target": "NPB",
                 "prediction_cutoff_utc": cutoff,
                 "experience_available_at_utc": available_at,
@@ -34,6 +35,39 @@ def _toy(n: int = 80) -> pd.DataFrame:
         )
     return pd.DataFrame(rows)
 
+
+
+def test_policy_counts_independent_games_not_revision_rows():
+    frame = _toy(60)
+    frame["game_id"] = [f"game_{i // 10}" for i in range(60)]
+    cutoff = pd.Timestamp("2026-09-10T00:00:00Z")
+    policy = build_policy(frame, cutoff=cutoff, min_group_rows=5)
+    assert policy["raw_matured_snapshot_rows"] == 60
+    assert policy["matured_rows"] == 6
+    assert policy["independent_game_count"] == 6
+    assert policy["policy"]["global:GLOBAL"]["rows"] == 6
+    assert policy["policy"]["global:GLOBAL"]["unique_games"] == 6
+
+
+def test_policy_holds_when_snapshot_rows_hide_insufficient_unique_games():
+    frame = _toy(50)
+    frame["game_id"] = [f"game_{i // 10}" for i in range(50)]
+    cutoff = pd.Timestamp("2026-09-10T00:00:00Z")
+    policy = build_policy(frame, cutoff=cutoff, min_group_rows=30)
+    assert policy["raw_matured_snapshot_rows"] == 50
+    assert policy["matured_rows"] == 5
+    assert policy["independent_game_count"] == 5
+    assert policy["status"] == "INSUFFICIENT_EXPERIENCE"
+
+
+def test_replay_deduplicates_matured_revision_snapshots_by_game():
+    frame = _toy(30)
+    frame["game_id"] = [f"game_{i // 3}" for i in range(30)]
+    summary, ledger = replay(frame, min_group_rows=5)
+    assert summary["status"] == "REPLAYED"
+    assert len(ledger) == len(frame)
+    assert int(ledger["matured_experience_rows"].max()) <= frame["game_id"].nunique()
+    assert (ledger["matured_experience_snapshot_rows"] >= ledger["matured_experience_rows"]).all()
 
 def test_load_experience_rejects_impossible_experience_time(tmp_path):
     frame = _toy(10)
