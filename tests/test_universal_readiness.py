@@ -39,3 +39,19 @@ def test_readiness_report_is_auditable():
     assert report["source_count"] == len(all_source_readiness())
     assert report["scope_count"] >= 1
     assert report["promotion_rule"]
+
+def test_scope_readiness_tolerates_unregistered_research_candidates():
+    row = scope_readiness("MLB")
+    assert row["sources"] >= 1
+    assert row["production_pass"] == 0
+
+
+def test_unregistered_source_readiness_is_explicitly_fail_closed():
+    row = source_readiness("AUTO_TEST_UNREGISTERED")
+    assert row.registered is False
+    assert row.adapter_status == "UNWIRED"
+    assert row.pit_status == "UNVERIFIED"
+    assert row.oos_status == "UNVERIFIED"
+    assert row.production_status == "FAIL"
+    assert row.state == "HOLD"
+\n
