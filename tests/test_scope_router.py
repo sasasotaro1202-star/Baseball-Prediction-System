@@ -7,10 +7,16 @@ def test_scope_keeps_production_and_research_separate():
     obj = build_scope()
     assert obj["policy"]["production_promotion"] == "NEVER_BY_DISCOVERY"
     assert obj["policy"]["unknown_pit"] == "FAIL_CLOSED"
-    assert "NPB" in obj["current_production"] or "npb" in obj["current_production"]
-    # MLB is implemented and active in the registry, but current production is
-    # blocked until its independent PIT/OOS gate is satisfied.
+    # NPB is implemented and active in the registry, but current production is
+    # blocked until its independent PIT/OOS/holdout gate is satisfied.
+    assert "NPB" not in obj["current_production"]
+    assert any(x["competition_id"].lower() == "npb"
+               and x["state"] == "RESEARCH_ACTIVE"
+               and x["current_production"] is False
+               for x in obj["competitions"])
+    # MLB follows the same production/research separation.
     assert any(x["competition_id"].lower() == "mlb" and x["state"] == "RESEARCH_ACTIVE"
+               and x["current_production"] is False
                for x in obj["competitions"])
 
 
