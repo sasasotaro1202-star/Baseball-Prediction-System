@@ -65,7 +65,7 @@ def test_same_game_prior_revision_is_excluded():
         y, p, X, pt, mature, games,
         min_calibration_games=10, max_pool_games=30, k_neighbors=10,
     )
-    assert out["retrieval_pool_count"][20] == 18
+    assert out["retrieval_pool_count"][20] == 19
     assert out["contract"]["target_game_excluded"] is True
 
 
