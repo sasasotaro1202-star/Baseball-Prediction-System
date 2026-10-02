@@ -128,10 +128,6 @@ def get_json(
     headers: Mapping[str, str] | None = None,
     retries: int = DEFAULT_RETRIES,
 ):
-    from core.parallel import throttle_for
-    from urllib.parse import urlparse
-
-    throttle_for(urlparse(url).netloc).wait()
     return request(
         sess,
         url,
@@ -151,10 +147,6 @@ def get_text(
     headers: Mapping[str, str] | None = None,
     retries: int = DEFAULT_RETRIES,
 ) -> str:
-    from core.parallel import throttle_for
-    from urllib.parse import urlparse
-
-    throttle_for(urlparse(url).netloc).wait()
     return request(
         sess,
         url,
