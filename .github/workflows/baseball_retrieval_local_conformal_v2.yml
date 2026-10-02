@@ -1,0 +1,39 @@
+name: Baseball Retrieval-Local Conformal v2
+
+on:
+  push:
+    paths:
+      - "research/retrieval_local_conformal_v2.py"
+      - "tests/test_retrieval_local_conformal_v2.py"
+      - ".github/workflows/baseball_retrieval_local_conformal_v2.yml"
+  pull_request:
+    paths:
+      - "research/retrieval_local_conformal_v2.py"
+      - "tests/test_retrieval_local_conformal_v2.py"
+      - ".github/workflows/baseball_retrieval_local_conformal_v2.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: retrieval-local-conformal-v2-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  focused-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11"
+      - name: Install focused dependencies
+        run: python -m pip install --disable-pip-version-check --no-input "numpy>=1.24,<3" "pandas>=2.0,<3" "pytest>=7,<9"
+      - name: Compile candidate
+        run: python -m py_compile research/retrieval_local_conformal_v2.py tests/test_retrieval_local_conformal_v2.py
+      - name: Run focused regression
+        run: python -m pytest -q tests/test_retrieval_local_conformal_v2.py
