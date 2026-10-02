@@ -46,6 +46,8 @@ class SourceReadiness:
             return "ADAPTER"
         if any(x == "FAIL" for x in (self.adapter_status, self.pit_status, self.oos_status, self.production_status)):
             return "HOLD"
+        if not self.registered:
+            return "HOLD"
         return "REGISTERED"
 
 
@@ -66,7 +68,18 @@ KNOWN_STATUS: dict[str, dict[str, str]] = {
 def source_readiness(source_id: str) -> SourceReadiness:
     registered = source_id in {s.source_id for s in SOURCES}
     if not registered:
-        raise KeyError(f"unknown source_id: {source_id}")
+        # Auto-discovered research candidates intentionally live outside the
+        # production source registry until separately verified. Surface them as
+        # HOLD/UNVERIFIED rather than crashing the readiness report or silently
+        # promoting an unregistered source.
+        return SourceReadiness(
+            source_id=source_id,
+            registered=False,
+            adapter_status="UNWIRED",
+            pit_status="UNVERIFIED",
+            oos_status="UNVERIFIED",
+            production_status="FAIL",
+        )
     values = {
         "adapter_status": "UNWIRED",
         "pit_status": "UNVERIFIED",
