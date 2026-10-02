@@ -42,6 +42,7 @@ SNAPSHOT_PATH = EXPERIENCE / "snapshot_experience_ledger.csv"
 SNAPSHOT_JSONL = EXPERIENCE / "snapshot_experience_ledger.jsonl"
 CASE_SUMMARY_PATH = EXPERIENCE / "experience_case_summary.json"
 TRAINING_INDEX_PATH = EXPERIENCE / "experience_training_index.json"
+PERFORMANCE_BREAKDOWN_PATH = EXPERIENCE / "performance_breakdown.json"
 
 
 def _now() -> str:
@@ -533,6 +534,19 @@ def rollup() -> dict[str, Any]:
     CASE_SUMMARY_PATH.write_text(
         json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
     )
+    PERFORMANCE_BREAKDOWN_PATH.write_text(
+        json.dumps({
+            "generated_at_utc": result["generated_at_utc"],
+            "status": result["status"],
+            "canonical_cases": int(len(canonical)),
+            "all_prediction_snapshots": int(len(scored)),
+            "league_competition_phase_target": result["performance_breakdown"],
+            "all_snapshots_league_competition_phase_target": result["performance_breakdown_all_snapshots"],
+            "target_metrics": result["by_prediction_target"],
+            "target_metrics_all_snapshots": result["by_prediction_target_all_snapshots"],
+        }, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
     TRAINING_INDEX_PATH.write_text(
         json.dumps({
             "generated_at_utc": result["generated_at_utc"],
@@ -548,6 +562,7 @@ def rollup() -> dict[str, Any]:
                 "snapshot_jsonl": str(SNAPSHOT_JSONL),
                 "canonical_csv": str(EXPERIENCE / "experience_ledger.csv"),
                 "summary_json": str(EXPERIENCE / "experience_summary.json"),
+                "performance_breakdown_json": str(PERFORMANCE_BREAKDOWN_PATH),
             },
             "strict_reuse_rule": "Only rows whose prediction_cutoff_utc and experience_available_at_utc are both earlier than the future research cutoff may be used as experience-derived inputs.",
         }, ensure_ascii=False, indent=2), encoding="utf-8"
