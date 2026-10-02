@@ -2,6 +2,7 @@ import pytest
 
 from research.statshawk_mlb_adapter import (
     evaluate_pregame_eligibility,
+    collapse_independent_games,
     normalize_matchups,
     validate_reconciliation_rows,
 )
@@ -195,3 +196,49 @@ def test_feature_catalog_is_valid_json_and_nonproduction():
     assert catalog["fields"]["probable_pitcher"]["pit_status"].startswith(
         "FAIL_CLOSED"
     )
+
+
+def test_duplicate_provider_views_collapse_to_one_independent_game():
+    base = {
+        "status": "final",
+        "scheduled_at": "2026-09-30T18:00:00+00:00",
+        "home_team_id": "home",
+        "away_team_id": "away",
+        "home_score": 3,
+        "away_score": 4,
+        "home_lineup_confirmed_count": 9,
+        "away_lineup_confirmed_count": 9,
+    }
+    rows = [
+        {**base, "event_id": "cst_primary", "observation_index": 0},
+        {
+            **base,
+            "event_id": "cst_duplicate",
+            "observation_index": 1,
+            "home_lineup_confirmed_count": 8,
+            "away_lineup_confirmed_count": 8,
+        },
+    ]
+
+    collapsed = collapse_independent_games(rows)
+
+    assert len(collapsed) == 1
+    assert collapsed[0]["event_id"] == "cst_primary"
+    assert collapsed[0]["collapsed_observation_count"] == 2
+    assert collapsed[0]["independent_game_key"] == (
+        "home|away|2026-09-30T18:00:00+00:00"
+    )
+
+
+def test_independent_game_identity_fails_closed_when_required_fields_are_missing():
+    with pytest.raises(ValueError, match="independent_game_identity_missing"):
+        collapse_independent_games(
+            [
+                {
+                    "event_id": "cst_missing",
+                    "home_team_id": "home",
+                    "away_team_id": "away",
+                    "scheduled_at": None,
+                }
+            ]
+        )
