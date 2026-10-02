@@ -7,7 +7,8 @@ on:
 permissions:
   actions: write
   contents: read
-  issues: write
+  issues: read
+  pull-requests: read
 
 concurrency:
   group: baseball-chat-async-dispatch
@@ -62,19 +63,23 @@ jobs:
           active="$(gh run list             --repo "${GH_REPO}"             --workflow "${TARGET_WORKFLOW}"             --limit 20             --json status             --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
 
           if [ "${active}" -gt 0 ]; then
-            body="Async request accepted but not duplicated: ${TARGET_WORKFLOW} already has active work. This dispatcher returns immediately and does not wait for the long-running job."
+            body="Async request accepted but not duplicated: ${TARGET_WORKFLOW} already has active work."
           else
-            gh workflow run "${TARGET_WORKFLOW}" --repo "${GH_REPO}" --ref main
-            body="Async request accepted: ${{ steps.route.outputs.label }} dispatched on main. The chat request does not wait for the long-running workflow; Actions handles execution, checkpoints, artifacts, and recovery."
+            timeout --signal=TERM --kill-after=5s 30s gh workflow run "${TARGET_WORKFLOW}" --repo "${GH_REPO}" --ref main
+            body="Async request accepted: ${{ steps.route.outputs.label }} dispatched on main."
           fi
 
-          gh api "repos/${GH_REPO}/issues/${ISSUE_NUMBER}/comments"             --method POST             -f body="${body}"
+          {
+            echo "### Baseball async dispatch"
+            echo ""
+            echo "${body}"
+            echo ""
+            echo "Long-running execution is detached from the chat request. Actions owns execution, checkpoints, artifacts, and recovery."
+          } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Record ignored command
         if: steps.route.outputs.ignored == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          gh api "repos/${GH_REPO}/issues/${ISSUE_NUMBER}/comments"             --method POST             -f body='Async dispatcher ignored an unrecognized command. No workflow was dispatched.'
+          echo "Async dispatcher ignored an unrecognized command. No workflow was dispatched." >> "${GITHUB_STEP_SUMMARY}"
