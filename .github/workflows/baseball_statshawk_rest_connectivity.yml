@@ -12,9 +12,7 @@ concurrency:
 
 jobs:
   probe:
-    # The secret is intentionally optional. Without explicit user configuration
-    # this workflow is skipped rather than failing or attempting authentication.
-    if: ${{ secrets.STATSHAWK_API_KEY != '' }}
+    # The network probe is optional. Missing credentials cause a safe skip.
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -32,9 +30,13 @@ jobs:
         run: python -m py_compile research/statshawk_rest_client.py tests/test_statshawk_rest_client.py
       - name: Run client contract tests
         run: python -m pytest -q tests/test_statshawk_rest_client.py
-      - name: Probe authenticated MLB capability endpoint
+      - name: Probe authenticated MLB capability endpoint when configured
         run: |
           set -euo pipefail
+          if [ -z "${STATSHAWK_API_KEY:-}" ]; then
+            echo 'STATSHAWK_API_KEY not configured; authenticated probe skipped.'
+            exit 0
+          fi
           python - <<'PY'
           import json
           from research.statshawk_rest_client import StatsHawkRestClient
