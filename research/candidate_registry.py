@@ -31,9 +31,16 @@ def _load() -> list[dict[str, Any]]:
         return []
     try:
         value = json.loads(REGISTRY.read_text(encoding="utf-8"))
-        return value if isinstance(value, list) else []
-    except Exception:
-        return []
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"candidate registry cannot be read safely: {REGISTRY}") from exc
+    if not isinstance(value, list):
+        raise RuntimeError(f"candidate registry must contain a JSON list: {REGISTRY}")
+    for index, record in enumerate(value):
+        if not isinstance(record, dict):
+            raise RuntimeError(
+                f"candidate registry entry {index} must be a JSON object: {REGISTRY}"
+            )
+    return value
 
 
 def record_candidate(
