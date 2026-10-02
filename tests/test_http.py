@@ -12,8 +12,12 @@ class FakeResponse:
         self.headers = {"Retry-After": "300"}
         self.content = b"{}"
         self.text = "{}"
+        self._json = {"ok": True}
         self.apparent_encoding = "utf-8"
         self.encoding = "utf-8"
+
+    def json(self):
+        return self._json
 
     def raise_for_status(self):
         if self.status_code >= 400:
@@ -72,6 +76,12 @@ def test_request_retries_transient_status_without_honoring_retry_after(monkeypat
     assert response.status_code == 200
     assert len(sess.calls) == 2
     assert sleeps == [0.75]
+
+
+def test_get_json_uses_shared_bounded_request():
+    sess = FakeSession([FakeResponse(200)])
+    assert http.get_json(sess, "https://example.test/data", timeout=10, retries=1) == {"ok": True}
+    assert sess.calls[0][2]["timeout"] == (8.0, 10.0)
 
 
 def test_request_does_not_retry_non_transient_client_error(monkeypatch):
