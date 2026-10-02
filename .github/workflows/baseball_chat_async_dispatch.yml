@@ -1,0 +1,80 @@
+name: Baseball Chat Async Dispatcher
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+
+concurrency:
+  group: baseball-chat-async-dispatch
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    if: >-
+      ${{ github.event.issue.number == 136 &&
+      github.event.comment.user.login == 'sasasotaro1202-star' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_REPO: ${{ github.repository }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      COMMAND: ${{ github.event.comment.body }}
+      OPERATOR: sasasotaro1202-star
+    steps:
+      - name: Route exact trusted command
+        id: route
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${COMMAND}" in
+            "/baseball-async closed-loop")
+              echo 'workflow=baseball_closed_loop.yml' >> "${GITHUB_OUTPUT}"
+              echo 'label=Closed Loop Research' >> "${GITHUB_OUTPUT}"
+              ;;
+            "/baseball-async candidate-oos")
+              echo 'workflow=baseball_candidate_oos.yml' >> "${GITHUB_OUTPUT}"
+              echo 'label=Candidate OOS Validation' >> "${GITHUB_OUTPUT}"
+              ;;
+            "/baseball-async research-24h")
+              echo 'workflow=baseball_24h_research_autopilot.yml' >> "${GITHUB_OUTPUT}"
+              echo 'label=24h Research Autopilot' >> "${GITHUB_OUTPUT}"
+              ;;
+            *)
+              echo "ignored=true" >> "${GITHUB_OUTPUT}"
+              echo 'No matching trusted async command; no workflow was dispatched.'
+              ;;
+          esac
+
+      - name: Dispatch heavy work without waiting
+        if: steps.route.outputs.ignored != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_WORKFLOW: ${{ steps.route.outputs.workflow }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          active="$(gh run list             --repo "${GH_REPO}"             --workflow "${TARGET_WORKFLOW}"             --limit 20             --json status             --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+
+          if [ "${active}" -gt 0 ]; then
+            body="Async request accepted but not duplicated: ${TARGET_WORKFLOW} already has active work. This dispatcher returns immediately and does not wait for the long-running job."
+          else
+            gh workflow run "${TARGET_WORKFLOW}" --repo "${GH_REPO}" --ref main
+            body="Async request accepted: ${{ steps.route.outputs.label }} dispatched on main. The chat request does not wait for the long-running workflow; Actions handles execution, checkpoints, artifacts, and recovery."
+          fi
+
+          gh api "repos/${GH_REPO}/issues/${ISSUE_NUMBER}/comments"             --method POST             -f body="${body}"
+
+      - name: Record ignored command
+        if: steps.route.outputs.ignored == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/${GH_REPO}/issues/${ISSUE_NUMBER}/comments"             --method POST             -f body='Async dispatcher ignored an unrecognized command. No workflow was dispatched.'
