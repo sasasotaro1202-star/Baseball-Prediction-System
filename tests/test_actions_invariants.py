@@ -143,6 +143,34 @@ def test_npb_production_checks_runtime_gate_before_network_and_dependency_work()
     assert 'block_reason": "NPB production runtime is not currently eligible' in text
 
 
+
+def test_chat_async_dispatcher_is_short_lived_and_allowlisted():
+    text = (ROOT / ".github" / "workflows" / "baseball_chat_async_dispatch.yml").read_text(encoding="utf-8")
+
+    assert "issue_comment:" in text
+    assert "github.event.issue.number == 136" in text
+    assert "github.event.comment.user.login == 'sasasotaro1202-star'" in text
+    assert "timeout-minutes: 5" in text
+
+    allowed = (
+        "/baseball-async closed-loop",
+        "/baseball-async candidate-oos",
+        "/baseball-async research-24h",
+    )
+    for command in allowed:
+        assert command in text
+
+    assert 'case "${COMMAND}" in' in text
+    assert 'gh workflow run "${TARGET_WORKFLOW}" --repo "${GH_REPO}" --ref main' in text
+    assert "does not wait for the long-running workflow" in text
+    assert "No matching trusted async command; no workflow was dispatched." in text
+
+    # Arbitrary shell/workflow execution must not be possible through comment text.
+    assert 'workflow=${' not in text
+    assert "eval " not in text
+    assert "bash -c" not in text
+
+
 def test_candidate_oos_fails_closed_on_incomplete_evidence():
     text = (ROOT / ".github" / "workflows" / "baseball_candidate_oos.yml").read_text(encoding="utf-8")
     _assert_official_actions_are_immutable(text)
