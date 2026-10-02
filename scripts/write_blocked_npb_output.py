@@ -5,6 +5,7 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
+from core.atomic_io import atomic_write_json
 from research.target_strategy import as_dict, standard_target_strategies
 
 
