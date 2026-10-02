@@ -152,6 +152,22 @@ jobs:
           print(json.dumps(obj, ensure_ascii=False, indent=2))
           PY
 
+      - name: Verify candidate evidence completeness
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          test -s results/real_data_validation.json
+          if [ "${{ matrix.league }}" = "NPB" ]; then
+            test -s results/npb_candidate_development.json
+            test -s results/npb_locked_holdout.json
+          else
+            test -s results/mlb_candidate_development.json
+            test -s results/mlb_locked_holdout.json
+          fi
+          if [ -f pit_readiness_audit.json ]; then
+            test -s pit_readiness_audit.json
+          fi
+
       - name: Upload candidate evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -164,5 +180,5 @@ jobs:
             results/mlb_candidate_development.json
             results/mlb_locked_holdout.json
             pit_readiness_audit.json
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
