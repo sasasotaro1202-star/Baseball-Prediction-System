@@ -129,6 +129,10 @@ jobs:
               git reset --hard origin/main
               PYTHONPATH=. PYTHONUNBUFFERED=1 python -m research.experience_ledger --reconcile
               PYTHONPATH=. PYTHONUNBUFFERED=1 python -m research.experience_rollup
+              if [ -d data/experience/research_shadow/predictions ]; then
+                PYTHONPATH=. PYTHONUNBUFFERED=1 python -m research.shadow_experience --reconcile
+                test -s data/experience/research_shadow/shadow_experience_summary.json
+              fi
               PYTHONPATH=. PYTHONUNBUFFERED=1 python -m research.experience_integrity_audit > data/experience/experience_integrity_audit.json
               test -s data/experience/experience_integrity_audit.json
             fi
