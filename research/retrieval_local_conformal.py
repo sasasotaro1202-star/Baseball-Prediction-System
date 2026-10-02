@@ -220,7 +220,10 @@ def retrieval_conformal_metrics(
     sets = result["prediction_sets"]
     sizes = np.asarray(result["set_size"], dtype=int)
     counts = np.asarray(result["calibration_count"], dtype=int)
-    eligible = counts >= int(np.nanmin(counts[counts > 0])) if np.any(counts > 0) else np.zeros(len(labels), dtype=bool)
+    min_calibration = int(result.get("min_calibration", 1))
+    if min_calibration < 1:
+        raise ValueError("result min_calibration must be positive")
+    eligible = counts >= min_calibration
     if len(labels) != len(sets) or len(sizes) != len(labels):
         raise ValueError("result/y length mismatch")
     if np.any(labels < 0):
