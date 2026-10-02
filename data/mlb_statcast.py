@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from io import StringIO
+import os
 from pathlib import Path
 from typing import Iterable
 from urllib.parse import urlencode
@@ -17,10 +18,11 @@ from urllib.parse import urlencode
 import pandas as pd
 import requests
 
-from core.http import get_text as http_get_text
+from core.http import get_text as http_get_text, session as http_session
 
 ROOT_URL = "https://baseballsavant.mlb.com/statcast_search/csv"
-TIMEOUT = 60
+TIMEOUT = max(10, int(os.getenv("MLB_STATCAST_TIMEOUT", "60")))
+TOTAL_TIMEOUT = max(30, int(os.getenv("MLB_STATCAST_TOTAL_TIMEOUT", "120")))
 MAX_DAYS_PER_REQUEST = 7
 
 RAW_COLUMNS = (
@@ -58,40 +60,39 @@ def fetch_statcast(
     session: requests.Session | None = None,
     retries: int = 3,
 ) -> pd.DataFrame:
-    """Fetch Statcast pitch-level CSV in bounded date chunks."""
+    """Fetch Statcast pitch-level CSV in bounded date chunks.
+
+    The shared HTTP layer owns all network retries and the total timeout budget;
+    this function does not add a second retry loop around it.
+    """
     start = pd.Timestamp(start_date).date()
     end = pd.Timestamp(end_date).date()
     if end < start:
         raise ValueError("end_date must be >= start_date")
 
-    sess = session or requests.Session()
+    sess = session or http_session(user_agent="Baseball-Prediction-System/statcast-research")
     chunks: list[pd.DataFrame] = []
     cursor = start
     while cursor <= end:
         chunk_end = min(cursor + timedelta(days=MAX_DAYS_PER_REQUEST - 1), end)
-        last_error: Exception | None = None
-        for attempt in range(retries):
-            try:
-                text = http_get_text(
-                    sess,
-                    _url(cursor, chunk_end),
-                    timeout=(8, TIMEOUT),
-                    retries=retries,
-                )
-                if not text.strip():
-                    raise RuntimeError(f"empty Statcast CSV for {cursor}..{chunk_end}")
-                frame = pd.read_csv(StringIO(text))
-                if "game_pk" not in frame.columns:
-                    raise RuntimeError("Statcast response missing game_pk")
-                chunks.append(frame)
-                last_error = None
-                break
-            except Exception as exc:
-                last_error = exc
-                if attempt < retries - 1:
-                    continue
-        if last_error is not None:
-            raise RuntimeError(f"Statcast request failed for {cursor}..{chunk_end}: {last_error}")
+        try:
+            text = http_get_text(
+                sess,
+                _url(cursor, chunk_end),
+                timeout=(8, TIMEOUT),
+                retries=max(1, int(retries)),
+                total_timeout=TOTAL_TIMEOUT,
+            )
+            if not text.strip():
+                raise RuntimeError(f"empty Statcast CSV for {cursor}..{chunk_end}")
+            frame = pd.read_csv(StringIO(text))
+            if "game_pk" not in frame.columns:
+                raise RuntimeError("Statcast response missing game_pk")
+            chunks.append(frame)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Statcast request failed for {cursor}..{chunk_end}: {exc}"
+            ) from exc
         cursor = chunk_end + timedelta(days=1)
 
     if not chunks:
