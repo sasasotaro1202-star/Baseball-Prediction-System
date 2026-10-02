@@ -4,6 +4,7 @@ Design goals:
 - Never wait indefinitely on a remote server.
 - Distinguish connect timeout from read timeout.
 - Retry transient HTTP responses and network/read timeouts with short bounded backoff.
+- Bound the entire request/retry budget, not only each socket read.
 - Never honor an unbounded server-provided Retry-After delay.
 - Keep failure explicit so PIT-critical callers can fail closed instead of inventing data.
 
@@ -20,6 +21,7 @@ from requests.adapters import HTTPAdapter
 
 DEFAULT_CONNECT_TIMEOUT = 8.0
 DEFAULT_READ_TIMEOUT = 45.0
+DEFAULT_TOTAL_TIMEOUT = 180.0
 DEFAULT_RETRIES = 4
 MAX_BACKOFF_SECONDS = 8.0
 RETRYABLE_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
@@ -57,6 +59,31 @@ def _timeouts(timeout: int | float | tuple[float, float] | None) -> tuple[float,
     return connect, read
 
 
+def _total_timeout(timeout: int | float | None) -> float:
+    if timeout is None:
+        return DEFAULT_TOTAL_TIMEOUT
+    value = float(timeout)
+    if value <= 0:
+        raise ValueError("total HTTP timeout must be strictly positive")
+    return value
+
+
+def _attempt_timeout(
+    timeout_pair: tuple[float, float],
+    remaining: float,
+) -> tuple[float, float]:
+    """Scale connect/read timeouts to fit inside the remaining total budget."""
+    if remaining >= sum(timeout_pair):
+        return timeout_pair
+    if remaining <= 0:
+        raise ValueError("no total HTTP timeout budget remains")
+    total = sum(timeout_pair)
+    return (
+        remaining * timeout_pair[0] / total,
+        remaining * timeout_pair[1] / total,
+    )
+
+
 def _backoff(attempt: int) -> float:
     # Deterministic bounded backoff: no jitter so CI/replay behaviour remains auditable.
     return min(MAX_BACKOFF_SECONDS, 0.75 * (2**attempt))
@@ -71,33 +98,47 @@ def request(
     headers: Mapping[str, str] | None = None,
     timeout: int | float | tuple[float, float] | None = None,
     retries: int = DEFAULT_RETRIES,
+    total_timeout: int | float | None = None,
 ) -> requests.Response:
     """Perform a bounded HTTP request with retryable-error recovery.
 
-    A request has at most retries network/HTTP attempts. Connect and read
+    A request has at most retries network/HTTP attempts and at most
+    total_timeout wall-clock budget (including backoff). Connect and read
     timeouts are explicit. 4xx errors other than the retryable subset are
     surfaced immediately. Retry-After is never allowed to create an
     unbounded sleep.
     """
     attempts = max(1, int(retries))
     timeout_pair = _timeouts(timeout)
+    total_budget = _total_timeout(total_timeout)
+    deadline = time.monotonic() + total_budget
     last_error: Exception | None = None
+    attempts_made = 0
 
     for attempt in range(attempts):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        attempts_made += 1
+        attempt_timeout = _attempt_timeout(timeout_pair, remaining)
+
         try:
             response = sess.request(
                 method.upper(),
                 url,
                 params=params,
                 headers=dict(headers or {}),
-                timeout=timeout_pair,
+                timeout=attempt_timeout,
             )
             if response.status_code in RETRYABLE_STATUS and attempt + 1 < attempts:
                 last_error = requests.HTTPError(
                     f"HTTP {response.status_code} for {url}",
                     response=response,
                 )
-                time.sleep(_backoff(attempt))
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                time.sleep(min(_backoff(attempt), remaining))
                 continue
             response.raise_for_status()
             return response
@@ -105,17 +146,23 @@ def request(
             last_error = exc
             if attempt + 1 >= attempts:
                 break
-            time.sleep(_backoff(attempt))
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(_backoff(attempt), remaining))
         except requests.HTTPError as exc:
             last_error = exc
             status = getattr(exc.response, "status_code", None)
             if attempt + 1 >= attempts or status not in RETRYABLE_STATUS:
                 break
-            time.sleep(_backoff(attempt))
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(_backoff(attempt), remaining))
 
     raise RuntimeError(
-        f"bounded HTTP request failed after {attempts} attempts: "
-        f"{method.upper()} {url}: {last_error}"
+        f"bounded HTTP request failed after {attempts_made}/{attempts} attempts "
+        f"within {total_budget:.1f}s: {method.upper()} {url}: {last_error}"
     ) from last_error
 
 
@@ -127,6 +174,7 @@ def get_json(
     *,
     headers: Mapping[str, str] | None = None,
     retries: int = DEFAULT_RETRIES,
+    total_timeout: int | float | None = None,
 ):
     return request(
         sess,
@@ -135,6 +183,7 @@ def get_json(
         headers=headers,
         timeout=timeout,
         retries=retries,
+        total_timeout=total_timeout,
     ).json()
 
 
@@ -146,6 +195,7 @@ def get_text(
     *,
     headers: Mapping[str, str] | None = None,
     retries: int = DEFAULT_RETRIES,
+    total_timeout: int | float | None = None,
 ) -> str:
     return request(
         sess,
@@ -154,4 +204,5 @@ def get_text(
         headers=headers,
         timeout=timeout,
         retries=retries,
+        total_timeout=total_timeout,
     ).text
