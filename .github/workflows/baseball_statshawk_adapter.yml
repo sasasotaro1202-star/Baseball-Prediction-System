@@ -5,7 +5,10 @@ on:
     paths:
       - 'research/statshawk_mlb_adapter.py'
       - 'tests/test_statshawk_mlb_adapter.py'
+      - 'research/statshawk_rest_client.py'
+      - 'tests/test_statshawk_rest_client.py'
       - '.github/workflows/baseball_statshawk_adapter.yml'
+      - '.github/workflows/baseball_statshawk_rest_connectivity.yml'
   workflow_dispatch:
 
 permissions:
@@ -27,8 +30,8 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install test dependencies
-        run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 pytest
+        run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 pytest requests
       - name: Compile adapter
-        run: python -m py_compile research/statshawk_mlb_adapter.py tests/test_statshawk_mlb_adapter.py
+        run: python -m py_compile research/statshawk_mlb_adapter.py research/statshawk_rest_client.py tests/test_statshawk_mlb_adapter.py tests/test_statshawk_rest_client.py
       - name: Run focused tests
-        run: python -m pytest -q tests/test_statshawk_mlb_adapter.py
+        run: python -m pytest -q tests/test_statshawk_mlb_adapter.py tests/test_statshawk_rest_client.py
