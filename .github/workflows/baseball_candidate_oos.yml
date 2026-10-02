@@ -89,7 +89,7 @@ jobs:
             fi
             downloaded=0
             for attempt in 1 2 3; do
-              if gh release download pbp --repo armstjc/Nippon-Baseball-Data-Repository --pattern "${year}-*_pbp.csv" --dir data --clobber; then
+              if timeout --signal=TERM --kill-after=15s 180s gh release download pbp --repo armstjc/Nippon-Baseball-Data-Repository --pattern "${year}-*_pbp.csv" --dir data --clobber; then
                 downloaded=1
                 break
               fi
