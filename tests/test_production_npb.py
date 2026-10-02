@@ -348,3 +348,14 @@ def test_pregame_only_limits_prediction_window_to_upcoming_60_minutes(monkeypatc
     )
     assert len(rows) == 1
     assert bool(rows.iloc[0]["preferred_30m_met"]) is False
+
+
+def test_direct_npb_production_entrypoint_enforces_registry_gate(tmp_path, monkeypatch):
+    import production_npb as p
+
+    called = []
+    monkeypatch.setattr(p, "build_target_rows", lambda *args, **kwargs: called.append(True))
+    result = p.predict("2026-10-02", str(tmp_path))
+    assert result["execution_status"] == "BLOCKED_PRODUCTION_GATE"
+    assert result["predictions"] == []
+    assert called == []
