@@ -32,6 +32,11 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install CI dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install -r requirements-ci.txt
+
       - name: Compile discovery path
         run: |
           set -euo pipefail
