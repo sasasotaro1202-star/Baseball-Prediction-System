@@ -46,8 +46,8 @@ jobs:
               raise SystemExit("unexpected scheduler status: " + str(obj.get("status")))
           for row in obj.get("due_games", []):
               lead = float(row["lead_minutes"])
-              if not 50.0 < lead <= 70.0:
-                  raise SystemExit("automatic scheduler selected a game outside the 50-70 minute window")
+              if not 50.0 < lead <= 60.0:
+                  raise SystemExit("automatic scheduler selected a game outside the 50-60 minute window")
               if row.get("prediction_source") != "AUTO_60M":
                   raise SystemExit("automatic scheduler emitted an unexpected prediction source")
               if lead <= 0.0:
@@ -59,8 +59,9 @@ jobs:
               raise SystemExit("research candidate leaked into production due_games")
           if any(row.get("prediction_eligibility") != "RESEARCH_ONLY_BLOCKED_UNTIL_OFFICIAL_STARTERS" for row in research_due):
               raise SystemExit("research candidate has unsafe production eligibility")
+          all_due_dates = sorted(set(due_dates) | set(research_shadow_due_dates))
           Path("due_dates.txt").write_text(
-              "\n".join(str(x) for x in due_dates) + ("\n" if due_dates else ""),
+              "\n".join(str(x) for x in all_due_dates) + ("\n" if all_due_dates else ""),
               encoding="utf-8",
           )
           Path("research_shadow_due_dates.txt").write_text(
@@ -138,9 +139,9 @@ jobs:
           from pathlib import Path
           obj = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
           status = obj.get("execution_status")
-          if status not in {"EXECUTED", "BLOCKED_STARTERS", "NO_DUE_PREGAME_GAMES"}:
-              raise SystemExit("unexpected production status: " + str(status))
-          if status != "EXECUTED":
+          if status not in {"EXECUTED", "RESEARCH_SHADOW_EXECUTED", "BLOCKED_STARTERS", "NO_DUE_PREGAME_GAMES"}:
+              raise SystemExit("unexpected prediction status: " + str(status))
+          if status not in {"EXECUTED", "RESEARCH_SHADOW_EXECUTED"}:
               print(json.dumps({"status": status, "block_reason": obj.get("block_reason")}, ensure_ascii=False))
               continue
           for pred in obj.get("predictions", []):
@@ -204,7 +205,7 @@ jobs:
       - name: Persist new experience snapshots
         run: |
           set -euo pipefail
-          if [ ! -d data/experience/predictions ]; then
+          if [ ! -d data/experience/predictions ] && [ ! -d data/experience/research_shadow ]; then
             exit 0
           fi
           git config user.name "github-actions[bot]"
@@ -237,7 +238,7 @@ jobs:
               fi
             done < due_dates.txt
 
-            git add data/experience/predictions/
+            git add data/experience/predictions/ data/experience/research_shadow/
             if git diff --cached --quiet; then
               echo "No new experience snapshots to commit."
               exit 0
