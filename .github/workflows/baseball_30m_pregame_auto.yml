@@ -16,6 +16,10 @@ jobs:
   pregame:
     runs-on: ubuntu-latest
     timeout-minutes: 75
+    env:
+      PYTHONPATH: .
+      PYTHONUNBUFFERED: '1'
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
     steps:
       - name: Checkout main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
