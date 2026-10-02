@@ -320,8 +320,20 @@ def _is_legacy_scheduled_cutoff(row: Mapping[str, Any]) -> bool:
         "prediction_deadline_utc",
         "preferred_prediction_cutoff_utc",
     )
-    if any(key in row for key in modern_markers):
-        return False
+    # DataFrame/dict normalization can materialize absent columns as NaN.
+    # Treat a marker as present only when it carries an actual non-null value;
+    # a mere key presence must not reclassify a legacy row as modern PIT data.
+    for key in modern_markers:
+        value = row.get(key)
+        if value is None:
+            continue
+        try:
+            if bool(pd.isna(value)):
+                continue
+        except (TypeError, ValueError):
+            pass
+        if str(value).strip():
+            return False
     return generated < cutoff
 
 

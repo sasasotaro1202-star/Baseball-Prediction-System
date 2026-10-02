@@ -105,6 +105,46 @@ def test_empty_result_cache_is_refreshed(tmp_path, monkeypatch):
     assert len(pd.read_csv(cache)) == 1
 
 
+def test_legacy_scheduled_cutoff_survives_dataframe_materialization(tmp_path, monkeypatch):
+    monkeypatch.setattr(exp, "PRED_DIR", tmp_path / "experience" / "predictions")
+    pred_dir = tmp_path / "experience" / "predictions"
+    pred_dir.mkdir(parents=True, exist_ok=True)
+
+    legacy = {
+        "game_id": "NPB-2026-10-01-legacy",
+        "datetime_jst": "2026-10-01T18:00:00+09:00",
+        "prediction_cutoff_utc": "2026-10-01T08:30:00+00:00",
+        "prediction_generated_at": "2026-10-01T03:52:26+00:00",
+        "starter_evidence_observed_at_utc": "2026-10-01T03:49:31+00:00",
+        "pit_status": "PASS",
+        "home": "阪神タイガース",
+        "away": "読売ジャイアンツ",
+        "home_win_pct": 44.3064,
+        "draw_pct": 2.6478,
+        "away_win_pct": 53.0458,
+        "low_pct": 52.4146,
+        "high_pct": 47.5854,
+        "lambda_home": 3.1,
+        "lambda_away": 3.4,
+    }
+    modern = {
+        **legacy,
+        "game_id": "NPB-2026-10-01-modern",
+        "prediction_cutoff_utc": "2026-10-01T03:45:00+00:00",
+        "prediction_generated_at": "2026-10-01T03:52:26+00:00",
+        "lead_minutes_at_generation": 852.0,
+        "prediction_deadline_utc": "2026-10-01T08:30:00+00:00",
+        "preferred_prediction_cutoff_utc": "2026-10-01T08:30:00+00:00",
+    }
+    (pred_dir / "2026-10-01.jsonl").write_text(
+        json.dumps(legacy, ensure_ascii=False) + "\n"
+        + json.dumps(modern, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+    loaded = exp._load_predictions()
+    assert set(loaded["game_id"]) == {"NPB-2026-10-01-modern"}
+
 def test_multiclass_ece_uses_confidence_vs_accuracy():
     probabilities = np.array([
         [0.60, 0.05, 0.35],
