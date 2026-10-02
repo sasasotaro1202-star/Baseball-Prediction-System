@@ -17,6 +17,8 @@ from urllib.parse import urlencode
 import pandas as pd
 import requests
 
+from core.http import get_text as http_get_text
+
 ROOT_URL = "https://baseballsavant.mlb.com/statcast_search/csv"
 TIMEOUT = 60
 MAX_DAYS_PER_REQUEST = 7
@@ -70,9 +72,12 @@ def fetch_statcast(
         last_error: Exception | None = None
         for attempt in range(retries):
             try:
-                resp = sess.get(_url(cursor, chunk_end), timeout=TIMEOUT)
-                resp.raise_for_status()
-                text = resp.text
+                text = http_get_text(
+                    sess,
+                    _url(cursor, chunk_end),
+                    timeout=(8, TIMEOUT),
+                    retries=retries,
+                )
                 if not text.strip():
                     raise RuntimeError(f"empty Statcast CSV for {cursor}..{chunk_end}")
                 frame = pd.read_csv(StringIO(text))
