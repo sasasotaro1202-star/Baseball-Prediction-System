@@ -337,7 +337,7 @@ def test_due_games_supports_a_60m_automatic_slot_without_repeating_it(monkeypatc
     )
 
     # 60 minutes before 18:00 JST = 09:00 UTC.
-    now = datetime(2026, 10, 1, 9, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 10, 1, 8, 0, tzinfo=timezone.utc)
     result = scheduler.due_games(
         now_utc=now,
         min_lead_minutes=50.0,
@@ -396,7 +396,7 @@ def test_manual_or_other_source_is_not_blocked_by_automatic_slot(monkeypatch):
         "_archived_prediction_sources",
         lambda target_date: {("読売ジャイアンツ", "阪神タイガース", "AUTO_60M")},
     )
-    now = datetime(2026, 10, 1, 9, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 10, 1, 8, 0, tzinfo=timezone.utc)
 
     manual = scheduler.due_games(
         now_utc=now,

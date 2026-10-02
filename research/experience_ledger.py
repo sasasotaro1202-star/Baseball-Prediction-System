@@ -377,7 +377,17 @@ def archive_production_output(input_json: str | Path, *, run_id: str | None = No
         if not pred.get("game_id") or not pred.get("prediction_cutoff_utc"):
             raise ValueError("prediction row missing game_id or cutoff")
         record = dict(pred)
-        _validate_prediction_time_contract(record)
+        legacy_scheduled_cutoff = _is_legacy_scheduled_cutoff(record)
+        if not legacy_scheduled_cutoff:
+            _validate_prediction_time_contract(record)
+        else:
+            # Preserve pre-v18 scheduled-cutoff rows for audit/history. They are
+            # quarantined from Experience reuse later by _load_predictions().
+            print(json.dumps({
+                "event": "EXPERIENCE_LEGACY_TIMING_QUARANTINE",
+                "game_id": str(record.get("game_id") or ""),
+                "reason": "pre-v18 scheduled cutoff is not an actual observed prediction cutoff",
+            }, ensure_ascii=False))
         _validate_prediction_probability_contract(record)
         # Canonical target identity is preserved for per-target metrics. Prefer
         # an explicit target/competition/league field; the NPB production
@@ -830,7 +840,8 @@ def reconcile() -> dict[str, Any]:
 
     keep = [
         "prediction_id", "game_id", "target", "competition_id", "date_key", "datetime_jst", "prediction_cutoff_utc",
-        "prediction_generated_at", "home", "away", "home_starter", "away_starter",
+        "prediction_generated_at", "prediction_source", "prediction_schedule", "prediction_target_lead_minutes",
+        "home", "away", "home_starter", "away_starter",
         "regime", "score_regime", "model", "situation_tags",
         "home_win_pct", "draw_pct", "away_win_pct", "predicted_outcome",
         "actual_outcome", "outcome_correct", "logloss", "brier",
@@ -927,6 +938,7 @@ def reconcile() -> dict[str, Any]:
         "by_regime": {},
         "by_target": {},
         "by_prediction_target": _prediction_target_metrics(experience),
+        "by_prediction_source": {},
         "by_dominant_expert": {},
         "timing_30m": _timing_30m_metrics(experience),
         "revision_intelligence": _revision_metrics(experience),
@@ -957,6 +969,19 @@ def reconcile() -> dict[str, Any]:
             "logloss": float(group["logloss"].mean()),
             "brier": float(group["brier"].mean()),
         }
+    if "prediction_source" in experience.columns:
+        for key, group in experience.groupby("prediction_source", dropna=False):
+            summary["by_prediction_source"][str(key)] = {
+                "rows": int(len(group)),
+                "accuracy": float(group["outcome_correct"].mean()),
+                "logloss": float(group["logloss"].mean()),
+                "brier": float(group["brier"].mean()),
+                "top4_exact_hit_rate": float(group["top4_hit"].mean()),
+                "mean_actual_lead_minutes": float(pd.to_numeric(
+                    group.get("prediction_actual_lead_minutes"), errors="coerce"
+                ).dropna().mean()) if "prediction_actual_lead_minutes" in group else None,
+            }
+
     for key, group in experience.groupby("dominant_classification_expert", dropna=False):
         summary["by_dominant_expert"][str(key)] = {
             "rows": int(len(group)),

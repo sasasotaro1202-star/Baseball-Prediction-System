@@ -4,8 +4,11 @@ import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
+import sys
 
-from core.atomic_io import atomic_write_json
+# Allow direct execution as `python scripts/...py` from the repository root.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from research.target_strategy import as_dict, standard_target_strategies
 
 

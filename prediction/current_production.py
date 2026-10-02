@@ -147,6 +147,31 @@ def predict_current(
 
         # Add an immutable runtime identity to every current-production result.
         out = dict(result)
+        requested_at = datetime.now(timezone.utc).isoformat()
+        out["prediction_request_mode"] = "on_demand"
+        out["prediction_requested_at_utc"] = requested_at
+        for pred in out.get("predictions", []) if isinstance(out.get("predictions"), list) else []:
+            if not isinstance(pred, dict):
+                continue
+            pred.setdefault("prediction_source", "MANUAL_LIVE")
+            pred.setdefault("prediction_schedule", "on_demand")
+            pred.setdefault("prediction_request_mode", "on_demand")
+            try:
+                generated = datetime.fromisoformat(
+                    str(pred["prediction_generated_at"]).replace("Z", "+00:00")
+                )
+                game_time = datetime.fromisoformat(
+                    str(pred["datetime_jst"]).replace("Z", "+00:00")
+                )
+                if generated.tzinfo is not None and game_time.tzinfo is not None:
+                    pred.setdefault(
+                        "prediction_target_lead_minutes",
+                        round((game_time - generated).total_seconds() / 60.0, 3),
+                    )
+            except Exception:
+                # Prediction-time contract validation remains the authoritative
+                # fail-closed guard; metadata annotation must never invent a lead.
+                pass
         out["current_production_runtime"] = {
             "league": league.upper(),
             "model_version": info["model_version"],

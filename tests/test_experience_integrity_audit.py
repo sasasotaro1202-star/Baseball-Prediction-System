@@ -120,7 +120,7 @@ def test_experience_integrity_audit_checks_starter_provenance(tmp_path):
 
 def test_audit_includes_generation_and_source_head_metadata(tmp_path, monkeypatch):
     monkeypatch.setenv("GITHUB_SHA", "abc123")
-    result = audit.audit_prediction_directory(tmp_path / "missing")
+    result = audit_prediction_directory(tmp_path / "missing")
     assert result["status"] == "NO_PREDICTIONS"
     assert "generated_at_utc" in result
     assert result["source_head"] == "abc123"
