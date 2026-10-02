@@ -94,7 +94,12 @@ jobs:
           assert p, "production output missing"
           d = json.load(open(p[-1], encoding="utf-8"))
           assert d["execution_status"] in {"EXECUTED", "BLOCKED_PRODUCTION_GATE", "BLOCKED_STARTERS", "NO_FUTURE_GAMES"}
-          if d["execution_status"] == "BLOCKED_STARTERS":
+          if d["execution_status"] == "BLOCKED_PRODUCTION_GATE":
+              assert d["pit_status"] == "NOT_RUN"
+              assert d["starter_gate"] == "NOT_RUN"
+              assert d["model_status"] == "NOT_RUN"
+              assert not d["predictions"]
+          elif d["execution_status"] == "BLOCKED_STARTERS":
               assert d["pit_status"] == "NOT_RUN"
               assert d["starter_gate"] == "BLOCKED"
               assert not d["predictions"]
