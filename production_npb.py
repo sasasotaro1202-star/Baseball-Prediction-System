@@ -963,6 +963,9 @@ def predict(
     *,
     pregame_only: bool = False,
     research_shadow: bool = False,
+    minimum_lead_minutes: float | None = None,
+    maximum_lead_minutes: float | None = None,
+    preferred_lead_minutes: float | None = None,
 ) -> dict:
     # Production remains fail-closed. Explicit research_shadow mode is a
     # separate, auditable lane and never makes current production callable.
@@ -980,11 +983,31 @@ def predict(
         atomic_write_json(out, result)
         return result
     try:
+        effective_minimum_lead = (
+            float(minimum_lead_minutes)
+            if minimum_lead_minutes is not None
+            else (0.0 if pregame_only else 30.0)
+        )
+        effective_maximum_lead = (
+            float(maximum_lead_minutes)
+            if maximum_lead_minutes is not None
+            else (60.0 if pregame_only else None)
+        )
+        effective_preferred_lead = (
+            float(preferred_lead_minutes)
+            if preferred_lead_minutes is not None
+            else (60.0 if pregame_only else 30.0)
+        )
+        if effective_minimum_lead < 0.0 or (
+            effective_maximum_lead is not None
+            and effective_maximum_lead < effective_minimum_lead
+        ):
+            raise ValueError("invalid prediction lead-time bounds")
         games=build_target_rows(
             target_date,
-            minimum_lead_minutes=(0.0 if pregame_only else 30.0),
-            maximum_lead_minutes=(60.0 if pregame_only else None),
-            preferred_lead_minutes=(60.0 if pregame_only else 30.0),
+            minimum_lead_minutes=effective_minimum_lead,
+            maximum_lead_minutes=effective_maximum_lead,
+            preferred_lead_minutes=effective_preferred_lead,
         )
     except RuntimeError as exc:
         # Missing/insufficient official starter evidence is a valid fail-closed
@@ -1236,7 +1259,14 @@ def main():
     )
     args=ap.parse_args()
     print(json.dumps(
-        predict(args.date,args.data_dir,pregame_only=args.pregame_only,research_shadow=args.research_shadow),
+        predict(
+            args.date,
+            args.data_dir,
+            pregame_only=args.pregame_only,
+            research_shadow=args.research_shadow,
+            minimum_lead_minutes=(0.0 if args.research_shadow and not args.pregame_only else None),
+            preferred_lead_minutes=(60.0 if args.pregame_only else None),
+        ),
         ensure_ascii=False,
         indent=2,
     ))

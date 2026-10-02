@@ -6,7 +6,9 @@ on:
       - main
     paths:
       - "data/experience/predictions/**"
+      - "data/experience/research_shadow/predictions/**"
       - "research/experience_ledger.py"
+      - "research/shadow_experience.py"
       - "research/experience_rollup.py"
       - "research/npb_official_results.py"
       - ".github/workflows/npb_postgame_experience.yml"
