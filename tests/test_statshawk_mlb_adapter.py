@@ -167,3 +167,16 @@ def test_nonfinite_score_fails_closed():
 
     with pytest.raises(ValueError, match="home_score_nonfinite"):
         normalize_matchups(payload, retrieved_at="2026-10-02T04:00:00Z")
+
+
+def test_malformed_game_row_fails_closed():
+    payload = {
+        "games": [
+            {"contest": "cst_ok", "status": "Final", "scheduled_at": "2026-09-30T18:00:00Z",
+             "home": {"team_id": "h"}, "away": {"team_id": "a"}},
+            "not-an-object",
+        ]
+    }
+
+    with pytest.raises(ValueError, match=r"games\[1\]_must_be_object"):
+        normalize_matchups(payload, retrieved_at="2026-10-02T04:00:00Z")
