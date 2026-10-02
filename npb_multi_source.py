@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 import numpy as np
 import pandas as pd
-import requests
+from core.http import get_json as http_get_json, get_text as http_get_text, session as http_session
 
 SPAIA = "https://spaia.jp/baseball/npb/api"
 NPB = "https://npb.jp"
@@ -34,7 +34,10 @@ WORKERS = int(os.getenv("NPB_DOWNLOAD_WORKERS", "6"))
 BUDGET_SEC = float(os.getenv("NPB_COLLECTION_BUDGET_SEC", "1560"))
 SAFETY_SEC = float(os.getenv("NPB_COLLECTION_SAFETY_SEC", "90"))
 DEADLINE = time.monotonic() + max(60.0, BUDGET_SEC - SAFETY_SEC)
-TIMEOUT = 30
+TIMEOUT = max(10, int(os.getenv("NPB_MULTI_HTTP_TIMEOUT", "45")))
+HTTP_CONNECT_TIMEOUT = max(2, int(os.getenv("NPB_MULTI_CONNECT_TIMEOUT", "8")))
+HTTP_RETRIES = max(1, int(os.getenv("NPB_MULTI_HTTP_RETRIES", "4")))
+HTTP_SESSION = http_session(user_agent="Baseball-Prediction-System/npb-multi-source")
 DATA = Path("data")
 CP = DATA / "checkpoints"
 SEASON_DIR = DATA / "npb_games"
@@ -60,14 +63,18 @@ ALIASES = {
 "オリックス":"オリックス・バファローズ","オリックス・バファローズ":"オリックス・バファローズ"}
 PARKS = {"神　宮":(35.6827,139.6841),"神宮":(35.6827,139.6841),"東京ドーム":(35.7056,139.7519),"横　浜":(35.4431,139.6400),"横浜":(35.4431,139.6400),"バンテリンドーム":(35.1859,136.9470),"マツダスタジアム":(34.3916,132.4848),"甲子園":(34.7214,135.3616),"エスコンＦ":(43.0151,141.4094),"ベルーナドーム":(35.7684,139.4745),"ZOZOマリン":(35.6456,140.0307),"楽天モバイル":(38.2560,140.9014),"京セラD大阪":(34.6694,135.4761),"ほっと神戸":(34.6795,135.0980),"みずほPayPay":(33.5950,130.3620)}
 def near_deadline(): return time.monotonic() >= DEADLINE
-def get_json(url, params=None, retries=4):
-    last=None
-    for i in range(retries):
-        if near_deadline(): raise TimeoutError("collection deadline reached")
-        try:
-            r=requests.get(url,params=params,timeout=TIMEOUT,headers={"User-Agent":"Mozilla/5.0 baseball-backtest"}); r.raise_for_status(); return r.json()
-        except Exception as e: last=e; time.sleep(min(1.5*(i+1),5))
-    raise RuntimeError(f"request failed: {url}: {last}")
+def get_json(url, params=None, retries=HTTP_RETRIES):
+    if near_deadline():
+        raise TimeoutError("collection deadline reached")
+    return http_get_json(
+        HTTP_SESSION,
+        url,
+        params=params,
+        timeout=(HTTP_CONNECT_TIMEOUT, TIMEOUT),
+        retries=max(1, int(retries)),
+    )
+
+
 def official_name(x): return ALIASES.get(str(x or '').strip(),str(x or '').strip())
 def _norm_key(k): return re.sub(r'[^a-z0-9]','',str(k).lower())
 def _first(g,*names,default=None):
@@ -340,8 +347,18 @@ def official_audit(year):
     out=[];DATA.mkdir(exist_ok=True);urls=[f'{NPB}/bis/{year}/stats/std_c.html',f'{NPB}/bis/{year}/stats/std_p.html',f'{NPB}/bis/{year}/stats/tmb_c.html',f'{NPB}/bis/{year}/stats/tmb_p.html',f'{NPB}/bis/{year}/stats/tmp_c.html',f'{NPB}/bis/{year}/stats/tmp_p.html']
     for url in urls:
         if near_deadline():break
-        try:r=requests.get(url,timeout=TIMEOUT,headers={'User-Agent':'Mozilla/5.0 baseball-backtest'});r.raise_for_status();(DATA/f'official_{year}_'+url.rsplit('/',1)[-1]).write_text(r.text,encoding='utf-8',errors='ignore');out.append({'url':url,'status':'ok','bytes':len(r.content)})
-        except Exception as e:out.append({'url':url,'status':'skip','error':str(e)[:300]})
+        try:
+            text=http_get_text(
+                HTTP_SESSION,
+                url,
+                timeout=(HTTP_CONNECT_TIMEOUT, TIMEOUT),
+                retries=HTTP_RETRIES,
+            )
+            path=DATA/f'official_{year}_'+url.rsplit('/',1)[-1]
+            path.write_text(text,encoding='utf-8',errors='ignore')
+            out.append({'url':url,'status':'ok','bytes':len(text.encode('utf-8'))})
+        except Exception as e:
+            out.append({'url':url,'status':'skip','error':str(e)[:300]})
     atomic_csv(pd.DataFrame(out),DATA/'source_official_npb_audit.csv')
 def add_weather(d,year):
     if d.empty or near_deadline():return d
