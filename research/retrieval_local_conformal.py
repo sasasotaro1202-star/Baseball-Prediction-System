@@ -68,6 +68,7 @@ def retrieval_local_conformal_sets(
     features: Any,
     prediction_times: Sequence[Any],
     outcome_confirmed_at: Sequence[Any],
+    game_ids: Sequence[Any] | None = None,
     *,
     alpha: float = 0.10,
     min_calibration: int = 30,
@@ -103,6 +104,15 @@ def retrieval_local_conformal_sets(
     p = _probabilities(probabilities, n)
     labels = _labels(y, n)
     X = _features(features, n)
+    games = None if game_ids is None else np.asarray(game_ids, dtype=object).reshape(-1)
+    if games is not None:
+        if len(games) != n:
+            raise ValueError("game_ids must align with prediction_times")
+        normalized_games = np.asarray([str(v).strip() for v in games], dtype=object)
+        if np.any(normalized_games == "") or np.isin(normalized_games, ["nan", "None"]).any():
+            raise ValueError("game_ids must be non-empty")
+    else:
+        normalized_games = None
 
     if not pt.is_monotonic_increasing:
         raise ValueError("prediction_times must be monotonically non-decreasing")
@@ -134,6 +144,26 @@ def retrieval_local_conformal_sets(
             (pt.iloc[prior] < pt.iloc[i]).to_numpy()
             & (mature.iloc[prior] <= pt.iloc[i]).to_numpy()
         ]
+
+        if normalized_games is not None and len(eligible) > 1:
+            # A baseball game may have multiple pregame revisions. Keep only
+            # the latest mature snapshot for each prior game before retrieval,
+            # matching the game-level experience canonicalization contract.
+            order = sorted(
+                eligible.tolist(),
+                key=lambda j: (
+                    str(normalized_games[j]),
+                    pt.iloc[j],
+                    str(j),
+                ),
+            )
+            latest_by_game = {}
+            for j in order:
+                latest_by_game[str(normalized_games[j])] = int(j)
+            eligible = np.asarray(
+                sorted(latest_by_game.values(), key=lambda j: (pt.iloc[j], str(j))),
+                dtype=int,
+            )
 
         if len(eligible) > int(max_pool):
             eligible = eligible[-int(max_pool):]
@@ -198,6 +228,7 @@ def retrieval_local_conformal_sets(
             "outcome_confirmed_at_le_target_prediction_time": True,
             "same_prediction_time_excluded": True,
             "current_outcome_excluded": True,
+            "same_game_revisions_collapsed": normalized_games is not None,
             "feature_scaling_uses_only_temporally_eligible_pool": True,
             "bounded_retrieval_pool": True,
             "bounded_calibration": True,
