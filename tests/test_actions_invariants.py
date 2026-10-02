@@ -150,7 +150,7 @@ def test_chat_async_dispatcher_is_short_lived_and_allowlisted():
     assert "issue_comment:" in text
     assert "github.event.issue.number == 74" in text
     assert "github.event.comment.user.login == 'sasasotaro1202-star'" in text
-    assert "timeout-minutes: 5" in text
+    assert "timeout-minutes: 2" in text
 
     allowed = (
         "/baseball-async closed-loop",
@@ -162,7 +162,7 @@ def test_chat_async_dispatcher_is_short_lived_and_allowlisted():
 
     assert 'case "${COMMAND}" in' in text
     assert 'gh workflow run "${TARGET_WORKFLOW}" --repo "${GH_REPO}" --ref main' in text
-    assert "does not wait for the long-running workflow" in text
+    assert "No run polling or completion wait is performed." in text
     assert "No matching trusted async command; no workflow was dispatched." in text
 
     # Arbitrary shell/workflow execution must not be possible through comment text.
@@ -243,3 +243,12 @@ def test_24h_research_autopilot_uses_current_commit_snapshot_and_no_push_trigger
     assert text.count("ref: ${{ github.sha }}") == 5
     assert text.count("research_snapshot_sha=$actual") == 4
     assert text.count("Verify research snapshot") == 4
+
+def test_chat_async_dispatcher_never_polls_workflow_state():
+    text = (ROOT / ".github" / "workflows" / "baseball_chat_async_dispatch.yml").read_text(encoding="utf-8")
+    dispatch = text[text.index("- name: Dispatch heavy work immediately"):]
+    assert "gh run list" not in dispatch
+    assert "gh run view" not in dispatch
+    assert "sleep " not in dispatch
+    assert "workflow run" not in dispatch
+    assert "timeout --signal=TERM --kill-after=3s 10s" in dispatch
