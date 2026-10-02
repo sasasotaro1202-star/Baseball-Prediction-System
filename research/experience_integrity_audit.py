@@ -60,6 +60,8 @@ def audit_prediction_directory(pred_dir: str | Path = DEFAULT_PRED_DIR) -> dict[
     root = Path(pred_dir)
     if not root.exists():
         return {
+            "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+            "source_head": str(__import__("os").environ.get("GITHUB_SHA") or "unknown"),
             "status": "NO_PREDICTIONS",
             "prediction_files": 0,
             "prediction_rows": 0,

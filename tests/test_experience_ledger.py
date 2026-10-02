@@ -132,6 +132,7 @@ def test_legacy_scheduled_cutoff_survives_dataframe_materialization(tmp_path, mo
         "game_id": "NPB-2026-10-01-modern",
         "prediction_cutoff_utc": "2026-10-01T03:45:00+00:00",
         "prediction_generated_at": "2026-10-01T03:52:26+00:00",
+        "starter_evidence_observed_at_utc": "2026-10-01T03:44:31+00:00",
         "lead_minutes_at_generation": 852.0,
         "prediction_deadline_utc": "2026-10-01T08:30:00+00:00",
         "preferred_prediction_cutoff_utc": "2026-10-01T08:30:00+00:00",

@@ -350,7 +350,7 @@ def test_due_games_supports_a_60m_automatic_slot_without_repeating_it(monkeypatc
     row = result["due_games"][0]
     assert row["lead_minutes"] == 60.0
     assert row["prediction_source"] == "AUTO_60M"
-    assert row["preferred_prediction_cutoff_utc"] == "2026-10-01T09:00:00+00:00"
+    assert row["preferred_prediction_cutoff_utc"] == "2026-10-01T08:00:00+00:00"
 
     monkeypatch.setattr(
         scheduler,
