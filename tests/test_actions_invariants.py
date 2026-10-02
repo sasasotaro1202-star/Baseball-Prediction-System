@@ -125,6 +125,20 @@ def test_9h_autopilot_hands_off_evidence_to_final_phase_and_hides_no_failures():
     assert "continue-on-error" not in text
 
 
+def test_candidate_oos_fails_closed_on_incomplete_evidence():
+    text = (ROOT / ".github" / "workflows" / "baseball_candidate_oos.yml").read_text(encoding="utf-8")
+    _assert_official_actions_are_immutable(text)
+
+    assert "- name: Verify candidate evidence completeness" in text
+    assert 'test -s results/real_data_validation.json' in text
+    assert 'test -s results/npb_candidate_development.json' in text
+    assert 'test -s results/npb_locked_holdout.json' in text
+    assert 'test -s results/mlb_candidate_development.json' in text
+    assert 'test -s results/mlb_locked_holdout.json' in text
+    assert "if-no-files-found: error" in text
+    assert "if-no-files-found: warn" not in text
+
+
 def test_npb_production_never_scores_started_games_and_accepts_empty_future_state():
     production = (ROOT / ".github" / "workflows" / "npb-production.yml").read_text(encoding="utf-8")
     source = (ROOT / "production_npb.py").read_text(encoding="utf-8")
