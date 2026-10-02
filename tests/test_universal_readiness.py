@@ -54,4 +54,4 @@ def test_unregistered_source_readiness_is_explicitly_fail_closed():
     assert row.oos_status == "UNVERIFIED"
     assert row.production_status == "FAIL"
     assert row.state == "HOLD"
-\n
+
