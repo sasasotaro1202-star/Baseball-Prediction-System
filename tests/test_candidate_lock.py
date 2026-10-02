@@ -60,6 +60,7 @@ def test_candidate_registry_rejects_non_list_history(tmp_path, monkeypatch):
 
 
 def test_record_candidate_uses_atomic_history_persistence(tmp_path, monkeypatch):
+    import json
     import research.candidate_registry as registry
     from research.validation_pipeline import ValidationRecord
 
