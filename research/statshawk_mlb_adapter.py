@@ -61,7 +61,10 @@ def _games(payload: dict[str, Any]) -> list[dict[str, Any]]:
     games = payload.get("games")
     if not isinstance(games, list):
         raise ValueError("games_must_be_list")
-    return [g for g in games if isinstance(g, dict)]
+    for index, game in enumerate(games):
+        if not isinstance(game, dict):
+            raise ValueError(f"games[{index}]_must_be_object")
+    return games
 
 
 def normalize_matchups(payload: Any, *, retrieved_at: str) -> list[dict[str, Any]]:
