@@ -1,9 +1,9 @@
 {
-  "generated_at_utc": "2026-10-02T16:29:58.176047+00:00",
+  "generated_at_utc": "2026-10-02T16:47:50.468132+00:00",
   "status": "UPDATED",
   "prediction_rows": 25,
   "matched_rows_total": 11,
-  "newly_matched_rows": 4,
+  "newly_matched_rows": 0,
   "outcome_accuracy": 0.45454545454545453,
   "logloss": 0.9612425806279653,
   "brier": 0.5681653816037001,
@@ -81,6 +81,7 @@
       "score_mae": 1.8798167576886002
     }
   },
+  "by_prediction_source": {},
   "by_dominant_expert": {
     "classification_weight_CatBoost": {
       "rows": 2,
