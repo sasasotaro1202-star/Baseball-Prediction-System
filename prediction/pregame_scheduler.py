@@ -1,7 +1,7 @@
 """Lightweight, dependency-free pregame scheduler for production baseball predictions.
 
-The automatic production slot targets roughly 60 minutes before first pitch,
-using a bounded 50-70 minute window. It never predicts anything itself.
+The automatic slot targets roughly 60 minutes before first pitch, using a
+bounded 50-60 minute window. It never predicts anything itself.
 Unknown/ambiguous schedule evidence fails closed. Manual/current-production
 prediction calls are independent of this scheduler and may be requested at
 other times.
@@ -24,6 +24,7 @@ from zoneinfo import ZoneInfo
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "config" / "current_production_runtime.json"
 PRED_DIR = ROOT / "data" / "experience" / "predictions"
+SHADOW_PRED_DIR = ROOT / "data" / "experience" / "research_shadow" / "predictions"
 JST = ZoneInfo("Asia/Tokyo")
 NPB_DAY_URL = "https://npb.jp/bis/eng/{year}/games/gm{date}.html"
 HTTP_SESSION = http_session(user_agent="Baseball-Prediction-System/pregame-scheduler")
@@ -236,22 +237,23 @@ def _archived_prediction_keys(target_date: str) -> set[tuple[str, str, str]]:
 
 
 def _archived_prediction_sources(target_date: str) -> set[tuple[str, str, str]]:
-    """Return (home, away, prediction_source) for explicitly labeled snapshots."""
-    path = PRED_DIR / f"{target_date}.jsonl"
-    if not path.exists():
-        return set()
+    """Return labeled automatic sources already archived in either experience lane."""
     out: set[tuple[str, str, str]] = set()
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
+    for base in (PRED_DIR, SHADOW_PRED_DIR):
+        path = base / f"{target_date}.jsonl"
+        if not path.exists():
             continue
-        row = json.loads(line)
-        source = str(row.get("prediction_source") or "").strip()
-        if not source:
-            continue
-        try:
-            out.add((str(row["home"]), str(row["away"]), source))
-        except (KeyError, TypeError):
-            continue
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            source = str(row.get("prediction_source") or "").strip()
+            if not source:
+                continue
+            try:
+                out.add((str(row["home"]), str(row["away"]), source))
+            except (KeyError, TypeError):
+                continue
     return out
 
 
