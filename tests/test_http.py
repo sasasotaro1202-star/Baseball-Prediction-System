@@ -111,3 +111,31 @@ def test_request_does_not_retry_non_transient_client_error(monkeypatch):
 def test_timeout_validation_is_strict():
     with pytest.raises(ValueError):
         http.request(FakeSession([FakeResponse(200)]), "https://example.test", timeout=(8, 0))
+
+
+def test_request_total_deadline_stops_new_attempt_after_budget_is_consumed(monkeypatch):
+    clock = [0.0]
+    sleeps = []
+
+    class DeadlineSession(FakeSession):
+        def request(self, method, url, **kwargs):
+            self.calls.append((method, url, kwargs))
+            clock[0] += 0.9
+            raise requests.ReadTimeout("slow read")
+
+    monkeypatch.setattr(http.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(http.time, "sleep", lambda seconds: (sleeps.append(seconds), clock.__setitem__(0, clock[0] + seconds))[0])
+
+    sess = DeadlineSession([])
+    with pytest.raises(RuntimeError, match="after 1/4 attempts within 1.0s"):
+        http.request(
+            sess,
+            "https://example.test/data",
+            timeout=(8, 45),
+            retries=4,
+            total_timeout=1.0,
+        )
+
+    assert len(sess.calls) == 1
+    assert sum(sess.calls[0][2]["timeout"]) == pytest.approx(1.0)
+    assert sleeps == [pytest.approx(0.1)]
