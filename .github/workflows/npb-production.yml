@@ -46,58 +46,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY' >> "$GITHUB_OUTPUT"
-          import json
-          from pathlib import Path
-          from data.competition_registry import production_eligible
-          from research.target_strategy import as_dict, standard_target_strategies
+          python -c "import json; from pathlib import Path; from data.competition_registry import production_eligible; runtime=json.loads(Path(\"config/current_production_runtime.json\").read_text(encoding=\"utf-8\")); npb=runtime.get(\"runtimes\", {}).get(\"NPB\", {}); registry_ok=production_eligible(\"NPB\"); runtime_ok=(str(npb.get(\"formal_adoption_status\",\"\")).upper()==\"CURRENT_PRODUCTION\" and bool(str(npb.get(\"entrypoint\",\"\")).strip())); eligible=registry_ok and runtime_ok; print(\"eligible=\"+str(eligible).lower()); print(\"reason=\"+(\"\" if eligible else \";\".join(([\"competition_registry_not_production_eligible\"] if not registry_ok else [])+([\"current_production_runtime_not_registered\"] if not runtime_ok else []))))" >> "$GITHUB_OUTPUT"
 
-          runtime = json.loads(Path("config/current_production_runtime.json").read_text(encoding="utf-8"))
-          npb_runtime = runtime.get("runtimes", {}).get("NPB", {})
-          registry_ok = production_eligible("NPB")
-          runtime_ok = (
-              str(npb_runtime.get("formal_adoption_status", "")).upper() == "CURRENT_PRODUCTION"
-              and bool(str(npb_runtime.get("entrypoint", "")).strip())
-          )
-          target_contracts = {k: as_dict(v) for k, v in standard_target_strategies("NPB").items()}
-          eligible = registry_ok and runtime_ok
-          print(f"eligible={'true' if eligible else 'false'}")
-          if not eligible:
-              reasons = []
-              if not registry_ok:
-                  reasons.append("competition_registry_not_production_eligible")
-              if not runtime_ok:
-                  reasons.append("current_production_runtime_not_registered")
-              print(f"reason={';'.join(reasons)}")
-          PY
-
-          if [ "${{ steps.production_gate.outputs.eligible }}" != "true" ]; then
-            mkdir -p results
-            TARGET_DATE="${{ steps.target.outputs.date }}" GITHUB_SHA="${{ github.sha }}" python - <<'PY'
-            import json
-            import os
-            from datetime import datetime, timezone
-            from pathlib import Path
-
-            result = {
-                "schema_version": "npb-production-v1",
-                "target_date": os.environ["TARGET_DATE"],
-                "execution_status": "BLOCKED_PRODUCTION_GATE",
-                "pit_status": "NOT_RUN",
-                "starter_gate": "NOT_RUN",
-                "model_status": "NOT_RUN",
-                "git_commit": os.environ.get("GITHUB_SHA", "unknown"),
-                "predictions": [],
-                "target_strategy_contracts": target_contracts,
-                "block_reason": "NPB production runtime is not currently eligible; external acquisition/model work was intentionally skipped.",
-                "prediction_generated_at": datetime.now(timezone.utc).isoformat(),
-            }
-            Path(f"results/npb_production_{result['target_date']}.json").write_text(
-                json.dumps(result, ensure_ascii=False, indent=2) + "\n",
-                encoding="utf-8",
-            )
-            PY
-          fi
+      - name: Write blocked NPB production output
+        if: steps.production_gate.outputs.eligible != 'true'
+        shell: bash
+        env:
+          TARGET_DATE: ${{ steps.target.outputs.date }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python scripts/write_blocked_npb_output.py
       - name: Install production dependencies
         if: steps.production_gate.outputs.eligible == 'true'
         run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
