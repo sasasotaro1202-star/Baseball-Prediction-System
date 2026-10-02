@@ -22,13 +22,14 @@ import time
 
 import numpy as np
 import pandas as pd
-import requests
+from core.http import request as http_request, session as http_session
 
 _MISSING_TEXT = {"", "nan", "none", "nat"}
 _STARTER_JP = "先発ピッチャー"
 _STARTER_EN = "starting pitcher"
 _NPB_OFFICIAL_MONTHS = tuple(range(3, 12))
 _NPB_OFFICIAL_URL = "https://npb.jp/games/{year}/schedule_{month:02d}_detail.html"
+HTTP_SESSION = http_session(user_agent="Baseball-Prediction-System/npb-pbp-adapter")
 _NPB_TEAM_ALIASES = {
     "巨人": "読売ジャイアンツ", "読売": "読売ジャイアンツ", "読売ジャイアンツ": "読売ジャイアンツ",
     "阪神": "阪神タイガース", "阪神タイガース": "阪神タイガース",
@@ -146,8 +147,7 @@ def _fetch_official_month(year: int, month: int) -> list[dict]:
     last = None
     for attempt in range(3):
         try:
-            r = requests.get(url, timeout=20, headers={"User-Agent": "Baseball-Prediction-System/1.0"})
-            r.raise_for_status()
+            r = http_request(HTTP_SESSION, url, timeout=(8, 45), retries=4)
             enc = (r.apparent_encoding or r.encoding or "utf-8").lower().replace("-", "_")
             if "shift_jis" in enc or "cp932" in enc or "shiftjis" in enc:
                 page_text = r.content.decode("cp932", errors="strict")
@@ -195,8 +195,7 @@ def _spaia_schedule_scores(year: int) -> pd.DataFrame:
     used for target-time predictive features.
     """
     url=f"https://spaia.jp/baseball/npb/api/schedules?Year={int(year)}"
-    r=requests.get(url,timeout=20,headers={"User-Agent":"Baseball-Prediction-System/1.0"})
-    r.raise_for_status()
+    r=http_request(HTTP_SESSION,url,timeout=(8,45),retries=4)
     data=r.json()
     if not data:
         return pd.DataFrame(columns=["game_id","home_score","away_score"])
