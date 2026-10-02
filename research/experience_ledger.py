@@ -21,6 +21,7 @@ import numpy as np
 import pandas as pd
 
 from research.npb_official_results import _fetch_month
+from research.experience_dimensions import add_dimensions
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPERIENCE = ROOT / "data" / "experience"
@@ -905,6 +906,7 @@ def reconcile() -> dict[str, Any]:
         experience = experience.drop_duplicates("prediction_id", keep="last").sort_values(
             ["prediction_cutoff_utc", "game_id"]
         ).reset_index(drop=True)
+    experience = add_dimensions(experience)
     EXPERIENCE.mkdir(parents=True, exist_ok=True)
     experience.to_csv(LEDGER_PATH, index=False)
     LEDGER_JSONL.write_text(
@@ -939,13 +941,70 @@ def reconcile() -> dict[str, Any]:
         "by_target": {},
         "by_prediction_target": _prediction_target_metrics(experience),
         "by_prediction_source": {},
+        "by_league": {},
+        "by_competition": {},
+        "by_phase": {},
         "by_dominant_expert": {},
         "timing_30m": _timing_30m_metrics(experience),
         "revision_intelligence": _revision_metrics(experience),
         "rolling": {},
     }
 
-    # Target/competition is a first-class evaluation axis. Never mix
+        for key, group in experience.groupby("league", dropna=False):
+        summary["by_league"][str(key)] = {
+            "rows": int(len(group)),
+            "accuracy": float(group["outcome_correct"].mean()),
+            "logloss": float(group["logloss"].mean()),
+            "brier": float(group["brier"].mean()),
+            "ece": _multiclass_ece(
+                group[["home_win_pct", "draw_pct", "away_win_pct"]].to_numpy(float),
+                group["actual_outcome"].map({"HOME_WIN": 0, "DRAW": 1, "AWAY_WIN": 2}).to_numpy(int),
+            ),
+            "low_high_accuracy": float(group["low_high_correct"].mean()),
+            "top4_exact_hit_rate": float(group["top4_hit"].mean()),
+            "score_mae": float(group["score_mae"].mean()),
+            "targets": _prediction_target_metrics(group),
+        }
+
+    for key, group in experience.groupby("competition_key", dropna=False):
+        summary["by_competition"][str(key)] = {
+            "rows": int(len(group)),
+            "league": str(group["league"].iloc[0]),
+            "competition": str(group["competition"].iloc[0]),
+            "competition_stage": str(group["competition_stage"].iloc[0]),
+            "season_type": str(group["season_type"].iloc[0]),
+            "competition_classification_status": str(group["competition_classification_status"].iloc[0]),
+            "accuracy": float(group["outcome_correct"].mean()),
+            "logloss": float(group["logloss"].mean()),
+            "brier": float(group["brier"].mean()),
+            "ece": _multiclass_ece(
+                group[["home_win_pct", "draw_pct", "away_win_pct"]].to_numpy(float),
+                group["actual_outcome"].map({"HOME_WIN": 0, "DRAW": 1, "AWAY_WIN": 2}).to_numpy(int),
+            ),
+            "low_high_accuracy": float(group["low_high_correct"].mean()),
+            "top4_exact_hit_rate": float(group["top4_hit"].mean()),
+            "score_mae": float(group["score_mae"].mean()),
+            "targets": _prediction_target_metrics(group),
+        }
+
+    for key, group in experience.groupby("competition_stage", dropna=False):
+        summary["by_phase"][str(key)] = {
+            "rows": int(len(group)),
+            "season_type": str(group["season_type"].iloc[0]),
+            "accuracy": float(group["outcome_correct"].mean()),
+            "logloss": float(group["logloss"].mean()),
+            "brier": float(group["brier"].mean()),
+            "ece": _multiclass_ece(
+                group[["home_win_pct", "draw_pct", "away_win_pct"]].to_numpy(float),
+                group["actual_outcome"].map({"HOME_WIN": 0, "DRAW": 1, "AWAY_WIN": 2}).to_numpy(int),
+            ),
+            "low_high_accuracy": float(group["low_high_correct"].mean()),
+            "top4_exact_hit_rate": float(group["top4_hit"].mean()),
+            "score_mae": float(group["score_mae"].mean()),
+            "targets": _prediction_target_metrics(group),
+        }
+
+# Target/competition is a first-class evaluation axis. Never mix
     # NPB/MLB/etc. performance into one headline when target labels exist.
     if "target" in experience.columns:
         for key, group in experience.groupby("target", dropna=False):

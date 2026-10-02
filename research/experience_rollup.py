@@ -26,6 +26,7 @@ import pandas as pd
 
 from research.npb_official_results import _fetch_month
 from research import experience_ledger as ledger
+from research.experience_dimensions import add_dimensions
 from research.experience_ledger import (
     _prediction_target_metrics,
     _validate_prediction_time_contract,
@@ -298,6 +299,35 @@ def _evaluate(merged: pd.DataFrame) -> pd.DataFrame:
     return x
 
 
+def _performance_bundle(frame: pd.DataFrame, compact_metrics: Any) -> dict[str, Any]:
+    return {
+        "rows": int(len(frame)),
+        "overall": compact_metrics(frame),
+        "targets": _prediction_target_metrics(frame),
+    }
+
+
+def _performance_hierarchy(frame: pd.DataFrame, compact_metrics: Any) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    if frame.empty:
+        return result
+    for league_key, league_frame in frame.groupby("league", dropna=False):
+        league = str(league_key)
+        node = _performance_bundle(league_frame, compact_metrics)
+        node["by_competition"] = {}
+        for competition_key, competition_frame in league_frame.groupby("competition_key", dropna=False):
+            competition = str(competition_key)
+            comp_node = _performance_bundle(competition_frame, compact_metrics)
+            comp_node["by_phase"] = {}
+            for phase_key, phase_frame in competition_frame.groupby("competition_stage", dropna=False):
+                comp_node["by_phase"][str(phase_key)] = _performance_bundle(
+                    phase_frame, compact_metrics
+                )
+            node["by_competition"][competition] = comp_node
+        result[league] = node
+    return result
+
+
 def _write_jsonl(df: pd.DataFrame, path: Path) -> None:
     path.write_text(
         "".join(
@@ -371,6 +401,8 @@ def rollup() -> dict[str, Any]:
         TRAINING_INDEX_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         return payload
 
+    scored = add_dimensions(scored)
+
     weight_names = sorted({
         name
         for _, row in scored.iterrows()
@@ -396,7 +428,9 @@ def rollup() -> dict[str, Any]:
     keep = [
         "prediction_id", "source_run_id", "game_id", "date_key",
         "datetime_jst", "prediction_cutoff_utc", "prediction_generated_at",
-        "prediction_horizon_minutes", "home", "away", "home_starter", "away_starter",
+        "prediction_horizon_minutes", "league", "competition_id", "competition_key",
+        "competition", "competition_stage", "season_type", "game_class",
+        "competition_classification_status", "home", "away", "home_starter", "away_starter",
         "revision_status", "revision_previous_prediction_id", "revision_l1_pct_points",
         "revision_max_abs_pct_points", "revision_outcome_changed",
         "regime", "score_regime", "model", "situation_tags",
@@ -470,6 +504,8 @@ def rollup() -> dict[str, Any]:
         "by_dominant_expert": {},
         "by_prediction_target": _prediction_target_metrics(canonical),
         "by_prediction_target_all_snapshots": _prediction_target_metrics(scored),
+        "performance_breakdown": _performance_hierarchy(canonical, compact),
+        "performance_breakdown_all_snapshots": _performance_hierarchy(scored, compact),
         "by_situation_tag": by_tag,
         "timing_30m": ledger._timing_30m_metrics(scored),
         "revision_intelligence": ledger._revision_metrics(scored),
@@ -505,6 +541,8 @@ def rollup() -> dict[str, Any]:
             "all_prediction_snapshots": int(len(scored)),
             "timing_30m": result["timing_30m"],
             "revision_intelligence": result["revision_intelligence"],
+            "performance_breakdown": result["performance_breakdown"],
+            "performance_breakdown_all_snapshots": result["performance_breakdown_all_snapshots"],
             "artifacts": {
                 "snapshot_csv": str(SNAPSHOT_PATH),
                 "snapshot_jsonl": str(SNAPSHOT_JSONL),
