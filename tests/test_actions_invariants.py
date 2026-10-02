@@ -148,7 +148,7 @@ def test_chat_async_dispatcher_is_short_lived_and_allowlisted():
     text = (ROOT / ".github" / "workflows" / "baseball_chat_async_dispatch.yml").read_text(encoding="utf-8")
 
     assert "issue_comment:" in text
-    assert "github.event.issue.number == 136" in text
+    assert "github.event.issue.number == 74" in text
     assert "github.event.comment.user.login == 'sasasotaro1202-star'" in text
     assert "timeout-minutes: 5" in text
 
