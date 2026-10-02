@@ -16,7 +16,7 @@ concurrency:
 jobs:
   dispatch:
     if: >-
-      ${{ github.event.issue.number == 136 &&
+      ${{ github.event.issue.number == 74 &&
       github.event.comment.user.login == 'sasasotaro1202-star' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
