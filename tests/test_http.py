@@ -84,6 +84,18 @@ def test_get_json_uses_shared_bounded_request():
     assert sess.calls[0][2]["timeout"] == (8.0, 10.0)
 
 
+def test_total_timeout_scales_attempt_budget():
+    connect, read = http._attempt_timeout((8.0, 45.0), 10.0)
+    assert connect + read == pytest.approx(10.0)
+    assert connect == pytest.approx(80.0 / 53.0)
+    assert read == pytest.approx(450.0 / 53.0)
+
+
+def test_total_timeout_validation_is_strict():
+    with pytest.raises(ValueError):
+        http.request(FakeSession([FakeResponse(200)]), "https://example.test", total_timeout=0)
+
+
 def test_request_does_not_retry_non_transient_client_error(monkeypatch):
     sleeps = []
     monkeypatch.setattr(http.time, "sleep", sleeps.append)
