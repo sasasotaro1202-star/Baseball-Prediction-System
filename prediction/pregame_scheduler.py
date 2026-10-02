@@ -244,13 +244,23 @@ def due_games(*, now_utc: datetime | None = None, min_lead_minutes: float = 0.0,
         for league, runtime in runtimes.items()
         if str(runtime.get("formal_adoption_status", "")).upper() == "CURRENT_PRODUCTION"
     ]
+    blocked: list[dict] = []
     if not enabled:
-        raise RuntimeError("no current production runtime is registered")
+        # Production being fully blocked is a valid governed state, not a
+        # scheduler crash. Preserve the fail-closed production boundary while
+        # allowing research-only discovery to continue independently.
+        blocked.extend(
+            {
+                "league": league,
+                "status": "BLOCKED_NO_CURRENT_PRODUCTION_RUNTIME",
+                "entrypoint": runtime.get("entrypoint"),
+            }
+            for league, runtime in runtimes.items()
+        )
 
     due: list[dict] = []
     research_due: list[dict] = []
     research_errors: list[dict] = []
-    blocked: list[dict] = []
     research_scope_error = None
     try:
         research_active = load_research_active_competitions()
