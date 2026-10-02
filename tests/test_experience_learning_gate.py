@@ -12,7 +12,6 @@ def _frame(n=10):
         rows.append({
             "prediction_id":f"p{i}",
             "game_id":f"g{i}",
-            "game_id":f"g{i}",
             "target":"NPB",
             "prediction_cutoff_utc":c,
             "experience_available_at_utc":a,
