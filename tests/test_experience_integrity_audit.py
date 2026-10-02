@@ -116,3 +116,11 @@ def test_experience_integrity_audit_checks_starter_provenance(tmp_path):
     _write(pred_dir / "2026-10-01.jsonl", [row])
     with pytest.raises(ValueError, match="non-official starter source"):
         audit_prediction_directory(pred_dir)
+
+
+def test_audit_includes_generation_and_source_head_metadata(tmp_path, monkeypatch):
+    monkeypatch.setenv("GITHUB_SHA", "abc123")
+    result = audit.audit_prediction_directory(tmp_path / "missing")
+    assert result["status"] == "NO_PREDICTIONS"
+    assert "generated_at_utc" in result
+    assert result["source_head"] == "abc123"

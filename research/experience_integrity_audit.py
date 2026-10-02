@@ -134,6 +134,8 @@ def audit_prediction_directory(pred_dir: str | Path = DEFAULT_PRED_DIR) -> dict[
             rows += 1
 
     return {
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "source_head": str(__import__("os").environ.get("GITHUB_SHA") or "unknown"),
         "status": "PASS_WITH_LEGACY_QUARANTINE" if legacy_quarantined else "PASS",
         "prediction_files": len(files),
         "prediction_rows": rows,

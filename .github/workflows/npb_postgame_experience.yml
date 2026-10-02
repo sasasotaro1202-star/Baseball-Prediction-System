@@ -54,12 +54,30 @@ jobs:
           set -euo pipefail
           python -m research.experience_rollup
 
+      - name: Audit immutable prediction evidence
+        env:
+          PYTHONPATH: .
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -euo pipefail
+          python -m research.experience_integrity_audit > data/experience/experience_integrity_audit.json
+          test -s data/experience/experience_integrity_audit.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          audit = json.loads(Path("data/experience/experience_integrity_audit.json").read_text(encoding="utf-8"))
+          if audit.get("status") not in {"PASS", "PASS_WITH_LEGACY_QUARANTINE", "NO_PREDICTIONS"}:
+              raise SystemExit(f"invalid prediction integrity status: {audit.get('status')}")
+          print(json.dumps(audit, ensure_ascii=False, indent=2))
+          PY
+
       - name: Validate experience evidence
         run: |
           set -euo pipefail
           test -s data/experience/experience_summary.json
           test -s data/experience/experience_case_summary.json
           test -s data/experience/experience_training_index.json
+          test -s data/experience/experience_integrity_audit.json
           if [ -f data/experience/experience_ledger.csv ]; then
             test -s data/experience/experience_ledger.csv
             test -s data/experience/experience_ledger.jsonl
@@ -86,17 +104,36 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/experience/
-          if git diff --cached --quiet; then
-            echo "No new postgame experience to commit."
-            exit 0
-          fi
-          git commit -m "Record NPB postgame prediction experience"
+
+          # Generated Experience artifacts are derived state. If another
+          # workflow updates main between reconciliation and publication,
+          # discard the stale local artifacts, reset to the new main tip,
+          # rerun the full reconciliation, and republish from a clean tree.
+          # This avoids rebasing generated CSV/JSONL artifacts and guarantees
+          # deterministic conflict recovery without masking failures.
           for attempt in 1 2 3; do
+            git fetch origin main
+            if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+              git reset --hard origin/main
+              PYTHONPATH=. PYTHONUNBUFFERED=1 python -m research.experience_ledger --reconcile
+              PYTHONPATH=. PYTHONUNBUFFERED=1 python -m research.experience_rollup
+              PYTHONPATH=. PYTHONUNBUFFERED=1 python -m research.experience_integrity_audit > data/experience/experience_integrity_audit.json
+              test -s data/experience/experience_integrity_audit.json
+            fi
+
+            git add data/experience/
+            if git diff --cached --quiet; then
+              echo "No new postgame experience to commit."
+              exit 0
+            fi
+
+            git commit -m "Record NPB postgame prediction experience"
             if git push origin HEAD:main; then
               exit 0
             fi
-            git fetch origin main
-            git rebase origin/main
+
+            # Push race: never rebase generated state. Reset to the latest
+            # origin/main and recompute all derived artifacts on the next try.
+            git reset --hard HEAD^
           done
           exit 1
