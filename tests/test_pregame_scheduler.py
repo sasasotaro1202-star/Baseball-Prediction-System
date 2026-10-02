@@ -257,3 +257,50 @@ def test_research_api_failure_does_not_block_production_scheduler(monkeypatch):
     assert result["research_status"] == "RESEARCH_ERROR"
     assert result["research_due_games"] == []
     assert result["research_errors"][0]["league"] == "MLB"
+
+def test_all_production_runtimes_blocked_does_not_disable_research_discovery(monkeypatch):
+    monkeypatch.setattr(
+        scheduler,
+        "load_runtimes",
+        lambda: {
+            "NPB": {
+                "formal_adoption_status": "BLOCKED_UNTIL_ADOPTED",
+                "entrypoint": "production_npb",
+            },
+            "MLB": {
+                "formal_adoption_status": "BLOCKED_UNTIL_REGISTERED",
+                "entrypoint": "",
+            },
+        },
+    )
+    monkeypatch.setattr(scheduler, "load_research_active_competitions", lambda: {"MLB"})
+    monkeypatch.setattr(
+        scheduler,
+        "_mlb_schedule_for_date",
+        lambda target_date: [{
+            "game_id": "123456",
+            "home": "Home Club",
+            "away": "Away Club",
+            "official_start_time": "18:30",
+            "scheduled_start_utc": "2026-10-01T09:30:00+00:00",
+            "home_starter": "Probable Home",
+            "away_starter": "Probable Away",
+            "starter_evidence_status": "official_probable_only",
+            "starter_source": "MLB Stats API schedule",
+            "pit_status": "NOT_ELIGIBLE_OFFICIAL_STARTER_REQUIRED",
+        }],
+    )
+    now = datetime(2026, 10, 1, 9, 0, tzinfo=timezone.utc)
+    result = scheduler.due_games(
+        now_utc=now,
+        min_lead_minutes=0.0,
+        preferred_lead_minutes=30.0,
+        scan_ahead_minutes=60.0,
+    )
+
+    assert result["status"] == "NO_DUE_GAMES"
+    assert result["due_games"] == []
+    assert result["due_dates"] == []
+    assert result["research_status"] == "RESEARCH_DUE"
+    assert len(result["research_due_games"]) == 1
+    assert {x["status"] for x in result["blocked_runtimes"]} == {"BLOCKED_NO_CURRENT_PRODUCTION_RUNTIME"}
