@@ -466,6 +466,21 @@ def _load_predictions() -> pd.DataFrame:
     return df
 
 
+def _should_refresh_result_cache(
+    year: int,
+    month: int,
+    *,
+    now: pd.Timestamp | None = None,
+) -> bool:
+    """Refresh the currently active UTC month; reuse closed-month caches."""
+    current = now if now is not None else pd.Timestamp.now(tz="UTC")
+    if current.tzinfo is None:
+        current = current.tz_localize("UTC")
+    else:
+        current = current.tz_convert("UTC")
+    return int(year) == int(current.year) and int(month) == int(current.month)
+
+
 def _result_cache_path(year: int, month: int) -> Path:
     RESULT_DIR.mkdir(parents=True, exist_ok=True)
     return RESULT_DIR / f"{year:04d}-{month:02d}.csv"
@@ -481,17 +496,18 @@ def _load_cached_results(dates: list[pd.Timestamp]) -> pd.DataFrame:
         path = _result_cache_path(year, month)
         got: pd.DataFrame | None = None
 
-        # A header-only cache means "we checked before and there were no
-        # completed rows". It must not become permanent for a month whose
-        # schedule later gains completed games.
-        if path.exists() and path.stat().st_size > 0:
+        # The active month is mutable: new games can finish after a
+        # previously non-empty cache was written. Refresh it every run.
+        # Closed months remain cached for efficient, reproducible reuse.
+        refresh = _should_refresh_result_cache(year, month)
+        if not refresh and path.exists() and path.stat().st_size > 0:
             try:
                 got = pd.read_csv(path)
             except Exception:
                 path.unlink(missing_ok=True)
                 got = None
 
-        if got is None or got.empty:
+        if refresh or got is None or got.empty:
             rows = _fetch_month(year, month)
             refreshed = pd.DataFrame(rows, columns=columns)
             refreshed.to_csv(path, index=False)

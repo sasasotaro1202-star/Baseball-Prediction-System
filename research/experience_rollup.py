@@ -30,6 +30,7 @@ from research.experience_ledger import (
     _prediction_target_metrics,
     _validate_prediction_time_contract,
     _is_legacy_scheduled_cutoff,
+    _should_refresh_result_cache,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -189,16 +190,18 @@ def _cache_results(dates: list[pd.Timestamp]) -> pd.DataFrame:
         path = RESULT_DIR / f"{year:04d}-{month:02d}.csv"
         got: pd.DataFrame | None = None
 
-        if path.exists() and path.stat().st_size > 0:
+        refresh = _should_refresh_result_cache(year, month)
+        if not refresh and path.exists() and path.stat().st_size > 0:
             try:
                 got = pd.read_csv(path)
             except Exception:
                 path.unlink(missing_ok=True)
                 got = None
 
-        # Never let a header-only monthly cache suppress later completed
-        # results. The first postgame pass must refresh an empty cache.
-        if got is None or got.empty:
+        # The active month is mutable: new games can finish after a
+        # previously non-empty cache was written. Refresh it every run.
+        # Closed months remain cached for efficient, reproducible reuse.
+        if refresh or got is None or got.empty:
             rows = _fetch_month(year, month)
             refreshed = pd.DataFrame(rows, columns=columns)
             refreshed.to_csv(path, index=False)

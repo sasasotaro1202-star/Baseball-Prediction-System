@@ -145,6 +145,39 @@ def test_legacy_scheduled_cutoff_survives_dataframe_materialization(tmp_path, mo
     loaded = exp._load_predictions()
     assert set(loaded["game_id"]) == {"NPB-2026-10-01-modern"}
 
+def test_current_result_cache_is_refreshed_even_when_nonempty(tmp_path, monkeypatch):
+    monkeypatch.setattr(exp, "RESULT_DIR", tmp_path / "experience" / "official_results")
+    result_dir = tmp_path / "experience" / "official_results"
+    result_dir.mkdir(parents=True, exist_ok=True)
+    cache = result_dir / "2026-10.csv"
+    cache.write_text(
+        "date,home,away,home_score,away_score,source_url\n"
+        "2026-10-01,東京ヤクルトスワローズ,阪神タイガース,1,2,test://old\n",
+        encoding="utf-8",
+    )
+
+    calls = []
+    def fake_fetch(year, month):
+        calls.append((year, month))
+        return [{
+            "date": "2026-10-02",
+            "home": "東京ヤクルトスワローズ",
+            "away": "読売ジャイアンツ",
+            "home_score": 5,
+            "away_score": 1,
+            "source_url": "test://new",
+        }]
+
+    monkeypatch.setattr(exp, "_fetch_month", fake_fetch)
+    loaded = exp._load_cached_results(
+        [pd.Timestamp("2026-10-02T18:00:00+09:00")]
+    )
+    assert calls == [(2026, 10)]
+    assert len(loaded) == 1
+    assert int(loaded.loc[0, "home_score"]) == 5
+    assert loaded.loc[0, "source_url"] == "test://new"
+
+
 def test_multiclass_ece_uses_confidence_vs_accuracy():
     probabilities = np.array([
         [0.60, 0.05, 0.35],
