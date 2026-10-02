@@ -26,7 +26,7 @@
     "result_budget_per_scope_platform": 5,
     "rotation_period_hours": 6,
     "rotation_slot": 82913,
-    "run_at": "2026-10-02T06:30:35+00:00",
+    "run_at": "2026-10-02T06:31:36+00:00",
     "selected_by_scope": {},
     "selected_count": 0
   },
@@ -68,7 +68,37 @@
       "run_at": "2026-10-02T06:30:35+00:00",
       "selected_by_scope": {},
       "selected_count": 0
+    },
+    {
+      "discovered_records_touched": 0,
+      "failures": [],
+      "focus_scopes": [
+        "Japan_Junior_Boys",
+        "Japan_Junior_LittleSenior",
+        "Japan_Junior_Pony",
+        "Japan_Junior_Young",
+        "Japan_U12",
+        "Japan_U15",
+        "Japan_U18",
+        "Japan_University",
+        "Japan_WomensHighSchool",
+        "Japan_WomensJunior",
+        "KBO",
+        "LBPRC"
+      ],
+      "policy": {
+        "free_only": true,
+        "production_promotion": false,
+        "unknown_pit": "FAIL_CLOSED"
+      },
+      "query_count": 24,
+      "result_budget_per_scope_platform": 5,
+      "rotation_period_hours": 6,
+      "rotation_slot": 82913,
+      "run_at": "2026-10-02T06:31:36+00:00",
+      "selected_by_scope": {},
+      "selected_count": 0
     }
   ],
-  "updated_at": "2026-10-02T06:30:35+00:00"
+  "updated_at": "2026-10-02T06:31:36+00:00"
 }
