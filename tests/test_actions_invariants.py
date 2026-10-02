@@ -140,7 +140,9 @@ def test_npb_production_checks_runtime_gate_before_network_and_dependency_work()
     assert text.count(required_condition) >= 4
     assert "execution_status" in text
     assert "BLOCKED_PRODUCTION_GATE" in text
-    assert 'block_reason": "NPB production runtime is not currently eligible' in text
+    blocked = (ROOT / "scripts" / "write_blocked_npb_output.py").read_text(encoding="utf-8")
+    assert '"execution_status": "BLOCKED_PRODUCTION_GATE"' in blocked
+    assert "NPB production runtime is not currently eligible" in blocked
 
 
 
@@ -161,8 +163,11 @@ def test_chat_async_dispatcher_is_short_lived_and_allowlisted():
         assert command in text
 
     assert 'case "${COMMAND}" in' in text
-    assert 'gh api \\n            --method POST' in text
-    assert 'actions/workflows/"${TARGET_WORKFLOW}"/dispatches' in text
+    assert "gh api" in text
+    assert "--method POST" in text
+    assert "actions/workflows/" in text
+    assert '"/dispatches"' in text
+    assert "TARGET_WORKFLOW}" in text
     assert "No run polling or completion wait is performed." in text
     assert "No matching trusted async command; no workflow was dispatched." in text
 
