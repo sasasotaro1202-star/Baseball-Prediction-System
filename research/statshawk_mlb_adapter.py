@@ -189,6 +189,70 @@ def evaluate_pregame_eligibility(row: dict[str, Any], prediction_cutoff: str) ->
     return True, "eligible"
 
 
+
+def collapse_independent_games(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Collapse duplicate/revision observations to one deterministic game row.
+
+    StatsHawk can expose multiple contest ids for the same scheduled game
+    (for example, a canonical record plus a duplicate provider view). For
+    independent-game statistics, identity is the canonical team pair plus
+    scheduled time. Rows are never merged across observations; the richest
+    single observation wins deterministically.
+    """
+    groups: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError("row_must_be_object")
+        key = (
+            str(row.get("home_team_id") or ""),
+            str(row.get("away_team_id") or ""),
+            str(row.get("scheduled_at") or ""),
+        )
+        if not all(key):
+            raise ValueError("independent_game_identity_missing")
+        groups.setdefault(key, []).append(row)
+
+    def rank(row: dict[str, Any]) -> tuple[int, int, int, int]:
+        status = str(row.get("status", "")).strip().lower()
+        final_rank = int(status in FINAL_STATUSES)
+        score_rank = int(row.get("home_score") is not None and row.get("away_score") is not None)
+        confirmed_lineups = int(row.get("home_lineup_confirmed_count") or 0) + int(
+            row.get("away_lineup_confirmed_count") or 0
+        )
+        observation_index = row.get("observation_index")
+        try:
+            index = -int(observation_index)
+        except (TypeError, ValueError):
+            index = 0
+        return (final_rank, score_rank, confirmed_lineups, index)
+
+    collapsed: list[dict[str, Any]] = []
+    for rows_for_game in groups.values():
+        selected = max(rows_for_game, key=rank)
+        collapsed.append(
+            {
+                **selected,
+                "independent_game_key": "|".join(
+                    (
+                        str(selected["home_team_id"]),
+                        str(selected["away_team_id"]),
+                        str(selected["scheduled_at"]),
+                    )
+                ),
+                "collapsed_observation_count": len(rows_for_game),
+            }
+        )
+
+    return sorted(
+        collapsed,
+        key=lambda row: (
+            str(row["scheduled_at"]),
+            str(row["home_team_id"]),
+            str(row["away_team_id"]),
+        ),
+    )
+
+
 def validate_reconciliation_rows(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     """Validate finalized secondary observations without changing canonical IDs."""
     validated: list[dict[str, Any]] = []
