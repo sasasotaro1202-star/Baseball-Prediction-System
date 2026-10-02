@@ -17,7 +17,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
 from pathlib import Path
-from urllib.request import Request, urlopen
+from core.http import get_text as http_get_text, session as http_session
 from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,6 +25,7 @@ CONFIG = ROOT / "config" / "current_production_runtime.json"
 PRED_DIR = ROOT / "data" / "experience" / "predictions"
 JST = ZoneInfo("Asia/Tokyo")
 NPB_DAY_URL = "https://npb.jp/bis/eng/{year}/games/gm{date}.html"
+HTTP_SESSION = http_session(user_agent="Baseball-Prediction-System/pregame-scheduler")
 MLB_SCHEDULE_URL = "https://statsapi.mlb.com/api/v1/schedule?sportId=1&startDate={start}&endDate={end}&hydrate=probablePitcher"
 TEAM_ALIASES = {
     "Yomiuri": "読売ジャイアンツ",
@@ -102,12 +103,12 @@ def load_runtimes() -> dict[str, dict]:
 
 
 def _fetch(url: str) -> str:
-    req = Request(url, headers={"User-Agent": "Baseball-Prediction-System/pregame-scheduler"})
-    with urlopen(req, timeout=20) as resp:
-        raw = resp.read()
-        charset = resp.headers.get_content_charset() or "utf-8"
-    return raw.decode(charset, errors="strict")
-
+    return http_get_text(
+        HTTP_SESSION,
+        url,
+        timeout=(8, 30),
+        retries=4,
+    )
 
 def _schedule_for_date(target_date: str) -> list[dict]:
     html = _fetch(NPB_DAY_URL.format(year=target_date[:4], date=target_date.replace("-", "")))
