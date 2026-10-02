@@ -20,7 +20,7 @@ jobs:
       ${{ github.event.issue.number == 74 &&
       github.event.comment.user.login == 'sasasotaro1202-star' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 2
     env:
       GH_REPO: ${{ github.repository }}
       ISSUE_NUMBER: ${{ github.event.issue.number }}
@@ -51,7 +51,7 @@ jobs:
               ;;
           esac
 
-      - name: Dispatch heavy work without waiting
+      - name: Dispatch heavy work immediately
         if: steps.route.outputs.ignored != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -59,23 +59,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Single bounded API call. Do not poll/list runs here: chat-triggered
+          # work must hand off immediately and never wait on scheduler state.
+          timeout --signal=TERM --kill-after=3s 10s \
+            gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${GH_REPO}/actions/workflows/${TARGET_WORKFLOW}/dispatches" \
+            -f ref=main
+          echo "Async request accepted: ${{ steps.route.outputs.label }} dispatched on main. No run polling or completion wait is performed." >> "${GITHUB_STEP_SUMMARY}"
 
-          active="$(gh run list             --repo "${GH_REPO}"             --workflow "${TARGET_WORKFLOW}"             --limit 20             --json status             --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
-
-          if [ "${active}" -gt 0 ]; then
-            body="Async request accepted but not duplicated: ${TARGET_WORKFLOW} already has active work."
-          else
-            timeout --signal=TERM --kill-after=5s 30s gh workflow run "${TARGET_WORKFLOW}" --repo "${GH_REPO}" --ref main
-            body="Async request accepted: ${{ steps.route.outputs.label }} dispatched on main."
-          fi
-
-          {
-            echo "### Baseball async dispatch"
-            echo ""
-            echo "${body}"
-            echo ""
-            echo "Long-running execution is detached from the chat request. Actions owns execution, checkpoints, artifacts, and recovery."
-          } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Record ignored command
         if: steps.route.outputs.ignored == 'true'
