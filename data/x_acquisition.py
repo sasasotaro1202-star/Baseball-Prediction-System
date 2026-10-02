@@ -26,6 +26,8 @@ from typing import Any
 
 import requests
 
+from core.http import get_json as http_get_json, session as http_session
+
 ROOT = Path(__file__).resolve().parents[1]
 X_DIR = ROOT / "data" / "x"
 RAW_LOG = X_DIR / "raw_posts.jsonl"
@@ -34,7 +36,9 @@ RUN_LOG = X_DIR / "acquisition_runs.jsonl"
 BASE_URL = "https://api.x.com/2/tweets/search/recent"
 MAX_LOOKBACK_DAYS = 7
 DEFAULT_MAX_RESULTS = 100
-TIMEOUT = int(os.getenv("X_API_TIMEOUT", "20"))
+TIMEOUT = max(10, int(os.getenv("X_API_TIMEOUT", "30")))
+HTTP_RETRIES = max(1, int(os.getenv("X_API_RETRIES", "4")))
+HTTP_SESSION = http_session(user_agent="Baseball-Prediction-System/x-research")
 
 
 def now_utc() -> datetime:
@@ -77,14 +81,14 @@ def search_recent(token: str, query: str, start: datetime, end: datetime, max_re
         "expansions": "author_id",
         "user.fields": "id,name,username,verified,public_metrics",
     }
-    response = requests.get(
+    body = http_get_json(
+        HTTP_SESSION,
         BASE_URL,
         params=params,
         headers={"Authorization": f"Bearer {token}"},
-        timeout=(5, TIMEOUT),
+        timeout=(8, TIMEOUT),
+        retries=HTTP_RETRIES,
     )
-    response.raise_for_status()
-    body = response.json()
     posts = body.get("data") or []
     includes = body.get("includes") or {}
     users = {str(u.get("id")): u for u in (includes.get("users") or []) if u.get("id")}
