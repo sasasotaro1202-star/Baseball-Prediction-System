@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
-from urllib.request import Request, urlopen
+from core.http import request as http_request, session as http_session
 
 from core.atomic_io import atomic_write_text
 from data.source_registry import SOURCES
@@ -24,6 +24,9 @@ from research.competition_catalog import SCOPES
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "research" / "auto_discovery_frontier.json"
+HTTP_TIMEOUT = max(10, int(os.getenv("BASEBALL_DISCOVERY_HTTP_TIMEOUT", "45")))
+HTTP_RETRIES = max(1, int(os.getenv("BASEBALL_DISCOVERY_HTTP_RETRIES", "4")))
+HTTP_SESSION = http_session(user_agent="Baseball-Prediction-System/source-discovery")
 
 FOCUS_LIMIT = int(os.getenv("BASEBALL_DISCOVERY_FOCUS_LIMIT", "12"))
 RESULTS_PER_QUERY = int(os.getenv("BASEBALL_DISCOVERY_RESULTS_PER_QUERY", "8"))
@@ -31,12 +34,19 @@ MAX_TOTAL_RESULTS = int(os.getenv("BASEBALL_DISCOVERY_MAX_TOTAL_RESULTS", "120")
 ROTATION_PERIOD_HOURS = int(os.getenv("BASEBALL_DISCOVERY_ROTATION_HOURS", "6"))
 
 def _get_json(url: str, *, token: str | None = None) -> Any:
-    headers = {"User-Agent": "Baseball-Prediction-System-source-discovery/1.0", "Accept": "application/json"}
+    headers = {"Accept": "application/json"}
     if token:
         headers["Authorization"] = "Bearer " + token
-    req = Request(url, headers=headers, method="GET")
-    with urlopen(req, timeout=20) as response:
-        return json.loads(response.read().decode("utf-8"))
+    response = http_request(
+        HTTP_SESSION,
+        url,
+        headers=headers,
+        timeout=(8, HTTP_TIMEOUT),
+        retries=HTTP_RETRIES,
+    )
+    return response.json()
+
+
 
 def _norm(text: Any) -> str:
     return re.sub(r"\s+", " ", str(text or "")).strip().lower()
