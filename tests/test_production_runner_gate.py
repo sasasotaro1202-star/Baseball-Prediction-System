@@ -118,9 +118,9 @@ def test_current_production_runtime_registry_is_stable():
     from prediction.current_production import current_runtime
 
     npb = current_runtime("NPB")
-    assert npb["available"] is True
-    assert npb["entrypoint"] == "production_npb"
-    assert npb["model_version"] == "npb-production-v1"
+    assert npb["available"] is False
+    assert npb["status"] == "BLOCKED_NO_CURRENT_PRODUCTION_RUNTIME"
+    assert npb["formal_adoption_status"] == "BLOCKED_UNTIL_ADOPTED"
 
     mlb = current_runtime("MLB")
     assert mlb["available"] is False
