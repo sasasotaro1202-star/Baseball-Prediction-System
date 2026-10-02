@@ -15,7 +15,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import numpy as np
 import pandas as pd
-import requests
+from core.http import request as http_request, session as http_session
 
 from core.atomic_io import atomic_write_json
 
@@ -25,7 +25,10 @@ from core.pit_evidence import _is_official_source
 from research.target_strategy import as_dict as target_strategy_dict, standard_target_strategies
 
 ROOT = Path(__file__).resolve().parent
-TIMEOUT = 30
+TIMEOUT = max(10, int(__import__("os").environ.get("NPB_PRODUCTION_HTTP_TIMEOUT", "45")))
+HTTP_CONNECT_TIMEOUT = max(2, int(__import__("os").environ.get("NPB_PRODUCTION_CONNECT_TIMEOUT", "8")))
+HTTP_RETRIES = max(1, int(__import__("os").environ.get("NPB_PRODUCTION_HTTP_RETRIES", "4")))
+HTTP_SESSION = http_session(user_agent="Baseball-Prediction-System/production-npb")
 
 NPB_TARGET_STRATEGIES = standard_target_strategies("NPB")
 NPB_TARGET_CONTRACTS = {
@@ -45,37 +48,22 @@ TEAM_MAP = {
 }
 
 def fetch_text(url: str) -> str:
-    """Fetch an official NPB page with bounded transient-error recovery."""
-    transient_statuses = {429, 502, 503, 504}
-    attempts = 4
-    last_exc = None
-    for attempt in range(attempts):
-        try:
-            r = requests.get(
-                url,
-                timeout=TIMEOUT,
-                headers={"User-Agent":"Baseball-Prediction-System/production"},
-            )
-            if r.status_code in transient_statuses and attempt < attempts - 1:
-                retry_after = r.headers.get("Retry-After")
-                try:
-                    delay = min(8.0, max(1.0, float(retry_after)))
-                except (TypeError, ValueError):
-                    delay = float(2 ** attempt)
-                time.sleep(delay)
-                continue
-            r.raise_for_status()
-            enc = (r.apparent_encoding or r.encoding or "utf-8").lower().replace("-", "_")
-            if "shift_jis" in enc or "cp932" in enc or "shiftjis" in enc:
-                return r.content.decode("cp932", errors="strict")
-            return r.content.decode(r.apparent_encoding or r.encoding or "utf-8", errors="strict")
-        except requests.RequestException as exc:
-            last_exc = exc
-            status = getattr(getattr(exc, "response", None), "status_code", None)
-            if status not in transient_statuses or attempt >= attempts - 1:
-                raise
-            time.sleep(float(2 ** attempt))
-    raise RuntimeError(f"official NPB page fetch failed after {attempts} attempts: {url}") from last_exc
+    """Fetch an NPB page with bounded connect/read timeouts and retries.
+
+    Timeout and transient upstream failures are retried by the shared HTTP
+    helper. No server-provided Retry-After can block the production runner
+    beyond the helper's fixed backoff budget.
+    """
+    response = http_request(
+        HTTP_SESSION,
+        url,
+        timeout=(HTTP_CONNECT_TIMEOUT, TIMEOUT),
+        retries=HTTP_RETRIES,
+    )
+    enc = (response.apparent_encoding or response.encoding or "utf-8").lower().replace("-", "_")
+    if "shift_jis" in enc or "cp932" in enc or "shiftjis" in enc:
+        return response.content.decode("cp932", errors="strict")
+    return response.content.decode(response.apparent_encoding or response.encoding or "utf-8", errors="strict")
 
 def _clean_name(value: str) -> str:
     return re.sub(r"\s+", " ", html_lib.unescape(value)).replace("　", " ").strip()
