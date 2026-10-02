@@ -166,7 +166,7 @@ def test_chat_async_dispatcher_is_short_lived_and_allowlisted():
     assert "gh api" in text
     assert "--method POST" in text
     assert "actions/workflows/" in text
-    assert '"/dispatches"' in text
+    assert "/dispatches\"" in text
     assert "TARGET_WORKFLOW}" in text
     assert "No run polling or completion wait is performed." in text
     assert "No matching trusted async command; no workflow was dispatched." in text
