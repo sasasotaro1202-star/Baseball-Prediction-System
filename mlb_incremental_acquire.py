@@ -15,34 +15,31 @@ from datetime import datetime, timedelta, timezone
 import pandas as pd
 import requests
 
+from core.http import get_json as http_get_json, session as http_session
+
 API = "https://statsapi.mlb.com/api/v1"
 DATA = Path(os.getenv("BASEBALL_DATA_DIR", "data"))
 CACHE = DATA / "mlb_games.csv"
-TIMEOUT = int(os.getenv("MLB_INCREMENTAL_TIMEOUT", "20"))
+TIMEOUT = max(10, int(os.getenv("MLB_INCREMENTAL_TIMEOUT", "30")))
+HTTP_RETRIES = max(1, int(os.getenv("MLB_INCREMENTAL_RETRIES", "5")))
+
 CORRECTION_DAYS = int(os.getenv("MLB_CORRECTION_DAYS", "7"))
 BOOTSTRAP_START_YEAR = int(os.getenv("MLB_BOOTSTRAP_START_YEAR", "2020"))
 TODAY = datetime.now(timezone.utc).date()
 SEASON = TODAY.year
 
-S = requests.Session()
+S = http_session(user_agent="BaseballIncrementalAcquisition/1.2")
 S.headers.update({"User-Agent": "BaseballIncrementalAcquisition/1.1", "Accept": "application/json"})
 
 
 def get_json(url, params=None):
-    last = None
-    for attempt in range(5):
-        try:
-            r = S.get(url, params=params, timeout=TIMEOUT)
-            r.raise_for_status()
-            return r.json()
-        except Exception as exc:
-            last = exc
-            if attempt == 4:
-                raise
-            import time
-            time.sleep(min(1.5 * (attempt + 1), 8))
-    raise RuntimeError(last)
-
+    return http_get_json(
+        S,
+        url,
+        params=params,
+        timeout=(8, TIMEOUT),
+        retries=HTTP_RETRIES,
+    )
 
 def norm(df):
     if df.empty:
