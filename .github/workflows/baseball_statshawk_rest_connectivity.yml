@@ -1,0 +1,53 @@
+name: Baseball StatsHawk REST Connectivity
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baseball-statshawk-rest-connectivity
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    # The secret is intentionally optional. Without explicit user configuration
+    # this workflow is skipped rather than failing or attempting authentication.
+    if: ${{ secrets.STATSHAWK_API_KEY != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      STATSHAWK_API_KEY: ${{ secrets.STATSHAWK_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install --disable-pip-version-check --retries 5 --timeout 120 requests
+      - name: Compile client and tests
+        run: python -m py_compile research/statshawk_rest_client.py tests/test_statshawk_rest_client.py
+      - name: Run client contract tests
+        run: python -m pytest -q tests/test_statshawk_rest_client.py
+      - name: Probe authenticated MLB capability endpoint
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from research.statshawk_rest_client import StatsHawkRestClient
+
+          response = StatsHawkRestClient().probe_mlb_capabilities()
+          assert response.status_code == 200
+          assert response.payload is not None
+          print(json.dumps({
+              "status_code": response.status_code,
+              "quota_limit": response.quota_limit,
+              "quota_remaining": response.quota_remaining,
+              "quota_reset": response.quota_reset,
+              "request_weight": response.request_weight,
+              "probe": "PASS"
+          }, ensure_ascii=False))
+          PY
