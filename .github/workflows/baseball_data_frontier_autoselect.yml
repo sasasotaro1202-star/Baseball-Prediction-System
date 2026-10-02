@@ -1,6 +1,17 @@
 name: Baseball Data Frontier Autoselect
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/baseball_data_frontier_autoselect.yml"
+      - "research/auto_discovery_frontier.py"
+      - "research/universal_source_matrix.py"
+      - "research/competition_catalog.py"
+      - "data/source_registry.py"
+      - "tests/test_auto_discovery_frontier.py"
+      - "tests/test_universal_source_matrix.py"
+      - "requirements-ci.txt"
   workflow_dispatch:
   schedule:
     - cron: "13 */6 * * *"
