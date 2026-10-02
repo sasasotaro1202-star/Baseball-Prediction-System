@@ -18,6 +18,7 @@ from typing import Any
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
+from core.atomic_io import atomic_write_text
 from data.source_registry import SOURCES
 from research.competition_catalog import SCOPES
 
@@ -235,7 +236,7 @@ def run() -> dict[str, Any]:
     frontier["selection_history"].append(frontier["last_run"] )
     frontier["selection_history"] = frontier["selection_history"][-60:]
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(frontier, ensure_ascii=False, indent=2, sort_keys=True) + "\\n", encoding="utf-8")
+    atomic_write_text(OUT, json.dumps(frontier, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     return frontier["last_run"]
 
 if __name__ == "__main__":
