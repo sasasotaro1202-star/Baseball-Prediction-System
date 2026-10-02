@@ -338,6 +338,10 @@ def due_games(
                         "official_start_time": game["official_start_time"],
                         "prediction_cutoff_utc": cutoff_iso,
                         "preferred_prediction_cutoff_utc": preferred_cutoff.isoformat(),
+                        # Keep the legacy field for schema compatibility, but
+                        # expose the semantically correct preferred-target field.
+                        "preferred_target_met": bool(now <= preferred_cutoff),
+                        "preferred_target_met": bool(now <= preferred_cutoff),
                         "preferred_30m_met": bool(now <= preferred_cutoff),
                         "lead_minutes": round(lead, 3),
                         "prediction_source": source_key or None,
