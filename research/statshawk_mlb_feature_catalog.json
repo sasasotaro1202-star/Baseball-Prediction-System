@@ -1,0 +1,72 @@
+{
+  "schema": "statshawk-mlb-feature-catalog-v1",
+  "source": "statshawk",
+  "role": "research_only_secondary_validation",
+  "production_default": false,
+  "fields": {
+    "contest": {
+      "category": "identity",
+      "use": "secondary_identifier_crosscheck",
+      "pit_status": "PIT_SAFE_ONLY_AFTER_CANONICAL_ID_MATCH",
+      "notes": "Do not replace the repository's canonical MLB Stats API event identity."
+    },
+    "scheduled_at": {
+      "category": "timing",
+      "use": "event_time_crosscheck",
+      "pit_status": "PIT_SAFE_AS_SCHEDULE_EVIDENCE",
+      "notes": "Scheduled time is not an availability timestamp."
+    },
+    "probable_pitcher": {
+      "category": "personnel",
+      "use": "research_candidate",
+      "pit_status": "FAIL_CLOSED_FOR_HISTORICAL_PREGAME_STARTER_USE_WITHOUT_EXPLICIT_ANNOUNCEMENT_AT",
+      "notes": "Presence in a matchup card does not prove the historical official announcement timestamp."
+    },
+    "confirmed_lineup": {
+      "category": "personnel",
+      "use": "research_candidate",
+      "pit_status": "REQUIRES_LINEUP_PUBLICATION_TIME",
+      "notes": "A confirmed flag identifies the provider's record state, not necessarily when it became publicly available."
+    },
+    "standings": {
+      "category": "team_context",
+      "use": "live_context_only_until_historical_snapshot_availability_is_proven",
+      "pit_status": "DO_NOT_BACKFILL_FROM_CURRENT_STANDINGS",
+      "notes": "Current standings cannot be projected backward into historical prediction cutoffs."
+    },
+    "box_score": {
+      "category": "postgame_statistics",
+      "use": "outcome_reconciliation_and_research_features",
+      "pit_status": "POSTGAME_ONLY_UNLESS_HISTORICAL_PUBLICATION_AVAILABILITY_IS_PROVEN",
+      "notes": "Do not use final player/game lines as pregame features without PIT evidence."
+    },
+    "play_by_play": {
+      "category": "pitch_and_plate_appearance_detail",
+      "use": "research_feature_generation",
+      "pit_status": "POSTGAME_ONLY_UNLESS_EACH_SOURCE_RECORD_HAS_VALID_PIT_AVAILABILITY",
+      "notes": "Candidate derived features include pitch mix, velocity, plate-appearance outcomes and batted-ball measures."
+    }
+  },
+  "available_mlb_stat_phases": {
+    "batting": [
+      "pa","ab","batting.h","b2","b3","batting.hr","batting.bb","hbp","sf",
+      "batting.so","batting.r","rbi","sb","cs","avg","obp","total_bases","slg","ops"
+    ],
+    "pitching": [
+      "outs","bf","pitching.h","er","pitching.r","pitching.bb","pitching.so",
+      "pitching.hr","pitches","w","l","sv","era","whip","ip"
+    ]
+  },
+  "promotion_rule": {
+    "automatic_promotion": false,
+    "requirements": [
+      "source_provenance",
+      "explicit_available_at_or_announcement_at_when_required",
+      "chronological_OOS",
+      "protected_holdout",
+      "calibration",
+      "robustness",
+      "production_gate"
+    ]
+  }
+}
