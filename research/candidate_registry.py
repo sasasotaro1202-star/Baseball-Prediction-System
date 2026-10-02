@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from research.validation_pipeline import run_validation_pipeline
+from core.atomic_io import atomic_write_json
 
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = ROOT / "results" / "candidate_registry.json"
