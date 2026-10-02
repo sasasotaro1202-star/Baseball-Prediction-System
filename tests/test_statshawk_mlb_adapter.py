@@ -180,3 +180,18 @@ def test_malformed_game_row_fails_closed():
 
     with pytest.raises(ValueError, match=r"games\[1\]_must_be_object"):
         normalize_matchups(payload, retrieved_at="2026-10-02T04:00:00Z")
+
+
+def test_feature_catalog_is_valid_json_and_nonproduction():
+    from pathlib import Path
+    import json
+
+    catalog = json.loads(
+        Path("research/statshawk_mlb_feature_catalog.json").read_text(encoding="utf-8")
+    )
+
+    assert catalog["production_default"] is False
+    assert catalog["promotion_rule"]["automatic_promotion"] is False
+    assert catalog["fields"]["probable_pitcher"]["pit_status"].startswith(
+        "FAIL_CLOSED"
+    )
