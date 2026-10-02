@@ -22,6 +22,7 @@ from core.atomic_io import atomic_write_json
 from baseball_backtest import BaseballBacktest, norm_team, score_candidates, low_high_probs
 from research.correlated_score import npb_final_outcomes
 from core.pit_evidence import _is_official_source
+from data.competition_registry import production_eligible
 from research.target_strategy import as_dict as target_strategy_dict, standard_target_strategies
 
 ROOT = Path(__file__).resolve().parent
@@ -953,6 +954,19 @@ def predict(
     *,
     pregame_only: bool = False,
 ) -> dict:
+    if not production_eligible("NPB"):
+        result={
+            "schema_version":"npb-production-v1", "target_date":target_date,
+            "execution_status":"BLOCKED_PRODUCTION_GATE", "pit_status":"NOT_RUN",
+            "starter_gate":"NOT_RUN", "model_status":"NOT_RUN",
+            "git_commit":__import__("os").environ.get("GITHUB_SHA","unknown"),
+            "predictions":[], "target_strategy_contracts":NPB_TARGET_CONTRACTS,
+            "block_reason":"NPB is RESEARCH_ONLY until an explicit independent holdout-backed adoption decision is recorded.",
+            "prediction_generated_at":datetime.now(timezone.utc).isoformat(),
+        }
+        out=ROOT/"results"/f"npb_production_{target_date}.json"; out.parent.mkdir(exist_ok=True)
+        atomic_write_json(out, result)
+        return result
     try:
         games=build_target_rows(
             target_date,
