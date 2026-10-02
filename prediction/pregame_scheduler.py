@@ -348,6 +348,48 @@ def due_games(
                         "prediction_eligibility": "CURRENT_PRODUCTION",
                         "status": "DUE",
                     })
+    research_shadow_due: list[dict] = []
+    if "NPB" not in {league for league, _ in enabled}:
+        for target_date in sorted(dates):
+            try:
+                games = _schedule_for_date(target_date)
+            except Exception as exc:
+                research_errors.append({
+                    "league": "NPB",
+                    "target_date": target_date,
+                    "mode": "research_shadow",
+                    "error": f"{type(exc).__name__}: {exc}",
+                })
+                games = []
+            archived_sources = _archived_prediction_sources(target_date)
+            for game_index, game in enumerate(games, start=1):
+                start = datetime.fromisoformat(
+                    f"{target_date}T{game['official_start_time']}:00+09:00"
+                ).astimezone(timezone.utc)
+                lead = (start - now).total_seconds() / 60.0
+                source = "RESEARCH_SHADOW_AUTO_60M"
+                if (
+                    float(min_lead_minutes) < lead <= min(float(scan_ahead_minutes), 60.0)
+                    and (game["home"], game["away"], source) not in archived_sources
+                ):
+                    preferred_cutoff = start - timedelta(minutes=60.0)
+                    research_shadow_due.append({
+                        "league": "NPB",
+                        "target_date": target_date,
+                        "game_index": game_index,
+                        "home": game["home"],
+                        "away": game["away"],
+                        "official_start_time": game["official_start_time"],
+                        "prediction_cutoff_utc": now.isoformat(),
+                        "preferred_prediction_cutoff_utc": preferred_cutoff.isoformat(),
+                        "preferred_prediction_target_lead_minutes": 60.0,
+                        "preferred_60m_met": bool(now <= preferred_cutoff),
+                        "lead_minutes": round(lead, 3),
+                        "prediction_source": source,
+                        "prediction_eligibility": "RESEARCH_SHADOW_PIT_SAFE_STARTERS_REQUIRED",
+                        "status": "RESEARCH_SHADOW_DUE",
+                    })
+
     # Research discovery runs alongside production scanning but can never add
     # a row to due_games/due_dates. MLB remains research-only until the separate
     # official-starter PIT gate and production adoption requirements are satisfied.
@@ -393,6 +435,8 @@ def due_games(
         "due_dates": sorted({row["target_date"] for row in due}),
         "research_due_games": research_due,
         "research_due_dates": sorted({row["target_date"] for row in research_due}),
+        "research_shadow_due_games": research_shadow_due,
+        "research_shadow_due_dates": sorted({row["target_date"] for row in research_shadow_due}),
         "research_errors": research_errors,
         "research_scope_error": research_scope_error,
         "blocked_runtimes": blocked,

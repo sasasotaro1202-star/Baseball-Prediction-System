@@ -71,6 +71,16 @@ jobs:
           print(json.dumps(audit, ensure_ascii=False, indent=2))
           PY
 
+      - name: Reconcile research-shadow experience
+        run: |
+          set -euo pipefail
+          if [ -d data/experience/research_shadow/predictions ]; then
+            python -m research.shadow_experience --reconcile
+            test -s data/experience/research_shadow/shadow_experience_summary.json
+          else
+            echo "No research-shadow prediction directory yet."
+          fi
+
       - name: Validate experience evidence
         run: |
           set -euo pipefail
@@ -122,6 +132,7 @@ jobs:
             fi
 
             git add data/experience/
+
             if git diff --cached --quiet; then
               echo "No new postgame experience to commit."
               exit 0

@@ -962,8 +962,11 @@ def predict(
     data_dir: str,
     *,
     pregame_only: bool = False,
+    research_shadow: bool = False,
 ) -> dict:
-    if not production_eligible("NPB"):
+    # Production remains fail-closed. Explicit research_shadow mode is a
+    # separate, auditable lane and never makes current production callable.
+    if not production_eligible("NPB") and not research_shadow:
         result={
             "schema_version":"npb-production-v1", "target_date":target_date,
             "execution_status":"BLOCKED_PRODUCTION_GATE", "pit_status":"NOT_RUN",
@@ -1121,8 +1124,15 @@ def predict(
           "pit_status":"PASS",
           "prediction_generated_at":datetime.now(timezone.utc).isoformat(),
         })
-    result={"schema_version":"npb-production-v1","target_date":target_date,"execution_status":"EXECUTED",
-            "pit_status":"PASS","starter_gate":"PASS","model_status":"FITTED_ON_PIT_SAFE_HISTORY",
+    result={
+            "schema_version":"npb-production-v1",
+            "target_date":target_date,
+            "execution_status":"RESEARCH_SHADOW_EXECUTED" if research_shadow else "EXECUTED",
+            "scope":"RESEARCH_SHADOW" if research_shadow else "PRODUCTION",
+            "production_eligibility":False if research_shadow else True,
+            "pit_status":"PASS",
+            "starter_gate":"PASS",
+            "model_status":"FITTED_ON_PIT_SAFE_HISTORY",
             "target_strategy_contracts":NPB_TARGET_CONTRACTS,
             "git_commit":__import__("os").environ.get("GITHUB_SHA","unknown"),
             "data_quality_status":"PASS",
@@ -1205,7 +1215,8 @@ def predict(
         exact_probs = [float(s.get("prob_pct", float("nan"))) for s in exact]
         if not all(np.isfinite(v) and 0.0 <= v <= 100.0 for v in exact_probs):
             raise RuntimeError("Production output validation failed: exact-score probability is invalid.")
-    out=ROOT/"results"/f"npb_production_{target_date}.json"; out.parent.mkdir(exist_ok=True)
+    output_stem = "npb_shadow" if research_shadow else "npb_production"
+    out=ROOT/"results"/f"{output_stem}_{target_date}.json"; out.parent.mkdir(exist_ok=True)
     atomic_write_json(out, result)
     return result
 
@@ -1216,11 +1227,16 @@ def main():
     ap.add_argument(
         "--pregame-only",
         action="store_true",
-        help="Only predict games currently 30-60 minutes before first pitch.",
+        help="Only predict games in the automatic pregame window.",
+    )
+    ap.add_argument(
+        "--research-shadow",
+        action="store_true",
+        help="Explicit research-only PIT-safe forecast lane; never unlocks production.",
     )
     args=ap.parse_args()
     print(json.dumps(
-        predict(args.date,args.data_dir,pregame_only=args.pregame_only),
+        predict(args.date,args.data_dir,pregame_only=args.pregame_only,research_shadow=args.research_shadow),
         ensure_ascii=False,
         indent=2,
     ))
