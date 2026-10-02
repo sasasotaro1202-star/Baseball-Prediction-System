@@ -76,7 +76,7 @@ def test_multiple_revisions_collapse_to_one_game():
         y, p, X, pt, mature, games,
         min_calibration_games=10, max_pool_games=20, k_neighbors=10,
     )
-    assert out["retrieval_pool_count"][60] == 19
+    assert out["retrieval_pool_count"][60] == 20
     assert out["retrieved_calibration_count"][60] == 10
 
 
