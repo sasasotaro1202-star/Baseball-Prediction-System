@@ -26,20 +26,26 @@ import os
 import sys
 
 import pandas as pd
-import requests
+from core.http import get_text as http_get_text, session as http_session
 
 REPO_RAW_BASE = "https://raw.githubusercontent.com/armstjc/Nippon-Baseball-Data-Repository/main/schedules"
+HTTP_SESSION = http_session(user_agent="Baseball-Prediction-System/npb-acquire")
 SEASONS = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
 
 
-def fetch_season(year: int, timeout: int = 20):
+def fetch_season(year: int, timeout: int = 45):
     url = f"{REPO_RAW_BASE}/{year}_npb_schedule.csv"
-    resp = requests.get(url, timeout=timeout)
-    if resp.status_code != 200:
-        print(f"[warn] {year}: HTTP {resp.status_code}")
+    try:
+        text = http_get_text(
+            HTTP_SESSION,
+            url,
+            timeout=(8, timeout),
+            retries=4,
+        )
+    except Exception as exc:
+        print(f"[warn] {year}: request failed after bounded retries: {exc}")
         return None
-    df = pd.read_csv(io.StringIO(resp.content.decode("utf-8", errors="ignore")))
-    return df
+    return pd.read_csv(io.StringIO(text))
 
 
 def normalize(df: pd.DataFrame, year: int):
