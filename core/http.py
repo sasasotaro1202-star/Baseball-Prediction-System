@@ -123,9 +123,9 @@ def get_json(
     sess: requests.Session,
     url: str,
     params: Mapping[str, Any] | None = None,
+    timeout: int | float | tuple[float, float] | None = None,
     *,
     headers: Mapping[str, str] | None = None,
-    timeout: int | float | tuple[float, float] | None = None,
     retries: int = DEFAULT_RETRIES,
 ):
     from core.parallel import throttle_for
@@ -146,9 +146,9 @@ def get_text(
     sess: requests.Session,
     url: str,
     params: Mapping[str, Any] | None = None,
+    timeout: int | float | tuple[float, float] | None = None,
     *,
     headers: Mapping[str, str] | None = None,
-    timeout: int | float | tuple[float, float] | None = None,
     retries: int = DEFAULT_RETRIES,
 ) -> str:
     from core.parallel import throttle_for
