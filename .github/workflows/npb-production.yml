@@ -50,6 +50,7 @@ jobs:
           import json
           from pathlib import Path
           from data.competition_registry import production_eligible
+          from research.target_strategy import as_dict, standard_target_strategies
 
           runtime = json.loads(Path("config/current_production_runtime.json").read_text(encoding="utf-8"))
           npb_runtime = runtime.get("runtimes", {}).get("NPB", {})
@@ -58,6 +59,7 @@ jobs:
               str(npb_runtime.get("formal_adoption_status", "")).upper() == "CURRENT_PRODUCTION"
               and bool(str(npb_runtime.get("entrypoint", "")).strip())
           )
+          target_contracts = {k: as_dict(v) for k, v in standard_target_strategies("NPB").items()}
           eligible = registry_ok and runtime_ok
           print(f"eligible={'true' if eligible else 'false'}")
           if not eligible:
@@ -86,7 +88,7 @@ jobs:
                 "model_status": "NOT_RUN",
                 "git_commit": os.environ.get("GITHUB_SHA", "unknown"),
                 "predictions": [],
-                "target_strategy_contracts": {},
+                "target_strategy_contracts": target_contracts,
                 "block_reason": "NPB production runtime is not currently eligible; external acquisition/model work was intentionally skipped.",
                 "prediction_generated_at": datetime.now(timezone.utc).isoformat(),
             }
