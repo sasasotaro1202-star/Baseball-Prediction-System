@@ -120,3 +120,25 @@ def test_metrics():
     assert metrics["eligible_rows"] > 0
     assert np.isfinite(metrics["coverage"])
     assert np.isfinite(metrics["mean_set_size"])
+
+
+def test_same_game_revisions_are_collapsed_before_retrieval():
+    y, p, X, pt, mature = _fixture(60)
+    games = np.asarray([f"game_{i // 3}" for i in range(60)], dtype=object)
+    out = retrieval_local_conformal_sets(
+        y, p, X, pt, mature, game_ids=games,
+        min_calibration=10, max_pool=40, k=10
+    )
+    # After warmup, at most one prior snapshot per game enters the pool.
+    eligible_games = min(40, len(set(games[:50])))
+    assert out["retrieval_pool_count"][50] <= eligible_games
+    assert out["contract"]["same_game_revisions_collapsed"] is True
+
+
+def test_game_id_contract_fails_closed():
+    y, p, X, pt, mature = _fixture(40)
+    with pytest.raises(ValueError, match="align"):
+        retrieval_local_conformal_sets(
+            y, p, X, pt, mature, game_ids=["g1"],
+            min_calibration=10, max_pool=20, k=10
+        )
