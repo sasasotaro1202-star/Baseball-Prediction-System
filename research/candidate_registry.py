@@ -92,5 +92,5 @@ def record_candidate(
     history = _load()
     history.append(asdict(record))
     REGISTRY.parent.mkdir(parents=True, exist_ok=True)
-    REGISTRY.write_text(json.dumps(history[-500:], ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_json(REGISTRY, history[-500:])
     return record
