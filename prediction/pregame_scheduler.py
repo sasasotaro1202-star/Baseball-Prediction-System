@@ -1,9 +1,10 @@
 """Lightweight, dependency-free pregame scheduler for production baseball predictions.
 
-The scheduler only decides whether a currently production-enabled target has a
-game inside the upcoming pregame window. Thirty minutes is the preferred target,
-not a hard eligibility boundary. It never predicts anything
-itself. Unknown/ambiguous schedule evidence fails closed.
+The automatic production slot targets roughly 60 minutes before first pitch,
+using a bounded 50-70 minute window. It never predicts anything itself.
+Unknown/ambiguous schedule evidence fails closed. Manual/current-production
+prediction calls are independent of this scheduler and may be requested at
+other times.
 
 Currently the checked-in production runtime is NPB. When additional runtimes are
 formally adopted, this scheduler can discover them from the runtime registry
@@ -234,7 +235,34 @@ def _archived_prediction_keys(target_date: str) -> set[tuple[str, str, str]]:
     return out
 
 
-def due_games(*, now_utc: datetime | None = None, min_lead_minutes: float = 0.0, scan_ahead_minutes: float = 60.0, preferred_lead_minutes: float = 30.0) -> dict:
+def _archived_prediction_sources(target_date: str) -> set[tuple[str, str, str]]:
+    """Return (home, away, prediction_source) for explicitly labeled snapshots."""
+    path = PRED_DIR / f"{target_date}.jsonl"
+    if not path.exists():
+        return set()
+    out: set[tuple[str, str, str]] = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        source = str(row.get("prediction_source") or "").strip()
+        if not source:
+            continue
+        try:
+            out.add((str(row["home"]), str(row["away"]), source))
+        except (KeyError, TypeError):
+            continue
+    return out
+
+
+def due_games(
+    *,
+    now_utc: datetime | None = None,
+    min_lead_minutes: float = 0.0,
+    scan_ahead_minutes: float = 60.0,
+    preferred_lead_minutes: float = 30.0,
+    prediction_source: str | None = None,
+) -> dict:
     now = now_utc or datetime.now(timezone.utc)
     if now.tzinfo is None:
         now = now.replace(tzinfo=timezone.utc)
@@ -282,6 +310,7 @@ def due_games(*, now_utc: datetime | None = None, min_lead_minutes: float = 0.0,
         for target_date in sorted(dates):
             games = _schedule_for_date(target_date)
             archived = _archived_prediction_keys(target_date)
+            archived_sources = _archived_prediction_sources(target_date)
             for game_index, game in enumerate(games, start=1):
                 start = datetime.fromisoformat(
                     f"{target_date}T{game['official_start_time']}:00+09:00"
@@ -290,9 +319,15 @@ def due_games(*, now_utc: datetime | None = None, min_lead_minutes: float = 0.0,
                 preferred_cutoff = start - timedelta(minutes=float(preferred_lead_minutes))
                 prediction_cutoff = now
                 cutoff_iso = prediction_cutoff.isoformat()
+                source_key = str(prediction_source or "").strip()
+                already_sourced = bool(
+                    source_key
+                    and (game["home"], game["away"], source_key) in archived_sources
+                )
                 if (
                     float(min_lead_minutes) < lead <= float(scan_ahead_minutes)
                     and (game["home"], game["away"], cutoff_iso) not in archived
+                    and not already_sourced
                 ):
                     due.append({
                         "league": league,
@@ -305,6 +340,7 @@ def due_games(*, now_utc: datetime | None = None, min_lead_minutes: float = 0.0,
                         "preferred_prediction_cutoff_utc": preferred_cutoff.isoformat(),
                         "preferred_30m_met": bool(now <= preferred_cutoff),
                         "lead_minutes": round(lead, 3),
+                        "prediction_source": source_key or None,
                         "prediction_eligibility": "CURRENT_PRODUCTION",
                         "status": "DUE",
                     })
@@ -346,6 +382,7 @@ def due_games(*, now_utc: datetime | None = None, min_lead_minutes: float = 0.0,
         "min_lead_minutes": float(min_lead_minutes),
         "preferred_lead_minutes": float(preferred_lead_minutes),
         "scan_ahead_minutes": float(scan_ahead_minutes),
+        "prediction_source": str(prediction_source or "") or None,
         "runtimes": sorted([league for league, _ in enabled]),
         "research_active": sorted(research_active),
         "due_games": due,
@@ -370,13 +407,19 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dates-only", action="store_true")
     parser.add_argument("--min-lead-minutes", type=float, default=0.0)
-    parser.add_argument("--preferred-lead-minutes", type=float, default=30.0)
-    parser.add_argument("--scan-ahead-minutes", type=float, default=60.0)
+    parser.add_argument("--preferred-lead-minutes", type=float, default=60.0)
+    parser.add_argument("--scan-ahead-minutes", type=float, default=70.0)
+    parser.add_argument(
+        "--prediction-source",
+        default=None,
+        help="Optional stable source label used to prevent duplicate scheduled slots.",
+    )
     args = parser.parse_args(argv)
     result = due_games(
         min_lead_minutes=args.min_lead_minutes,
         preferred_lead_minutes=args.preferred_lead_minutes,
         scan_ahead_minutes=args.scan_ahead_minutes,
+        prediction_source=args.prediction_source,
     )
     if args.dates_only:
         print(",".join(result["due_dates"]))

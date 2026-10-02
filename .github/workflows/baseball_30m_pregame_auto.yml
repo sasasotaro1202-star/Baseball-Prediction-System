@@ -1,4 +1,4 @@
-name: Baseball Pregame Auto Prediction
+name: Baseball 60m Pregame Auto Prediction
 
 on:
   workflow_dispatch:
@@ -36,7 +36,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m py_compile prediction/pregame_scheduler.py
-          python prediction/pregame_scheduler.py > pregame_scheduler.json
+          python prediction/pregame_scheduler.py             --min-lead-minutes 50             --preferred-lead-minutes 60             --scan-ahead-minutes 70             --prediction-source AUTO_60M > pregame_scheduler.json
           cat pregame_scheduler.json
           python - <<'PY'
           import json
@@ -45,7 +45,12 @@ jobs:
           if obj.get("status") not in {"DUE", "NO_DUE_GAMES"}:
               raise SystemExit("unexpected scheduler status: " + str(obj.get("status")))
           for row in obj.get("due_games", []):
-              if float(row["lead_minutes"]) <= 0.0:
+              lead = float(row["lead_minutes"])
+              if not 50.0 < lead <= 70.0:
+                  raise SystemExit("automatic scheduler selected a game outside the 50-70 minute window")
+              if row.get("prediction_source") != "AUTO_60M":
+                  raise SystemExit("automatic scheduler emitted an unexpected prediction source")
+              if lead <= 0.0:
                   raise SystemExit("scheduler selected a game at/after first pitch")
           due_dates = list(obj.get("due_dates", []))
           research_due = list(obj.get("research_due_games", []))
@@ -140,9 +145,29 @@ jobs:
                   raise SystemExit("prediction information cutoff is not pregame")
               if pred.get("pit_status") != "PASS":
                   raise SystemExit("prediction is not PIT PASS")
-          print("Pregame PIT validation passed; 30m is treated as a preferred target.")
+          print("Pregame PIT validation passed; automatic target is approximately 60m before first pitch.")
           PY
           done < due_dates.txt
+
+      - name: Mark automatic 60m prediction source before archiving
+        run: |
+          set -euo pipefail
+          if [ ! -s due_dates.txt ]; then
+            exit 0
+          fi
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          for path in sorted(Path("results").glob("npb_production_*.json")):
+              obj = json.loads(path.read_text(encoding="utf-8"))
+              if obj.get("execution_status") != "EXECUTED":
+                  continue
+              for pred in obj.get("predictions", []):
+                  pred["prediction_source"] = "AUTO_60M"
+                  pred["prediction_schedule"] = "scheduled"
+                  pred["prediction_target_lead_minutes"] = 60.0
+              path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          PY
 
       - name: Archive all executed pregame snapshots into experience
         run: |
@@ -171,13 +196,31 @@ jobs:
             echo "No new experience snapshots to commit."
             exit 0
           fi
-          git commit -m "Archive 30m pregame prediction experience"
           for attempt in 1 2 3; do
+            git fetch origin main
+            if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+              git reset --hard origin/main
+            fi
+
+            # Re-archive the immutable prediction output after every push race
+            # recovery. We never rebase generated prediction JSONL state.
+            while IFS= read -r date; do
+              [ -n "$date" ] || continue
+              output="results/npb_production_$date.json"
+              if [ -s "$output" ]; then
+                python -m research.experience_ledger --archive "$output" --run-id "$GITHUB_RUN_ID"
+              fi
+            done < due_dates.txt
+
+            git add data/experience/predictions/
+            if git diff --cached --quiet; then
+              echo "No new experience snapshots to commit."
+              exit 0
+            fi
+            git commit -m "Archive 60m pregame prediction experience"
             if git push origin HEAD:main; then
               exit 0
             fi
-            git fetch origin main
-            git rebase origin/main
           done
           echo "bounded experience push recovery exhausted" >&2
           exit 1
