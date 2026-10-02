@@ -414,3 +414,65 @@ def test_rollup_quarantines_legacy_scheduled_cutoff(tmp_path, monkeypatch):
     # The legacy row is not treated as a valid PIT prediction.
     assert result["status"] == "NO_PREGAME_PREDICTIONS"
     assert result["snapshot_rows"] == 0
+
+
+
+def test_performance_hierarchy_separates_league_competition_phase_and_targets():
+    from research.experience_rollup import _performance_hierarchy
+
+    frame = pd.DataFrame([
+        {
+            "league": "NPB",
+            "competition_key": "NPB:npb_regular:regular_season",
+            "competition_stage": "REGULAR_SEASON",
+            "outcome_correct": 1,
+            "logloss": 0.20,
+            "brier": 0.10,
+            "predicted_outcome": "HOME_WIN",
+            "actual_outcome": "HOME_WIN",
+            "low_high_correct": 1,
+            "top1_exact_hit": 1,
+            "top4_hit": 1,
+            "score_mae": 1.0,
+            "home_win_pct": 80.0,
+            "draw_pct": 5.0,
+            "away_win_pct": 15.0,
+            "low_pct": 70.0,
+            "high_pct": 30.0,
+        },
+        {
+            "league": "NPB",
+            "competition_key": "NPB:npb_climax_series:climax_series",
+            "competition_stage": "CLIMAX_SERIES",
+            "outcome_correct": 0,
+            "logloss": 1.20,
+            "brier": 0.90,
+            "predicted_outcome": "HOME_WIN",
+            "actual_outcome": "AWAY_WIN",
+            "low_high_correct": 0,
+            "top1_exact_hit": 0,
+            "top4_hit": 0,
+            "score_mae": 3.0,
+            "home_win_pct": 80.0,
+            "draw_pct": 5.0,
+            "away_win_pct": 15.0,
+            "low_pct": 30.0,
+            "high_pct": 70.0,
+        },
+    ])
+
+    result = _performance_hierarchy(frame, lambda g: {
+        "rows": int(len(g)),
+        "accuracy": float(g["outcome_correct"].mean()),
+    })
+    assert set(result) == {"NPB"}
+    assert set(result["NPB"]["by_competition"]) == {
+        "NPB:npb_regular:regular_season",
+        "NPB:npb_climax_series:climax_series",
+    }
+    assert set(result["NPB"]["by_competition"]["NPB:npb_regular:regular_season"]["by_phase"]) == {
+        "REGULAR_SEASON"
+    }
+    assert set(result["NPB"]["targets"]) == {
+        "win_3way", "low_high", "exact_score"
+    }
