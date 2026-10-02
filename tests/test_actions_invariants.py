@@ -125,6 +125,24 @@ def test_9h_autopilot_hands_off_evidence_to_final_phase_and_hides_no_failures():
     assert "continue-on-error" not in text
 
 
+def test_npb_production_checks_runtime_gate_before_network_and_dependency_work():
+    text = (ROOT / ".github" / "workflows" / "npb-production.yml").read_text(encoding="utf-8")
+    _assert_official_actions_are_immutable(text)
+
+    gate = text.index("- name: Check NPB production runtime gate")
+    install = text.index("- name: Install production dependencies")
+    pit = text.index("- name: PIT and syntax gate")
+    acquire = text.index("- name: Acquire PIT-safe public NPB PBP data")
+    run = text.index("- name: Run NPB production prediction")
+
+    assert gate < install < pit < acquire < run
+    required_condition = "if: steps.production_gate.outputs.eligible == 'true'"
+    assert text.count(required_condition) >= 4
+    assert "execution_status" in text
+    assert "BLOCKED_PRODUCTION_GATE" in text
+    assert 'block_reason": "NPB production runtime is not currently eligible' in text
+
+
 def test_candidate_oos_fails_closed_on_incomplete_evidence():
     text = (ROOT / ".github" / "workflows" / "baseball_candidate_oos.yml").read_text(encoding="utf-8")
     _assert_official_actions_are_immutable(text)
