@@ -184,22 +184,26 @@ def _cache_results(dates: list[pd.Timestamp]) -> pd.DataFrame:
     needed = sorted({(int(d.year), int(d.month)) for d in dates})
     chunks: list[pd.DataFrame] = []
     RESULT_DIR.mkdir(parents=True, exist_ok=True)
+    columns = ["date", "home", "away", "home_score", "away_score", "source_url"]
     for year, month in needed:
         path = RESULT_DIR / f"{year:04d}-{month:02d}.csv"
-        if not path.exists() or path.stat().st_size == 0:
+        got: pd.DataFrame | None = None
+
+        if path.exists() and path.stat().st_size > 0:
+            try:
+                got = pd.read_csv(path)
+            except Exception:
+                path.unlink(missing_ok=True)
+                got = None
+
+        # Never let a header-only monthly cache suppress later completed
+        # results. The first postgame pass must refresh an empty cache.
+        if got is None or got.empty:
             rows = _fetch_month(year, month)
-            pd.DataFrame(rows, columns=[
-                "date", "home", "away", "home_score", "away_score", "source_url"
-            ]).to_csv(path, index=False)
-        try:
-            got = pd.read_csv(path)
-        except Exception:
-            path.unlink(missing_ok=True)
-            rows = _fetch_month(year, month)
-            pd.DataFrame(rows, columns=[
-                "date", "home", "away", "home_score", "away_score", "source_url"
-            ]).to_csv(path, index=False)
-            got = pd.read_csv(path)
+            refreshed = pd.DataFrame(rows, columns=columns)
+            refreshed.to_csv(path, index=False)
+            got = refreshed
+
         chunks.append(got)
     if not chunks:
         return pd.DataFrame()

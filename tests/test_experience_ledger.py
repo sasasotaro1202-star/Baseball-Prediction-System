@@ -71,6 +71,40 @@ def test_archive_preserves_each_prediction_snapshot(tmp_path, monkeypatch):
     assert rows[0]["prediction_id"]
 
 
+def test_empty_result_cache_is_refreshed(tmp_path, monkeypatch):
+    monkeypatch.setattr(exp, "RESULT_DIR", tmp_path / "experience" / "official_results")
+    result_dir = tmp_path / "experience" / "official_results"
+    result_dir.mkdir(parents=True, exist_ok=True)
+    cache = result_dir / "2026-10.csv"
+    cache.write_text(
+        "date,home,away,home_score,away_score,source_url\n",
+        encoding="utf-8",
+    )
+
+    calls = []
+
+    def fake_fetch(year, month):
+        calls.append((year, month))
+        return [{
+            "date": "2026-10-02",
+            "home": "東京ヤクルトスワローズ",
+            "away": "読売ジャイアンツ",
+            "home_score": 5,
+            "away_score": 1,
+            "source_url": "test://npb",
+        }]
+
+    monkeypatch.setattr(exp, "_fetch_month", fake_fetch)
+    loaded = exp._load_cached_results(
+        [pd.Timestamp("2026-10-02T18:00:00+09:00")]
+    )
+
+    assert calls == [(2026, 10)]
+    assert len(loaded) == 1
+    assert int(loaded.loc[0, "home_score"]) == 5
+    assert len(pd.read_csv(cache)) == 1
+
+
 def test_multiclass_ece_uses_confidence_vs_accuracy():
     probabilities = np.array([
         [0.60, 0.05, 0.35],

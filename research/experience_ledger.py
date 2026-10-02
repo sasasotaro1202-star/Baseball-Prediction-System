@@ -464,22 +464,27 @@ def _load_cached_results(dates: list[pd.Timestamp]) -> pd.DataFrame:
         return pd.DataFrame()
     needed = sorted({(int(d.year), int(d.month)) for d in dates})
     chunks: list[pd.DataFrame] = []
+    columns = ["date", "home", "away", "home_score", "away_score", "source_url"]
     for year, month in needed:
         path = _result_cache_path(year, month)
-        if not path.exists() or path.stat().st_size == 0:
+        got: pd.DataFrame | None = None
+
+        # A header-only cache means "we checked before and there were no
+        # completed rows". It must not become permanent for a month whose
+        # schedule later gains completed games.
+        if path.exists() and path.stat().st_size > 0:
+            try:
+                got = pd.read_csv(path)
+            except Exception:
+                path.unlink(missing_ok=True)
+                got = None
+
+        if got is None or got.empty:
             rows = _fetch_month(year, month)
-            pd.DataFrame(rows, columns=[
-                "date", "home", "away", "home_score", "away_score", "source_url"
-            ]).to_csv(path, index=False)
-        try:
-            got = pd.read_csv(path)
-        except Exception:
-            path.unlink(missing_ok=True)
-            rows = _fetch_month(year, month)
-            pd.DataFrame(rows, columns=[
-                "date", "home", "away", "home_score", "away_score", "source_url"
-            ]).to_csv(path, index=False)
-            got = pd.read_csv(path)
+            refreshed = pd.DataFrame(rows, columns=columns)
+            refreshed.to_csv(path, index=False)
+            got = refreshed
+
         chunks.append(got)
     if not chunks:
         return pd.DataFrame()
