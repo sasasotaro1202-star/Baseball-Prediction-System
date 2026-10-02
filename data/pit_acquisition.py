@@ -19,8 +19,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-import requests
-
+from core.http import get_json as http_get_json, get_text as http_get_text, session as http_session
 from core.pit_snapshot import append_snapshot, make_snapshot, payload_hash
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,7 +35,9 @@ NPB_URLS = (
     "https://npb.jp/",
     "https://spaia.jp/baseball/npb/api/weekly_schedule",
 )
-TIMEOUT = int(os.getenv("PIT_ACQ_TIMEOUT", "30"))
+TIMEOUT = max(10, int(os.getenv("PIT_ACQ_TIMEOUT", "45")))
+HTTP_CONNECT_TIMEOUT = max(2, int(os.getenv("PIT_ACQ_CONNECT_TIMEOUT", "8")))
+HTTP_RETRIES = max(1, int(os.getenv("PIT_ACQ_RETRIES", "4")))
 LOOKAHEAD_DAYS = int(os.getenv("PIT_LOOKAHEAD_DAYS", "3"))
 LOOKBACK_DAYS = int(os.getenv("PIT_LOOKBACK_DAYS", "1"))
 # Expensive per-game MLB probes are optional; schedule acquisition is the PIT-critical path.
@@ -48,9 +49,8 @@ PROBE_TIMEOUT_SECONDS = max(3, int(os.getenv("PIT_MLB_PROBE_TIMEOUT_SECONDS", "8
 PROBE_RETRIES = max(1, int(os.getenv("PIT_MLB_PROBE_RETRIES", "2")))
 PROBE_ENTITY_TYPES = {"game_feed_timestamps", "game_content"}
 
-SESSION = requests.Session()
+SESSION = http_session(user_agent="Baseball-PIT-Acquisition/1.2")
 SESSION.headers.update({
-    "User-Agent": "Baseball-PIT-Acquisition/1.1",
     "Accept": "application/json,text/html;q=0.9,*/*;q=0.8",
 })
 
@@ -66,55 +66,39 @@ def _append_jsonl(path: Path, row: dict[str, Any]) -> None:
 
 
 def get_json(url: str, params: dict[str, Any] | None = None) -> tuple[Any, str]:
-    last: Exception | None = None
-    for attempt in range(4):
-        try:
-            r = SESSION.get(url, params=params, timeout=TIMEOUT)
-            r.raise_for_status()
-            return r.json(), now_utc()
-        except Exception as exc:
-            last = exc
-            if attempt < 3:
-                time.sleep(min(1.5 * (attempt + 1), 5))
-    raise RuntimeError(f"request failed: {url}: {last}")
+    payload = http_get_json(
+        SESSION,
+        url,
+        params=params,
+        timeout=(HTTP_CONNECT_TIMEOUT, TIMEOUT),
+        retries=HTTP_RETRIES,
+    )
+    return payload, now_utc()
 
 
 def get_json_probe(url: str) -> tuple[Any, str] | None:
-    """Fetch optional MLB supporting evidence with a strict time budget.
-    
-    Probe failures are deliberately non-fatal; the main schedule acquisition
-    remains authoritative and the next cadence cycle retries the evidence.
-    """
-    last: Exception | None = None
-    for attempt in range(PROBE_RETRIES):
-        try:
-            r = SESSION.get(url, timeout=PROBE_TIMEOUT_SECONDS)
-            r.raise_for_status()
-            return r.json(), now_utc()
-        except Exception as exc:
-            last = exc
-            if attempt + 1 < PROBE_RETRIES:
-                time.sleep(0.5)
-    print(f"[PIT][MLB][PROBE] unavailable: {url}: {last}")
-    return None
+    """Fetch optional MLB supporting evidence with a strict bounded time budget."""
+    try:
+        payload = http_get_json(
+            SESSION,
+            url,
+            timeout=(min(HTTP_CONNECT_TIMEOUT, 5), PROBE_TIMEOUT_SECONDS),
+            retries=PROBE_RETRIES,
+        )
+        return payload, now_utc()
+    except Exception as exc:
+        print(f"[PIT][MLB][PROBE] unavailable: {url}: {exc}")
+        return None
 
 
 def get_text(url: str) -> tuple[str, str]:
-    last: Exception | None = None
-    for attempt in range(4):
-        try:
-            r = SESSION.get(url, timeout=TIMEOUT)
-            r.raise_for_status()
-            try:
-                text = r.content.decode("utf-8")
-            except UnicodeDecodeError:
-                text = r.text
-            return text, now_utc()
-        except Exception as exc:
-            last = exc
-            if attempt < 3:
-                time.sleep(min(1.5 * (attempt + 1), 5))
-    raise RuntimeError(f"request failed: {url}: {last}")
+    text = http_get_text(
+        SESSION,
+        url,
+        timeout=(HTTP_CONNECT_TIMEOUT, TIMEOUT),
+        retries=HTTP_RETRIES,
+    )
+    return text, now_utc()
 
 
 def _find_value(obj: Any, names: set[str]) -> Any:
