@@ -808,10 +808,10 @@ def build_target_rows(
         r["official_start_time"] = start_time
         r["start_time_source"] = NPB_DAY_URL.format(year=target_date[:4], date=target_date.replace("-", ""))
         r["datetime"]=pd.Timestamp(f"{target_date} {start_time}").tz_localize("Asia/Tokyo").tz_convert("UTC")
-        # Thirty minutes is a preferred forecast horizon, not a hard cutoff.
-        # Any still-upcoming game remains eligible so transient scheduler/runner
-        # latency does not turn into a missed case. PIT uses the actual
-        # information-observation timestamp below.
+        # The caller chooses the preferred forecast horizon; the automatic
+        # scheduler uses 60 minutes, while ordinary/manual prediction keeps
+        # its existing wider horizon. The preference is metadata, not a hard
+        # PIT cutoff.
         lead_seconds = float((r["datetime"] - now_utc).total_seconds())
         if r["datetime"] <= now_utc:
             continue
@@ -826,7 +826,16 @@ def build_target_rows(
         r["prediction_cutoff_utc"] = prediction_cutoff.isoformat()
         r["prediction_deadline_utc"] = preferred_cutoff.isoformat()
         r["preferred_prediction_cutoff_utc"] = preferred_cutoff.isoformat()
-        r["preferred_30m_met"] = bool(now_utc <= preferred_cutoff)
+        r["preferred_prediction_target_lead_minutes"] = float(preferred_lead_minutes)
+        r["preferred_target_met"] = bool(now_utc <= preferred_cutoff)
+        r["preferred_60m_met"] = bool(
+            now_utc <= r["datetime"] - pd.Timedelta(minutes=60.0)
+        )
+        # Backward-compatible field: this reports the literal 30-minute
+        # condition, not the configured preferred target.
+        r["preferred_30m_met"] = bool(
+            now_utc <= r["datetime"] - pd.Timedelta(minutes=30.0)
+        )
         r["lead_minutes_at_generation"] = lead_seconds / 60.0
         r["home_score"]=float("nan"); r["away_score"]=float("nan")
         evidence_status = str(r.get("starter_evidence_status") or "").strip()
@@ -972,7 +981,7 @@ def predict(
             target_date,
             minimum_lead_minutes=(0.0 if pregame_only else 30.0),
             maximum_lead_minutes=(60.0 if pregame_only else None),
-            preferred_lead_minutes=30.0,
+            preferred_lead_minutes=(60.0 if pregame_only else 30.0),
         )
     except RuntimeError as exc:
         # Missing/insufficient official starter evidence is a valid fail-closed
@@ -1092,6 +1101,9 @@ def predict(
           "prediction_cutoff_utc":r.prediction_cutoff_utc,
           "prediction_deadline_utc":r.prediction_deadline_utc,
           "preferred_prediction_cutoff_utc":r.preferred_prediction_cutoff_utc,
+          "preferred_prediction_target_lead_minutes":float(r.preferred_prediction_target_lead_minutes),
+          "preferred_target_met":bool(r.preferred_target_met),
+          "preferred_60m_met":bool(r.preferred_60m_met),
           "preferred_30m_met":bool(r.preferred_30m_met),
           "lead_minutes_at_generation":float(r.lead_minutes_at_generation),
           "home_win_pct":round(float(home_final)*100,4),"draw_pct":round(float(draw_final)*100,4),"away_win_pct":round(float(away_final)*100,4),
