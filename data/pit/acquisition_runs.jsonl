@@ -117,3 +117,4 @@
 {"mlb_error": "No module named 'core.parallel'", "mlb_events": 0, "mlb_status": "UNAVAILABLE", "npb_events": 0, "npb_status": "OK", "run_finished_at": "2026-10-02T06:24:56.266914+00:00", "run_started_at": "2026-10-02T06:24:56.266159+00:00"}
 {"mlb_events": 9, "mlb_status": "OK", "npb_events": 18, "npb_status": "OK", "run_finished_at": "2026-10-02T12:53:51.111965+00:00", "run_started_at": "2026-10-02T12:53:43.275155+00:00"}
 {"mlb_events": 9, "mlb_status": "OK", "npb_events": 18, "npb_status": "OK", "run_finished_at": "2026-10-02T18:16:38.007434+00:00", "run_started_at": "2026-10-02T18:16:30.473472+00:00"}
+{"mlb_events": 9, "mlb_status": "OK", "npb_events": 18, "npb_status": "OK", "run_finished_at": "2026-10-02T22:21:41.072740+00:00", "run_started_at": "2026-10-02T22:21:32.718117+00:00"}
