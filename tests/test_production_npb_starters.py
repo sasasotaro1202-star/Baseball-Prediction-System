@@ -53,23 +53,24 @@ def test_official_starter_parser_rejects_identical_starters_in_one_game():
         raise AssertionError("identical starters for both teams must fail closed")
 
 
-def test_predict_persists_blocked_state_for_impossible_starter_pair(monkeypatch, tmp_path):
+def test_predict_enforces_production_gate_before_starter_access(monkeypatch, tmp_path):
     import production_npb
 
+    monkeypatch.setattr(production_npb, "production_eligible", lambda competition_id: False)
     monkeypatch.setattr(
         production_npb,
         "build_target_rows",
-        lambda target_date, **kwargs: (_ for _ in ()).throw(
-            RuntimeError(
-                "PIT starter gate failed: identical starter assigned to both teams "
-                "in one official game (A vs B): '投手A'."
-            )
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("starter acquisition must not run while the production gate is blocked")
         ),
     )
     result = production_npb.predict("2026-09-24", str(tmp_path))
-    assert result["execution_status"] == "BLOCKED_STARTERS"
+    assert result["execution_status"] == "BLOCKED_PRODUCTION_GATE"
+    assert result["pit_status"] == "NOT_RUN"
+    assert result["starter_gate"] == "NOT_RUN"
+    assert result["model_status"] == "NOT_RUN"
     assert result["predictions"] == []
-    assert "identical starter" in result["block_reason"]
+    assert "independent holdout-backed adoption" in result["block_reason"]
     assert (tmp_path / "results" / "npb_production_2026-09-24.json").exists() is False
 
 
