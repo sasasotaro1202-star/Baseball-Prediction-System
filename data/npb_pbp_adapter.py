@@ -18,7 +18,6 @@ from html.parser import HTMLParser
 import re
 from pathlib import Path
 from typing import Iterable
-import time
 
 import numpy as np
 import pandas as pd
@@ -144,47 +143,26 @@ class _ScheduleParser(HTMLParser):
 
 def _fetch_official_month(year: int, month: int) -> list[dict]:
     url = _NPB_OFFICIAL_URL.format(year=year, month=month)
-    last = None
-    for attempt in range(3):
-        try:
-            r = http_request(HTTP_SESSION, url, timeout=(8, 45), retries=4)
-            enc = (r.apparent_encoding or r.encoding or "utf-8").lower().replace("-", "_")
-            if "shift_jis" in enc or "cp932" in enc or "shiftjis" in enc:
-                page_text = r.content.decode("cp932", errors="strict")
-            else:
-                page_text = r.content.decode(r.apparent_encoding or r.encoding or "utf-8", errors="strict")
-            parser = _ScheduleParser()
-            parser.feed(page_text)
-            break
-        except Exception as exc:
-            last = exc
-            if attempt < 2:
-                time.sleep(1.5 * (attempt + 1))
-    else:
-        raise RuntimeError(f"official NPB schedule failed: {url}: {last}")
-
-    date_re = re.compile(r"^(\d{1,2})/(\d{1,2})")
-    score_re = re.compile(r"^(.+?)\s+(\d+)\s*-\s*(\d+)\s+(.+?)$")
-    time_re = re.compile(r"(\d{1,2}):(\d{2})")
-    current_date = None
-    rows = []
-    for row in parser.rows:
-        if len(row) < 2:
-            continue
-        dm = date_re.search(row[0])
-        if dm:
-            current_date = f"{year:04d}-{int(dm.group(1)):02d}-{int(dm.group(2)):02d}"
-        if not current_date:
-            continue
-        times = time_re.findall(row[2] if len(row) > 2 else "")
-        start_time = times[0] if times else ""
-        for line in row[1].split("\n"):
-            m = score_re.match(line.strip())
-            if not m:
-                continue
-            home, hs, aws, away = m.groups()
-            rows.append({"date": current_date, "home": _canon_team(home), "away": _canon_team(away), "home_score": int(hs), "away_score": int(aws), "start_time": start_time, "source_url": url})
-    return rows
+    try:
+        r = http_request(
+            HTTP_SESSION,
+            url,
+            timeout=(8, 45),
+            retries=4,
+            total_timeout=120,
+        )
+        enc = (r.apparent_encoding or r.encoding or "utf-8").lower().replace("-", "_")
+        if "shift_jis" in enc or "cp932" in enc or "shiftjis" in enc:
+            page_text = r.content.decode("cp932", errors="strict")
+        else:
+            page_text = r.content.decode(
+                r.apparent_encoding or r.encoding or "utf-8",
+                errors="strict",
+            )
+        parser = _ScheduleParser()
+        parser.feed(page_text)
+    except Exception as exc:
+        raise RuntimeError(f"official NPB schedule failed: {url}: {exc}") from exc
 
 
 def _spaia_schedule_scores(year: int) -> pd.DataFrame:
