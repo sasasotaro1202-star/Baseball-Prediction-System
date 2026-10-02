@@ -140,7 +140,9 @@ def test_npb_production_checks_runtime_gate_before_network_and_dependency_work()
     assert text.count(required_condition) >= 4
     assert "execution_status" in text
     assert "BLOCKED_PRODUCTION_GATE" in text
-    assert 'block_reason": "NPB production runtime is not currently eligible' in text
+    blocked = (ROOT / "scripts" / "write_blocked_npb_output.py").read_text(encoding="utf-8")
+    assert '"execution_status": "BLOCKED_PRODUCTION_GATE"' in blocked
+    assert "NPB production runtime is not currently eligible" in blocked
 
 
 
