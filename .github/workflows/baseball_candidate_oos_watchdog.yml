@@ -106,6 +106,35 @@ jobs:
           active_count="$(jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length' <<<"${runs}")"
           echo "active_count_after_pending_recovery=${active_count}"
 
+          # Recover a runner that stayed in-progress after the candidate job timeout.
+          # Only the current main SHA is eligible, and the grace period is 360m
+          # versus the candidate workflow timeout of 260m.
+          stale_in_progress=0
+          now_epoch="$(date +%s)"
+          while IFS= read -r row; do
+            [ -n "${row}" ] || continue
+            id="$(jq -r '.databaseId' <<<"${row}")"
+            status="$(jq -r '.status' <<<"${row}")"
+            sha="$(jq -r '.headSha // empty' <<<"${row}")"
+            created="$(jq -r '.createdAt // empty' <<<"${row}")"
+            if [[ "${status}" == "in_progress" ]] && [[ "${sha}" == "${current_sha}" ]] && [[ -n "${created}" ]]; then
+              created_epoch="$(date -d "${created}" +%s)
+              age_minutes=$(( (now_epoch - created_epoch) / 60 ))
+              if [[ "${age_minutes}" -ge 360 ]]; then
+                echo "Cancelling stale same-SHA in-progress candidate run ${id} after ${age_minutes}m."
+                if ! gh run cancel "${id}" --repo "${GH_REPO}"; then
+                  echo "Failed to cancel stale in-progress candidate run ${id}; refusing to dispatch a duplicate." >&2
+                  exit 1
+                fi
+                stale_in_progress=1
+              fi
+            fi
+          done < <(jq -c '.[]' <<<"${runs}")
+
+          if [[ "${stale_in_progress}" -eq 1 ]]; then
+            sleep 3
+            runs="$(gh run list --repo "${GH_REPO}" --workflow "${CANDIDATE_WORKFLOW}" --limit 50 --json databaseId,status,conclusion,createdAt,headSha,number)"
+          fi
           in_progress_count="$(jq '[.[] | select(.status == "in_progress")] | length' <<<"${runs}")"
           if [[ "${in_progress_count}" -gt 0 ]]; then
             echo "Candidate OOS has in-progress work; do not interrupt expensive research."
@@ -124,16 +153,21 @@ jobs:
             dispatch=0
             reason="latest candidate is current and recent"
 
-            if [[ -n "${latest_sha}" && "${latest_sha}" != "${current_sha}" ]]; then
+            if [[ "${stale_in_progress}" -eq 1 ]]; then
+              dispatch=1
+              reason="same-SHA stale in-progress candidate run was recovered"
+            fi
+
+            if [[ "${dispatch}" -ne 1 ]] && [[ -n "${latest_sha}" && "${latest_sha}" != "${current_sha}" ]]; then
               dispatch=1
               reason="latest completed candidate is on superseded SHA ${latest_sha}"
-            elif [[ "${latest_conclusion}" == "success" && "${age_seconds}" -ge 604800 ]]; then
+            elif [[ "${dispatch}" -ne 1 ]] && [[ "${latest_conclusion}" == "success" && "${age_seconds}" -ge 604800 ]]; then
               dispatch=1
               reason="current candidate success is older than 7 days"
-            elif [[ "${latest_conclusion}" == "cancelled" || "${latest_conclusion}" == "timed_out" || "${latest_conclusion}" == "startup_failure" ]] && [[ "${age_seconds}" -ge 900 ]]; then
+            elif [[ "${dispatch}" -ne 1 ]] && [[ "${latest_conclusion}" == "cancelled" || "${latest_conclusion}" == "timed_out" || "${latest_conclusion}" == "startup_failure" ]] && [[ "${age_seconds}" -ge 900 ]]; then
               dispatch=1
               reason="current candidate ended with ${latest_conclusion}"
-            elif [[ "${latest_conclusion}" == "failure" && "${age_seconds}" -ge 604800 ]]; then
+            elif [[ "${dispatch}" -ne 1 ]] && [[ "${latest_conclusion}" == "failure" && "${age_seconds}" -ge 604800 ]]; then
               dispatch=1
               reason="current candidate failure is older than 7 days"
             fi
