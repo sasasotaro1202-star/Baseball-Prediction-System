@@ -1352,7 +1352,9 @@ def predict(
         for p in player_context.get("players", [])
         if isinstance(p, dict)
     }
+    player_snapshot_id = player_context.get("snapshot_id") if isinstance(player_context, dict) else None
     for pred in outputs:
+        pred["player_context_snapshot_id"] = player_snapshot_id
         pred["home_starter_player_context"] = player_by_name.get(str(pred.get("home_starter") or "").strip())
         pred["away_starter_player_context"] = player_by_name.get(str(pred.get("away_starter") or "").strip())
 
@@ -1380,6 +1382,7 @@ def predict(
             for game in pregame_context["games"]
         }
         attached = 0
+        context_snapshot_id = pregame_context.get("snapshot_id")
         for pred in outputs:
             key = (
                 str(pred.get("home") or ""),
@@ -1387,6 +1390,7 @@ def predict(
                 pd.Timestamp(pred["datetime_jst"]).tz_convert("Asia/Tokyo").strftime("%H:%M"),
             )
             row_context = context_by_key.get(key)
+            pred["pregame_context_snapshot_id"] = context_snapshot_id
             pred["pregame_context"] = row_context
             if row_context is not None:
                 attached += 1
