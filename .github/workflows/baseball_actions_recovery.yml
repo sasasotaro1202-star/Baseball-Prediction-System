@@ -14,6 +14,7 @@ on:
       - Baseball Scope Frontier Continuous Audit
       - NPB Production Prediction
       - Baseball 60m Pregame Auto Prediction
+      - .github/workflows/baseball_30m_pregame_auto.yml
     types: [completed]
 
 permissions:
@@ -48,6 +49,7 @@ jobs:
           RUN_ID: ${{ github.event.workflow_run.id }}
           RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
           WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          WORKFLOW_PATH: ${{ github.event.workflow_run.path }}
         run: |
           set -euo pipefail
           echo "Workflow=${WORKFLOW_NAME}"
@@ -90,7 +92,7 @@ jobs:
           # at all. There is no failed job to rerun in this state, so a bounded
           # fresh dispatch is the only useful recovery. Limit it to this exact
           # control-plane failure mode and one retry window at a time.
-          if [ "${WORKFLOW_NAME}" = "Baseball 60m Pregame Auto Prediction" ]; then
+          if [ "${WORKFLOW_NAME}" = "Baseball 60m Pregame Auto Prediction" ] || [ "${WORKFLOW_NAME}" = ".github/workflows/baseball_30m_pregame_auto.yml" ] || [ "${WORKFLOW_PATH}" = ".github/workflows/baseball_30m_pregame_auto.yml" ]; then
             job_count="$(gh run view "${RUN_ID}" --repo "${GH_REPO}" --json jobs --jq '.jobs | length')"
             echo "Pregame parent job count=${job_count}"
             if [ "${job_count}" -eq 0 ]; then
