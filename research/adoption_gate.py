@@ -15,7 +15,10 @@ from typing import Mapping
 @dataclass(frozen=True)
 class GatePolicy:
     min_oos_rows: int = 200
-    min_relative_improvement: float = 0.01
+    # Project adoption benchmark: primary OOS improvement is at least 3% relative.
+    min_relative_improvement: float = 0.03
+    # Auxiliary proper-scoring benchmark: require at least 1% relative Brier improvement.
+    min_relative_brier_improvement: float = 0.01
     max_logloss_regression: float = 0.005
     max_brier_regression: float = 0.005
     max_accuracy_regression: float = 0.005
@@ -177,6 +180,8 @@ def evaluate_locked_holdout(
 
     ll_improvement = _improvement(baseline, candidate, "LogLoss", False)
     br_improvement = _improvement(baseline, candidate, "Brier", False)
+    br_base = float(baseline["Brier"])
+    relative_br = br_improvement / max(abs(br_base), 1e-12)
     acc_improvement = _improvement(baseline, candidate, "Accuracy", True)
     ll_base = float(baseline["LogLoss"])
     ll_cand = float(candidate["LogLoss"])
@@ -184,6 +189,8 @@ def evaluate_locked_holdout(
 
     if relative_ll < policy.min_relative_improvement:
         reasons.append("logloss_improvement_below_gate")
+    if relative_br < policy.min_relative_brier_improvement:
+        reasons.append("brier_improvement_below_gate")
     if ll_cand - ll_base > policy.max_logloss_regression:
         reasons.append("logloss_regression")
     if float(candidate["Brier"]) - float(baseline["Brier"]) > policy.max_brier_regression:
@@ -242,5 +249,5 @@ def evaluate_locked_holdout(
         "decision": "ADOPT" if not reasons else "REJECT", "reasons": reasons,
         "baseline": dict(baseline), "candidate": dict(candidate), "targets": target_results,
         "uncertainty": uncertainty_result,
-        "improvement": {"LogLoss": ll_improvement, "Brier": br_improvement, "Accuracy": acc_improvement, "relative_LogLoss": relative_ll},
+        "improvement": {"LogLoss": ll_improvement, "Brier": br_improvement, "Accuracy": acc_improvement, "relative_LogLoss": relative_ll, "relative_Brier": relative_br},
     }
