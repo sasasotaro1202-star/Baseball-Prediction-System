@@ -117,6 +117,24 @@ def _revision_metrics(frame: pd.DataFrame) -> dict[str, Any]:
     }
 
 
+def _horizon_bucket(minutes: Any) -> str:
+    """Classify realized prediction lead time without using outcome data."""
+    try:
+        value = float(minutes)
+    except (TypeError, ValueError):
+        return "UNKNOWN"
+    if not math.isfinite(value) or value < 0.0:
+        return "UNKNOWN"
+    if value < 30.0:
+        return "LT_30M"
+    if value < 60.0:
+        return "30_TO_60M"
+    if value < 180.0:
+        return "1_TO_3H"
+    if value < 360.0:
+        return "3_TO_6H"
+    return "GE_6H"
+
 def _timing_30m_metrics(frame: pd.DataFrame) -> dict[str, Any]:
     """Measure strict 30-minute pregame timing without changing headline skill metrics."""
     required = {"datetime_jst", "prediction_generated_at", "prediction_cutoff_utc"}
@@ -833,6 +851,7 @@ def reconcile() -> dict[str, Any]:
         pd.to_datetime(matched["datetime_jst"], utc=True, errors="coerce")
         - pd.to_datetime(matched["prediction_generated_at"], utc=True, errors="coerce")
     ).dt.total_seconds() / 60.0
+    matched["prediction_horizon"] = matched["prediction_actual_lead_minutes"].map(_horizon_bucket)
     matched["prediction_30m_on_time"] = matched["prediction_actual_lead_minutes"] >= 30.0
     matched["scheduled_cutoff_lead_minutes"] = (
         pd.to_datetime(matched["datetime_jst"], utc=True, errors="coerce")
@@ -847,7 +866,7 @@ def reconcile() -> dict[str, Any]:
         "home_win_pct", "draw_pct", "away_win_pct", "predicted_outcome",
         "actual_outcome", "outcome_correct", "logloss", "brier",
         "home_probability_error", "draw_probability_error", "away_probability_error",
-        "prediction_actual_lead_minutes", "prediction_30m_on_time", "scheduled_cutoff_lead_minutes",
+        "prediction_actual_lead_minutes", "prediction_horizon", "prediction_30m_on_time", "scheduled_cutoff_lead_minutes",
         "revision_status", "revision_previous_prediction_id", "revision_l1_pct_points",
         "revision_max_abs_pct_points", "revision_outcome_changed",
         "low_pct", "high_pct", "low_high_actual", "low_high_correct",
@@ -945,6 +964,7 @@ def reconcile() -> dict[str, Any]:
         "by_competition": {},
         "by_phase": {},
         "by_dominant_expert": {},
+        "by_horizon": {},
         "timing_30m": _timing_30m_metrics(experience),
         "revision_intelligence": _revision_metrics(experience),
         "rolling": {},
@@ -1047,6 +1067,27 @@ def reconcile() -> dict[str, Any]:
             "accuracy": float(group["outcome_correct"].mean()),
             "logloss": float(group["logloss"].mean()),
         }
+
+    if "prediction_horizon" in experience.columns:
+        horizon_order = ("LT_30M", "30_TO_60M", "1_TO_3H", "3_TO_6H", "GE_6H", "UNKNOWN")
+        for key in horizon_order:
+            group = experience.loc[experience["prediction_horizon"].astype(str) == key]
+            if group.empty:
+                continue
+            summary["by_horizon"][key] = {
+                "rows": int(len(group)),
+                "accuracy": float(group["outcome_correct"].mean()),
+                "logloss": float(group["logloss"].mean()),
+                "brier": float(group["brier"].mean()),
+                "ece": _multiclass_ece(
+                    group[["home_win_pct", "draw_pct", "away_win_pct"]].to_numpy(float),
+                    group["actual_outcome"].map({"HOME_WIN": 0, "DRAW": 1, "AWAY_WIN": 2}).to_numpy(int),
+                ),
+                "mean_actual_lead_minutes": float(pd.to_numeric(
+                    group["prediction_actual_lead_minutes"], errors="coerce"
+                ).dropna().mean()) if group["prediction_actual_lead_minutes"].notna().any() else None,
+                "targets": _prediction_target_metrics(group),
+            }
     sorted_exp = experience.sort_values(["prediction_cutoff_utc", "game_id"])
     for n in (30, 100, 300):
         g = sorted_exp.tail(n)
