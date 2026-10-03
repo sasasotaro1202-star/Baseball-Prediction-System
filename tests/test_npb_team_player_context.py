@@ -237,7 +237,7 @@ def test_collect_team_exposes_player_coverage_and_roles(monkeypatch):
         BAT_HTML if "idb1_" in url else PIT_HTML if "idp1_" in url else DEF_HTML,
         "2026-10-03T00:00:00+00:00",
     ))
-    monkeypatch.setattr(ctx, "_enrich_profiles", lambda players, preferred_player_ids=None: (
+    monkeypatch.setattr(ctx, "_enrich_profiles", lambda players, preferred_player_ids=None, preferred_player_names=None: (
         players, 0
     ))
     got = ctx.collect_team("阪神", preferred_player_ids={"123"})
