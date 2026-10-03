@@ -1,4 +1,4 @@
-# Baseball Prediction & Research System — Formal Specification v1.3
+# Baseball Prediction & Research System — Formal Specification v2.0
 
 ## Scope
 - Baseball only, with a unified competition registry covering **professional, international, youth, collegiate/amateur, and major tournament baseball**.
@@ -100,3 +100,24 @@ Keep the existing `baseball_backtest.py` as the domain engine while progressivel
 8. Automatic result reconciliation and error/weakness analysis.
 9. Unified competition registry covering professional, international, youth, high-school and collegiate baseball, with explicit `RESEARCH_ONLY` / `PRODUCTION_ELIGIBLE` states.
 10. Competition-specific PIT/data adapters and isolated OOS/holdout promotion gates.
+
+
+## Governance synchronization — Project Source v2
+
+This formal specification is governed by the versioned project source at `docs/PROJECT_SOURCE.md`. When repository implementation and documentation disagree with verified runtime evidence, current GitHub state and verified execution evidence take precedence; historical experiment, failure, holdout, and production records are not rewritten.
+
+### Adoption benchmark
+
+The default candidate gate uses a **3% relative primary LogLoss improvement** benchmark and a **1% relative auxiliary Brier improvement** benchmark. These are reference promotion thresholds, not guarantees. Adoption also requires chronological OOS, PIT/leakage integrity, reproducibility, calibration, robustness, newest frozen holdout protection, sufficient sample, and operational safety. Evaluation-period stability and uncertainty/confidence intervals must be considered; a single fold or metric difference does not establish superiority.
+
+### Case-level and uncertainty contract
+
+Production research retains per-game uncertainty, predictability, data quality, regime, source state, PIT state, and error class when available. Confidence is not treated as predictability. Model disagreement, OOD, starter uncertainty, source disagreement, and regime ambiguity may trigger additional information acquisition, recomputation, fallback, deferral, or abstention.
+
+### Status integrity
+
+`IMPLEMENTED`, `EXECUTED`, `VERIFIED`, `PERFORMANCE_VERIFIED`, `PROMOTION_CANDIDATE`, `ADOPTED`, `PRODUCTION`, `HOLD`, `REJECTED`, `FAILED`, `BLOCKED`, `DEFERRED`, `ROLLED_BACK`, `UNKNOWN`, and `UNVERIFIABLE` remain distinct states. Green GitHub Actions, an existing model artifact, or a generated prediction file do not establish performance verification or adoption.
+
+### Five-repository transfer firewall
+
+Knowledge from other prediction repositories may be discovered and abstracted, but Baseball adoption requires local compatibility review, local PIT validation, chronological local OOS, local holdout, robustness, and release-gate evidence. Cross-project success is never copied directly into Baseball production.
