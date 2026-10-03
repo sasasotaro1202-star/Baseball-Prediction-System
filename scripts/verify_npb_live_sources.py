@@ -122,6 +122,25 @@ def _verify_team_stats(team: str, season: int) -> dict[str, Any]:
     return result
 
 
+def _verify_game_team_stats(games: list[dict[str, Any]], season: int) -> dict[str, Any]:
+    teams = sorted({
+        str(team).strip()
+        for game in games
+        for team in (game.get("home"), game.get("away"))
+        if str(team).strip() in TEAM_SUFFIX
+    })
+    if not teams:
+        raise RuntimeError("no canonical participating teams were resolved from live NPB games")
+    verified: dict[str, Any] = {}
+    for team in teams:
+        verified[team] = _verify_team_stats(team, season)
+    return {
+        "status": "AVAILABLE",
+        "team_count": len(verified),
+        "teams": verified,
+    }
+
+
 def _verify_player_profile(player_url: str, player_id: str, player_name: str) -> dict[str, Any]:
     body, observed = fetch_team_page(player_url)
     profile = parse_profile_page(body)
@@ -296,7 +315,7 @@ def main() -> int:
         str(selected_player.get("player_id") or ""),
         str(selected_player.get("player_name") or ""),
     )
-    report["sources"]["npb_official_team_stats"] = _verify_team_stats(selected_team, today_jst.year)
+    report["sources"]["npb_official_team_stats"] = _verify_game_team_stats(games, today_jst.year)
 
     # The pregame collector exposes source-level health in its "sources" list;
     # require schedule, both standings leagues, and at least one weather record.
