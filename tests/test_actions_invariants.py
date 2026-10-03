@@ -284,3 +284,15 @@ def test_manual_prediction_contract_preserves_runtime_failure_and_json_stdout():
     assert "raise SystemExit(rc if rc else 1)" in workflow
     assert 'PRODUCTION_DEGENERACY_DEBUG", json.dumps' in production
     assert ", file=sys.stderr)" in production
+
+
+def test_pregame_experience_persist_skips_absent_optional_shadow_dir():
+    text = (ROOT / ".github" / "workflows" / "baseball_30m_pregame_auto.yml").read_text(encoding="utf-8")
+    _assert_official_actions_are_immutable(text)
+
+    # research_shadow is optional; its absence must not turn a valid production
+    # prediction run into a pathspec failure.
+    assert text.count('for experience_path in data/experience/predictions data/experience/research_shadow; do') == 2
+    assert text.count('if [ -d "$experience_path" ]; then') == 2
+    assert text.count('git add "$experience_path"') == 2
+    assert 'git add data/experience/predictions/ data/experience/research_shadow/' not in text
