@@ -30,7 +30,7 @@ def test_mlb_holdout_pit_evidence_is_required():
 def test_non_mlb_gate_does_not_require_holdout_pit_by_default():
     result = evaluate_locked_holdout(
         _metrics(),
-        {"rows": 250, "LogLoss": 0.88, "Brier": 0.175, "Accuracy": 0.61},
+        {"rows": 250, "LogLoss": 0.87, "Brier": 0.175, "Accuracy": 0.61, "DrawRecall": 0.60, "DrawProbabilityMAE": 0.10},
         policy=GatePolicy(
             require_score_check=False,
             require_hilo_check=False,
