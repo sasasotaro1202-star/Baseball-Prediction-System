@@ -331,7 +331,7 @@ def test_24h_supervisor_recovers_only_latest_zero_job_pregame_failures_with_dail
     assert "--jq '.jobs | length'" in text
     assert "pregame_zero_job_failures" in text
     assert 'sort_by(.createdAt) | reverse | .[]' in text
-    assert 'select((.createdAt | fromdateiso8601) >= ((now - 86400)))' in text
+    assert 'select(((.createdAt | fromdateiso8601) >= ((now - 86400))))' in text
     assert 'if [ "${pregame_zero_job_failures}" -ge 3 ]; then' in text
     assert "le 1440" in text
     assert 'pregame_latest_age_minutes}" -lt 15' in text
