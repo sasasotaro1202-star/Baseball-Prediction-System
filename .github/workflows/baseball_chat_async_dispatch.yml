@@ -66,29 +66,33 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET_WORKFLOW: ${{ steps.route.outputs.workflow }}
+          TARGET_INPUTS: ${{ steps.route.outputs.inputs }}
         shell: bash
         run: |
           set -euo pipefail
-          # Single bounded API call. Do not poll/list runs here: chat-triggered
-          # work must hand off immediately and never wait on scheduler state.
-          if [ -n "${{ steps.route.outputs.inputs }}" ]; then
-            timeout --signal=TERM --kill-after=3s 10s \
-              gh api \
-              --method POST \
-              -H "Accept: application/vnd.github+json" \
-              "repos/${GH_REPO}/actions/workflows/${TARGET_WORKFLOW}/dispatches" \
-              -f ref=main \
-              -F 'inputs=${{ steps.route.outputs.inputs }}'
-          else
-            timeout --signal=TERM --kill-after=3s 10s \
-              gh api \
-              --method POST \
-              -H "Accept: application/vnd.github+json" \
-              "repos/${GH_REPO}/actions/workflows/${TARGET_WORKFLOW}/dispatches" \
-              -f ref=main
-          fi
-          echo "Async request accepted: ${{ steps.route.outputs.label }} dispatched on main. No run polling or completion wait is performed." >> "${GITHUB_STEP_SUMMARY}"
 
+          if [ -n "${TARGET_INPUTS}" ]; then
+            payload="$(jq -cn --argjson inputs "${TARGET_INPUTS}" '{ref:"main", inputs:$inputs}')"
+            printf '%s' "${payload}" |
+              timeout --signal=TERM --kill-after=3s 10s \
+                gh api \
+                --method POST \
+                -H "Accept: application/vnd.github+json" \
+                -H "Content-Type: application/json" \
+                "repos/${GH_REPO}/actions/workflows/${TARGET_WORKFLOW}/dispatches" \
+                --input -
+          else
+            jq -cn '{ref:"main"}' |
+              timeout --signal=TERM --kill-after=3s 10s \
+                gh api \
+                --method POST \
+                -H "Accept: application/vnd.github+json" \
+                -H "Content-Type: application/json" \
+                "repos/${GH_REPO}/actions/workflows/${TARGET_WORKFLOW}/dispatches" \
+                --input -
+          fi
+
+          echo "Async request accepted: ${{ steps.route.outputs.label }} dispatched on main. No run polling or completion wait is performed." >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Record ignored command
         if: steps.route.outputs.ignored == 'true'
