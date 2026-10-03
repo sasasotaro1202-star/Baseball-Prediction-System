@@ -70,7 +70,7 @@ def _identity_key(value: Any) -> str:
     """Normalize names for exact identity resolution without fuzzy matching."""
     value = _clean(value)
     value = unicodedata.normalize("NFKC", value)
-    return re.sub(r"\\s+", "", value)
+    return re.sub(r"\s+", "", value)
 
 
 class _PlayerSearchParser(HTMLParser):
@@ -86,7 +86,7 @@ class _PlayerSearchParser(HTMLParser):
         if tag.lower() != "a":
             return
         href = dict(attrs).get("href") or ""
-        if re.search(r"/bis/players/\\d+\\.html(?:[?#].*)?$", href):
+        if re.search(r"/bis/players/\d+\.html(?:[?#].*)?$", href):
             self._href = urljoin(BASE_URL, href)
             self._parts = []
 
@@ -98,7 +98,7 @@ class _PlayerSearchParser(HTMLParser):
 
     def handle_endtag(self, tag: str) -> None:
         if tag.lower() == "a" and self._href is not None:
-            match = re.search(r"/bis/players/(\\d+)\\.html(?:[?#].*)?$", self._href)
+            match = re.search(r"/bis/players/(\d+)\.html(?:[?#].*)?$", self._href)
             if match:
                 self.results.append({
                     "player_id": match.group(1),
@@ -118,7 +118,7 @@ def _parse_player_search_results(html: str) -> list[dict[str, str]]:
 def _resolve_one_player_name(player_name: str, team: str) -> list[dict[str, str]]:
     keyword = quote(_clean(player_name), safe="")
     url = PLAYER_SEARCH_URL.format(keyword=keyword)
-    body = _fetch_text(url)
+    body, _observed_at = _fetch_text(url)
     expected_name = _identity_key(player_name)
     expected_team = _identity_key(team)
     candidates: list[dict[str, str]] = []
