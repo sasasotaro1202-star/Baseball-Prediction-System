@@ -68,3 +68,24 @@ def test_predict_current_forwards_pregame_only_to_registered_runtime(monkeypatch
         "data_dir": "data",
         "pregame_only": True,
     }
+
+
+
+def test_blocked_runtime_preserves_on_demand_request_provenance(monkeypatch):
+    import prediction.current_production as cp
+
+    monkeypatch.setattr(cp, "latest_target_date_jst", lambda: "2026-10-03")
+    monkeypatch.setattr(cp, "current_runtime", lambda league: {
+        "available": False,
+        "league": league,
+        "status": "BLOCKED_NO_CURRENT_PRODUCTION_RUNTIME",
+        "reason": "blocked for test",
+    })
+
+    result = cp.predict_current(league="NPB")
+    assert result["execution_status"] == "BLOCKED_NO_CURRENT_PRODUCTION_RUNTIME"
+    assert result["prediction_request_mode"] == "on_demand"
+    assert result["prediction_schedule"] == "on_demand"
+    assert result["prediction_source"] == "MANUAL_LIVE"
+    assert result["resolved_target_date"] == "2026-10-03"
+    assert result["prediction_requested_at_utc"] == result["prediction_generated_at"]
