@@ -362,7 +362,7 @@ def test_24h_supervisor_recovers_only_latest_zero_job_pregame_failures_with_dail
 def test_24h_autopilot_targeted_test_paths_exist():
     """Never let the long-running autopilot reference deleted test modules."""
     workflow = (ROOT / ".github" / "workflows" / "baseball_24h_research_autopilot.yml").read_text(encoding="utf-8")
-    paths = sorted(set(re.findall(r"tests/[A-Za-z0-9_.-]+\\.py", workflow)))
+    paths = sorted(set(re.findall(r"tests/[A-Za-z0-9_.-]+\.py", workflow)))
     assert paths, "expected at least one targeted test path in the 24h autopilot"
     missing = [path for path in paths if not (ROOT / path).is_file()]
     assert not missing, f"24h autopilot references missing test files: {missing}"
