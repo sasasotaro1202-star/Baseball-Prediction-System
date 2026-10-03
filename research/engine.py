@@ -123,6 +123,10 @@ def _npb_research_lifecycle(git_commit: str, data_dir: str | Path) -> dict[str, 
         reproducible=bool(holdout["reproducible"]), holdout_score_baseline=holdout["baseline_score"],
         holdout_score_candidate=holdout["candidate_score"], holdout_hilo_baseline=holdout["baseline_hilo"],
         holdout_hilo_candidate=holdout["candidate_hilo"], league="NPB",
+        pit_starter_evidence_ok=bool(holdout.get("starter_pit_evidence_ok", False)),
+        holdout_pit_starter_evidence_ok=bool(holdout.get("starter_pit_evidence_ok", False)),
+        holdout_uncertainty=holdout.get("holdout_uncertainty"),
+        evaluation_periods=holdout.get("evaluation_periods"),
     )
     return {"stage":"locked_holdout_evaluated","decision":record.decision,"candidate_id":record.candidate_id,
             "candidate_model":record.model_version,"registry":str(RESULTS / "candidate_registry.json"),"record":asdict(record)}
