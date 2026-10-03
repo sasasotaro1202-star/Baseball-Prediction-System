@@ -125,6 +125,14 @@ jobs:
             echo "Candidate OOS already active; no recovery dispatch required."
           fi
 
+          active_count="$(gh_retry run list             --repo "${GH_REPO}"             --workflow "${TARGET_WORKFLOW}"             --limit 30             --json status             --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+          echo "Active canonical closed-loop runs after Candidate OOS recovery: ${active_count}"
+
+          if [ "${active_count}" -gt 0 ]; then
+            echo 'Canonical closed-loop already active; no dispatch required.'
+            exit 0
+          fi
+
           runs_json="$(gh_retry run list             --repo "${GH_REPO}"             --workflow "${TARGET_WORKFLOW}"             --limit 30             --json databaseId,status,conclusion,createdAt,updatedAt,headSha)"
 
           echo "Recent canonical closed-loop runs:"
