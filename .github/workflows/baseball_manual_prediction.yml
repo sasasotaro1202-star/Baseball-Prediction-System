@@ -95,6 +95,15 @@ jobs:
           set -e
 
           test -s "${output}"
+          if [ "${{ inputs.league }}" = "NPB" ]; then
+            if grep -Eq '"execution_status": "(BLOCKED_NO_CURRENT_PRODUCTION_RUNTIME|BLOCKED_PRODUCTION_GATE)"' "${output}"; then
+              echo "Production runtime is blocked; running explicit research-shadow manual forecast without changing production state."
+              target="$(TZ=Asia/Tokyo date +%Y-%m-%d)"
+              python production_npb.py                 --date "${target}"                 --data-dir data                 --research-shadow                 > "${output}"
+              rc=$?
+              test -s "${output}"
+            fi
+          fi
           python - "${output}" "${rc}" <<'PY'
           import json
           import sys
@@ -112,6 +121,7 @@ jobs:
               "BLOCKED_STALE_TARGET_DATE",
               "BLOCKED_STARTERS",
               "BLOCKED_PRODUCTION_GATE",
+              "RESEARCH_SHADOW_EXECUTED",
           }
           if status not in allowed:
               raise SystemExit("unexpected manual prediction status: " + status)
@@ -142,7 +152,12 @@ jobs:
           from pathlib import Path
 
           obj = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-          if obj.get("execution_status") != "EXECUTED":
+          if obj.get("execution_status") == "RESEARCH_SHADOW_EXECUTED":
+              if obj.get("scope") != "RESEARCH_SHADOW":
+                  raise SystemExit("research-shadow manual prediction has incorrect scope")
+              if obj.get("production_eligibility") is not False:
+                  raise SystemExit("research-shadow manual prediction incorrectly claims production eligibility")
+          if obj.get("execution_status") not in {"EXECUTED", "RESEARCH_SHADOW_EXECUTED"}:
               print("Manual request did not emit a production prediction:", obj.get("execution_status"))
               raise SystemExit(0)
 
