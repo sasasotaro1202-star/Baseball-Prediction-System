@@ -1,4 +1,7 @@
 from argparse import Namespace
+import json
+import sys
+import types
 
 import run as run_module
 import prediction.current_production as current_production
@@ -32,3 +35,35 @@ def test_direct_production_cli_keeps_starter_block_retryable(monkeypatch, capsys
     monkeypatch.setattr(current_production, "predict_current", lambda **_: _blocked_runtime("BLOCKED_STARTERS"))
     assert current_production.main(["--league", "NPB", "--date", "2026-09-24"]) == 0
     capsys.readouterr()
+
+
+def test_production_dispatcher_keeps_diagnostics_off_stdout(monkeypatch, capsys):
+    monkeypatch.setattr(
+        current_production,
+        "current_runtime",
+        lambda league: {
+            "available": True,
+            "league": league,
+            "status": "AVAILABLE",
+            "entrypoint": "production_npb",
+            "model_version": "test-model",
+            "contract": "TEST_CONTRACT",
+        },
+    )
+
+    module = types.ModuleType("production_npb")
+
+    def fake_predict(*args, **kwargs):
+        print("[PREDICTOR DIAGNOSTIC] captured")
+        return {"execution_status": "EXECUTED", "predictions": []}
+
+    module.predict = fake_predict
+    monkeypatch.setitem(sys.modules, "production_npb", module)
+
+    assert current_production.main(["--league", "NPB"]) == 0
+    captured = capsys.readouterr()
+    assert "[PREDICTOR DIAGNOSTIC] captured" not in captured.out
+    assert "[PREDICTOR DIAGNOSTIC] captured" in captured.err
+    payload = json.loads(captured.out)
+    assert payload["execution_status"] == "EXECUTED"
+    assert payload["current_production_runtime"]["model_version"] == "test-model"
