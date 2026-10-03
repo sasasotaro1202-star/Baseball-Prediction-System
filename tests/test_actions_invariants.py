@@ -389,3 +389,11 @@ def test_24h_autopilot_targeted_test_paths_exist():
     assert paths, "expected at least one targeted test path in the 24h autopilot"
     missing = [path for path in paths if not (ROOT / path).is_file()]
     assert not missing, f"24h autopilot references missing test files: {missing}"
+
+
+def test_regression_suite_triggers_for_all_workflow_changes():
+    workflow = (ROOT / ".github" / "workflows" / "baseball_regression_tests.yml").read_text(encoding="utf-8")
+    trigger = workflow.split("permissions:", 1)[0]
+    assert "pull_request:" in trigger
+    assert "paths:" in trigger
+    assert "      - '.github/workflows/**'" in trigger
