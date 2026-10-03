@@ -109,7 +109,7 @@ def test_uncertainty_gate_accepts_robust_holdout_signal_when_other_gates_pass():
 
     result = evaluate_locked_holdout(
         {"rows": 300, "LogLoss": 0.70, "Brier": 0.50, "Accuracy": 0.55},
-        {"rows": 300, "LogLoss": 0.68, "Brier": 0.49, "Accuracy": 0.56},
+        {"rows": 300, "LogLoss": 0.675, "Brier": 0.49, "Accuracy": 0.56},
         policy=GatePolicy(
             require_uncertainty_check=True,
             min_positive_improvement_probability=0.95,
