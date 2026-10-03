@@ -303,7 +303,7 @@ def test_pregame_zero_job_failure_has_bounded_control_plane_recovery():
     assert "Baseball 60m Pregame Auto Prediction" in recovery
     trigger = recovery.split("permissions:", 1)[0]
     assert "- .github/workflows/baseball_30m_pregame_auto.yml" in trigger
-    assert "- Baseball 60m Pregame Auto Prediction" not in trigger
+    assert "- Baseball 60m Pregame Auto Prediction" in trigger
     assert "GH_REPO: ${{ github.repository }}" in recovery
     assert "WORKFLOW_NAME: ${{ github.event.workflow_run.name }}" in recovery
     assert 'if [ "${WORKFLOW_NAME}" = "Baseball 60m Pregame Auto Prediction" ] || [ "${WORKFLOW_NAME}" = ".github/workflows/baseball_30m_pregame_auto.yml" ] || [ "${WORKFLOW_PATH}" = ".github/workflows/baseball_30m_pregame_auto.yml" ]; then' in recovery
