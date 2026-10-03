@@ -37,3 +37,25 @@ def test_select_pregame_probe_fails_closed_on_source_failure(monkeypatch):
         assert "synthetic source failure" in str(exc)
     else:
         raise AssertionError("SOURCE_FAILED was not propagated fail-closed")
+
+
+def test_verify_game_team_stats_covers_all_participating_teams(monkeypatch):
+    calls = []
+
+    def fake_verify(team: str, season: int):
+        calls.append((team, season))
+        return {"team": team, "season": season, "sources": {}}
+
+    monkeypatch.setattr(health, "_verify_team_stats", fake_verify)
+    games = [
+        {"home": "阪神タイガース", "away": "横浜DeNAベイスターズ"},
+        {"home": "阪神タイガース", "away": "広島東洋カープ"},
+    ]
+    got = health._verify_game_team_stats(games, 2026)
+    assert got["status"] == "AVAILABLE"
+    assert got["team_count"] == 3
+    assert sorted(t for t, _ in calls) == sorted({
+        "阪神タイガース",
+        "横浜DeNAベイスターズ",
+        "広島東洋カープ",
+    })
