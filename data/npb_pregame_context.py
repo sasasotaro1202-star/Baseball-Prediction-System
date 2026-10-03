@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 HTTP_SESSION = http_session(user_agent="Baseball-Prediction-System/pregame-context")
 
 NPB_DAY_URL = "https://npb.jp/bis/{year}/games/gm{date}.html"
+NPB_MONTH_DETAIL_URL = "https://npb.jp/games/{year}/schedule_{month:02d}_detail.html"
 NPB_STANDINGS_URL = "https://npb.jp/bis/eng/{year}/stats/std_{league}.html"
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 
@@ -153,6 +154,75 @@ def _fetch_text(url: str, timeout: tuple[int, int] = (8, 45)) -> tuple[str, str]
     return body, now
 
 
+def _extract_team_sequence(value: str) -> list[str]:
+    text = _clean(value)
+    hits: list[tuple[int, int, str]] = []
+    for alias, canonical in sorted(TEAM_ALIASES.items(), key=lambda item: len(item[0]), reverse=True):
+        for match in re.finditer(re.escape(alias), text):
+            start, end = match.span()
+            if any(start >= a and end <= b for a, b, _ in hits):
+                continue
+            hits.append((start, end, canonical))
+    selected: list[tuple[int, int, str]] = []
+    for candidate in sorted(hits, key=lambda item: (item[0], -(item[1] - item[0]))):
+        if any(not (candidate[1] <= a or candidate[0] >= b) for a, b, _ in selected):
+            continue
+        selected.append(candidate)
+    return [canonical for _, _, canonical in sorted(selected, key=lambda item: item[0])]
+
+def parse_official_schedule_detail(page_html: str, target_date: str) -> list[dict[str, Any]]:
+    parser = _TableParser()
+    parser.feed(page_html)
+    month_day = f"{int(target_date[5:7])}/{int(target_date[8:10])}"
+    out: list[dict[str, Any]] = []
+    for row in parser.rows:
+        if not row:
+            continue
+        if not any(re.search(rf"^{re.escape(month_day)}(?:$|[（(])", _clean(cell)) for cell in row):
+            continue
+        teams: list[str] = []
+        for cell in row:
+            for team in _extract_team_sequence(cell):
+                if team not in teams:
+                    teams.append(team)
+            if len(teams) >= 2:
+                break
+        if len(teams) != 2:
+            continue
+        times = [cell for cell in row if TIME_RE.fullmatch(_clean(cell))]
+        if len(times) != 1:
+            for cell in row:
+                match = re.search(r"(?:^|\\s)(\\d{1,2}:\\d{2})(?:\\s|$)", _clean(cell))
+                if match:
+                    times = [match.group(1)]
+                    break
+        if len(times) != 1:
+            continue
+        venue = ""
+        for cell in row:
+            candidate = canonical_venue(cell)
+            if candidate in STADIUMS:
+                venue = candidate
+                break
+        out.append({
+            "game_id": f"NPB-{target_date}-{len(out)+1}",
+            "game_date": target_date,
+            "home": teams[0],
+            "away": teams[1],
+            "official_start_time": times[0],
+            "venue": venue or "UNKNOWN",
+            "schedule_source": NPB_MONTH_DETAIL_URL.format(year=target_date[:4], month=int(target_date[5:7])),
+        })
+    seen: set[tuple[str, str, str]] = set()
+    result: list[dict[str, Any]] = []
+    for row in out:
+        key = (row["home"], row["away"], row["official_start_time"])
+        if key not in seen:
+            seen.add(key)
+            result.append(row)
+    if not result:
+        raise RuntimeError(f"official NPB monthly schedule parser found no game rows for {target_date}")
+    return result
 def parse_official_games(page_html: str, target_date: str) -> list[dict[str, Any]]:
     parser = _TableParser()
     parser.feed(page_html)
@@ -350,8 +420,19 @@ def collect_npb_pregame_context(target_date: str, *, now_utc: pd.Timestamp | Non
     else:
         now = now.tz_convert("UTC")
     url = NPB_DAY_URL.format(year=target_date[:4], date=target_date.replace("-", ""))
-    html, schedule_observed = _fetch_text(url)
-    games = parse_official_games(html, target_date)
+    schedule_primary_error = None
+    schedule_variant = "DAILY_GAME_PAGE"
+    try:
+        html, schedule_observed = _fetch_text(url)
+        games = parse_official_games(html, target_date)
+    except Exception as exc:
+        schedule_primary_error = f"{type(exc).__name__}: {exc}"
+        fallback_url = NPB_MONTH_DETAIL_URL.format(year=target_date[:4], month=int(target_date[5:7]))
+        fallback_html, fallback_observed = _fetch_text(fallback_url)
+        games = parse_official_schedule_detail(fallback_html, target_date)
+        url = fallback_url
+        schedule_observed = fallback_observed
+        schedule_variant = "MONTH_DETAIL_FALLBACK"
     for game in games:
         game["schedule_available_at_utc"] = schedule_observed
         start = pd.Timestamp(f"{target_date} {game['official_start_time']}").tz_localize("Asia/Tokyo").tz_convert("UTC")
@@ -383,7 +464,16 @@ def collect_npb_pregame_context(target_date: str, *, now_utc: pd.Timestamp | Non
 
     available_weather = sum(1 for game in enriched if game.get("weather", {}).get("status") == "AVAILABLE")
     source_status = [
-        {"source_id": "npb_official_game_schedule_context", "status": "AVAILABLE", "available_at_utc": schedule_observed, "url": url, "rows": len(games)},
+        {
+            "source_id": "npb_official_game_schedule_context",
+            "status": "AVAILABLE",
+            "available_at_utc": schedule_observed,
+            "url": url,
+            "rows": len(games),
+            "endpoint_variant": schedule_variant,
+            "primary_daily_endpoint": NPB_DAY_URL.format(year=target_date[:4], date=target_date.replace("-", "")),
+            "primary_daily_endpoint_error": schedule_primary_error,
+        },
         *standing_provenance,
         {
             "source_id": "open_meteo_forecast", "status": "AVAILABLE" if available_weather else "SOURCE_FAILED_OR_UNAVAILABLE",
