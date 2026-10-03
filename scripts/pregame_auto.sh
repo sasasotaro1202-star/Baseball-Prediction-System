@@ -108,7 +108,7 @@ if status not in {"EXECUTED", "RESEARCH_SHADOW_EXECUTED", "BLOCKED_STARTERS", "N
     raise SystemExit("unexpected prediction status: " + str(status))
 if status not in {"EXECUTED", "RESEARCH_SHADOW_EXECUTED"}:
     print(json.dumps({"status": status, "block_reason": obj.get("block_reason")}, ensure_ascii=False))
-    continue
+    raise SystemExit(0)
 for pred in obj.get("predictions", []):
     cutoff = datetime.fromisoformat(pred["prediction_cutoff_utc"].replace("Z", "+00:00"))
     generated = datetime.fromisoformat(pred["prediction_generated_at"].replace("Z", "+00:00"))
