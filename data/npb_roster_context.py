@@ -70,7 +70,7 @@ def _identity_key(value: Any) -> str:
     """Normalize names for exact identity resolution without fuzzy matching."""
     value = _clean(value)
     value = unicodedata.normalize("NFKC", value)
-    return re.sub(r"\\s+", "", value)
+    return re.sub(r"\s+", "", value)
 
 
 class _PlayerSearchParser(HTMLParser):
@@ -86,7 +86,7 @@ class _PlayerSearchParser(HTMLParser):
         if tag.lower() != "a":
             return
         href = dict(attrs).get("href") or ""
-        if re.search(r"/bis/players/\\d+\\.html(?:[?#].*)?$", href):
+        if re.search(r"/bis/players/\d+\.html(?:[?#].*)?$", href):
             self._href = urljoin(BASE_URL, href)
             self._parts = []
 
@@ -98,7 +98,7 @@ class _PlayerSearchParser(HTMLParser):
 
     def handle_endtag(self, tag: str) -> None:
         if tag.lower() == "a" and self._href is not None:
-            match = re.search(r"/bis/players/(\\d+)\\.html(?:[?#].*)?$", self._href)
+            match = re.search(r"/bis/players/(\d+)\.html(?:[?#].*)?$", self._href)
             if match:
                 self.results.append({
                     "player_id": match.group(1),
