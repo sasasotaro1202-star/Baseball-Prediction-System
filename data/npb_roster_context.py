@@ -87,7 +87,7 @@ class _RosterParser(HTMLParser):
             return
         if tag == "a":
             href = attrs_dict.get("href", "")
-            if re.search(r"/bis/players/\d+\.html$", href):
+            if re.search(r"/bis/players/\d+\.html(?:[?#].*)?$", href):
                 self._link_href = urljoin(BASE_URL, href)
                 self._link_parts = []
 
@@ -178,7 +178,7 @@ class _RosterParser(HTMLParser):
             return
 
         if tag == "a" and self._link_href is not None:
-            match = re.search(r"/bis/players/(\d+)\.html$", self._link_href)
+            match = re.search(r"/bis/players/(\d+)\.html(?:[?#].*)?$", self._link_href)
             name = _clean(" ".join(self._link_parts))
             if self._row_active and match:
                 self._row_player_id = match.group(1)
@@ -206,7 +206,7 @@ class _RosterParser(HTMLParser):
                 # These rows may not expose an <a> player link, so preserve the
                 # name-only identity as UNVERIFIED instead of inventing a stable id.
                 position = next((x for x in cells if re.search(r"(投手|捕手|内野手|外野手)", x)), None)
-                number = next((x for x in cells if re.fullmatch(r"\\d{1,3}", x)), None)
+                number = next((x for x in cells if re.fullmatch(r"\d{1,3}", x)), None)
                 name = _clean(self._row_player_name or (cells[-1] if cells else ""))
                 if position and number and name and name not in {"選手名", "なし", "-", "－"}:
                     self.players.append({
