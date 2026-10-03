@@ -1,0 +1,37 @@
+name: Baseball StatsHawk MLB Adapter
+
+on:
+  pull_request:
+    paths:
+      - 'research/statshawk_mlb_adapter.py'
+      - 'tests/test_statshawk_mlb_adapter.py'
+      - 'research/statshawk_rest_client.py'
+      - 'tests/test_statshawk_rest_client.py'
+      - '.github/workflows/baseball_statshawk_adapter.yml'
+      - '.github/workflows/baseball_statshawk_rest_connectivity.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baseball-statshawk-adapter-\${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  focused-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - name: Install test dependencies
+        run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 pytest requests
+      - name: Compile adapter
+        run: python -m py_compile research/statshawk_mlb_adapter.py research/statshawk_rest_client.py tests/test_statshawk_mlb_adapter.py tests/test_statshawk_rest_client.py
+      - name: Run focused tests
+        run: python -m pytest -q tests/test_statshawk_mlb_adapter.py tests/test_statshawk_rest_client.py
