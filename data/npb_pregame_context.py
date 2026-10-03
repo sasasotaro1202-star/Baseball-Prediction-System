@@ -189,6 +189,188 @@ def _extract_team_sequence(value: str) -> list[str]:
         selected.append(candidate)
     return [canonical for _, _, canonical in sorted(selected, key=lambda item: item[0])]
 
+class _LinearScheduleParser(HTMLParser):
+    """Collect visible schedule tokens when the official page is not table-shaped."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.tokens: list[str] = []
+        self._hidden = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.lower()
+        attrs_dict = {key: value or "" for key, value in attrs}
+        if tag in {"script", "style", "noscript", "template"}:
+            self._hidden += 1
+            return
+        if self._hidden:
+            return
+        if tag in {"img", "a"}:
+            for value in (
+                attrs_dict.get("alt"),
+                attrs_dict.get("title"),
+                attrs_dict.get("aria-label"),
+            ):
+                cleaned = _clean(value)
+                if cleaned:
+                    self.tokens.append(cleaned)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() in {"script", "style", "noscript", "template"}:
+            self._hidden = max(0, self._hidden - 1)
+
+    def handle_data(self, data: str) -> None:
+        if self._hidden:
+            return
+        value = _clean(data)
+        if value:
+            self.tokens.append(value)
+
+
+def _linear_schedule_tokens(page_html: str) -> list[str]:
+    parser = _LinearScheduleParser()
+    parser.feed(page_html)
+    # Remove immediate duplicates caused by anchor title/label plus visible text.
+    result: list[str] = []
+    for token in parser.tokens:
+        if not result or token != result[-1]:
+            result.append(token)
+    return result
+
+
+def _linear_time_positions(tokens: list[str]) -> list[tuple[int, str]]:
+    positions: list[tuple[int, str]] = []
+    for index, token in enumerate(tokens):
+        cleaned = _clean(token)
+        if TIME_RE.fullmatch(cleaned):
+            positions.append((index, cleaned))
+            continue
+        match = re.search(r"(?<!\d)(\d{1,2}:\d{2})(?!\d)", cleaned)
+        if match:
+            positions.append((index, match.group(1)))
+    return positions
+
+
+def _nearest_team_pair(
+    tokens: list[str],
+    time_index: int,
+    used_ids: set[str],
+    max_distance: int = 8,
+) -> tuple[str, str] | None:
+    before: list[tuple[int, str]] = []
+    after: list[tuple[int, str]] = []
+    for distance in range(1, max_distance + 1):
+        for index in (time_index - distance, time_index + distance):
+            if index < 0 or index >= len(tokens):
+                continue
+            for team in _extract_team_sequence(tokens[index]):
+                if team in used_ids:
+                    continue
+                if index < time_index:
+                    before.append((distance, team))
+                elif index > time_index:
+                    after.append((distance, team))
+    if not before or not after:
+        return None
+    before.sort(key=lambda item: (item[0], item[1]))
+    after.sort(key=lambda item: (item[0], item[1]))
+    return before[0][1], after[0][1]
+
+
+def _parse_linear_daily_schedule(page_html: str, target_date: str) -> list[dict[str, Any]]:
+    """Fallback parser for current NPB daily pages whose game blocks are not tables."""
+    tokens = _linear_schedule_tokens(page_html)
+    time_positions = _linear_time_positions(tokens)
+    if not time_positions:
+        return []
+
+    out: list[dict[str, Any]] = []
+    used_team_ids: set[str] = set()
+    for time_index, start_time in time_positions:
+        pair = _nearest_team_pair(tokens, time_index, used_team_ids)
+        if pair is None:
+            continue
+        home, away = pair
+        used_team_ids.update((home, away))
+        venue = "UNKNOWN"
+        for distance in range(1, 5):
+            for index in (time_index - distance, time_index + distance):
+                if index < 0 or index >= len(tokens):
+                    continue
+                candidate = canonical_venue(tokens[index])
+                if candidate in STADIUMS:
+                    venue = candidate
+                    break
+            if venue != "UNKNOWN":
+                break
+        out.append({
+            "game_id": f"NPB-{target_date}-{len(out)+1}",
+            "game_date": target_date,
+            "home": home,
+            "away": away,
+            "official_start_time": start_time,
+            "venue": venue,
+            "schedule_source": NPB_DAY_URL.format(year=target_date[:4], date=target_date.replace("-", "")),
+        })
+    return out
+
+
+def _parse_linear_month_schedule(page_html: str, target_date: str) -> list[dict[str, Any]]:
+    """Fallback parser for official monthly schedule pages."""
+    tokens = _linear_schedule_tokens(page_html)
+    if not tokens:
+        return []
+    month_day = f"{int(target_date[5:7])}/{int(target_date[8:10])}"
+    day_only = str(int(target_date[8:10]))
+
+    def is_target_date_token(token: str) -> bool:
+        value = _clean(token)
+        return bool(
+            re.fullmatch(rf"{re.escape(month_day)}(?:[（(][^)）]*[)）])?", value)
+            or re.fullmatch(rf"{re.escape(day_only)}(?:[（(][^)）]*[)）])?", value)
+        )
+
+    date_positions = [i for i, token in enumerate(tokens) if is_target_date_token(token)]
+    if not date_positions:
+        return []
+
+    out: list[dict[str, Any]] = []
+    used_team_ids: set[str] = set()
+    for date_index in date_positions:
+        end = next((x for x in date_positions if x > date_index), len(tokens))
+        segment = tokens[date_index:end]
+        # Re-index time positions to the segment.
+        for local_time_index, start_time in _linear_time_positions(segment):
+            pair = _nearest_team_pair(segment, local_time_index, used_team_ids)
+            if pair is None:
+                continue
+            home, away = pair
+            used_team_ids.update((home, away))
+            venue = "UNKNOWN"
+            for distance in range(1, 5):
+                for index in (local_time_index - distance, local_time_index + distance):
+                    if index < 0 or index >= len(segment):
+                        continue
+                    candidate = canonical_venue(segment[index])
+                    if candidate in STADIUMS:
+                        venue = candidate
+                        break
+                if venue != "UNKNOWN":
+                    break
+            out.append({
+                "game_id": f"NPB-{target_date}-{len(out)+1}",
+                "game_date": target_date,
+                "home": home,
+                "away": away,
+                "official_start_time": start_time,
+                "venue": venue,
+                "schedule_source": NPB_MONTH_DETAIL_URL.format(
+                    year=target_date[:4], month=int(target_date[5:7])
+                ),
+            })
+    return out
+
+
 def parse_official_schedule_detail(page_html: str, target_date: str) -> list[dict[str, Any]]:
     parser = _TableParser()
     parser.feed(page_html)
@@ -247,6 +429,9 @@ def parse_official_schedule_detail(page_html: str, target_date: str) -> list[dic
             seen.add(key)
             result.append(row)
     if not result:
+        fallback = _parse_linear_month_schedule(page_html, target_date)
+        if fallback:
+            return fallback
         raise RuntimeError(f"official NPB monthly schedule parser found no game rows for {target_date}")
     return result
 def parse_official_games(page_html: str, target_date: str) -> list[dict[str, Any]]:
@@ -300,6 +485,9 @@ def parse_official_games(page_html: str, target_date: str) -> list[dict[str, Any
             seen.add(key)
             result.append(row)
     if not result:
+        fallback = _parse_linear_daily_schedule(page_html, target_date)
+        if fallback:
+            return fallback
         raise RuntimeError(f"official NPB schedule context parser found no game rows for {target_date}")
     return result
 
