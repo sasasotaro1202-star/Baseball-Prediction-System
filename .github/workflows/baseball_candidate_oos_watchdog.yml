@@ -118,7 +118,7 @@ jobs:
             sha="$(jq -r '.headSha // empty' <<<"${row}")"
             created="$(jq -r '.createdAt // empty' <<<"${row}")"
             if [[ "${status}" == "in_progress" ]] && [[ "${sha}" == "${current_sha}" ]] && [[ -n "${created}" ]]; then
-              created_epoch="$(date -d "${created}" +%s)
+              created_epoch="$(date -d "${created}" +%s)"
               age_minutes=$(( (now_epoch - created_epoch) / 60 ))
               if [[ "${age_minutes}" -ge 360 ]]; then
                 echo "Cancelling stale same-SHA in-progress candidate run ${id} after ${age_minutes}m."
