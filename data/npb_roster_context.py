@@ -118,7 +118,7 @@ def _parse_player_search_results(html: str) -> list[dict[str, str]]:
 def _resolve_one_player_name(player_name: str, team: str) -> list[dict[str, str]]:
     keyword = quote(_clean(player_name), safe="")
     url = PLAYER_SEARCH_URL.format(keyword=keyword)
-    body = _fetch_text(url)
+    body, _observed_at = _fetch_text(url)
     expected_name = _identity_key(player_name)
     expected_team = _identity_key(team)
     candidates: list[dict[str, str]] = []
