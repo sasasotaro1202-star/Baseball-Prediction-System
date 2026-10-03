@@ -124,3 +124,49 @@ def test_derived_fielding_metrics():
     derived = ctx._derive_fielding(rows[0])
     assert derived["error_rate"] == 2 / 2
     assert derived["chances_per_game"] == 2 / 50
+
+def test_enrich_profiles_is_bounded_and_fail_closed(monkeypatch):
+    players = [
+        {
+            "player_id": "1",
+            "player_name": "最優先",
+            "player_url": "https://npb.jp/bis/players/1.html",
+            "batting": {"打席": "500"},
+            "pitching": {"投球回": "120"},
+            "fielding": [{"試合": "100"}],
+        },
+        {
+            "player_id": "2",
+            "player_name": "次点",
+            "player_url": "https://npb.jp/bis/players/2.html",
+            "batting": {"打席": "50"},
+            "pitching": {},
+            "fielding": [],
+        },
+    ]
+    monkeypatch.setenv("NPB_PLAYER_PROFILE_LIMIT_PER_TEAM", "1")
+    monkeypatch.setattr(ctx, "_fetch", lambda url: (PROFILE_HTML, "2026-10-03T00:00:00+00:00"))
+    enriched, resolved = ctx._enrich_profiles(players)
+    assert resolved == 1
+    assert enriched[0]["profile_status"] == "AVAILABLE" or enriched[1]["profile_status"] == "AVAILABLE"
+    assert sum(p["profile_status"] == "AVAILABLE" for p in enriched) == 1
+    assert sum(p["profile_status"] == "NOT_SELECTED" for p in enriched) == 1
+
+
+def test_enrich_profiles_records_source_failure(monkeypatch):
+    players = [{
+        "player_id": "9",
+        "player_name": "取得失敗",
+        "player_url": "https://npb.jp/bis/players/9.html",
+        "batting": {"打席": "500"},
+        "pitching": {},
+        "fielding": [],
+    }]
+    monkeypatch.setenv("NPB_PLAYER_PROFILE_LIMIT_PER_TEAM", "1")
+    def fail_fetch(url):
+        raise RuntimeError("synthetic failure")
+    monkeypatch.setattr(ctx, "_fetch", fail_fetch)
+    enriched, resolved = ctx._enrich_profiles(players)
+    assert resolved == 0
+    assert enriched[0]["profile_status"] == "SOURCE_FAILED"
+    assert enriched[0]["profile"] is None
