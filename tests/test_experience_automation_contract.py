@@ -30,7 +30,7 @@ def test_pregame_automation_is_five_minute_60m_pit_gated_and_archives_experience
     assert "starter evidence observed after prediction information cutoff" in text
     assert "--min-lead-minutes 50" in text
     assert "--preferred-lead-minutes 60" in text
-    assert "--scan-ahead-minutes 70" in text
+    assert "--scan-ahead-minutes 60" in text
     assert "--prediction-source AUTO_60M" in text
     assert "automatic target is approximately 60m before first pitch." in text
     assert "python -m research.experience_ledger --archive" in text

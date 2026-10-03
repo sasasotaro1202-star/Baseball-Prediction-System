@@ -15,7 +15,7 @@ def _prediction():
                 "game_id": "NPB-2026-10-03-1",
                 "datetime_jst": "2026-10-03T18:00:00+09:00",
                 "prediction_cutoff_utc": "2026-10-03T08:55:00+00:00",
-                "prediction_generated_at": "2026-10-03T09:00:00+00:00",
+                "prediction_generated_at": "2026-10-03T08:56:00+00:00",
                 "starter_evidence_observed_at_utc": "2026-10-03T08:54:00+00:00",
                 "starter_evidence_status": "official_announced",
                 "pit_status": "PASS",
@@ -76,8 +76,8 @@ def test_shadow_reconcile_uses_latest_snapshot_per_game(tmp_path, monkeypatch):
     early = _prediction()["predictions"][0]
     late = dict(early)
     late["prediction_id"] = "later"
-    late["prediction_cutoff_utc"] = "2026-10-03T09:55:00+00:00"
-    late["prediction_generated_at"] = "2026-10-03T10:00:00+00:00"
+    late["prediction_cutoff_utc"] = "2026-10-03T08:58:00+00:00"
+    late["prediction_generated_at"] = "2026-10-03T08:59:00+00:00"
     payload = [
         early,
         late,

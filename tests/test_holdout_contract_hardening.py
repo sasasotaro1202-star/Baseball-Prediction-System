@@ -30,6 +30,10 @@ def _holdout_kwargs():
         holdout_score_candidate={"ScoreMAE": 2.9},
         holdout_hilo_baseline={"LogLoss": 0.69, "Brier": 0.24, "Accuracy": 0.60},
         holdout_hilo_candidate={"LogLoss": 0.68, "Brier": 0.23, "Accuracy": 0.61},
+        evaluation_periods=[
+            {"baseline_LogLoss": 0.70, "candidate_LogLoss": 0.68},
+            {"baseline_LogLoss": 0.69, "candidate_LogLoss": 0.68},
+        ],
     )
 
 

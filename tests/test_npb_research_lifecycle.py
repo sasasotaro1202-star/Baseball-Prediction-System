@@ -31,6 +31,10 @@ def test_npb_adoption_requires_draw_metrics():
         candidate_score={"ScoreMAE": 2.0},
         baseline_hilo={"LogLoss": 0.68, "Brier": 0.24, "Accuracy": 0.65},
         candidate_hilo={"LogLoss": 0.68, "Brier": 0.24, "Accuracy": 0.65},
+        evaluation_periods=[
+            {"baseline_LogLoss": 0.95, "candidate_LogLoss": 0.90},
+            {"baseline_LogLoss": 0.94, "candidate_LogLoss": 0.90},
+        ],
     )
     assert result["decision"] == "ADOPT"
     assert "npb_three_way" in result["targets"]
@@ -52,6 +56,10 @@ def test_npb_adoption_rejects_draw_recall_regression():
         candidate_score={"ScoreMAE": 2.0},
         baseline_hilo={"LogLoss": 0.68, "Brier": 0.24, "Accuracy": 0.65},
         candidate_hilo={"LogLoss": 0.68, "Brier": 0.24, "Accuracy": 0.65},
+        evaluation_periods=[
+            {"baseline_LogLoss": 0.95, "candidate_LogLoss": 0.90},
+            {"baseline_LogLoss": 0.94, "candidate_LogLoss": 0.90},
+        ],
     )
     assert result["decision"] == "REJECT"
     assert "draw_recall_regression" in result["reasons"]
