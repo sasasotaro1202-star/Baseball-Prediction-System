@@ -21,7 +21,7 @@ def test_dimensions_classify_npb_interleague_without_outcome_data():
     frame = pd.DataFrame([{
         "league": "NPB",
         "competition_id": "NPB",
-        "game_type": "‰∫§ÊµÅÊà¶",
+        "game_type": +ßuÁ‚ùÁd∫w^~)ﬁvÈ›y¯ßy÷",
     }])
     out = add_dimensions(frame)
     assert out.loc[0, "league"] == "NPB"
@@ -42,4 +42,20 @@ def test_dimensions_never_silently_map_unknown_phase():
     assert out.loc[0, "league"] == "MLB"
     assert out.loc[0, "competition"] == "MLB_UNKNOWN"
     assert out.loc[0, "competition_stage"] == "UNKNOWN"
+    assert out.loc[0, "competition_classification_status"] == "UNKNOWN"
+
+
+def test_dimensions_recover_league_from_target_identity_without_guessing_phase():
+    frame = pd.DataFrame([{
+        "league": "UNKNOWN",
+        "target": "NPB",
+        "competition_id": "",
+        "game_type": "",
+        "series_description": "",
+    }])
+    out = add_dimensions(frame)
+    assert out.loc[0, "league"] == "NPB"
+    assert out.loc[0, "competition"] == "UNKNOWN"
+    assert out.loc[0, "competition_stage"] == "UNKNOWN"
+    assert out.loc[0, "competition_key"] == "NPB:UNKNOWN:UNKNOWN"
     assert out.loc[0, "competition_classification_status"] == "UNKNOWN"
