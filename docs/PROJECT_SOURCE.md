@@ -1956,7 +1956,7 @@ NPB公式の2026年度公式戦成績はチーム打撃・投手・守備およ�
 
 追加source/fields:
 
-* official date-specific game schedule
+* official date-specific game schedule (Japanese NPB schedule endpoint: /bis/{year}/games/gm{date}.html)
 * official venue / stadium identity
 * stadium coordinates / roof class
 * NPB Central/Pacific standings snapshot (G/W/L/T/PCT/GB/Home/Road)
@@ -2112,6 +2112,16 @@ profile snapshotには、少なくとも:
 これらのcurrent-page profile/season statisticsは、現在・将来試合の観測用contextとして保存できる一方、historical OOSへ直接backfillしてはならない。historical availabilityが証明できない場合はUNKNOWN/UNVERIFIABLEとして扱い、production-quality OOSから除外する。
 
 derived metricsは現在の可視値を増やす目的であって、feature adoptionの証拠ではない。production probabilityへの投入は別実験として、LOCAL PIT → chronological OOS/WFO → calibration → ablation → robustness → frozen holdout → adoption gate の順で判定する。
+
+⸻
+
+92. LIVE SOURCE VERIFICATION
+
+実取得性を機能存在だけで判定しない。NPB Live Source Health workflowはGitHub Actionsの実環境から、当日JSTの公式試合日程・セントラル/パシフィック順位・試合前天候、日付別Roster、Roster上の実選手プロフィール、対象チームの個人打撃・個人投手・個人守備を実取得してparseする。critical source failureはSOURCE_FAILEDとして失敗させる。
+
+Live verification artifactにはchecked_at_jst、対象日、source URL、取得件数、stable player ID件数、Roster transaction件数、weather取得件数等を保存する。artifactが存在しない、取得処理が実行されていない、またはparseできない場合はVERIFIEDとしない。
+
+なお、現在の公式日程取得は日本語NPB endpointを使用する。英語endpointが利用できることを仮定してproduction source contractを構成しない。
 
 ⸻
 
