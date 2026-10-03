@@ -496,9 +496,9 @@ def test_rollup_exposes_actual_prediction_horizon_breakdown(tmp_path, monkeypatc
     if row is None:
         _write_prediction(tmp_path / "stage", cutoff="2026-09-26T02:00:00+00:00")
         row = json.loads((tmp_path / "stage" / "predictions" / "2026-09-26.jsonl").read_text())
-    row["prediction_generated_at"] = "2026-09-26T04:00:00+00:00"
-    row["prediction_cutoff_utc"] = "2026-09-26T04:00:00+00:00"
-    row["starter_evidence_observed_at_utc"] = "2026-09-26T03:59:00+00:00"
+    row["prediction_generated_at"] = "2026-09-26T00:00:00+00:00"
+    row["prediction_cutoff_utc"] = "2026-09-26T00:00:00+00:00"
+    row["starter_evidence_observed_at_utc"] = "2026-09-25T23:59:00+00:00"
     pdir.joinpath("2026-09-26.jsonl").write_text(
         json.dumps(row, ensure_ascii=False) + "\n", encoding="utf-8"
     )
@@ -515,4 +515,4 @@ def test_rollup_exposes_actual_prediction_horizon_breakdown(tmp_path, monkeypatc
     result = roll.rollup()
     assert result["experience_cases"]["rows"] == 1
     assert result["performance_breakdown"]["NPB"]["by_horizon"]["3_TO_6H"]["rows"] == 1
-    assert result["performance_breakdown"]["NPB"]["by_horizon"]["3_TO_6H"]["mean_actual_lead_minutes"] == 4 * 60 - 5 * 60 / 60
+    assert result["performance_breakdown"]["NPB"]["by_horizon"]["3_TO_6H"]["mean_actual_lead_minutes"] == 300.0
