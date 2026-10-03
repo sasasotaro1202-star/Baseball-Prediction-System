@@ -132,6 +132,7 @@ def test_rollup_preserves_multiple_pregame_snapshots(tmp_path, monkeypatch):
     monkeypatch.setattr(roll, "SNAPSHOT_JSONL", exp / "snapshot_experience_ledger.jsonl")
     monkeypatch.setattr(roll, "CASE_SUMMARY_PATH", exp / "experience_case_summary.json")
     monkeypatch.setattr(roll, "TRAINING_INDEX_PATH", exp / "experience_training_index.json")
+    monkeypatch.setattr(roll, "PERFORMANCE_BREAKDOWN_PATH", exp / "performance_breakdown.json")
 
     pdir = exp / "predictions"
     pdir.mkdir(parents=True, exist_ok=True)
@@ -165,6 +166,15 @@ def test_rollup_preserves_multiple_pregame_snapshots(tmp_path, monkeypatch):
     assert result["timing_30m"]["eligible_rows"] == 2
     assert result["timing_30m"]["on_time_rows"] == 2
     assert result["timing_30m"]["compliance_rate"] == 1.0
+    breakdown = json.loads(
+        (exp / "performance_breakdown.json").read_text(encoding="utf-8")
+    )
+    assert breakdown["schema_version"] == 4
+    assert breakdown["dimension_order"] == [
+        "league", "competition", "phase", "target", "horizon"
+    ]
+    assert "by_horizon" in breakdown["league_competition_phase_target"]["NPB"]
+    assert "3_TO_6H" in breakdown["league_competition_phase_target"]["NPB"]["by_horizon"]
 
 
 def test_rollup_rejects_post_start_prediction(tmp_path, monkeypatch):
