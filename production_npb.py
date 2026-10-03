@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from copy import deepcopy
 """Production NPB prediction entrypoint.
 
 Contract:
@@ -1398,11 +1399,21 @@ def predict(
             team = str(game.get(key) or "").strip()
             if team and team not in team_names:
                 team_names.append(team)
+    preferred_roster_names_by_team = {
+        str(team): {
+            str(player.get("player_name") or "").strip()
+            for player in (players or [])
+            if str(player.get("player_name") or "").strip()
+        }
+        for team, players in roster_teams.items()
+        if isinstance(players, list)
+    }
     try:
         team_player_context = collect_npb_team_player_context(
             team_names,
             season=int(target_date[:4]),
             preferred_player_ids_by_team=preferred_roster_ids_by_team,
+            preferred_player_names_by_team=preferred_roster_names_by_team,
         ) if team_names else {
             "schema_version": "npb-team-player-context-v1", "status": "NO_TEAMS",
             "teams_requested": [], "teams": {},
@@ -1418,22 +1429,66 @@ def predict(
             "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
         }
 
-    # Join roster membership and same-day registration transactions by stable player_id.
-    # Non-rostered / unmatched / missing states remain explicit.
-    transaction_index: dict[tuple[str, str], set[str]] = {}
+    # Resolve name-only official roster rows against already-fetched official team
+    # stats by exact normalized player name. This is deterministic (not fuzzy).
+    resolved_roster_teams = deepcopy(roster_teams)
+    resolved_transaction_index: dict[tuple[str, str], set[str]] = {}
+    team_context_map = team_player_context.get("teams", {}) if isinstance(team_player_context, dict) else {}
+    for team, players in resolved_roster_teams.items():
+        team_ctx = team_context_map.get(team) if isinstance(team_context_map, dict) else None
+        official_players = team_ctx.get("players", []) if isinstance(team_ctx, dict) else []
+        by_name: dict[str, set[str]] = {}
+        by_name_url: dict[str, str] = {}
+        for official_player in official_players or []:
+            pid = str(official_player.get("player_id") or "").strip()
+            name = str(official_player.get("player_name") or "").strip()
+            if pid and name:
+                by_name.setdefault(name, set()).add(pid)
+                if official_player.get("player_url"):
+                    by_name_url[name] = str(official_player["player_url"])
+        for player in players or []:
+            pid = str(player.get("player_id") or "").strip()
+            name = str(player.get("player_name") or "").strip()
+            if pid:
+                player["identity_resolution_status"] = "SOURCE_STABLE_ID"
+                continue
+            candidates = by_name.get(name, set())
+            if len(candidates) == 1:
+                pid = next(iter(candidates))
+                player["player_id"] = pid
+                player["player_url"] = player.get("player_url") or by_name_url.get(name)
+                player["identity_status"] = "VERIFIED_STABLE_ID"
+                player["identity_resolution_status"] = "RESOLVED_EXACT_TEAM_STATS"
+            elif len(candidates) > 1:
+                player["identity_resolution_status"] = "IDENTITY_AMBIGUOUS"
+            else:
+                player["identity_resolution_status"] = "IDENTITY_NOT_FOUND"
+
     for tx in (roster_context.get("transactions") or []) if isinstance(roster_context, dict) else []:
         if not isinstance(tx, dict):
             continue
         team = str(tx.get("team") or "").strip()
         pid = str(tx.get("player_id") or "").strip()
         status = str(tx.get("transaction_status") or "").strip()
+        name = str(tx.get("player_name") or "").strip()
+        if team and status and not pid:
+            candidates = {
+                str(p.get("player_id") or "").strip()
+                for p in (team_context_map.get(team, {}).get("players", []) or [])
+                if str(p.get("player_id") or "").strip()
+                and str(p.get("player_name") or "").strip() == name
+            }
+            if len(candidates) == 1:
+                pid = next(iter(candidates))
         if team and pid and status:
-            transaction_index.setdefault((team, pid), set()).add(status)
+            resolved_transaction_index.setdefault((team, pid), set()).add(status)
+
+    transaction_index = resolved_transaction_index
 
     for team, team_ctx in (team_player_context.get("teams") or {}).items():
         if not isinstance(team_ctx, dict):
             continue
-        active_ids = preferred_roster_ids_by_team.get(str(team), set())
+        active_ids = {str(p.get("player_id") or "").strip() for p in (resolved_roster_teams.get(str(team), []) or []) if str(p.get("player_id") or "").strip()}
         registered_today = removed_today = matched = 0
         for player in team_ctx.get("players", []) or []:
             pid = str(player.get("player_id") or "").strip()
@@ -1469,8 +1524,8 @@ def predict(
         home = str(pred.get("home") or "").strip()
         away = str(pred.get("away") or "").strip()
         pred["roster_context_snapshot_id"] = roster_snapshot_id
-        pred["home_roster_context"] = roster_teams.get(home)
-        pred["away_roster_context"] = roster_teams.get(away)
+        pred["home_roster_context"] = resolved_roster_teams.get(home)
+        pred["away_roster_context"] = resolved_roster_teams.get(away)
         pred["team_player_context_snapshot_id"] = team_context_snapshot_id
         pred["home_team_player_context"] = team_contexts.get(home)
         pred["away_team_player_context"] = team_contexts.get(away)
