@@ -23,20 +23,23 @@ def test_postgame_experience_runs_multiple_daily_reconciliations_and_rollup():
 
 
 def test_pregame_automation_is_five_minute_60m_pit_gated_and_archives_experience():
-    text = (ROOT / ".github/workflows/baseball_60m_pregame_auto.yml").read_text(encoding="utf-8")
-    assert 'cron: "*/5 * * * *"' in text
-    assert "python -m prediction.current_production --league NPB --date \"$date\" --data-dir data --pregame-only" in text
-    assert "prediction generated at/after first pitch" in text
-    assert "starter evidence observed after prediction information cutoff" in text
-    assert "--min-lead-minutes 50" in text
-    assert "--preferred-lead-minutes 60" in text
-    assert "--scan-ahead-minutes 60" in text
-    assert "--prediction-source AUTO_60M" in text
-    assert "automatic target is approximately 60m before first pitch." in text
-    assert "python -m research.experience_ledger --archive" in text
-    assert text.count('for experience_path in data/experience/predictions data/experience/research_shadow; do') == 2
-    assert text.count('if [ -d "$experience_path" ]; then') == 2
-    assert text.count('git add "$experience_path"') == 2
+    workflow = (ROOT / ".github/workflows/baseball_60m_pregame_auto.yml").read_text(encoding="utf-8")
+    script = (ROOT / "scripts/pregame_auto.sh").read_text(encoding="utf-8")
+    assert 'cron: "*/5 * * * *"' in workflow
+    assert "run: bash scripts/pregame_auto.sh" in workflow
+    assert "workflow_dispatch:" in workflow
+    assert "python -m prediction.current_production --league NPB --date \"$date\" --data-dir data --pregame-only" in script
+    assert "prediction generated at/after first pitch" in script
+    assert "starter evidence observed after prediction information cutoff" in script
+    assert "--min-lead-minutes 50" in script
+    assert "--preferred-lead-minutes 60" in script
+    assert "--scan-ahead-minutes 60" in script
+    assert "--prediction-source AUTO_60M" in script
+    assert "automatic target is approximately 60m before first pitch." in script
+    assert "python -m research.experience_ledger --archive" in script
+    assert script.count('for experience_path in data/experience/predictions data/experience/research_shadow; do') == 2
+    assert script.count('if [ -d "$experience_path" ]; then') == 2
+    assert script.count('git add "$experience_path"') == 2
 
 
 def test_manual_current_production_entrypoint_remains_independent_of_60m_scheduler():

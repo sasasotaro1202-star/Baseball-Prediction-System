@@ -287,15 +287,18 @@ def test_manual_prediction_contract_preserves_runtime_failure_and_json_stdout():
 
 
 def test_pregame_experience_persist_skips_absent_optional_shadow_dir():
-    text = (ROOT / ".github" / "workflows" / "baseball_60m_pregame_auto.yml").read_text(encoding="utf-8")
-    _assert_official_actions_are_immutable(text)
+    workflow = (ROOT / ".github" / "workflows" / "baseball_60m_pregame_auto.yml").read_text(encoding="utf-8")
+    script = (ROOT / "scripts" / "pregame_auto.sh").read_text(encoding="utf-8")
+    _assert_official_actions_are_immutable(workflow)
 
-    # research_shadow is optional; its absence must not turn a valid production
-    # prediction run into a pathspec failure.
-    assert text.count('for experience_path in data/experience/predictions data/experience/research_shadow; do') == 2
-    assert text.count('if [ -d "$experience_path" ]; then') == 2
-    assert text.count('git add "$experience_path"') == 2
-    assert 'git add data/experience/predictions/ data/experience/research_shadow/' not in text
+    # The optional research_shadow directory must remain absent-safe in the
+    # extracted implementation, while the wrapper stays small and immutable.
+    assert script.count('for experience_path in data/experience/predictions data/experience/research_shadow; do') == 2
+    assert script.count('if [ -d "$experience_path" ]; then') == 2
+    assert script.count('git add "$experience_path"') == 2
+    assert 'git add data/experience/predictions/ data/experience/research_shadow/' not in script
+    assert "bash scripts/pregame_auto.sh" in workflow
+    assert len(workflow.splitlines()) <= 90
 
 
 def test_pregame_zero_job_failure_has_bounded_control_plane_recovery():
@@ -356,6 +359,11 @@ def test_24h_supervisor_recovers_only_latest_zero_job_pregame_failures_with_dail
     assert "workflow_dispatch:" in pregame
     assert "recovery_mode:" in pregame
     assert 'default: "manual"' in pregame
+    assert "run: bash scripts/pregame_auto.sh" in pregame
+    assert "<<'PY'" not in pregame
+    assert len(pregame.splitlines()) <= 90
+    assert (ROOT / ".github" / "workflows" / "baseball_60m_pregame_auto.yml").is_file()
+    assert (ROOT / "scripts" / "pregame_auto.sh").is_file()
     assert "--field recovery_mode=zero_job_startup_recovery" in text
 
 
