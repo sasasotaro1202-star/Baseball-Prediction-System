@@ -301,6 +301,8 @@ def test_pregame_experience_persist_skips_absent_optional_shadow_dir():
 def test_pregame_zero_job_failure_has_bounded_control_plane_recovery():
     recovery = (ROOT / ".github" / "workflows" / "baseball_actions_recovery.yml").read_text(encoding="utf-8")
     assert "Baseball 60m Pregame Auto Prediction" in recovery
+    trigger = recovery.split("permissions:", 1)[0]
+    assert "- Baseball 60m Pregame Auto Prediction" in trigger
     assert "GH_REPO: ${{ github.repository }}" in recovery
     assert "WORKFLOW_NAME: ${{ github.event.workflow_run.name }}" in recovery
     assert 'if [ "${WORKFLOW_NAME}" = "Baseball 60m Pregame Auto Prediction" ]; then' in recovery
