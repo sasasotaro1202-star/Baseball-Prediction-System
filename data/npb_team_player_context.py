@@ -589,16 +589,21 @@ def _summarize_player_coverage(players: list[dict[str, Any]]) -> dict[str, Any]:
 def _enrich_profiles(
     players: list[dict[str, Any]],
     preferred_player_ids: set[str] | None = None,
+    preferred_player_names: set[str] | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     try:
         limit = max(0, int(os.getenv("NPB_PLAYER_PROFILE_LIMIT_PER_TEAM", "24")))
     except Exception as exc:
         raise ValueError("NPB_PLAYER_PROFILE_LIMIT_PER_TEAM must be an integer >= 0") from exc
     preferred = {str(x).strip() for x in (preferred_player_ids or set()) if str(x).strip()}
+    preferred_names = {_clean(x) for x in (preferred_player_names or set()) if _clean(x)}
     selected = sorted(
         players,
         key=lambda p: (
-            0 if str(p.get("player_id") or "").strip() in preferred else 1,
+            0 if (
+                str(p.get("player_id") or "").strip() in preferred
+                or _clean(p.get("player_name")) in preferred_names
+            ) else 1,
             -_profile_priority(p),
             str(p.get("player_id") or ""),
             str(p.get("player_name") or ""),
@@ -650,6 +655,7 @@ def collect_team(
     team: str,
     season: int = 2026,
     preferred_player_ids: set[str] | None = None,
+    preferred_player_names: set[str] | None = None,
 ) -> dict[str, Any]:
     canonical_team = normalize_team(team)
     suffix = TEAM_SUFFIX.get(canonical_team)
@@ -700,6 +706,7 @@ def collect_team(
     players, profile_count = _enrich_profiles(
         _merge_players(canonical_team, pages),
         preferred_player_ids=preferred_player_ids,
+        preferred_player_names=preferred_player_names,
     )
     for player in players:
         player.update(_derive_player_role_context(player))
@@ -726,6 +733,7 @@ def collect_teams(
     teams: list[str],
     season: int = 2026,
     preferred_player_ids_by_team: dict[str, set[str]] | None = None,
+    preferred_player_names_by_team: dict[str, set[str]] | None = None,
 ) -> dict[str, Any]:
     unique = []
     for team in teams:
@@ -736,11 +744,16 @@ def collect_teams(
         normalize_team(team): {str(x).strip() for x in ids if str(x).strip()}
         for team, ids in (preferred_player_ids_by_team or {}).items()
     }
+    preferred_name_map = {
+        normalize_team(team): {_clean(x) for x in names if _clean(x)}
+        for team, names in (preferred_player_names_by_team or {}).items()
+    }
     team_contexts = [
         collect_team(
             team,
             season=season,
             preferred_player_ids=preferred_map.get(team, set()),
+            preferred_player_names=preferred_name_map.get(team, set()),
         )
         for team in unique
     ]
