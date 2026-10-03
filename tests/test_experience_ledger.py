@@ -58,6 +58,54 @@ def _prediction(tmp: Path):
     return path
 
 
+def test_reconcile_preserves_prediction_time_competition_metadata(tmp_path, monkeypatch):
+    monkeypatch.setattr(exp, "EXPERIENCE", tmp_path / "experience")
+    monkeypatch.setattr(exp, "PRED_DIR", tmp_path / "experience" / "predictions")
+    monkeypatch.setattr(exp, "RESULT_DIR", tmp_path / "experience" / "official_results")
+    monkeypatch.setattr(exp, "LEDGER_PATH", tmp_path / "experience" / "experience_ledger.csv")
+    monkeypatch.setattr(exp, "LEDGER_JSONL", tmp_path / "experience" / "experience_ledger.jsonl")
+    monkeypatch.setattr(exp, "SUMMARY_PATH", tmp_path / "experience" / "experience_summary.json")
+
+    prediction = _prediction(tmp_path)
+    payload = json.loads(prediction.read_text(encoding="utf-8"))
+    payload["predictions"][0].update({
+        "competition": "npb_regular",
+        "competition_stage": "regular_season",
+        "season_type": "regular_season",
+        "game_class": "official",
+        "competition_key": "NPB:npb_regular:regular_season",
+        "competition_classification_status": "classified",
+        "competition_metadata_source": "https://npb.jp/games/2026/schedule_09_detail.html",
+        "competition_metadata_source_field": "npb_daily_schedule_heading",
+        "competition_metadata_source_value": "公式戦",
+        "game_type": "公式戦",
+        "series_description": "",
+    })
+    prediction.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    exp.archive_production_output(prediction)
+    monkeypatch.setattr(exp, "_load_cached_results", lambda dates, **kwargs: pd.DataFrame([{
+        "date": "2026-09-26",
+        "home": "横浜DeNAベイスターズ",
+        "away": "阪神タイガース",
+        "home_score": 4,
+        "away_score": 2,
+        "source_url": "test://npb",
+    }]))
+
+    exp.reconcile()
+    ledger = pd.read_csv(tmp_path / "experience" / "experience_ledger.csv")
+    row = ledger.loc[0]
+    assert row["competition"] == "npb_regular"
+    assert row["competition_stage"] == "regular_season"
+    assert row["season_type"] == "regular_season"
+    assert row["game_class"] == "official"
+    assert row["competition_key"] == "NPB:npb_regular:regular_season"
+    assert row["competition_classification_status"] == "classified"
+    assert row["competition_metadata_source_field"] == "npb_daily_schedule_heading"
+    assert row["competition_metadata_source_value"] == "公式戦"
+
+
 def test_archive_preserves_each_prediction_snapshot(tmp_path, monkeypatch):
     monkeypatch.setattr(exp, "EXPERIENCE", tmp_path / "experience")
     monkeypatch.setattr(exp, "PRED_DIR", tmp_path / "experience" / "predictions")
@@ -73,6 +121,7 @@ def test_archive_preserves_each_prediction_snapshot(tmp_path, monkeypatch):
 
 def test_empty_result_cache_is_refreshed(tmp_path, monkeypatch):
     monkeypatch.setattr(exp, "RESULT_DIR", tmp_path / "experience" / "official_results")
+    active_now = pd.Timestamp("2026-10-03T12:00:00+00:00")
     result_dir = tmp_path / "experience" / "official_results"
     result_dir.mkdir(parents=True, exist_ok=True)
     cache = result_dir / "2026-10.csv"
@@ -96,7 +145,8 @@ def test_empty_result_cache_is_refreshed(tmp_path, monkeypatch):
 
     monkeypatch.setattr(exp, "_fetch_month", fake_fetch)
     loaded = exp._load_cached_results(
-        [pd.Timestamp("2026-10-02T18:00:00+09:00")]
+        [pd.Timestamp("2026-10-02T18:00:00+09:00")],
+        now=active_now,
     )
 
     assert calls == [(2026, 10)]
@@ -148,6 +198,7 @@ def test_legacy_scheduled_cutoff_survives_dataframe_materialization(tmp_path, mo
 
 def test_current_result_cache_is_refreshed_even_when_nonempty(tmp_path, monkeypatch):
     monkeypatch.setattr(exp, "RESULT_DIR", tmp_path / "experience" / "official_results")
+    active_now = pd.Timestamp("2026-10-03T12:00:00+00:00")
     result_dir = tmp_path / "experience" / "official_results"
     result_dir.mkdir(parents=True, exist_ok=True)
     cache = result_dir / "2026-10.csv"
@@ -171,7 +222,8 @@ def test_current_result_cache_is_refreshed_even_when_nonempty(tmp_path, monkeypa
 
     monkeypatch.setattr(exp, "_fetch_month", fake_fetch)
     loaded = exp._load_cached_results(
-        [pd.Timestamp("2026-10-02T18:00:00+09:00")]
+        [pd.Timestamp("2026-10-02T18:00:00+09:00")],
+        now=active_now,
     )
     assert calls == [(2026, 10)]
     assert len(loaded) == 1

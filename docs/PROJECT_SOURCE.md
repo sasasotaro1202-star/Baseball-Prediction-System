@@ -2186,4 +2186,12 @@ This recovery mechanism does not alter PIT eligibility, chronological OOS semant
 
 ⸻
 
+91. RECONCILIATION METADATA PRESERVATION
+
+Production prediction snapshots may contain prediction-time competition taxonomy such as competition, competition_stage, season_type, game_class, competition_key, classification status, and source lineage. These fields are evaluation dimensions and evidence-chain metadata, not postgame-derived labels.
+
+The experience ledger must preserve them through reconciliation. Missing taxonomy may be enriched only from the immutable prediction snapshot or separately verified prediction-time evidence. Outcome pages, later revisions, current schedule state, and postgame knowledge must not be used to reconstruct a historical phase, and UNKNOWN must never be silently remapped.
+
+⸻
+
 === COPY END ===

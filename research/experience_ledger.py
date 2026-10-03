@@ -515,7 +515,11 @@ def _result_cache_path(year: int, month: int) -> Path:
     return RESULT_DIR / f"{year:04d}-{month:02d}.csv"
 
 
-def _load_cached_results(dates: list[pd.Timestamp]) -> pd.DataFrame:
+def _load_cached_results(
+    dates: list[pd.Timestamp],
+    *,
+    now: pd.Timestamp | None = None,
+) -> pd.DataFrame:
     if not dates:
         return pd.DataFrame()
     needed = sorted({(int(d.year), int(d.month)) for d in dates})
@@ -528,7 +532,7 @@ def _load_cached_results(dates: list[pd.Timestamp]) -> pd.DataFrame:
         # The active month is mutable: new games can finish after a
         # previously non-empty cache was written. Refresh it every run.
         # Closed months remain cached for efficient, reproducible reuse.
-        refresh = _should_refresh_result_cache(year, month)
+        refresh = _should_refresh_result_cache(year, month, now=now)
         if not refresh and path.exists() and path.stat().st_size > 0:
             try:
                 got = pd.read_csv(path)
@@ -895,6 +899,11 @@ def reconcile() -> dict[str, Any]:
         "prediction_id", "game_id", "target", "competition_id", "date_key", "datetime_jst", "prediction_cutoff_utc",
         "prediction_generated_at", "prediction_source", "prediction_schedule", "prediction_target_lead_minutes",
         "home", "away", "home_starter", "away_starter",
+        # Preserve prediction-time competition/phase taxonomy through reconciliation.
+        "competition", "competition_stage", "season_type", "game_class", "competition_key",
+        "competition_classification_status", "competition_metadata_source",
+        "competition_metadata_source_field", "competition_metadata_source_value",
+        "game_type", "series_description",
         "regime", "score_regime", "model", "situation_tags",
         "home_win_pct", "draw_pct", "away_win_pct", "predicted_outcome",
         "actual_outcome", "outcome_correct", "logloss", "brier",
