@@ -109,6 +109,7 @@ class _TableParser(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
+        attrs_dict = {key: value or "" for key, value in attrs}
         if tag in {"script", "style", "noscript", "template"}:
             self._hidden += 1
             return
