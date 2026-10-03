@@ -1,23 +1,22 @@
 # Baseball-Prediction-System — Project Instructions
 
-The detailed operating specification is maintained in `docs/PROJECT_SOURCE.md`.
-Use `docs/OPERATING_GOVERNANCE.md` as the compact operational gate.
+## Priority and authority
+`docs/PROJECT_SOURCE.md` is the detailed technical/research/validation/operations source of truth. Current GitHub HEAD, code, config, tests, workflows, Actions, artifacts, registries and measured evidence override older conversation or documents; historical results, failures and holdouts are immutable.
 
-Current GitHub state and verified runtime evidence are authoritative. Preserve historical results and failure records.
+## Mandatory operating loop
+MONITOR → DETECT → TRIAGE → RESEARCH → IMPLEMENT → TEST → PIT → OOS/WFO → CALIBRATION → ROBUSTNESS → FROZEN HOLDOUT → ADOPT/HOLD/REJECT → RELEASE → PRODUCTION → RECONCILE → FAILURE ANALYSIS → MEMORY → NEXT RESEARCH.
 
-Required loop:
-MONITOR → DETECT → RESEARCH → IMPLEMENT → TEST → PIT → OOS/WFO → CALIBRATION → ROBUSTNESS → HOLDOUT → ADOPT/HOLD/REJECT → RELEASE → PRODUCTION → RECONCILE → FAILURE ANALYSIS.
+## Baseball target contract
+NPB = HOME/DRAW/AWAY 3-class. MLB = HOME/AWAY 2-class. Score targets are independent from win targets. LOW/HIGH is independently versioned as LOW ≤ 6 runs / HIGH ≥ 7 runs. Competition phase UNKNOWN must not be silently mapped.
 
-PIT must be fail-closed when historical availability cannot be proven. Random splits are prohibited. Missing values must not become zero. Cross-project research requires local PIT/OOS/holdout validation.
+## PIT and data safety
+Preserve game_time, prediction_time, cutoff, available_at, published_at, retrieved_at and revision_time. retrieved_at does not prove historical availability. Starter-dependent evidence requires announcement timing and cutoff eligibility. PIT uncertainty is UNKNOWN/UNVERIFIABLE and fail-closed. Missing is not zero; identity mismatches, stale critical data and target mismatches require fallback, abstention or deferral.
 
-Reference adoption benchmark:
-primary relative LogLoss improvement >= 3%;
-auxiliary improvement >= 1%;
-no worsening in >= 70% of evaluation periods;
-newest holdout no worsening;
-no material calibration degradation;
-PIT violations = 0.
+## Validation and selection
+Random split is prohibited. Use chronological WFO/OOS with separate candidate selection, final OOS and frozen holdout. LogLoss is primary for win probabilities; report Accuracy, Brier, ECE, class-wise calibration and case-level diagnostics. Candidate adoption requires PIT validity, reproducibility, robustness, calibration, newest holdout and operational safety; benchmark thresholds are not guarantees.
 
-These are promotion gates/benchmarks, not guarantees of future performance.
+## Cross-project research
+Use the five-repository set as a research pool: Baseball, BTC, 7-Sport, Soccer and Stock. Transfer mechanisms, never raw performance claims. Every transfer must pass LOCAL PIT → LOCAL OOS/WFO → ROBUSTNESS → LOCAL FROZEN HOLDOUT → SHADOW before production consideration.
 
-Manual pregame requests are on-demand and independent of the automatic 30/60-minute scheduler slot. They may be requested hours before a game, but always use the call-time JST date and remain subject to PIT/starter/data/model/calibration eligibility; no lead-time alone authorizes prediction.
+## Automation and failure policy
+No 
