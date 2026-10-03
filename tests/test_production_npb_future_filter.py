@@ -7,7 +7,7 @@ def test_build_target_rows_excludes_started_games(monkeypatch):
     monkeypatch.setattr(
         production_npb,
         "official_starters",
-        lambda target_date: [
+        lambda target_date, **kwargs: [
             {
                 "home": "A", "away": "B",
                 "home_starter": "H1", "away_starter": "A1",
@@ -34,7 +34,7 @@ def test_build_target_rows_excludes_started_games(monkeypatch):
     monkeypatch.setattr(
         production_npb,
         "_official_daily_start_times",
-        lambda target_date: {
+        lambda target_date, **kwargs: {
             ("A", "B"): "08:00",
             ("C", "D"): "18:00",
         },
