@@ -45,6 +45,16 @@ jobs:
               echo 'workflow=baseball_24h_research_autopilot.yml' >> "${GITHUB_OUTPUT}"
               echo 'label=24h Research Autopilot' >> "${GITHUB_OUTPUT}"
               ;;
+            "/baseball-predict NPB")
+              echo 'workflow=baseball_manual_prediction.yml' >> "${GITHUB_OUTPUT}"
+              echo 'inputs={"league":"NPB"}' >> "${GITHUB_OUTPUT}"
+              echo 'label=Manual NPB Prediction' >> "${GITHUB_OUTPUT}"
+              ;;
+            "/baseball-predict MLB")
+              echo 'workflow=baseball_manual_prediction.yml' >> "${GITHUB_OUTPUT}"
+              echo 'inputs={"league":"MLB"}' >> "${GITHUB_OUTPUT}"
+              echo 'label=Manual MLB Prediction' >> "${GITHUB_OUTPUT}"
+              ;;
             *)
               echo "ignored=true" >> "${GITHUB_OUTPUT}"
               echo 'No matching trusted async command; no workflow was dispatched.'
@@ -61,12 +71,22 @@ jobs:
           set -euo pipefail
           # Single bounded API call. Do not poll/list runs here: chat-triggered
           # work must hand off immediately and never wait on scheduler state.
-          timeout --signal=TERM --kill-after=3s 10s \
-            gh api \
-            --method POST \
-            -H "Accept: application/vnd.github+json" \
-            "repos/${GH_REPO}/actions/workflows/${TARGET_WORKFLOW}/dispatches" \
-            -f ref=main
+          if [ -n "${{ steps.route.outputs.inputs }}" ]; then
+            timeout --signal=TERM --kill-after=3s 10s \
+              gh api \
+              --method POST \
+              -H "Accept: application/vnd.github+json" \
+              "repos/${GH_REPO}/actions/workflows/${TARGET_WORKFLOW}/dispatches" \
+              -f ref=main \
+              -f-json inputs='${{ steps.route.outputs.inputs }}'
+          else
+            timeout --signal=TERM --kill-after=3s 10s \
+              gh api \
+              --method POST \
+              -H "Accept: application/vnd.github+json" \
+              "repos/${GH_REPO}/actions/workflows/${TARGET_WORKFLOW}/dispatches" \
+              -f ref=main
+          fi
           echo "Async request accepted: ${{ steps.route.outputs.label }} dispatched on main. No run polling or completion wait is performed." >> "${GITHUB_STEP_SUMMARY}"
 
 
