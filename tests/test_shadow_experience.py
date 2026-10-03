@@ -145,3 +145,54 @@ def test_shadow_reconcile_records_horizon_breakdown(tmp_path, monkeypatch):
     summary = shadow.reconcile_shadow()
     assert summary["by_horizon"]["3_TO_6H"]["rows"] == 1
     assert summary["by_horizon"]["3_TO_6H"]["mean_actual_lead_minutes"] == 295.0
+
+
+
+def test_shadow_reconcile_keeps_horizon_breakdown_case_level(tmp_path, monkeypatch):
+    root = tmp_path / "research_shadow"
+    pred_dir = root / "predictions"
+    pred_dir.mkdir(parents=True)
+    monkeypatch.setattr(shadow, "SHADOW_ROOT", root)
+    monkeypatch.setattr(shadow, "PRED_DIR", pred_dir)
+    monkeypatch.setattr(shadow, "LEDGER_PATH", root / "shadow_experience_ledger.csv")
+    monkeypatch.setattr(shadow, "LEDGER_JSONL", root / "shadow_experience_ledger.jsonl")
+    monkeypatch.setattr(shadow, "SUMMARY_PATH", root / "shadow_experience_summary.json")
+
+    early = dict(_prediction()["predictions"][0])
+    early["prediction_id"] = "early"
+    early["prediction_cutoff_utc"] = "2026-10-03T04:00:00+00:00"
+    early["prediction_generated_at"] = "2026-10-03T04:05:00+00:00"
+    early["starter_evidence_observed_at_utc"] = "2026-10-03T03:59:00+00:00"
+
+    late = dict(early)
+    late["prediction_id"] = "late"
+    late["prediction_cutoff_utc"] = "2026-10-03T08:24:00+00:00"
+    late["prediction_generated_at"] = "2026-10-03T08:25:00+00:00"
+    late["starter_evidence_observed_at_utc"] = "2026-10-03T08:23:00+00:00"
+
+    pred_dir.joinpath("2026-10-03.jsonl").write_text(
+        "".join(json.dumps(x, ensure_ascii=False) + "\n" for x in (early, late)),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        shadow,
+        "_load_cached_results",
+        lambda dates: pd.DataFrame([{
+            "date": "2026-10-03",
+            "home": "東京ヤクルトスワローズ",
+            "away": "読売ジャイアンツ",
+            "home_score": 3,
+            "away_score": 2,
+            "source_url": "test://npb",
+        }]),
+    )
+
+    summary = shadow.reconcile_shadow()
+    assert summary["matched_snapshots"] == 2
+    assert summary["canonical_cases"] == 1
+    assert set(summary["by_horizon"]) == {"3_TO_6H", "30_TO_60M"}
+    assert summary["by_horizon"]["3_TO_6H"]["rows"] == 1
+    assert summary["by_horizon"]["30_TO_60M"]["rows"] == 1
+    assert set(summary["canonical_by_horizon"]) == {"30_TO_60M"}
+    assert summary["canonical_by_horizon"]["30_TO_60M"]["rows"] == 1
