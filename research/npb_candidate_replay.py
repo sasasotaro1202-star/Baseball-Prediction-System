@@ -713,6 +713,10 @@ def run_npb_candidate_cycle(
         "candidate_blend_spec": (
             selected_blend_spec.to_dict() if selected_blend_spec is not None else None
         ),
+        "candidate_blend_fingerprint": (
+            selected_blend_spec.fingerprint()
+            if selected_blend_spec is not None else None
+        ),
         "dataset_hash": dataset_hash,
         "selection_locked_before_holdout": True,
         "starter_pit_evidence_ok": False,
