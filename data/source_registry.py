@@ -112,6 +112,8 @@ SOURCES = (
     SourceSpec("npb_official_standings_central", "NPB", "team_standings_context", "https://npb.jp/bis/eng/{year}/stats/std_c.html", 1, False, "Official Central League standings; current/future prediction may use the snapshot observed at cutoff, while historical OOS requires historical availability evidence."),
     SourceSpec("npb_official_standings_pacific", "NPB", "team_standings_context", "https://npb.jp/bis/eng/{year}/stats/std_p.html", 1, False, "Official Pacific League standings; current/future prediction may use the snapshot observed at cutoff, while historical OOS requires historical availability evidence."),
     SourceSpec("open_meteo_forecast", "NPB+MLB", "pregame_weather_forecast", "https://api.open-meteo.com/v1/forecast", 2, False, "Hourly forecast snapshot near first pitch; available_at is the actual request observation time, and the forecast must remain isolated from historical OOS unless archived PIT evidence exists."),
+    SourceSpec("npb_official_player_index", "NPB", "active_player_identity", "https://npb.jp/bis/players/active/", 1, False, "Official active-player index; player identity mapping is safe only at retrieval time and historical OOS requires the historical availability boundary."),
+    SourceSpec("npb_official_player_page", "NPB", "player_profile_and_season_stats", "https://npb.jp/bis/players/{player_id}.html", 1, False, "Official player page with profile and year-by-year batting/pitching records; do not treat current-page values as historical PIT evidence without archived timing."),
 
 )
 
