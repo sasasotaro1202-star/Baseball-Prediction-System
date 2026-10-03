@@ -62,7 +62,7 @@ jobs:
           from pathlib import Path
 
           workflow = Path('.github/workflows/baseball_24h_research_autopilot.yml').read_text(encoding='utf-8')
-          paths = sorted(set(re.findall(r'tests/[A-Za-z0-9_.-]+\\.py', workflow)))
+          paths = sorted(set(re.findall(r'tests/[A-Za-z0-9_.-]+\.py', workflow)))
           if not paths:
               raise SystemExit('24h autopilot has no targeted test paths')
           missing = [path for path in paths if not Path(path).is_file()]
@@ -127,7 +127,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install minimal research dependencies
-        run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 pandas pytest
+        run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 pandas pytest requests
       - name: Baseline parser tests
         run: python -m pytest -q tests/test_auto_discovery_frontier.py tests/test_universal_source_matrix.py tests/test_universal_adapter_registry.py tests/test_availability_competitions.py tests/test_npb_tracking_source.py
       - name: Run frontier discovery loop
