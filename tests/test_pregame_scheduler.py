@@ -480,3 +480,53 @@ def test_fetch_uses_stdlib_https(monkeypatch):
         "headers": {"User-Agent": "Baseball-Prediction-System/pregame-scheduler"},
         "closed": True,
     }
+
+
+def test_schedule_parser_accepts_visible_official_team_labels_and_japanese_spacing(monkeypatch):
+    html = """
+    <html><body>
+      <nav><a>日本シリーズ</a><a>オールスター・ゲーム</a></nav>
+      <h3>Regular Season (Schedules)</h3>
+      <div class="game">
+        <span>巨　人</span>
+        <span>東京ドーム</span>
+        <span>18:00</span>
+        <span>DeNA</span>
+      </div>
+      <div class="game">
+        <span>広島</span>
+        <span>マツダ</span>
+        <span>14:00</span>
+        <span>阪神</span>
+      </div>
+    </body></html>
+    """
+    monkeypatch.setattr(scheduler, "_fetch", lambda url: html)
+    rows = scheduler._schedule_for_date("2026-10-03")
+    assert rows == [
+        {
+            "home": "読売ジャイアンツ",
+            "away": "横浜DeNAベイスターズ",
+            "official_start_time": "18:00",
+        },
+        {
+            "home": "広島東洋カープ",
+            "away": "阪神タイガース",
+            "official_start_time": "14:00",
+        },
+    ]
+
+
+def test_schedule_parser_ignores_hidden_team_labels_and_script_clocks():
+    parser = scheduler._ScheduleParser()
+    parser.feed(
+        """
+        <script>巨人 99:99 DeNA</script>
+        <div><span>巨人</span><span>18:00</span><span>DeNA</span></div>
+        """
+    )
+    assert parser.tokens == [
+        ("team", "読売ジャイアンツ"),
+        ("time", "18:00"),
+        ("team", "横浜DeNAベイスターズ"),
+    ]
