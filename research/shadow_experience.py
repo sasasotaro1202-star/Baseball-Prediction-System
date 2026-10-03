@@ -249,12 +249,18 @@ def reconcile_shadow() -> dict[str, Any]:
     all_metrics = metrics(matched)
     canonical_metrics = metrics(canonical)
 
-    by_horizon: dict[str, Any] = {}
-    for key in ("LT_30M", "30_TO_60M", "1_TO_3H", "3_TO_6H", "GE_6H", "UNKNOWN"):
-        group = matched.loc[matched["prediction_horizon"].astype(str) == key]
-        if group.empty:
-            continue
-        by_horizon[key] = metrics(group)
+    def metrics_by_horizon(frame: pd.DataFrame) -> dict[str, Any]:
+        """Partition metrics by realized lead time while preserving case unit."""
+        grouped: dict[str, Any] = {}
+        for key in ("LT_30M", "30_TO_60M", "1_TO_3H", "3_TO_6H", "GE_6H", "UNKNOWN"):
+            group = frame.loc[frame["prediction_horizon"].astype(str) == key]
+            if group.empty:
+                continue
+            grouped[key] = metrics(group)
+        return grouped
+
+    by_horizon = metrics_by_horizon(matched)
+    canonical_by_horizon = metrics_by_horizon(canonical)
 
     by_source: dict[str, Any] = {}
     if "prediction_source" in matched.columns:
@@ -291,6 +297,7 @@ def reconcile_shadow() -> dict[str, Any]:
         "canonical_metrics": canonical_metrics,
         "by_prediction_source": by_source,
         "by_horizon": by_horizon,
+        "canonical_by_horizon": canonical_by_horizon,
     }
     SUMMARY_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return payload
