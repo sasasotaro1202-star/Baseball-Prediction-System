@@ -34,7 +34,9 @@ def test_pregame_automation_is_five_minute_60m_pit_gated_and_archives_experience
     assert "--prediction-source AUTO_60M" in text
     assert "automatic target is approximately 60m before first pitch." in text
     assert "python -m research.experience_ledger --archive" in text
-    assert 'git add data/experience/predictions/' in text
+    assert text.count('for experience_path in data/experience/predictions data/experience/research_shadow; do') == 2
+    assert text.count('if [ -d "$experience_path" ]; then') == 2
+    assert text.count('git add "$experience_path"') == 2
 
 
 def test_manual_current_production_entrypoint_remains_independent_of_60m_scheduler():
