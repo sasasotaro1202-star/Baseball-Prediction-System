@@ -185,24 +185,19 @@ def _stat_number(text: str) -> float | None:
 
 
 def _parse_personal_profile(page_html: str) -> dict[str, Any]:
-    text = "\n".join(_clean(x) for x in re.findall(r">([^<>]+)<", page_html) if _clean(x))
+    parser = _TableParser()
+    parser.feed(page_html)
     profile: dict[str, Any] = {}
-    for label, keys in CANONICAL_LABELS.items():
-        pattern = r"(?:%s)\s*[|:]\s*([^\n]+)" % "|".join(re.escape(k) for k in keys)
-        m = re.search(pattern, text, re.I)
-        if m:
-            profile[label] = _clean(m.group(1))
-
-    # The official page uses a compact identity block in addition to the
-    # profile table. Keep the raw structured labels as evidence.
-    for key, pattern in {
-        "player_number": r"(?:\n|>)\s*(\d{1,3})\s*(?:\n|<)",
-        "team": r"\n([^\n]+)\n[^\n]+\n[^\n]*\s*(?:投手|捕手|内野手|外野手)",
-    }.items():
-        if key not in profile:
-            m = re.search(pattern, text)
-            if m:
-                profile[key] = _clean(m.group(1))
+    for row in parser.rows:
+        if len(row) < 2:
+            continue
+        label = _clean(row[0])
+        value = _clean(" ".join(row[1:]))
+        if not value:
+            continue
+        for key, labels in CANONICAL_LABELS.items():
+            if label in labels:
+                profile[key] = value
     return profile
 
 
@@ -307,6 +302,55 @@ def _derive_advanced(record: dict[str, Any], kind: str) -> dict[str, Any]:
     return {k: v for k, v in out.items() if v is not None}
 
 
+def _parse_player_index_link(href: str, text: str, source_url: str, observed: str) -> PlayerRef | None:
+    match = re.search(r"/bis/players/(\d+)\.html$", href)
+    if not match:
+        return None
+    raw = _clean(text)
+    if not raw:
+        return None
+    # Typical NPB active index rendering is:
+    #   <number> <position> <player name> <team>
+    # Developmental players may include "(育成選手)" after the position.
+    raw = re.sub(r"^\d{1,3}\s*", "", raw)
+    position = None
+    for marker, pos in (
+        ("投手", "投手"), ("捕手", "捕手"), ("内野手", "内野手"), ("外野手", "外野手"),
+    ):
+        if marker in raw:
+            position = pos
+            raw = raw.replace(marker, "", 1)
+            break
+    raw = re.sub(r"\s*\(育成選手\)\s*", " ", raw)
+    raw = _clean(raw)
+    team = None
+    for known_team in sorted(
+        {
+            "阪神タイガース", "横浜DeNAベイスターズ", "読売ジャイアンツ", "中日ドラゴンズ",
+            "広島東洋カープ", "東京ヤクルトスワローズ", "福岡ソフトバンクホークス",
+            "北海道日本ハムファイターズ", "オリックス・バファローズ",
+            "東北楽天ゴールデンイーグルス", "埼玉西武ライオンズ", "千葉ロッテマリーンズ",
+        },
+        key=len,
+        reverse=True,
+    ):
+        if known_team in raw:
+            team = known_team
+            raw = _clean(raw.replace(known_team, "", 1))
+            break
+    if not raw:
+        return None
+    return PlayerRef(
+        player_id=match.group(1),
+        name=raw,
+        url=urljoin(BASE_URL, href),
+        team=team,
+        position=position,
+        roster_source=source_url,
+        roster_available_at_utc=observed,
+    )
+
+
 def build_index() -> dict[str, list[PlayerRef]]:
     refs: dict[str, list[PlayerRef]] = {}
     for suffix in INDEX_SUFFIXES:
@@ -318,30 +362,9 @@ def build_index() -> dict[str, list[PlayerRef]]:
         parser = _LinkParser()
         parser.feed(body)
         for href, text in parser.links:
-            m = re.search(r"/bis/players/(\d+)\.html$", href)
-            if not m or not text:
+            ref = _parse_player_index_link(href, text, url, observed)
+            if ref is None:
                 continue
-            absolute = urljoin(BASE_URL, href)
-            player_name = _clean(text)
-            team = None
-            position = None
-            # Index text often includes uniform number, position and team.
-            raw = re.sub(r"^\d{1,3}\s*", "", player_name)
-            for marker, pos in (
-                ("投手", "投手"), ("捕手", "捕手"), ("内野手", "内野手"), ("外野手", "外野手"),
-            ):
-                if marker in raw:
-                    position = pos
-                    break
-            ref = PlayerRef(
-                player_id=m.group(1),
-                name=raw.split(" (")[0].strip(),
-                url=absolute,
-                team=None,
-                position=position,
-                roster_source=url,
-                roster_available_at_utc=observed,
-            )
             refs.setdefault(ref.name, []).append(ref)
     return refs
 
@@ -369,13 +392,6 @@ def collect_player(name: str, ref: PlayerRef) -> dict[str, Any]:
     body, observed = _fetch(ref.url)
     profile = _parse_personal_profile(body)
     tables = _parse_year_rows(body)
-    current_year = tables["pitching"] + tables["batting"]
-    current = [r for r in current_year if r.get("年度") == "2026"]
-    if not current:
-        current = [r for r in current_year if str(r.get("年度", "")).startswith("2026")]
-    pitch = next((r for r in current if _header_kind(list(r.keys())) == "pitching"), None)
-    # _header_kind cannot operate on parsed dict keys reliably, so identify from
-    # known column names instead.
     pitching_row = next((r for r in tables["pitching"] if str(r.get("年度")) == "2026"), None)
     batting_row = next((r for r in tables["batting"] if str(r.get("年度")) == "2026"), None)
     result = {
