@@ -1954,3 +1954,29 @@ PREGAME CONTEXTは現時点では「取得・保存・観測可能性の証跡�
 source failureは明示的にSOURCE_FAILED/UNAVAILABLEとし、missingを0へ変換しない。weather等の動的sourceはcurrent/future prediction snapshotには利用できるが、retrieved_atだけをhistorical published_atの証明として扱わない。
 
 NPB pregame context collectorは30分間隔のsnapshot workflowから実行可能であり、production prediction JSONにも一致するgame単位contextを紐付ける。context acquisition failureはprediction probability failureとは分離して記録し、既存production modelの安全なfail-closed境界を変更しない。
+
+
+87. DETAILED PLAYER CONTEXT
+
+NPB prediction snapshots may contain detailed official starter-player context in addition to starter identity.
+
+Player context fields include, when available:
+
+* stable NPB player_id
+* official player page URL
+* player position
+* batting/throwing hand
+* height / weight
+* birth date
+* career / draft metadata
+* current-season batting record
+* current-season pitching record
+* career batting / pitching record
+* derived batting rates such as BB%, K%, HR/PA, SB attempt rate, ISO-from-totals, BB/K
+* derived pitching rates such as K/9, BB/9, HR/9, WHIP, K-BB volume
+
+The profile source is the official NPB player page. NPB's player pages expose biographical attributes and year-by-year batting/pitching tables, and the official 2026 statistics pages expose team/player batting, pitching and fielding tables. citeturn984270view0turn582756search6
+
+Current/future snapshots can preserve this information for prediction-time analysis, but current-page values must not be retroactively treated as historical PIT evidence. Historical OOS consumption requires an independently proven availability/published boundary.
+
+Starter player context is observational metadata in the current release. It does not modify production probabilities automatically. Any conversion into predictive features requires LOCAL PIT → chronological OOS/WFO → calibration → ablation → robustness → frozen holdout → adoption gate.
