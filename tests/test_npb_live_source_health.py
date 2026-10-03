@@ -59,3 +59,33 @@ def test_verify_game_team_stats_covers_all_participating_teams(monkeypatch):
         "横浜DeNAベイスターズ",
         "広島東洋カープ",
     })
+
+
+def test_verify_team_stats_accepts_official_rows_without_embedded_stable_ids(monkeypatch):
+    calls = []
+
+    def fake_fetch(url):
+        calls.append(url)
+        return (
+            "<html>fixture</html>",
+            "2026-10-04T00:00:00+00:00",
+        )
+
+    monkeypatch.setattr(health, "fetch_team_page", fake_fetch)
+    monkeypatch.setattr(
+        health,
+        "parse_stats_page",
+        lambda body, kind: (
+            [
+                {"player_name": "選手A", "player_id": None},
+                {"player_name": "選手B", "player_id": None},
+            ],
+            "2026-10-03",
+        ),
+    )
+    got = health._verify_team_stats("千葉ロッテマリーンズ", 2026)
+    assert len(calls) == 3
+    assert all(v["status"] == "AVAILABLE" for v in got["sources"].values())
+    assert all(v["data_status"] == "AVAILABLE" for v in got["sources"].values())
+    assert all(v["identity_status"] == "PARTIAL" for v in got["sources"].values())
+    assert all(v["stable_player_id_rows"] == 0 for v in got["sources"].values())
