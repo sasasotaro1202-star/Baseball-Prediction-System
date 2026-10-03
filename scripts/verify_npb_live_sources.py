@@ -109,13 +109,19 @@ def _verify_team_stats(team: str, season: int) -> dict[str, Any]:
         if not rows:
             raise RuntimeError(f"{kind} source parsed zero player rows: {url}")
         stable_ids = sum(1 for row in rows if row.get("player_id"))
-        if stable_ids == 0:
-            raise RuntimeError(f"{kind} source returned player rows but no stable player ids: {url}")
+        names = sum(1 for row in rows if str(row.get("player_name") or "").strip())
+        if names == 0:
+            raise RuntimeError(f"{kind} source parsed rows but no player names: {url}")
+        identity_status = "COMPLETE" if stable_ids == len(rows) else "PARTIAL"
         result["sources"][kind] = {
             "status": "AVAILABLE",
+            "data_status": "AVAILABLE",
+            "identity_status": identity_status,
             "url": url,
             "parsed_rows": len(rows),
+            "player_name_rows": names,
             "stable_player_id_rows": stable_ids,
+            "stable_player_id_rate": stable_ids / len(rows),
             "source_as_of_date": as_of,
             "observed_at_utc": observed,
         }
@@ -317,6 +323,10 @@ def main() -> int:
     )
     report["sources"]["npb_official_team_stats"] = _verify_game_team_stats(games, today_jst.year)
 
+    # A stats page can be fully usable as data while lacking embedded stable IDs.
+    # Treat identity coverage as a separate quality dimension; do not turn a
+    # usable official stats table into SOURCE_FAILED solely because links are absent.
+    #
     # The pregame collector exposes source-level health in its "sources" list;
     # require schedule, both standings leagues, and at least one weather record.
     weather_source = next((x for x in source_status if x.get("source_id") == "open_meteo_forecast"), None)
