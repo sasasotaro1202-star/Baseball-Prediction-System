@@ -60,12 +60,34 @@ TEAM_NAMES = set(TEAM_ALIASES) | set(TEAM_ALIASES.values())
 
 
 class _ScheduleParser(HTMLParser):
-    """Collect only team image alts and visible clock tokens in document order."""
+    """Collect official team labels and visible clock tokens in document order.
+
+    NPB's official English schedule has used both image-alt and visible-text
+    team labels across page revisions. Accepting either representation is safe
+    because the parser still requires exactly one clock between adjacent team
+    labels before emitting a game. Hidden script/style payloads remain excluded.
+    """
 
     def __init__(self) -> None:
         super().__init__()
         self.tokens: list[tuple[str, str]] = []
         self._hidden = 0
+
+    def _append_team(self, value: str) -> None:
+        value = " ".join(str(value).replace("　", " ").split())
+        compact = value.replace(" ", "")
+        canonical = TEAM_ALIASES.get(
+            value,
+            TEAM_ALIASES.get(compact, compact),
+        )
+        if canonical not in TEAM_NAMES and canonical not in TEAM_ALIASES.values():
+            return
+        token = ("team", canonical)
+        # Responsive DOMs may expose the same label through both img[alt] and
+        # adjacent visible text. Collapse only adjacent identical labels.
+        if self.tokens and self.tokens[-1] == token:
+            return
+        self.tokens.append(token)
 
     def handle_starttag(self, tag: str, attrs) -> None:
         tag = tag.lower()
@@ -76,9 +98,7 @@ class _ScheduleParser(HTMLParser):
         if self._hidden:
             return
         if tag == "img":
-            alt = (attrs_map.get("alt") or "").strip()
-            if alt in TEAM_NAMES:
-                self.tokens.append(("team", TEAM_ALIASES.get(alt, alt)))
+            self._append_team(attrs_map.get("alt") or "")
 
     def handle_endtag(self, tag: str) -> None:
         if tag.lower() in {"script", "style", "noscript", "template"}:
@@ -88,6 +108,10 @@ class _ScheduleParser(HTMLParser):
         if self._hidden:
             return
         value = " ".join(str(data).replace("　", " ").split())
+        compact = value.replace(" ", "")
+        if value in TEAM_NAMES or compact in TEAM_NAMES:
+            self._append_team(value)
+            return
         if len(value) == 5 and value[2] == ":" and value[:2].isdigit() and value[3:].isdigit():
             hh = int(value[:2])
             mm = int(value[3:])
