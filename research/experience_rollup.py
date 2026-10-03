@@ -536,7 +536,7 @@ def rollup() -> dict[str, Any]:
     )
     PERFORMANCE_BREAKDOWN_PATH.write_text(
         json.dumps({
-            "schema_version": 1,
+            "schema_version": 2,
             "dimension_order": ["league", "competition", "phase", "target"],
             "generated_at_utc": result["generated_at_utc"],
             "status": result["status"],

@@ -27,7 +27,7 @@ def _text(value: Any) -> str:
 
 def _label_from_row(row: dict[str, Any]) -> dict[str, str]:
     league = _text(row.get("league")).upper()
-    if not league:
+    if league in {"", UNKNOWN, "NAN", "NONE"}:
         candidate = _text(row.get("competition_id")).upper()
         if candidate in {"NPB", "MLB"}:
             league = candidate
