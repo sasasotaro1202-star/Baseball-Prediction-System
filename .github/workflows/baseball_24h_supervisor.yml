@@ -76,9 +76,11 @@ jobs:
           # Use the Actions REST ledger here instead of `gh run list`. The CLI
           # has returned an empty stdout for this workflow+branch combination
           # even when runs are visible in the REST API.
-          pregame_runs="$(gh_retry api \
-            "repos/${GH_REPO}/actions/workflows/${PREGAME_WORKFLOW}/runs?branch=main&per_page=100" \
-            --jq '.workflow_runs | map({databaseId: .id, status: .status, conclusion: .conclusion, createdAt: .created_at, updatedAt: .updated_at, headBranch: .head_branch})')"
+          pregame_api_json="$(gh_retry api \
+            "repos/${GH_REPO}/actions/runs?event=push&branch=main&per_page=100")"
+          test -n "${pregame_api_json}"
+          pregame_runs="$(printf '%s' "${pregame_api_json}" | jq --arg workflow "${PREGAME_WORKFLOW}" \
+            '[.workflow_runs[] | select(.path == (".github/workflows/" + $workflow)) | {databaseId: .id, status: .status, conclusion: .conclusion, createdAt: .created_at, updatedAt: .updated_at, headBranch: .head_branch}]')"
           echo "Recent pregame runs:"
           echo "${pregame_runs}" | jq '.[0:10]'
 
@@ -150,9 +152,11 @@ jobs:
             verified_pregame=0
             for attempt in 1 2 3 4 5; do
               sleep 3
-              pregame_active_after="$(gh_retry api \
-                "repos/${GH_REPO}/actions/workflows/${PREGAME_WORKFLOW}/runs?branch=main&per_page=20" \
-                --jq '[.workflow_runs[] | select(.head_branch == "main") | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+              pregame_after_api="$(gh_retry api \
+                "repos/${GH_REPO}/actions/runs?event=workflow_dispatch&branch=main&per_page=50")"
+              test -n "${pregame_after_api}"
+              pregame_active_after="$(printf '%s' "${pregame_after_api}" | jq --arg workflow "${PREGAME_WORKFLOW}" \
+                '[.workflow_runs[] | select(.path == (".github/workflows/" + $workflow)) | select(.head_branch == "main") | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
               echo "Pregame recovery verification ${attempt}/5: active=${pregame_active_after}"
               if [ "${pregame_active_after}" -gt 0 ]; then
                 verified_pregame=1
