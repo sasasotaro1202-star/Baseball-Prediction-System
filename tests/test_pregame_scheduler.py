@@ -521,6 +521,7 @@ def test_schedule_parser_ignores_hidden_team_labels_and_script_clocks():
     parser = scheduler._ScheduleParser()
     parser.feed(
         """
+        <h3>Regular Season (Schedules)</h3>
         <script>巨人 99:99 DeNA</script>
         <div><span>巨人</span><span>18:00</span><span>DeNA</span></div>
         """
