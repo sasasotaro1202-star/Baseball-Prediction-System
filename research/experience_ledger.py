@@ -868,10 +868,14 @@ def reconcile() -> dict[str, Any]:
         if column in matched.columns:
             matched[column + "_json"] = matched[column].map(_context_json)
     for column in ("home_team_player_context", "away_team_player_context"):
+        if column in matched.columns:
+            matched[column + "_json"] = matched[column].map(_context_json)
     for column in ("home_roster_context", "away_roster_context"):
         if column in matched.columns:
             matched[column + "_json"] = matched[column].map(_context_json)
     for column in ("player_context_snapshot_id", "pregame_context_snapshot_id"):
+        if column not in matched.columns:
+            matched[column] = None
     for column in ("roster_context_snapshot_id",):
         if column not in matched.columns:
             matched[column] = None
