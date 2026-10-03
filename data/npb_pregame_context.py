@@ -118,6 +118,21 @@ class _TableParser(HTMLParser):
             self._row = []
         elif tag in {"td", "th"} and self._row is not None:
             self._cell = []
+        elif self._cell is not None and tag == "img":
+            alt = attrs_dict.get("alt", "")
+            title = attrs_dict.get("title", "")
+            label = attrs_dict.get("aria-label", "")
+            for value in (alt, title, label):
+                value = _clean(value)
+                if value and value not in self._cell:
+                    self._cell.append(value)
+        elif self._cell is not None and tag == "a":
+            title = attrs_dict.get("title", "")
+            label = attrs_dict.get("aria-label", "")
+            for value in (title, label):
+                value = _clean(value)
+                if value and value not in self._cell:
+                    self._cell.append(value)
 
     def handle_endtag(self, tag: str) -> None:
         tag = tag.lower()
@@ -177,11 +192,18 @@ def parse_official_schedule_detail(page_html: str, target_date: str) -> list[dic
     parser = _TableParser()
     parser.feed(page_html)
     month_day = f"{int(target_date[5:7])}/{int(target_date[8:10])}"
+    day_only = str(int(target_date[8:10]))
     out: list[dict[str, Any]] = []
     for row in parser.rows:
         if not row:
             continue
-        if not any(re.search(rf"^{re.escape(month_day)}(?:$|[（(])", _clean(cell)) for cell in row):
+        def is_target_date_cell(cell: str) -> bool:
+            value = _clean(cell)
+            return bool(
+                re.fullmatch(rf"{re.escape(month_day)}(?:[（(][^)）]*[)）])?", value)
+                or re.fullmatch(rf"{re.escape(day_only)}(?:[（(][^)）]*[)）])?", value)
+            )
+        if not any(is_target_date_cell(cell) for cell in row):
             continue
         teams: list[str] = []
         for cell in row:
@@ -231,9 +253,23 @@ def parse_official_games(page_html: str, target_date: str) -> list[dict[str, Any
     parser.feed(page_html)
     out: list[dict[str, Any]] = []
     for row in parser.rows:
-        teams = [canonical_team(cell) for cell in row if canonical_team(cell) in CANONICAL_TEAMS]
-        times = [cell for cell in row if TIME_RE.fullmatch(cell)]
-        if len(teams) != 2 or len(times) != 1:
+        teams: list[str] = []
+        for cell in row:
+            for team in _extract_team_sequence(cell):
+                if team not in teams:
+                    teams.append(team)
+            if len(teams) >= 2:
+                break
+        if len(teams) != 2:
+            continue
+        times = [cell for cell in row if TIME_RE.fullmatch(_clean(cell))]
+        if len(times) != 1:
+            for cell in row:
+                match = re.search(r"(?:^|\s)(\d{1,2}:\d{2})(?:\s|$)", _clean(cell))
+                if match:
+                    times = [match.group(1)]
+                    break
+        if len(times) != 1:
             continue
         venue = ""
         for cell in row:
