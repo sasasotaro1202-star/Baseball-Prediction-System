@@ -13,12 +13,15 @@ import hashlib
 import json
 import re
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import quote, urljoin
+import os
+import unicodedata
 
 from core.http import request as http_request, session as http_session
 
 BASE_URL = "https://npb.jp"
 ROSTER_URL = BASE_URL + "/announcement/roster/roster_{mmdd}.html"
+PLAYER_SEARCH_URL = BASE_URL + "/bis/players/search/result?search_keyword={keyword}"
 HTTP_SESSION = http_session(user_agent="Baseball-Prediction-System/npb-roster-context")
 
 TEAM_NAMES = {
@@ -45,6 +48,178 @@ def _clean(value: Any) -> str:
 def normalize_team(value: str) -> str:
     text = _clean(value)
     return TEAM_NORMALIZE.get(text, text)
+
+
+def _identity_key(value: Any) -> str:
+    """Normalize names for exact identity resolution without fuzzy matching."""
+    value = _clean(value)
+    value = unicodedata.normalize("NFKC", value)
+    return re.sub(r"\\s+", "", value)
+
+
+class _PlayerSearchParser(HTMLParser):
+    """Extract official player-search result links and their visible labels."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.results: list[dict[str, str]] = []
+        self._href: str | None = None
+        self._parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() != "a":
+            return
+        href = dict(attrs).get("href") or ""
+        if re.search(r"/bis/players/\\d+\\.html(?:[?#].*)?$", href):
+            self._href = urljoin(BASE_URL, href)
+            self._parts = []
+
+    def handle_data(self, data: str) -> None:
+        if self._href is not None:
+            value = _clean(data)
+            if value:
+                self._parts.append(value)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() == "a" and self._href is not None:
+            match = re.search(r"/bis/players/(\\d+)\\.html(?:[?#].*)?$", self._href)
+            if match:
+                self.results.append({
+                    "player_id": match.group(1),
+                    "player_url": self._href,
+                    "label": _clean(" ".join(self._parts)),
+                })
+            self._href = None
+            self._parts = []
+
+
+def _parse_player_search_results(html: str) -> list[dict[str, str]]:
+    parser = _PlayerSearchParser()
+    parser.feed(html)
+    return parser.results
+
+
+def _resolve_one_player_name(player_name: str, team: str) -> list[dict[str, str]]:
+    keyword = quote(_clean(player_name), safe="")
+    url = PLAYER_SEARCH_URL.format(keyword=keyword)
+    body = _fetch_text(url)
+    expected_name = _identity_key(player_name)
+    expected_team = _identity_key(team)
+    candidates: list[dict[str, str]] = []
+    for row in _parse_player_search_results(body):
+        label_key = _identity_key(row.get("label"))
+        if expected_name and expected_name not in label_key:
+            continue
+        if expected_team and expected_team not in label_key:
+            continue
+        candidates.append(row)
+    unique = {row["player_id"]: row for row in candidates}
+    return list(unique.values())
+
+
+def resolve_roster_player_ids(
+    snapshot: dict[str, Any],
+    teams: set[str] | None = None,
+) -> dict[str, Any]:
+    """Resolve name-only roster rows through the official NPB player search.
+
+    Resolution is exact on normalized full name + canonical team. Ambiguous,
+    missing, or source-failed cases remain explicitly unresolved. This helper
+    is intended for current/future evidence snapshots; historical OOS remains
+    blocked by the snapshot's PIT policy.
+    """
+    if not isinstance(snapshot, dict):
+        raise TypeError("roster snapshot must be a dict")
+    selected_teams = {normalize_team(t) for t in (teams or set()) if _clean(t)}
+    if not selected_teams:
+        selected_teams = set(str(t) for t in (snapshot.get("teams") or {}) if _clean(t))
+    try:
+        max_per_team = max(0, int(os.getenv("NPB_ROSTER_ID_RESOLUTION_LIMIT_PER_TEAM", "40")))
+    except Exception as exc:
+        raise ValueError("NPB_ROSTER_ID_RESOLUTION_LIMIT_PER_TEAM must be an integer >= 0") from exc
+
+    resolved = 0
+    ambiguous = 0
+    not_found = 0
+    failed = 0
+    requested = 0
+    cache: dict[tuple[str, str], tuple[str, list[dict[str, str]] | Exception]] = {}
+    resolver_source = {
+        "source_id": "npb_official_player_search",
+        "url_template": PLAYER_SEARCH_URL,
+        "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
+    }
+
+    for team, players in (snapshot.get("teams") or {}).items():
+        if selected_teams and normalize_team(str(team)) not in selected_teams:
+            continue
+        if not isinstance(players, list):
+            continue
+        for player in players[:max_per_team]:
+            if not isinstance(player, dict):
+                continue
+            requested += 1
+            existing_id = str(player.get("player_id") or "").strip()
+            if existing_id:
+                player["identity_resolution_status"] = player.get("identity_resolution_status") or "SOURCE_STABLE_ID"
+                continue
+            name = _clean(player.get("player_name"))
+            canonical_team = normalize_team(str(team))
+            if not name:
+                player["identity_resolution_status"] = "IDENTITY_NAME_MISSING"
+                not_found += 1
+                continue
+            key = (canonical_team, _identity_key(name))
+            cached = cache.get(key)
+            if cached is None:
+                try:
+                    rows = _resolve_one_player_name(name, canonical_team)
+                    cache[key] = ("OK", rows)
+                except Exception as exc:
+                    cache[key] = ("ERROR", exc)
+            state, value = cache[key]
+            if state == "ERROR":
+                player["identity_resolution_status"] = "IDENTITY_SEARCH_FAILED"
+                player["identity_resolution_source"] = dict(resolver_source, status="SOURCE_FAILED", error=f"{type(value).__name__}: {value}")
+                failed += 1
+                continue
+            rows = value  # type: ignore[assignment]
+            if len(rows) == 1:
+                row = rows[0]
+                player["player_id"] = row["player_id"]
+                player["player_url"] = player.get("player_url") or row["player_url"]
+                player["identity_status"] = "VERIFIED_STABLE_ID"
+                player["identity_resolution_status"] = "RESOLVED_EXACT_OFFICIAL_PLAYER_SEARCH"
+                player["identity_resolution_source"] = dict(resolver_source, status="AVAILABLE")
+                resolved += 1
+            elif len(rows) > 1:
+                player["identity_resolution_status"] = "IDENTITY_AMBIGUOUS"
+                player["identity_resolution_source"] = dict(resolver_source, status="AMBIGUOUS")
+                ambiguous += 1
+            else:
+                player["identity_resolution_status"] = "IDENTITY_NOT_FOUND"
+                player["identity_resolution_source"] = dict(resolver_source, status="NOT_FOUND")
+                not_found += 1
+
+    total = resolved + ambiguous + not_found + failed
+    snapshot["identity_resolution"] = {
+        "status": (
+            "COMPLETE" if total and resolved == total
+            else "PARTIAL" if resolved
+            else "SOURCE_FAILED" if failed and not_found == 0 and ambiguous == 0
+            else "UNRESOLVED"
+        ),
+        "teams": sorted(selected_teams),
+        "requested_count": int(requested),
+        "resolved_count": int(resolved),
+        "ambiguous_count": int(ambiguous),
+        "not_found_count": int(not_found),
+        "source_failed_count": int(failed),
+        "resolved_rate": float(resolved / total) if total else None,
+        "source": resolver_source,
+        "historical_oos_consumption": snapshot.get("historical_oos_consumption") or "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
+    }
+    return snapshot
 
 class _RosterParser(HTMLParser):
     """Parse date-scoped first-team roster rows plus registration transactions."""
