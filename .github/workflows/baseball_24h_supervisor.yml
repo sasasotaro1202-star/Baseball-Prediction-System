@@ -77,7 +77,7 @@ jobs:
             --repo "${GH_REPO}" \
             --workflow "${PREGAME_WORKFLOW}" \
             --branch main \
-            --limit 30 \
+            --limit 100 \
             --json databaseId,status,conclusion,createdAt,updatedAt,headBranch)"
           echo "Recent pregame runs:"
           echo "${pregame_runs}" | jq '.[0:10]'
@@ -88,8 +88,9 @@ jobs:
           echo "Pregame active_count=${pregame_active}"
 
           pregame_zero_job_failures=0
-          latest_zero_job_id=""
-          latest_zero_job_created=""
+          latest_failure_id=""
+          latest_failure_created=""
+          latest_failure_job_count=-1
           while IFS= read -r row; do
             [ -n "${row}" ] || continue
             pid="$(printf '%s' "${row}" | jq -r '.databaseId')"
@@ -103,12 +104,11 @@ jobs:
             [ "${page_minutes}" -le 1440 ] || continue
             pjob_count="$(gh_retry run view "${pid}" --repo "${GH_REPO}" --json jobs --jq '.jobs | length')"
             echo "Pregame failure ${pid}: age=${page_minutes}m jobs=${pjob_count}"
+            latest_failure_id="${pid}"
+            latest_failure_created="${pcreated}"
+            latest_failure_job_count="${pjob_count}"
             if [ "${pjob_count}" -eq 0 ]; then
               pregame_zero_job_failures=$((pregame_zero_job_failures + 1))
-              if [ -z "${latest_zero_job_id}" ]; then
-                latest_zero_job_id="${pid}"
-                latest_zero_job_created="${pcreated}"
-              fi
             fi
           done < <(printf '%s' "${pregame_runs}" |
             jq -c '.[] | select(.headBranch == "main") | select(.status == "completed" and .conclusion == "failure")')
@@ -117,15 +117,15 @@ jobs:
           pregame_dispatch=0
           pregame_reason=""
           pregame_latest_age_minutes=999999
-          if [ -n "${latest_zero_job_created}" ]; then
-            latest_zero_epoch="$(date -d "${latest_zero_job_created}" +%s)"
-            pregame_latest_age_minutes=$(( (now_epoch - latest_zero_epoch) / 60 ))
+          if [ -n "${latest_failure_created}" ]; then
+            latest_failure_epoch="$(date -d "${latest_failure_created}" +%s)"
+            pregame_latest_age_minutes=$(( (now_epoch - latest_failure_epoch) / 60 ))
           fi
 
           if [ "${pregame_active}" -gt 0 ]; then
             echo "Pregame workflow already active; no startup recovery dispatch."
-          elif [ -z "${latest_zero_job_id}" ]; then
-            echo "No recent zero-job pregame failure; no startup recovery dispatch."
+          elif [ -z "${latest_failure_id}" ] || [ "${latest_failure_job_count}" -ne 0 ]; then
+            echo "Latest pregame failure is not a zero-job startup failure; no startup recovery dispatch."
           elif [ "${pregame_latest_age_minutes}" -lt 15 ]; then
             echo "Pregame zero-job cooldown active (${pregame_latest_age_minutes}m); preserving failure."
             printf '%s\n' 'Pregame terminal state: PRE_GAME_ZERO_JOB_COOLDOWN; parent failure remains authoritative.' >> "$GITHUB_STEP_SUMMARY"
@@ -134,7 +134,7 @@ jobs:
             printf '%s\n' 'Pregame terminal state: PRE_GAME_ZERO_JOB_DAILY_CAP; parent failure remains authoritative.' >> "$GITHUB_STEP_SUMMARY"
           else
             pregame_dispatch=1
-            pregame_reason="zero-job startup failure ${latest_zero_job_id} aged ${pregame_latest_age_minutes}m"
+            pregame_reason="zero-job startup failure ${latest_failure_id} aged ${pregame_latest_age_minutes}m"
           fi
 
           if [ "${pregame_dispatch}" -eq 1 ]; then
