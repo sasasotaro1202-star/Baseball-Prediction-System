@@ -166,9 +166,9 @@ def test_shadow_reconcile_keeps_horizon_breakdown_case_level(tmp_path, monkeypat
 
     late = dict(early)
     late["prediction_id"] = "late"
-    late["prediction_cutoff_utc"] = "2026-10-03T08:55:00+00:00"
-    late["prediction_generated_at"] = "2026-10-03T08:56:00+00:00"
-    late["starter_evidence_observed_at_utc"] = "2026-10-03T08:54:00+00:00"
+    late["prediction_cutoff_utc"] = "2026-10-03T08:24:00+00:00"
+    late["prediction_generated_at"] = "2026-10-03T08:25:00+00:00"
+    late["starter_evidence_observed_at_utc"] = "2026-10-03T08:23:00+00:00"
 
     pred_dir.joinpath("2026-10-03.jsonl").write_text(
         "".join(json.dumps(x, ensure_ascii=False) + "\\n" for x in (early, late)),
@@ -191,6 +191,8 @@ def test_shadow_reconcile_keeps_horizon_breakdown_case_level(tmp_path, monkeypat
     summary = shadow.reconcile_shadow()
     assert summary["matched_snapshots"] == 2
     assert summary["canonical_cases"] == 1
-    assert set(summary["by_horizon"]) == {"3_TO_6H", "GE_6H"}
+    assert set(summary["by_horizon"]) == {"3_TO_6H", "30_TO_60M"}
+    assert summary["by_horizon"]["3_TO_6H"]["rows"] == 1
+    assert summary["by_horizon"]["30_TO_60M"]["rows"] == 1
     assert set(summary["canonical_by_horizon"]) == {"30_TO_60M"}
     assert summary["canonical_by_horizon"]["30_TO_60M"]["rows"] == 1
