@@ -476,3 +476,43 @@ def test_performance_hierarchy_separates_league_competition_phase_and_targets():
     assert set(result["NPB"]["targets"]) == {
         "win_3way", "low_high", "exact_score"
     }
+
+
+
+def test_rollup_exposes_actual_prediction_horizon_breakdown(tmp_path, monkeypatch):
+    exp = tmp_path / "experience"
+    monkeypatch.setattr(roll, "EXPERIENCE", exp)
+    monkeypatch.setattr(roll, "PRED_DIR", exp / "predictions")
+    monkeypatch.setattr(roll, "RESULT_DIR", exp / "official_results")
+    monkeypatch.setattr(roll, "SNAPSHOT_PATH", exp / "snapshot_experience_ledger.csv")
+    monkeypatch.setattr(roll, "SNAPSHOT_JSONL", exp / "snapshot_experience_ledger.jsonl")
+    monkeypatch.setattr(roll, "CASE_SUMMARY_PATH", exp / "experience_case_summary.json")
+    monkeypatch.setattr(roll, "TRAINING_INDEX_PATH", exp / "experience_training_index.json")
+    monkeypatch.setattr(roll, "PERFORMANCE_BREAKDOWN_PATH", exp / "performance_breakdown.json")
+
+    pdir = exp / "predictions"
+    pdir.mkdir(parents=True, exist_ok=True)
+    row = json.loads((tmp_path / "stage" / "predictions" / "2026-09-26.jsonl").read_text()) if (tmp_path / "stage" / "predictions" / "2026-09-26.jsonl").exists() else None
+    if row is None:
+        _write_prediction(tmp_path / "stage", cutoff="2026-09-26T02:00:00+00:00")
+        row = json.loads((tmp_path / "stage" / "predictions" / "2026-09-26.jsonl").read_text())
+    row["prediction_generated_at"] = "2026-09-26T04:00:00+00:00"
+    row["prediction_cutoff_utc"] = "2026-09-26T04:00:00+00:00"
+    row["starter_evidence_observed_at_utc"] = "2026-09-26T03:59:00+00:00"
+    pdir.joinpath("2026-09-26.jsonl").write_text(
+        json.dumps(row, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+
+    monkeypatch.setattr(roll, "_cache_results", lambda dates: pd.DataFrame([{
+        "date": "2026-09-26",
+        "home": "横浜DeNAベイスターズ",
+        "away": "阪神タイガース",
+        "home_score": 4,
+        "away_score": 2,
+        "source_url": "test://npb",
+    }]))
+
+    result = roll.rollup()
+    assert result["experience_cases"]["rows"] == 1
+    assert result["performance_breakdown"]["NPB"]["by_horizon"]["3_TO_6H"]["rows"] == 1
+    assert result["performance_breakdown"]["NPB"]["by_horizon"]["3_TO_6H"]["mean_actual_lead_minutes"] == 4 * 60 - 5 * 60 / 60
