@@ -2017,3 +2017,62 @@ current-page season aggregatesは更新・訂正され得るため、retrieved_a
 identityはofficial player_idを優先する。player_idを取得できない場合はNAME_ONLY_UNVERIFIEDとして保存し、fuzzy matchingやsilent mergeを行わない。source failureやpartial failureは明示し、missingをzeroへ変換しない。
 
 production prediction JSONではteam_player_context_snapshot_id、home_team_player_context、away_team_player_contextを保持し、experience ledgerにも再現可能なJSONとして保存する。
+
+⸻
+
+89. EXPANDED PLAYER PROFILE CONTEXT
+
+TEAM-WIDE PLAYER CONTEXTを、単なるcurrent-season aggregateの保存から「選手の個体特性 + 成績水準 + 役割」を同一snapshotで追跡できる構造へ拡張する。
+
+追加候補:
+
+* official personal profile fields
+* handedness parsed into throws / bats
+* height_cm
+* weight_kg
+* birth_date
+* career
+* draft
+* profile_source provenance
+* profile_status
+* batting AVG / OBP / SLG / OPS / ISO
+* HR/AB
+* XBH/PA
+* runs/PA
+* RBI/PA
+* PA/game
+* SB success rate
+* pitching IP/game
+* start share
+* K/BB
+* decision win rate
+* fielding error rate
+* defensive chances/game
+* double plays/game
+
+個人プロフィールは公式NPB player pageへの既存player_idリンクから直接取得し、active-player全indexの再走査を追加しない。取得対象は優先度を付けた主要選手へ上限を設け、NPB_PLAYER_PROFILE_LIMIT_PER_TEAMで制御する。これは情報取得コスト・失敗面を抑えるためであり、未取得選手を欠損から0へ補完しない。
+
+選択された選手についてもprofile_statusを、
+
+AVAILABLE
+NOT_SELECTED
+NO_PROFILE_URL
+SOURCE_FAILED
+
+として区別する。SOURCE_FAILEDをAVAILABLEへ偽装しない。
+
+profile snapshotには、少なくとも:
+
+* source_id
+* url
+* retrieved_at_utc
+* available_at_utc
+* published_at_utc
+* revision_time_utc
+* historical_oos_consumption
+
+を保持する。
+
+これらのcurrent-page profile/season statisticsは、現在・将来試合の観測用contextとして保存できる一方、historical OOSへ直接backfillしてはならない。historical availabilityが証明できない場合はUNKNOWN/UNVERIFIABLEとして扱い、production-quality OOSから除外する。
+
+derived metricsは現在の可視値を増やす目的であって、feature adoptionの証拠ではない。production probabilityへの投入は別実験として、LOCAL PIT → chronological OOS/WFO → calibration → ablation → robustness → frozen holdout → adoption gate の順で判定する。
