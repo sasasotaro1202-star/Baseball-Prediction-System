@@ -204,7 +204,7 @@ def test_collect_team_passes_preferred_profile_ids(monkeypatch):
         BAT_HTML if "idb1_" in url else PIT_HTML if "idp1_" in url else DEF_HTML,
         "2026-10-03T00:00:00+00:00",
     ))
-    monkeypatch.setattr(ctx, "_enrich_profiles", lambda players, preferred_player_ids=None: (
+    monkeypatch.setattr(ctx, "_enrich_profiles", lambda players, preferred_player_ids=None, preferred_player_names=None: (
         players, 0
     ))
     got = ctx.collect_team("阪神", preferred_player_ids={"123"})
@@ -248,3 +248,33 @@ def test_collect_team_exposes_player_coverage_and_roles(monkeypatch):
     first = next(p for p in got["players"] if p["player_id"] == "123")
     assert first["player_role"] == "TWO_WAY_CANDIDATE"
     assert first["player_data_coverage"]["batting"] == "AVAILABLE"
+
+
+def test_enrich_profiles_prefers_target_date_roster_player_names(monkeypatch):
+    players = [
+        {"player_id": "30", "player_name": "高成績非登録", "player_url": "https://npb.jp/bis/players/30.html",
+         "batting": {"打席": "900"}, "pitching": {}, "fielding": []},
+        {"player_id": "40", "player_name": "登録選手", "player_url": "https://npb.jp/bis/players/40.html",
+         "batting": {"打席": "10"}, "pitching": {}, "fielding": []},
+    ]
+    monkeypatch.setenv("NPB_PLAYER_PROFILE_LIMIT_PER_TEAM", "1")
+    monkeypatch.setattr(ctx, "_fetch", lambda url: (PROFILE_HTML, "2026-10-03T00:00:00+00:00"))
+    enriched, resolved = ctx._enrich_profiles(players, preferred_player_names={"登録選手"})
+    assert resolved == 1
+    assert next(p for p in enriched if p["player_id"] == "40")["profile_status"] == "AVAILABLE"
+    assert next(p for p in enriched if p["player_id"] == "30")["profile_status"] == "NOT_SELECTED"
+
+
+def test_collect_team_passes_preferred_player_names(monkeypatch):
+    monkeypatch.setenv("NPB_PLAYER_PROFILE_LIMIT_PER_TEAM", "1")
+    captured = {}
+    monkeypatch.setattr(ctx, "_fetch", lambda url: (
+        BAT_HTML if "idb1_" in url else PIT_HTML if "idp1_" in url else DEF_HTML,
+        "2026-10-03T00:00:00+00:00",
+    ))
+    def capture(players, preferred_player_ids=None, preferred_player_names=None):
+        captured["names"] = preferred_player_names
+        return players, 0
+    monkeypatch.setattr(ctx, "_enrich_profiles", capture)
+    ctx.collect_team("阪神", preferred_player_names={"テスト 太郎"})
+    assert captured["names"] == {"テスト 太郎"}
