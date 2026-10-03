@@ -28,6 +28,7 @@ from data.competition_registry import production_eligible
 from data.npb_pregame_context import collect_npb_pregame_context
 from data.npb_player_context import collect_players as collect_npb_player_context
 from data.npb_team_player_context import collect_teams as collect_npb_team_player_context
+from data.npb_roster_context import collect_npb_roster_context
 from research.target_strategy import as_dict as target_strategy_dict, standard_target_strategies
 from research.competition_taxonomy import classify_npb
 
@@ -1389,6 +1390,31 @@ def predict(
         pred["team_player_context_snapshot_id"] = team_context_snapshot_id
         pred["home_team_player_context"] = team_contexts.get(str(pred.get("home") or "").strip())
         pred["away_team_player_context"] = team_contexts.get(str(pred.get("away") or "").strip())
+
+    # Capture date-scoped official first-team roster context separately from model features.
+    # This records registered/available player identities for the target date while
+    # preserving a strict boundary: current retrieval is observational context only.
+    roster_context = None
+    try:
+        roster_context = collect_npb_roster_context(target_date)
+    except Exception as exc:
+        roster_context = {
+            "schema_version": "npb-roster-context-v1",
+            "target_date": target_date,
+            "status": "SOURCE_FAILED",
+            "teams": {},
+            "player_count": 0,
+            "error": f"{type(exc).__name__}: {exc}",
+            "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
+        }
+    roster_snapshot_id = roster_context.get("snapshot_id") if isinstance(roster_context, dict) else None
+    roster_teams = roster_context.get("teams", {}) if isinstance(roster_context, dict) else {}
+    for pred in outputs:
+        home = str(pred.get("home") or "").strip()
+        away = str(pred.get("away") or "").strip()
+        pred["roster_context_snapshot_id"] = roster_snapshot_id
+        pred["home_roster_context"] = roster_teams.get(home)
+        pred["away_roster_context"] = roster_teams.get(away)
 
     # Capture the request-time game context separately from model features.
     # This release stores the new information for later PIT/OOS experiments;
