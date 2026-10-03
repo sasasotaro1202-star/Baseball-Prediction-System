@@ -62,6 +62,7 @@ def record_candidate(
     holdout_hilo_baseline: Mapping[str, float] | None,
     holdout_hilo_candidate: Mapping[str, float] | None,
     league: str | None = None,
+    evaluation_periods: list[Mapping[str, float]] | None = None,
 ) -> CandidateRecord:
     """Lock on development metrics, then evaluate the independent holdout."""
     validation = run_validation_pipeline(
@@ -78,6 +79,7 @@ def record_candidate(
         holdout_hilo_baseline=holdout_hilo_baseline,
         holdout_hilo_candidate=holdout_hilo_candidate,
         league=league,
+        evaluation_periods=evaluation_periods,
     )
     record = CandidateRecord(
         candidate_id=candidate_id,
