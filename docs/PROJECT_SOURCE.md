@@ -2076,3 +2076,35 @@ profile snapshotには、少なくとも:
 これらのcurrent-page profile/season statisticsは、現在・将来試合の観測用contextとして保存できる一方、historical OOSへ直接backfillしてはならない。historical availabilityが証明できない場合はUNKNOWN/UNVERIFIABLEとして扱い、production-quality OOSから除外する。
 
 derived metricsは現在の可視値を増やす目的であって、feature adoptionの証拠ではない。production probabilityへの投入は別実験として、LOCAL PIT → chronological OOS/WFO → calibration → ablation → robustness → frozen holdout → adoption gate の順で判定する。
+
+⸻
+
+90. DATE-SCOPED FIRST-TEAM ROSTER CONTEXT
+
+NPB公式の「出場選手登録および登録抹消」日付別ページから、対象日付の出場選手一覧を取得し、player_idを軸に選手群をsnapshot化する。
+
+保存:
+
+* target_date
+* team
+* stable player_id
+* player_name
+* official player page URL
+* identity_status
+* snapshot_id
+* source_id
+* source URL
+* retrieved_at_utc
+* available_at_utc
+* published_at_utc
+* revision_time_utc
+* historical_oos_consumption
+* per-team player_count
+
+同sourceは日付別の登録・抹消だけでなく「出場選手一覧」を提供するため、試合時点での一軍登録選手群をcurrent/future prediction contextとして保持できる。 citeturn457248view0turn433512search0
+
+ただし、日付ページの現在取得時刻だけからhistorical published_atを逆算しない。historical OOSへの投入はavailability boundaryを独立証明するまでBLOCKED/UNKNOWNとする。
+
+roster contextはproduction probabilityの自動変更には使用せず、current/future case analysis、player availability、lineup候補集合、fallback/uncertainty researchのために保持する。feature adoptionにはLOCAL PIT → chronological OOS/WFO → calibration → ablation → robustness → frozen holdout → adoption gateを要求する。
+
+source failureはSOURCE_FAILEDとして保存し、未取得選手をゼロや「不在」とは解釈しない。fuzzy name mergeは禁止し、official player_idを優先する。
