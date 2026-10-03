@@ -530,3 +530,25 @@ def test_schedule_parser_ignores_hidden_team_labels_and_script_clocks():
         ("time", "18:00"),
         ("team", "横浜DeNAベイスターズ"),
     ]
+
+
+def test_schedule_parser_ignores_navigation_team_links_before_schedule_heading(monkeypatch):
+    html = """
+    <html><body>
+      <nav>
+        <span>巨人</span><span>18:01</span><span>DeNA</span>
+        <span>日本シリーズ</span>
+      </nav>
+      <h3>Regular Season (Schedules)</h3>
+      <div>
+        <span>巨人</span><span>18:00</span><span>DeNA</span>
+      </div>
+    </body></html>
+    """
+    monkeypatch.setattr(scheduler, "_fetch", lambda url: html)
+    rows = scheduler._schedule_for_date("2026-10-03")
+    assert rows == [{
+        "home": "読売ジャイアンツ",
+        "away": "横浜DeNAベイスターズ",
+        "official_start_time": "18:00",
+    }]
