@@ -39,6 +39,9 @@ class GatePolicy:
     require_uncertainty_check: bool = False
     min_logloss_improvement_ci_lower: float = 0.0
     min_positive_improvement_probability: float = 0.95
+    # Reference stability benchmark from project governance: >=70% of evaluation periods must be non-worse.
+    min_non_worsening_period_fraction: float = 0.70
+    require_evaluation_period_stability: bool = True
 
 
 def _finite_metric(mapping: Mapping[str, float], key: str) -> float | None:
@@ -99,6 +102,7 @@ def evaluate_locked_holdout(
     candidate_hilo: Mapping[str, float] | None = None,
     league: str | None = None,
     holdout_uncertainty: Mapping[str, object] | None = None,
+    evaluation_periods: list[Mapping[str, float]] | None = None,
 ) -> dict:
     """Compare a locked candidate against unseen holdout data only.
 
@@ -168,6 +172,43 @@ def evaluate_locked_holdout(
                 if positive_ll < float(policy.min_positive_improvement_probability):
                     reasons.append("logloss_improvement_probability_failed")
 
+    period_stability: dict[str, object] = {}
+    if policy.require_evaluation_period_stability:
+        if not isinstance(evaluation_periods, list) or not evaluation_periods:
+            reasons.append("evaluation_period_stability_not_evaluated")
+        elif len(evaluation_periods) < max(2, int(validation_windows)):
+            reasons.append("insufficient_evaluation_periods")
+        else:
+            valid_periods = 0
+            non_worse = 0
+            malformed = False
+            for index, period in enumerate(evaluation_periods):
+                if not isinstance(period, Mapping):
+                    malformed = True
+                    continue
+                base = _finite_metric(period, "baseline_LogLoss")
+                cand = _finite_metric(period, "candidate_LogLoss")
+                if base is None or cand is None:
+                    malformed = True
+                    continue
+                valid_periods += 1
+                if cand <= base:
+                    non_worse += 1
+            period_stability = {
+                "periods": len(evaluation_periods),
+                "valid_periods": valid_periods,
+                "non_worse_periods": non_worse,
+                "non_worsening_fraction": (non_worse / valid_periods) if valid_periods else 0.0,
+                "minimum_required_fraction": float(policy.min_non_worsening_period_fraction),
+            }
+            if malformed:
+                reasons.append("evaluation_period_stability_malformed")
+            if valid_periods != len(evaluation_periods):
+                reasons.append("evaluation_period_stability_incomplete")
+            fraction = period_stability["non_worsening_fraction"]
+            if valid_periods and float(fraction) < float(policy.min_non_worsening_period_fraction):
+                reasons.append("evaluation_period_non_worsening_below_gate")
+
     required_primary = ("LogLoss", "Brier", "Accuracy")
     missing_primary = [k for k in required_primary if _finite_metric(baseline, k) is None or _finite_metric(candidate, k) is None]
     if missing_primary:
@@ -175,7 +216,7 @@ def evaluate_locked_holdout(
         return {
             "stage": "locked_holdout_evaluated", "adopt": False, "decision": "REJECT",
             "reasons": reasons, "baseline": dict(baseline), "candidate": dict(candidate),
-            "targets": {}, "improvement": {},
+            "targets": {}, "improvement": {}, "period_stability": period_stability,
         }
 
     ll_improvement = _improvement(baseline, candidate, "LogLoss", False)
@@ -248,6 +289,6 @@ def evaluate_locked_holdout(
         "stage": "locked_holdout_evaluated", "adopt": not reasons,
         "decision": "ADOPT" if not reasons else "REJECT", "reasons": reasons,
         "baseline": dict(baseline), "candidate": dict(candidate), "targets": target_results,
-        "uncertainty": uncertainty_result,
+        "uncertainty": uncertainty_result, "period_stability": period_stability,
         "improvement": {"LogLoss": ll_improvement, "Brier": br_improvement, "Accuracy": acc_improvement, "relative_LogLoss": relative_ll, "relative_Brier": relative_br},
     }
