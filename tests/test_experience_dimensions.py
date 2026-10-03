@@ -59,3 +59,19 @@ def test_dimensions_recover_league_from_target_identity_without_guessing_phase()
     assert out.loc[0, "competition_stage"] == "UNKNOWN"
     assert out.loc[0, "competition_key"] == "NPB:UNKNOWN:UNKNOWN"
     assert out.loc[0, "competition_classification_status"] == "UNKNOWN"
+
+
+def test_dimensions_recover_league_from_game_id_namespace_without_guessing_phase():
+    frame = pd.DataFrame([{
+        "league": "UNKNOWN",
+        "target": "",
+        "competition_id": "",
+        "game_id": "NPB-2026-09-26-1",
+        "game_type": "",
+        "series_description": "",
+    }])
+    out = add_dimensions(frame)
+    assert out.loc[0, "league"] == "NPB"
+    assert out.loc[0, "competition"] == "UNKNOWN"
+    assert out.loc[0, "competition_stage"] == "UNKNOWN"
+    assert out.loc[0, "competition_key"] == "NPB:UNKNOWN:UNKNOWN"

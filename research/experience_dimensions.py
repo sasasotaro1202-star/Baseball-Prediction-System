@@ -31,10 +31,15 @@ def _label_from_row(row: dict[str, Any]) -> dict[str, str]:
         candidate = _text(row.get("competition_id")).upper()
         if candidate in {"NPB", "MLB"}:
             league = candidate
-    if not league:
+    if league in {"", UNKNOWN, "NAN", "NONE"}:
         target = _text(row.get("target")).upper()
         if target in {"NPB", "MLB"}:
             league = target
+    if league in {"", UNKNOWN, "NAN", "NONE"}:
+        game_id = _text(row.get("game_id")).upper()
+        prefix = game_id.split("-", 1)[0] if "-" in game_id else ""
+        if prefix in {"NPB", "MLB"}:
+            league = prefix
     if not league:
         league = UNKNOWN
 
