@@ -68,6 +68,37 @@ def _metrics(y: np.ndarray, p: np.ndarray) -> dict[str, float]:
     }
 
 
+def _evaluation_periods(
+    y: np.ndarray,
+    baseline_proba: np.ndarray,
+    candidate_proba: np.ndarray,
+    *,
+    max_periods: int = 4,
+) -> list[dict[str, float]]:
+    """Build chronological holdout-period evidence for the stability gate."""
+    n = int(len(y))
+    if n < 2:
+        return []
+    period_count = min(int(max_periods), max(2, n // 50))
+    period_count = min(period_count, n)
+    bounds = np.linspace(0, n, period_count + 1, dtype=int)
+    periods: list[dict[str, float]] = []
+    for index in range(period_count):
+        start, stop = int(bounds[index]), int(bounds[index + 1])
+        if stop <= start:
+            continue
+        yy = y[start:stop]
+        bp = baseline_proba[start:stop]
+        cp = candidate_proba[start:stop]
+        periods.append({
+            "period_index": float(index),
+            "rows": float(stop - start),
+            "baseline_LogLoss": float(log_loss(yy, bp, labels=[0, 1, 2])),
+            "candidate_LogLoss": float(log_loss(yy, cp, labels=[0, 1, 2])),
+        })
+    return periods
+
+
 def _select_development_candidate(
     development: dict[str, dict[str, float]],
     baseline: dict[str, float],
@@ -611,6 +642,8 @@ def run_npb_candidate_cycle(
     base_score, base_hilo = _target_metrics(bt, X_train, games_train, games_holdout, X_holdout, base_p)
     cand_score, cand_hilo = _target_metrics(bt, X_train, games_train, games_holdout, X_holdout, cand_p)
 
+    evaluation_periods = _evaluation_periods(y_holdout, base_p, cand_p)
+
     holdout_uncertainty = uncertainty_to_dict(
         paired_block_bootstrap(
             y=y_holdout,
@@ -647,6 +680,7 @@ def run_npb_candidate_cycle(
         league="NPB",
         policy=GatePolicy(),
         holdout_uncertainty=holdout_uncertainty,
+        evaluation_periods=evaluation_periods,
     )
 
     holdout = {
@@ -678,6 +712,7 @@ def run_npb_candidate_cycle(
         "validation_decision": lifecycle.decision,
         "validation_reasons": list((lifecycle.locked_holdout or {}).get("reasons", ())),
         "holdout_uncertainty": holdout_uncertainty,
+        "evaluation_periods": evaluation_periods,
     }
     RESULTS.mkdir(parents=True, exist_ok=True)
     atomic_write_json(RESULTS / "npb_candidate_development.json", {
