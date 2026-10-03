@@ -296,11 +296,23 @@ def _evaluate(merged: pd.DataFrame) -> pd.DataFrame:
         x["datetime_jst"].dt.tz_convert("UTC")
         - x["prediction_cutoff_utc"]
     ).dt.total_seconds() / 60.0
-    x["prediction_actual_lead_minutes"] = (
-        x["datetime_jst"].dt.tz_convert("UTC")
-        - pd.to_datetime(x["prediction_generated_at"], utc=True, errors="coerce")
-    ).dt.total_seconds() / 60.0
-    x["prediction_horizon"] = x["prediction_actual_lead_minutes"].map(_horizon_bucket)
+    # Older/reduced evaluation fixtures may not carry the observed
+    # generation timestamp. Do not fall back to the planned cutoff here:
+    # that would silently relabel "actual lead" with scheduled-cutoff timing.
+    # Missing observed-generation provenance remains explicitly UNKNOWN.
+    if "prediction_generated_at" in x.columns:
+        x["prediction_actual_lead_minutes"] = (
+            x["datetime_jst"].dt.tz_convert("UTC")
+            - pd.to_datetime(
+                x["prediction_generated_at"], utc=True, errors="coerce"
+            )
+        ).dt.total_seconds() / 60.0
+        x["prediction_horizon"] = x["prediction_actual_lead_minutes"].map(
+            _horizon_bucket
+        )
+    else:
+        x["prediction_actual_lead_minutes"] = np.nan
+        x["prediction_horizon"] = "UNKNOWN"
     x["experience_available_at_utc"] = _now()
 
     return x
