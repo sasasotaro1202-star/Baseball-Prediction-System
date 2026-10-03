@@ -42,11 +42,11 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: requirements-ci.txt
 
       - name: Install
         timeout-minutes: 5
-        run: python -m pip install --disable-pip-version-check --retries 8 --timeout 120 --prefer-binary -r requirements.txt
+        run: python -m pip install --disable-pip-version-check --retries 8 --timeout 120 --prefer-binary -r requirements-ci.txt
 
       - name: Verify official NPB sources live
         run: python -X faulthandler scripts/verify_npb_live_sources.py
