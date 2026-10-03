@@ -40,6 +40,8 @@ def test_pregame_automation_is_five_minute_60m_pit_gated_and_archives_experience
     assert script.count('for experience_path in data/experience/predictions data/experience/research_shadow; do') == 2
     assert script.count('if [ -d "$experience_path" ]; then') == 2
     assert script.count('git add "$experience_path"') == 2
+    assert "\nrun: |\n" not in "\n" + script + "\n"
+    assert not any(line.strip().startswith(("run:", "uses:", "with:", "steps:", "jobs:", "permissions:")) for line in script.splitlines())
 
 
 def test_manual_current_production_entrypoint_remains_independent_of_60m_scheduler():
