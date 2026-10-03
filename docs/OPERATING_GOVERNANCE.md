@@ -22,3 +22,6 @@ Research ideas from the other prediction repositories may be discovered and abst
 
 ## Continuous loop
 MONITOR → DETECT → TRIAGE → RESEARCH → IMPLEMENT → TEST → PIT → OOS/WFO → CALIBRATION → ROBUSTNESS → HOLDOUT → ADOPT/HOLD/REJECT → RELEASE → PRODUCTION → RECONCILE → FAILURE ANALYSIS → MEMORY → NEXT RESEARCH.
+
+## Manual on-demand prediction
+Manual requests made by asking for a game prediction at a chosen pregame time are treated as independent on-demand calls, not as a special 30/60-minute automation slot. There is no minimum lead-time rule in the scheduler for a manual request. The request uses the call-time JST target date and must still satisfy the same production runtime, PIT, starter/availability, data, feature, model, and calibration gates. A prediction is never made eligible merely because it was requested hours before first pitch; unsupported or unavailable information remains fail-closed.
