@@ -2100,8 +2100,17 @@ NPB公式の「出場選手登録および登録抹消」日付別ページか�
 * revision_time_utc
 * historical_oos_consumption
 * per-team player_count
+* transactions
+* registered_today
+* removed_today
+* registered_today_count
+* removed_today_count
+* transaction_parser_status
+* roster_transaction_status（REGISTERED_TODAY / REMOVED_TODAY / NO_TRANSACTION_RECORDED / TRANSACTION_CONFLICT）
 
-同sourceは日付別の登録・抹消だけでなく「出場選手一覧」を提供するため、試合時点での一軍登録選手群をcurrent/future prediction contextとして保持できる。 citeturn457248view0turn433512search0
+登録・抹消transactionはteam + stable player_idを基本identityとして保持し、position / uniform_number / player URL / identity_statusも可能な範囲で保存する。stable player_idが取得できないtransactionはNAME_ONLY_UNVERIFIEDとして残し、stable-id前提のjoinには使用しない。
+
+同sourceは日付別の登録・抹消だけでなく「出場選手一覧」を提供するため、試合時点での一軍登録選手群と当日の登録変動をcurrent/future prediction contextとして保持できる。 citeturn457248view0turn433512search0
 
 ただし、日付ページの現在取得時刻だけからhistorical published_atを逆算しない。historical OOSへの投入はavailability boundaryを独立証明するまでBLOCKED/UNKNOWNとする。
 
