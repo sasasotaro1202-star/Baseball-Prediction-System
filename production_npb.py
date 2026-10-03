@@ -27,6 +27,7 @@ from core.pit_evidence import _is_official_source
 from data.competition_registry import production_eligible
 from data.npb_pregame_context import collect_npb_pregame_context
 from data.npb_player_context import collect_players as collect_npb_player_context
+from data.npb_team_player_context import collect_teams as collect_npb_team_player_context
 from research.target_strategy import as_dict as target_strategy_dict, standard_target_strategies
 from research.competition_taxonomy import classify_npb
 
@@ -1358,6 +1359,37 @@ def predict(
         pred["home_starter_player_context"] = player_by_name.get(str(pred.get("home_starter") or "").strip())
         pred["away_starter_player_context"] = player_by_name.get(str(pred.get("away_starter") or "").strip())
 
+    # Capture current official team-wide player context (batting/pitching/fielding).
+    # This is an evidence snapshot only; it is not automatically promoted to model
+    # features until a separate PIT/OOS/robustness/holdout experiment validates it.
+    team_names = []
+    for game in outputs:
+        for key in ("home", "away"):
+            team = str(game.get(key) or "").strip()
+            if team and team not in team_names:
+                team_names.append(team)
+    try:
+        team_player_context = collect_npb_team_player_context(team_names, season=int(target_date[:4])) if team_names else {
+            "schema_version": "npb-team-player-context-v1", "status": "NO_TEAMS",
+            "teams_requested": [], "teams": {},
+            "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
+        }
+    except Exception as exc:
+        team_player_context = {
+            "schema_version": "npb-team-player-context-v1",
+            "status": "SOURCE_FAILED",
+            "teams_requested": team_names,
+            "teams": {},
+            "error": f"{type(exc).__name__}: {exc}",
+            "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
+        }
+    team_context_snapshot_id = team_player_context.get("snapshot_id") if isinstance(team_player_context, dict) else None
+    team_contexts = team_player_context.get("teams", {}) if isinstance(team_player_context, dict) else {}
+    for pred in outputs:
+        pred["team_player_context_snapshot_id"] = team_context_snapshot_id
+        pred["home_team_player_context"] = team_contexts.get(str(pred.get("home") or "").strip())
+        pred["away_team_player_context"] = team_contexts.get(str(pred.get("away") or "").strip())
+
     # Capture the request-time game context separately from model features.
     # This release stores the new information for later PIT/OOS experiments;
     # it does not silently change model coefficients or promotion status.
@@ -1400,6 +1432,12 @@ def predict(
     result["player_context_requested_count"] = int(player_context.get("players_requested") and len(player_context.get("players_requested")) or 0)
     result["player_context_resolved_count"] = int(player_context.get("players_resolved", 0))
     result["player_context"] = player_context
+
+    result["team_player_context_status"] = str(team_player_context.get("status") or "AVAILABLE")
+    result["team_player_context_snapshot_id"] = team_player_context.get("snapshot_id")
+    result["team_player_context_requested_count"] = int(team_player_context.get("teams_requested") and len(team_player_context.get("teams_requested")) or 0)
+    result["team_player_context_resolved_count"] = int(sum(1 for _k, _v in (team_player_context.get("teams") or {}).items() if isinstance(_v, dict) and _v.get("status") in {"AVAILABLE", "PARTIAL"}))
+    result["team_player_context"] = team_player_context
 
     result["pregame_context_status"] = (
         str(pregame_context.get("status") or "AVAILABLE")
