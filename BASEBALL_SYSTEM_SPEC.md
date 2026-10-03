@@ -121,3 +121,6 @@ Production research retains per-game uncertainty, predictability, data quality, 
 ### Five-repository transfer firewall
 
 Knowledge from other prediction repositories may be discovered and abstracted, but Baseball adoption requires local compatibility review, local PIT validation, chronological local OOS, local holdout, robustness, and release-gate evidence. Cross-project success is never copied directly into Baseball production.
+
+## Manual pregame request contract
+Manual user-facing requests are on-demand prediction calls. They are not constrained to the automatic scheduler's 30/60-minute slot and may be requested at an earlier pregame horizon, including several hours before first pitch. The request-time snapshot is authoritative for that prediction. Lead time alone never makes a prediction eligible: the call still requires a valid current production runtime plus the applicable PIT, starter/personnel, data, feature, model, and calibration gates. Historical or stale target dates are rejected by the current-production path rather than silently reused.
