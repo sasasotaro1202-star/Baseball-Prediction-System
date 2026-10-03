@@ -263,3 +263,24 @@ def test_chat_async_dispatcher_never_polls_workflow_state():
     assert "sleep " not in dispatch
     assert "workflow run" not in dispatch
     assert "timeout --signal=TERM --kill-after=3s 10s" in dispatch
+
+
+def test_regression_ci_does_not_cancel_independent_pull_requests():
+    text = (ROOT / ".github" / "workflows" / "baseball_regression_tests.yml").read_text(encoding="utf-8")
+    _assert_official_actions_are_immutable(text)
+
+    assert "group: baseball-regression-tests-${{ github.event.pull_request.number || github.ref }}" in text
+    assert "  group: baseball-regression-tests\n" not in text
+    assert "cancel-in-progress: true" in text
+
+
+def test_manual_prediction_contract_preserves_runtime_failure_and_json_stdout():
+    workflow = (ROOT / ".github" / "workflows" / "baseball_manual_prediction.yml").read_text(encoding="utf-8")
+    production = (ROOT / "production_npb.py").read_text(encoding="utf-8")
+
+    assert 'if [ ! -s "${output}" ]; then' in workflow
+    assert "preserving the original runtime failure" in workflow
+    assert "except json.JSONDecodeError as exc:" in workflow
+    assert "raise SystemExit(rc if rc else 1)" in workflow
+    assert 'PRODUCTION_DEGENERACY_DEBUG", json.dumps' in production
+    assert ", file=sys.stderr)" in production
