@@ -97,6 +97,7 @@ def test_collect_context_records_pit_boundary_and_snapshot(monkeypatch):
     monkeypatch.setattr(ctx, "fetch_weather", fake_weather)
     snapshot = ctx.collect_npb_pregame_context("2026-10-04", now_utc=pd.Timestamp("2026-10-04T00:00:00Z"))
     assert snapshot["prediction_cutoff_utc"] == "2026-10-04T00:00:00+00:00"
+    assert snapshot["status"] == "AVAILABLE"
     assert snapshot["historical_oos_consumption"] == "DISABLED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN"
     assert snapshot["game_count"] == 1
     assert snapshot["games"][0]["standing_home"]["wins"] == 77
