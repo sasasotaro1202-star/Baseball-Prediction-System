@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from html.parser import HTMLParser
-from pathlib import Path
 import hashlib
 import json
 import re
@@ -54,6 +53,7 @@ class _RosterParser(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.current_team: str | None = None
         self.transaction_section: str | None = None
+        self.roster_section = False
         self._heading_depth = 0
         self._heading_parts: list[str] = []
         self._link_href: str | None = None
@@ -159,14 +159,15 @@ class _RosterParser(HTMLParser):
             heading = normalize_team(" ".join(self._heading_parts))
             if heading in TEAM_NAMES:
                 self.current_team = heading
-            else:
-                self.current_team = self.current_team
-                if "出場選手登録抹消" in heading:
-                    self.transaction_section = "REMOVED"
-                elif heading == "出場選手登録":
-                    self.transaction_section = "REGISTERED"
-                elif heading == "出場選手一覧":
-                    self.transaction_section = None
+            elif "出場選手登録抹消" in heading:
+                self.transaction_section = "REMOVED"
+                self.roster_section = False
+            elif heading == "出場選手登録":
+                self.transaction_section = "REGISTERED"
+                self.roster_section = False
+            elif heading == "出場選手一覧":
+                self.transaction_section = None
+                self.roster_section = True
             self._heading_depth = 0
             self._heading_parts = []
             return
@@ -199,6 +200,26 @@ class _RosterParser(HTMLParser):
 
         if tag == "tr" and self._row_active:
             self._finish_transaction_row()
+            if self.roster_section and self.current_team and self._row_cells:
+                cells = [_clean(x) for x in self._row_cells if _clean(x)]
+                # Official NPB roster rows are position / uniform number / name.
+                # These rows may not expose an <a> player link, so preserve the
+                # name-only identity as UNVERIFIED instead of inventing a stable id.
+                position = next((x for x in cells if re.search(r"(投手|捕手|内野手|外野手)", x)), None)
+                number = next((x for x in cells if re.fullmatch(r"\\d{1,3}", x)), None)
+                name = _clean(self._row_player_name or (cells[-1] if cells else ""))
+                if position and number and name and name not in {"選手名", "なし", "-", "－"}:
+                    self.players.append({
+                        "team": self.current_team,
+                        "player_id": self._row_player_id,
+                        "player_name": name,
+                        "player_url": self._row_player_url,
+                        "position": position,
+                        "uniform_number": number,
+                        "identity_status": (
+                            "VERIFIED_STABLE_ID" if self._row_player_id else "NAME_ONLY_UNVERIFIED"
+                        ),
+                    })
             self._row_active = False
             self._cell_parts = None
             self._row_cells = []
@@ -212,7 +233,10 @@ def parse_roster_page(html: str, target_date: str) -> dict[str, Any]:
     by_team: dict[str, list[dict[str, Any]]] = {team: [] for team in sorted(TEAM_NAMES)}
     seen: set[tuple[str, str]] = set()
     for player in parser.players:
-        key = (player["team"], player["player_id"])
+        identity = str(player.get("player_id") or "").strip()
+        name = _clean(player.get("player_name"))
+        number = _clean(player.get("uniform_number"))
+        key = (str(player.get("team") or ""), identity or name, number)
         if key in seen:
             continue
         seen.add(key)
@@ -239,7 +263,9 @@ def parse_roster_page(html: str, target_date: str) -> dict[str, Any]:
     for team, players in by_team.items():
         for player in players:
             statuses = tx_by_key.get((team, str(player.get("player_id") or "")), set())
-            if statuses == {"REGISTERED"}:
+            if str(player.get("player_id") or "").strip() == "":
+                player["roster_transaction_status"] = "IDENTITY_UNVERIFIED"
+            elif statuses == {"REGISTERED"}:
                 player["roster_transaction_status"] = "REGISTERED_TODAY"
             elif statuses == {"REMOVED"}:
                 player["roster_transaction_status"] = "REMOVED_TODAY"
