@@ -1,5 +1,5 @@
 {
-  "generated_at_utc": "2026-10-03T03:48:26.339189+00:00",
+  "generated_at_utc": "2026-10-03T03:55:32.837589+00:00",
   "status": "UPDATED",
   "canonical_experience_cases": 11,
   "all_prediction_snapshots": 131,
@@ -84,7 +84,7 @@
         }
       },
       "by_competition": {
-        "baseball:unknown": {
+        "NPB:UNKNOWN:UNKNOWN": {
           "rows": 6,
           "overall": {
             "rows": 6,
@@ -256,7 +256,7 @@
         }
       },
       "by_competition": {
-        "baseball:unknown": {
+        "UNKNOWN:UNKNOWN:UNKNOWN": {
           "rows": 5,
           "overall": {
             "rows": 5,
@@ -430,7 +430,7 @@
         }
       },
       "by_competition": {
-        "baseball:unknown": {
+        "NPB:UNKNOWN:UNKNOWN": {
           "rows": 76,
           "overall": {
             "rows": 76,
@@ -602,7 +602,7 @@
         }
       },
       "by_competition": {
-        "baseball:unknown": {
+        "UNKNOWN:UNKNOWN:UNKNOWN": {
           "rows": 55,
           "overall": {
             "rows": 55,

@@ -1,5 +1,5 @@
 {
-  "generated_at_utc": "2026-10-03T03:48:24.959391+00:00",
+  "generated_at_utc": "2026-10-03T03:55:31.126056+00:00",
   "status": "UPDATED",
   "prediction_rows": 25,
   "matched_rows_total": 11,
@@ -137,7 +137,7 @@
     }
   },
   "by_competition": {
-    "baseball:unknown": {
+    "NPB:UNKNOWN:UNKNOWN": {
       "rows": 11,
       "league": "NPB",
       "competition": "UNKNOWN",
