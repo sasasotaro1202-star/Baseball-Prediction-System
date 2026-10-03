@@ -227,3 +227,33 @@ def test_parse_official_schedule_detail_accepts_day_only_date_cell():
     assert len(rows) == 1
     assert rows[0]["home"] == "東京ヤクルトスワローズ"
     assert rows[0]["away"] == "広島東洋カープ"
+
+
+def test_parse_official_games_falls_back_to_non_table_game_blocks():
+    html = """
+    <div class="game"><img alt="ヤクルト"><span>神宮</span><span>18:00</span><img alt="広島"></div>
+    <div class="game"><img alt="DeNA"><span>横浜</span><span>18:00</span><img alt="阪神"></div>
+    <div class="game"><img alt="ロッテ"><span>ZOZOマリン</span><span>18:00</span><img alt="楽天"></div>
+    """
+    rows = ctx.parse_official_games(html, "2026-10-04")
+    assert len(rows) == 3
+    assert [(r["home"], r["away"]) for r in rows] == [
+        ("東京ヤクルトスワローズ", "広島東洋カープ"),
+        ("横浜DeNAベイスターズ", "阪神タイガース"),
+        ("千葉ロッテマリーンズ", "東北楽天ゴールデンイーグルス"),
+    ]
+    assert [r["venue"] for r in rows] == [
+        "明治神宮野球場", "横浜スタジアム", "ZOZOマリンスタジアム"
+    ]
+
+
+def test_parse_monthly_schedule_falls_back_to_non_table_game_blocks():
+    html = """
+    <div>10/4（日）</div>
+    <div>ヤクルト</div><div>神宮</div><div>18:00</div><div>広島</div>
+    <div>DeNA</div><div>横浜</div><div>18:00</div><div>阪神</div>
+    """
+    rows = ctx.parse_official_schedule_detail(html, "2026-10-04")
+    assert len(rows) == 2
+    assert rows[0]["home"] == "東京ヤクルトスワローズ"
+    assert rows[0]["away"] == "広島東洋カープ"
