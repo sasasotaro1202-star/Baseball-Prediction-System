@@ -515,7 +515,11 @@ def _result_cache_path(year: int, month: int) -> Path:
     return RESULT_DIR / f"{year:04d}-{month:02d}.csv"
 
 
-def _load_cached_results(dates: list[pd.Timestamp]) -> pd.DataFrame:
+def _load_cached_results(
+    dates: list[pd.Timestamp],
+    *,
+    now: pd.Timestamp | None = None,
+) -> pd.DataFrame:
     if not dates:
         return pd.DataFrame()
     needed = sorted({(int(d.year), int(d.month)) for d in dates})
@@ -528,7 +532,7 @@ def _load_cached_results(dates: list[pd.Timestamp]) -> pd.DataFrame:
         # The active month is mutable: new games can finish after a
         # previously non-empty cache was written. Refresh it every run.
         # Closed months remain cached for efficient, reproducible reuse.
-        refresh = _should_refresh_result_cache(year, month)
+        refresh = _should_refresh_result_cache(year, month, now=now)
         if not refresh and path.exists() and path.stat().st_size > 0:
             try:
                 got = pd.read_csv(path)
