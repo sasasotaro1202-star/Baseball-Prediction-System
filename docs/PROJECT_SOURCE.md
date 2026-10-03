@@ -1980,3 +1980,40 @@ The profile source is the official NPB player page. NPB's player pages expose bi
 Current/future snapshots can preserve this information for prediction-time analysis, but current-page values must not be retroactively treated as historical PIT evidence. Historical OOS consumption requires an independently proven availability/published boundary.
 
 Starter player context is observational metadata in the current release. It does not modify production probabilities automatically. Any conversion into predictive features requires LOCAL PIT → chronological OOS/WFO → calibration → ablation → robustness → frozen holdout → adoption gate.
+
+
+⸻
+
+88. TEAM-WIDE PLAYER CONTEXT
+
+試合対象チームについて、NPB公式の2026年公式戦個人打撃・個人投手・個人守備テーブルをチーム単位で取得し、player_idを軸に統合する。
+
+保存候補:
+
+* player_id
+* player_name
+* player_page
+* identity_status
+* position / fielding position
+* current-season batting raw stats
+* batting derived rates
+* current-season pitching raw stats
+* pitching derived rates
+* fielding raw stats
+* source URL
+* source_as_of_date
+* retrieved_at_utc
+* available_at_utc
+* published_at_utc
+* revision_time_utc
+* historical_oos_consumption
+
+official team stat pages expose individual batting, pitching and fielding tables. citeturn944349search1turn944349search0turn436351search1turn436351search0
+
+このteam-wide player contextはstarterだけでなく、同試合の両チームに属する選手群を対象にする。現在は「取得・保存・case analysis」のためのcontextであり、production probabilityには自動投入しない。
+
+current-page season aggregatesは更新・訂正され得るため、retrieved_atをhistorical availabilityの証明に使わない。historical OOSで使う場合は、対象時点でのpublished/available boundaryを別途証明してから LOCAL PIT → chronological OOS/WFO → calibration → ablation → robustness → frozen holdout を実施する。
+
+identityはofficial player_idを優先する。player_idを取得できない場合はNAME_ONLY_UNVERIFIEDとして保存し、fuzzy matchingやsilent mergeを行わない。source failureやpartial failureは明示し、missingをzeroへ変換しない。
+
+production prediction JSONではteam_player_context_snapshot_id、home_team_player_context、away_team_player_contextを保持し、experience ledgerにも再現可能なJSONとして保存する。
