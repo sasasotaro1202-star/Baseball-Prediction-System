@@ -68,7 +68,64 @@ jobs:
             done
           }
 
-          runs_json="$(gh_retry run list             --repo "${GH_REPO}"             --workflow "${TARGET_WORKFLOW}"             --limit 30             --json databaseId,status,conclusion,createdAt,updatedAt,headSha)"
+          # Candidate OOS has a separate concurrency group because it is much
+          # more expensive than the lightweight supervisor. A scheduler-stuck
+          # pending/queued candidate must not block the research loop forever.
+          # Only queued/pending/waiting/requested runs older than 30 minutes are
+          # cancelled. In-progress candidate computation is left untouched.
+          CANDIDATE_WORKFLOW=baseball_candidate_oos.yml
+          test -s ".github/workflows/${CANDIDATE_WORKFLOW}"
+
+          candidate_runs="$(gh_retry run list             --repo "${GH_REPO}"             --workflow "${CANDIDATE_WORKFLOW}"             --limit 30             --json databaseId,status,conclusion,createdAt,updatedAt,headSha)"
+          echo "Recent Candidate OOS runs:"
+          echo "${candidate_runs}" | jq '.[0:8]'
+
+          candidate_stale_cancelled=0
+          while IFS= read -r row; do
+            [ -n "${row}" ] || continue
+            cid="$(printf '%s' "${row}" | jq -r '.databaseId')"
+            cstatus="$(printf '%s' "${row}" | jq -r '.status')"
+            ccreated="$(printf '%s' "${row}" | jq -r '.createdAt')"
+            ccreated_epoch="$(date -d "${ccreated}" +%s)"
+            cage_minutes=$(( (now_epoch - ccreated_epoch) / 60 ))
+            echo "Candidate run ${cid}: status=${cstatus} created_age=${cage_minutes}m"
+            if { [ "${cstatus}" = "queued" ] || [ "${cstatus}" = "pending" ] || [ "${cstatus}" = "waiting" ] || [ "${cstatus}" = "requested" ]; } && [ "${cage_minutes}" -ge 30 ]; then
+              echo "Cancelling stale Candidate OOS scheduler-blocked run ${cid} after ${cage_minutes}m."
+              gh_retry run cancel "${cid}" --repo "${GH_REPO}"
+              candidate_stale_cancelled=1
+            fi
+          done < <(printf '%s' "${candidate_runs}" |
+            jq -c '.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested")')
+
+          candidate_active="$(gh_retry run list             --repo "${GH_REPO}"             --workflow "${CANDIDATE_WORKFLOW}"             --limit 30             --json status             --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+          echo "Candidate OOS active_count=${candidate_active}"
+
+          if [ "${candidate_active}" -eq 0 ] && [ "${candidate_stale_cancelled}" -eq 1 ]; then
+            echo "Dispatching a fresh Candidate OOS cycle after stale scheduler recovery."
+            gh_retry workflow run "${CANDIDATE_WORKFLOW}" --repo "${GH_REPO}" --ref main
+
+            verified_candidate=0
+            for attempt in 1 2 3 4 5; do
+              sleep 3
+              candidate_active_after="$(gh_retry run list                 --repo "${GH_REPO}"                 --workflow "${CANDIDATE_WORKFLOW}"                 --limit 10                 --json status                 --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+              echo "Candidate dispatch verification ${attempt}/5: active=${candidate_active_after}"
+              if [ "${candidate_active_after}" -gt 0 ]; then
+                verified_candidate=1
+                break
+              fi
+            done
+            if [ "${verified_candidate}" -ne 1 ]; then
+              echo "Candidate OOS dispatch completed but no active run was observed." >&2
+              exit 1
+            fi
+            echo "Candidate OOS stale-run recovery dispatch verified."
+          elif [ "${candidate_active}" -eq 0 ]; then
+            echo "No active Candidate OOS run, but no stale scheduler block was detected; preserving deterministic state."
+          else
+            echo "Candidate OOS already active; no recovery dispatch required."
+          fi
+
+  runs_json="$(gh_retry run list             --repo "${GH_REPO}"             --workflow "${TARGET_WORKFLOW}"             --limit 30             --json databaseId,status,conclusion,createdAt,updatedAt,headSha)"
 
           echo "Recent canonical closed-loop runs:"
           echo "${runs_json}" | jq '.[0:8]'
@@ -120,14 +177,6 @@ jobs:
             # workflow ledger rather than the pre-cancellation snapshot.
             runs_json="$(gh_retry run list             --repo "${GH_REPO}"             --workflow "${TARGET_WORKFLOW}"             --limit 30             --json databaseId,status,conclusion,createdAt,updatedAt,headSha)"
             echo "Run ledger refreshed after stale recovery."
-          fi
-
-          active_count="$(gh_retry run list             --repo "${GH_REPO}"             --workflow "${TARGET_WORKFLOW}"             --limit 30             --json status             --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
-          echo "Active canonical closed-loop runs after stale recovery: ${active_count}"
-
-          if [ "${active_count}" -gt 0 ]; then
-            echo 'Canonical closed-loop already active; no dispatch required.'
-            exit 0
           fi
 
           # Automatic restart is limited to interrupted/infrastructure-style
@@ -236,59 +285,3 @@ jobs:
           fi
           echo 'Canonical closed-loop dispatch verified.'
 
-          # Candidate OOS has a separate concurrency group because it is much
-          # more expensive than the lightweight supervisor. A scheduler-stuck
-          # pending/queued candidate must not block the research loop forever.
-          # Only queued/pending/waiting/requested runs older than 30 minutes are
-          # cancelled. In-progress candidate computation is left untouched.
-          CANDIDATE_WORKFLOW=baseball_candidate_oos.yml
-          test -s ".github/workflows/${CANDIDATE_WORKFLOW}"
-
-          candidate_runs="$(gh_retry run list             --repo "${GH_REPO}"             --workflow "${CANDIDATE_WORKFLOW}"             --limit 30             --json databaseId,status,conclusion,createdAt,updatedAt,headSha)"
-          echo "Recent Candidate OOS runs:"
-          echo "${candidate_runs}" | jq '.[0:8]'
-
-          candidate_stale_cancelled=0
-          while IFS= read -r row; do
-            [ -n "${row}" ] || continue
-            cid="$(printf '%s' "${row}" | jq -r '.databaseId')"
-            cstatus="$(printf '%s' "${row}" | jq -r '.status')"
-            ccreated="$(printf '%s' "${row}" | jq -r '.createdAt')"
-            ccreated_epoch="$(date -d "${ccreated}" +%s)"
-            cage_minutes=$(( (now_epoch - ccreated_epoch) / 60 ))
-            echo "Candidate run ${cid}: status=${cstatus} created_age=${cage_minutes}m"
-            if { [ "${cstatus}" = "queued" ] || [ "${cstatus}" = "pending" ] || [ "${cstatus}" = "waiting" ] || [ "${cstatus}" = "requested" ]; } && [ "${cage_minutes}" -ge 30 ]; then
-              echo "Cancelling stale Candidate OOS scheduler-blocked run ${cid} after ${cage_minutes}m."
-              gh_retry run cancel "${cid}" --repo "${GH_REPO}"
-              candidate_stale_cancelled=1
-            fi
-          done < <(printf '%s' "${candidate_runs}" |
-            jq -c '.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested")')
-
-          candidate_active="$(gh_retry run list             --repo "${GH_REPO}"             --workflow "${CANDIDATE_WORKFLOW}"             --limit 30             --json status             --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
-          echo "Candidate OOS active_count=${candidate_active}"
-
-          if [ "${candidate_active}" -eq 0 ] && [ "${candidate_stale_cancelled}" -eq 1 ]; then
-            echo "Dispatching a fresh Candidate OOS cycle after stale scheduler recovery."
-            gh_retry workflow run "${CANDIDATE_WORKFLOW}" --repo "${GH_REPO}" --ref main
-
-            verified_candidate=0
-            for attempt in 1 2 3 4 5; do
-              sleep 3
-              candidate_active_after="$(gh_retry run list                 --repo "${GH_REPO}"                 --workflow "${CANDIDATE_WORKFLOW}"                 --limit 10                 --json status                 --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
-              echo "Candidate dispatch verification ${attempt}/5: active=${candidate_active_after}"
-              if [ "${candidate_active_after}" -gt 0 ]; then
-                verified_candidate=1
-                break
-              fi
-            done
-            if [ "${verified_candidate}" -ne 1 ]; then
-              echo "Candidate OOS dispatch completed but no active run was observed." >&2
-              exit 1
-            fi
-            echo "Candidate OOS stale-run recovery dispatch verified."
-          elif [ "${candidate_active}" -eq 0 ]; then
-            echo "No active Candidate OOS run, but no stale scheduler block was detected; preserving deterministic state."
-          else
-            echo "Candidate OOS already active; no recovery dispatch required."
-          fi
