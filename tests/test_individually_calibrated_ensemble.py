@@ -49,3 +49,40 @@ def test_apply_requires_all_locked_components_and_does_not_accept_labels():
         assert "B" in str(exc)
     else:
         raise AssertionError("missing locked component must fail closed")
+
+def test_candidate_fingerprint_changes_with_provenance_and_locked_parameters():
+    y = np.array([0, 1, 2] * 20)
+    p = np.tile(
+        np.array([[0.70, 0.20, 0.10], [0.10, 0.70, 0.20], [0.20, 0.10, 0.70]]),
+        (20, 1),
+    )
+    spec_a, _ = fit_calibrated_blend(
+        y,
+        {"A": p, "B": np.full_like(p, 1 / 3)},
+        top_k=2,
+        dataset_hash="data-a",
+        git_commit="commit-a",
+    )
+    spec_b, _ = fit_calibrated_blend(
+        y,
+        {"A": p, "B": np.full_like(p, 1 / 3)},
+        top_k=2,
+        dataset_hash="data-b",
+        git_commit="commit-a",
+    )
+    spec_c, _ = fit_calibrated_blend(
+        y,
+        {"A": p, "B": np.full_like(p, 1 / 3)},
+        top_k=2,
+        dataset_hash="data-a",
+        git_commit="commit-b",
+    )
+    assert spec_a.fingerprint() != spec_b.fingerprint()
+    assert spec_a.fingerprint() != spec_c.fingerprint()
+    payload = spec_a.to_dict()
+    assert payload["dataset_hash"] == "data-a"
+    assert payload["git_commit"] == "commit-a"
+    assert payload["model_names"] == ("A", "B")
+    assert len(payload["component_temperatures"]) == 2
+    assert len(payload["blend_weights"]) == 2
+
