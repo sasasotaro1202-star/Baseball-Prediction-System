@@ -209,3 +209,42 @@ def test_collect_team_passes_preferred_profile_ids(monkeypatch):
     ))
     got = ctx.collect_team("阪神", preferred_player_ids={"123"})
     assert got["team"] == "阪神タイガース"
+
+
+def test_derive_player_role_context_classifies_two_way_and_tracks_evidence():
+    player = {
+        "identity_status": "VERIFIED_STABLE_ID",
+        "position": "投手",
+        "batting": {"打席": "120"},
+        "pitching": {"投球回": "80", "登板": "20", "先発": "15"},
+        "fielding": [],
+        "batting_derived": {"avg": 0.250},
+        "pitching_derived": {"k9": 9.0},
+        "fielding_derived": [],
+        "profile_status": "AVAILABLE",
+        "profile": {"position": "投手"},
+    }
+    got = ctx._derive_player_role_context(player)
+    assert got["player_role"] == "TWO_WAY_CANDIDATE"
+    assert got["player_role_source"] == "OFFICIAL_POSITION_PLUS_PITCHING_USAGE"
+    assert got["player_role_evidence"]["pitching_starts"] == 15.0
+    assert got["player_data_coverage"]["profile"] == "AVAILABLE"
+
+
+def test_collect_team_exposes_player_coverage_and_roles(monkeypatch):
+    monkeypatch.setenv("NPB_PLAYER_PROFILE_LIMIT_PER_TEAM", "0")
+    monkeypatch.setattr(ctx, "_fetch", lambda url: (
+        BAT_HTML if "idb1_" in url else PIT_HTML if "idp1_" in url else DEF_HTML,
+        "2026-10-03T00:00:00+00:00",
+    ))
+    monkeypatch.setattr(ctx, "_enrich_profiles", lambda players, preferred_player_ids=None: (
+        players, 0
+    ))
+    got = ctx.collect_team("阪神", preferred_player_ids={"123"})
+    assert got["player_coverage_summary"]["player_count"] == got["player_count"]
+    assert got["player_coverage_summary"]["stable_player_id_count"] >= 1
+    assert got["player_coverage_summary"]["batting_data_count"] >= 1
+    assert got["player_coverage_summary"]["pitching_data_count"] >= 1
+    first = next(p for p in got["players"] if p["player_id"] == "123")
+    assert first["player_role"] == "TWO_WAY_CANDIDATE"
+    assert first["player_data_coverage"]["batting"] == "AVAILABLE"
