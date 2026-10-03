@@ -468,6 +468,124 @@ def _profile_priority(player: dict[str, Any]) -> float:
     return float(pa + 20.0 * ip + 2.0 * field_games)
 
 
+def _derive_player_role_context(player: dict[str, Any]) -> dict[str, Any]:
+    """Derive a conservative player-role label plus observable evidence.
+
+    This is descriptive context only. It never changes prediction probabilities.
+    """
+    profile = player.get("profile") or {}
+    position = _clean(profile.get("position") or player.get("position") or "")
+    batting = player.get("batting") or {}
+    pitching = player.get("pitching") or {}
+    pa = _find_num(batting, "打席")
+    ip = _find_num(pitching, "投球回")
+    appearances = _find_num(pitching, "登板")
+    starts = _find_num(pitching, "先発")
+    start_share = (starts / appearances) if starts is not None and appearances and appearances > 0 else None
+
+    role = "UNKNOWN"
+    role_source = "INSUFFICIENT_EVIDENCE"
+    if "投手" in position:
+        role_source = "OFFICIAL_POSITION_PLUS_PITCHING_USAGE"
+        if pa is not None and pa >= 20 and ip is not None and ip >= 10:
+            role = "TWO_WAY_CANDIDATE"
+        elif starts is not None and starts >= 3:
+            role = "STARTING_PITCHER"
+        elif start_share is not None and start_share >= 0.25:
+            role = "STARTING_PITCHER"
+        elif ip is not None and ip > 0:
+            role = "RELIEF_PITCHER"
+        else:
+            role = "PITCHER"
+    elif "内外野" in position or ("内野" in position and "外野" in position):
+        role = "UTILITY_POSITION_PLAYER"
+        role_source = "OFFICIAL_POSITION"
+    elif "捕手" in position:
+        role = "CATCHER"
+        role_source = "OFFICIAL_POSITION"
+    elif "内野手" in position or "内野" in position:
+        role = "INFIELDER"
+        role_source = "OFFICIAL_POSITION"
+    elif "外野手" in position or "外野" in position:
+        role = "OUTFIELDER"
+        role_source = "OFFICIAL_POSITION"
+    elif pa is not None:
+        role = "POSITION_PLAYER_UNVERIFIED"
+        role_source = "BATTING_DATA_WITHOUT_CONFIRMED_POSITION"
+    elif ip is not None:
+        role = "PITCHER_UNVERIFIED"
+        role_source = "PITCHING_DATA_WITHOUT_CONFIRMED_POSITION"
+
+    derived_count = (
+        len(player.get("batting_derived") or {})
+        + len(player.get("pitching_derived") or {})
+        + len(player.get("fielding_derived") or [])
+    )
+    return {
+        "player_role": role,
+        "player_role_source": role_source,
+        "player_role_evidence": {
+            "position": position or None,
+            "batting_pa": pa,
+            "pitching_ip": ip,
+            "pitching_appearances": appearances,
+            "pitching_starts": starts,
+            "pitching_start_share": start_share,
+        },
+        "player_data_coverage": {
+            "stable_id": player.get("identity_status") == "VERIFIED_STABLE_ID",
+            "batting": "AVAILABLE" if player.get("batting") is not None else "NOT_OBSERVED",
+            "pitching": "AVAILABLE" if player.get("pitching") is not None else "NOT_OBSERVED",
+            "fielding": "AVAILABLE" if player.get("fielding") else "NOT_OBSERVED",
+            "profile": str(player.get("profile_status") or "UNKNOWN"),
+            "derived_metric_count": int(derived_count),
+        },
+    }
+
+
+def _summarize_player_coverage(players: list[dict[str, Any]]) -> dict[str, Any]:
+    """Summarize player-level evidence coverage without imputing missing values."""
+    total = len(players)
+    stable_ids = sum(1 for p in players if p.get("identity_status") == "VERIFIED_STABLE_ID")
+    batting_rows = sum(1 for p in players if p.get("batting") is not None)
+    pitching_rows = sum(1 for p in players if p.get("pitching") is not None)
+    fielding_rows = sum(1 for p in players if p.get("fielding"))
+    profiles = sum(1 for p in players if p.get("profile_status") == "AVAILABLE")
+    role_counts: dict[str, int] = {}
+    observed_pa = 0.0
+    observed_pa_rows = 0
+    observed_ip = 0.0
+    observed_ip_rows = 0
+    for player in players:
+        role = str(player.get("player_role") or "UNKNOWN")
+        role_counts[role] = role_counts.get(role, 0) + 1
+        pa = _find_num(player.get("batting") or {}, "打席")
+        if pa is not None:
+            observed_pa += pa
+            observed_pa_rows += 1
+        ip = _find_num(player.get("pitching") or {}, "投球回")
+        if ip is not None:
+            observed_ip += ip
+            observed_ip_rows += 1
+    return {
+        "player_count": int(total),
+        "stable_player_id_count": int(stable_ids),
+        "stable_player_id_rate": float(stable_ids / total) if total else None,
+        "batting_data_count": int(batting_rows),
+        "batting_data_rate": float(batting_rows / total) if total else None,
+        "pitching_data_count": int(pitching_rows),
+        "pitching_data_rate": float(pitching_rows / total) if total else None,
+        "fielding_data_count": int(fielding_rows),
+        "fielding_data_rate": float(fielding_rows / total) if total else None,
+        "profile_available_count": int(profiles),
+        "profile_available_rate": float(profiles / total) if total else None,
+        "observed_batting_pa": float(observed_pa) if observed_pa_rows else None,
+        "observed_batting_pa_player_count": int(observed_pa_rows),
+        "observed_pitching_ip": float(observed_ip) if observed_ip_rows else None,
+        "observed_pitching_ip_player_count": int(observed_ip_rows),
+        "role_counts": {k: role_counts[k] for k in sorted(role_counts)},
+    }
+
 def _enrich_profiles(
     players: list[dict[str, Any]],
     preferred_player_ids: set[str] | None = None,
@@ -583,6 +701,9 @@ def collect_team(
         _merge_players(canonical_team, pages),
         preferred_player_ids=preferred_player_ids,
     )
+    for player in players:
+        player.update(_derive_player_role_context(player))
+    coverage_summary = _summarize_player_coverage(players)
     snapshot = {
         "schema_version": "npb-team-player-context-v1",
         "team": canonical_team,
@@ -592,6 +713,7 @@ def collect_team(
         "players": players,
         "profile_count": int(profile_count),
         "profile_limit_per_team": int(os.getenv("NPB_PLAYER_PROFILE_LIMIT_PER_TEAM", "24") or 24),
+        "player_coverage_summary": coverage_summary,
         "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
     }
     canonical = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
