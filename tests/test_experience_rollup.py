@@ -226,6 +226,29 @@ def test_rollup_low_high_threshold_uses_normalized_probability_scale():
     assert scored["low_high_correct"].tolist() == [1, 1]
 
 
+def test_rollup_missing_generation_timestamp_is_unknown_horizon():
+    merged = pd.DataFrame(
+        [{
+            "game_id": "legacy-fixture",
+            "datetime_jst": pd.Timestamp("2026-09-26T05:00:00+00:00"),
+            "prediction_cutoff_utc": pd.Timestamp("2026-09-26T02:00:00+00:00"),
+            "home_score": 4,
+            "away_score": 2,
+            "home_win_pct": 60.0,
+            "draw_pct": 5.0,
+            "away_win_pct": 35.0,
+            "low_pct": 70.0,
+            "high_pct": 30.0,
+            "lambda_home": 3.2,
+            "lambda_away": 2.4,
+            "top4_exact_scores": [],
+        }]
+    )
+    scored = roll._evaluate(merged)
+    assert scored.loc[0, "prediction_horizon"] == "UNKNOWN"
+    assert pd.isna(scored.loc[0, "prediction_actual_lead_minutes"])
+
+
 def test_rollup_accepts_four_decimal_serialization_rounding():
     merged = pd.DataFrame(
         [{
