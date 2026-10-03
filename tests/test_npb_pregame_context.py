@@ -135,3 +135,50 @@ def test_parse_realistic_japanese_schedule_row():
     assert rows[0]["home"] in {"東京ヤクルトスワローズ", "横浜DeNAベイスターズ"}
     assert rows[0]["official_start_time"] == "18:00"
     assert rows[0]["venue"] in {"明治神宮野球場", "横浜スタジアム"}
+
+def test_parse_official_schedule_detail_extracts_compound_matchups():
+    html = """
+    <table>
+      <tr><td>10/4（日）</td><td>ヤクルト - 広島</td><td>神宮</td><td>18:00</td></tr>
+      <tr><td>10/4（日）</td><td>DeNA － 阪神</td><td>横浜</td><td>18:00</td></tr>
+      <tr><td>10/3（土）</td><td>巨人 2 - 5 DeNA</td><td>東京ドーム</td><td>18:00</td></tr>
+    </table>
+    """
+    rows = ctx.parse_official_schedule_detail(html, "2026-10-04")
+    assert len(rows) == 2
+    assert rows[0]["home"] == "東京ヤクルトスワローズ"
+    assert rows[0]["away"] == "広島東洋カープ"
+    assert rows[0]["venue"] == "明治神宮野球場"
+    assert rows[1]["home"] == "横浜DeNAベイスターズ"
+    assert rows[1]["away"] == "阪神タイガース"
+
+
+def test_collect_context_falls_back_to_monthly_official_schedule(monkeypatch):
+    daily_url_fragment = "games/gm"
+    monthly_html = """
+    <table><tr><td>10/4（日）</td><td>ヤクルト - 広島</td><td>神宮</td><td>18:00</td></tr></table>
+    """
+    standing_html = """
+    <table>
+      <tr><th>Team</th><th>G</th><th>W</th><th>L</th><th>T</th><th>PCT</th></tr>
+      <tr><td>Hanshin Tigers</td><td>1</td><td>1</td><td>0</td><td>0</td><td>.1000</td></tr>
+    </table>
+    """
+    def fake_fetch(url, timeout=(8, 45)):
+        if daily_url_fragment in url:
+            raise RuntimeError("daily endpoint failure")
+        if "schedule_10_detail.html" in url:
+            return monthly_html, "2026-10-04T00:00:01+00:00"
+        return standing_html, "2026-10-04T00:00:02+00:00"
+
+    def fake_weather(venue, start):
+        return {"status": "AVAILABLE", "available_at_utc": "2026-10-04T00:00:03+00:00", "temperature_c": 22.0}
+
+    monkeypatch.setattr(ctx, "_fetch_text", fake_fetch)
+    monkeypatch.setattr(ctx, "fetch_weather", fake_weather)
+    got = ctx.collect_npb_pregame_context("2026-10-04", now_utc=pd.Timestamp("2026-10-04T00:00:00Z"))
+    assert got["game_count"] == 1
+    schedule = next(x for x in got["sources"] if x["source_id"] == "npb_official_game_schedule_context")
+    assert schedule["endpoint_variant"] == "MONTH_DETAIL_FALLBACK"
+    assert "daily endpoint" in schedule["primary_daily_endpoint_error"]
+
