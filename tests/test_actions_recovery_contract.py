@@ -22,3 +22,11 @@ def test_recovery_marks_unverified_zero_job_redispatch_as_failure():
     marker = "Recovery terminal state: FAILED_PREGAME_ZERO_JOB_DISPATCH"
     marker_pos = workflow.index(marker)
     assert "exit 1" in workflow[marker_pos:marker_pos + 300]
+
+def test_zero_job_path_defines_retry_helper_before_first_use():
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    definition = workflow.index("gh_retry() {")
+    first_use = workflow.index("gh_retry run list")
+    assert definition < first_use
+    assert "job_count=\"$(gh_retry run view" in workflow
+    assert "prior_job_count=\"$(gh_retry run view" in workflow
