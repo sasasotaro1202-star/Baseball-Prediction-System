@@ -1,8 +1,8 @@
 # Baseball-Prediction-System — Project Source Alignment Addendum 2026-10-03
 
 ## Verified current state
-- main latest observed HEAD before this documentation update: f798ea4155b136a3271136b94f674bc674689651.
-- Recent observed changes harden typed dispatcher invariants and add/test shadow-horizon breakdown assembly.
+- main latest observed HEAD after re-check: ce0796a3394ecc367f6148dc5d53a5632da360e0.
+- Recent observed changes harden typed dispatcher invariants, add/test shadow-horizon breakdown assembly, and record NPB postgame prediction experience.
 - The existing `docs/PROJECT_SOURCE.md` remains the detailed source of truth for NPB/MLB, starter/roster PIT, Statcast restrictions, calibration, OOS/WFO, experience learning and failure taxonomy.
 
 ## Alignment rules
