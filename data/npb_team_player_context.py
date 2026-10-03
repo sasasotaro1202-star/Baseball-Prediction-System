@@ -513,7 +513,12 @@ def _derive_player_role_context(player: dict[str, Any]) -> dict[str, Any]:
 
     role = "UNKNOWN"
     role_source = "INSUFFICIENT_EVIDENCE"
-    if "投手" in position:
+    # Meaningful batting + pitching evidence takes precedence over a single
+    # defensive position label so two-way candidates are not misclassified.
+    if pa is not None and pa >= 20 and ip is not None and ip >= 10:
+        role = "TWO_WAY_CANDIDATE"
+        role_source = "OFFICIAL_POSITION_PLUS_PITCHING_USAGE" if position else "BATTING_PLUS_PITCHING_USAGE"
+    elif "投手" in position:
         role_source = "OFFICIAL_POSITION_PLUS_PITCHING_USAGE"
         if pa is not None and pa >= 20 and ip is not None and ip >= 10:
             role = "TWO_WAY_CANDIDATE"
