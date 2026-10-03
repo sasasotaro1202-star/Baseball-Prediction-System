@@ -43,11 +43,13 @@ jobs:
       - name: Re-run failed jobs with bounded recovery
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           RUN_ID: ${{ github.event.workflow_run.id }}
           RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
         run: |
           set -euo pipefail
-          echo "Workflow=${{ github.event.workflow_run.name }}"
+          echo "Workflow=${WORKFLOW_NAME}"
           echo "Run=${RUN_ID} attempt=${RUN_ATTEMPT} conclusion=${{ github.event.workflow_run.conclusion }}"
 
           if [ "${RUN_ATTEMPT}" -ge 3 ]; then
@@ -82,6 +84,77 @@ jobs:
 
           echo 'Failed steps:'
           printf '%s\n' "${failed_steps:-<none>}"
+
+          # GitHub can occasionally create a failed Actions run with no jobs
+          # at all. There is no failed job to rerun in this state, so a bounded
+          # fresh dispatch is the only useful recovery. Limit it to this exact
+          # control-plane failure mode and one retry window at a time.
+          if [ "${WORKFLOW_NAME}" = "Baseball 60m Pregame Auto Prediction" ]; then
+            job_count="$(gh run view "${RUN_ID}" --repo "${GH_REPO}" --json jobs --jq '.jobs | length')"
+            echo "Pregame parent job count=${job_count}"
+            if [ "${job_count}" -eq 0 ]; then
+              echo "Detected zero-job pregame control-plane failure; checking 15-minute cooldown."
+              recent_zero_job=0
+              recent_runs="$(gh_retry run list \
+                --repo "${GH_REPO}" \
+                --workflow baseball_30m_pregame_auto.yml \
+                --limit 10 \
+                --json databaseId,status,conclusion,createdAt)"
+              while IFS= read -r row; do
+                [ -n "${row}" ] || continue
+                prior_id="$(printf '%s' "${row}" | jq -r '.databaseId')"
+                prior_status="$(printf '%s' "${row}" | jq -r '.status')"
+                prior_conclusion="$(printf '%s' "${row}" | jq -r '.conclusion // empty')"
+                prior_created="$(printf '%s' "${row}" | jq -r '.createdAt')"
+                [ "${prior_id}" = "${RUN_ID}" ] && continue
+                [ "${prior_status}" = "completed" ] || continue
+                [ "${prior_conclusion}" = "failure" ] || continue
+                prior_created_epoch="$(date -d "${prior_created}" +%s)"
+                prior_age_minutes=$(( (now_epoch - prior_created_epoch) / 60 ))
+                if [ "${prior_age_minutes}" -lt 15 ]; then
+                  prior_job_count="$(gh run view "${prior_id}" --repo "${GH_REPO}" --json jobs --jq '.jobs | length')"
+                  echo "Prior pregame failure ${prior_id}: age=${prior_age_minutes}m jobs=${prior_job_count}"
+                  if [ "${prior_job_count}" -eq 0 ]; then
+                    recent_zero_job=1
+                    break
+                  fi
+                fi
+              done < <(printf '%s' "${recent_runs}" | jq -c '.[]')
+
+              if [ "${recent_zero_job}" -eq 1 ]; then
+                echo "Zero-job pregame cooldown active; preserving parent failure without another dispatch."
+                printf '%s\n' 'Recovery terminal state: PRE_GAME_ZERO_JOB_COOLDOWN; parent failure remains authoritative.' >> "$GITHUB_STEP_SUMMARY"
+                exit 0
+              fi
+
+              echo "Dispatching one bounded fresh pregame run after zero-job control-plane failure."
+              gh_retry workflow run baseball_30m_pregame_auto.yml --repo "${GH_REPO}" --ref main
+
+              verified=0
+              for dispatch_attempt in 1 2 3 4 5; do
+                sleep 3
+                current_runs="$(gh_retry run list \
+                  --repo "${GH_REPO}" \
+                  --workflow baseball_30m_pregame_auto.yml \
+                  --limit 10 \
+                  --json databaseId,status,conclusion,createdAt)"
+                active_or_new="$(printf '%s' "${current_runs}" |
+                  jq --arg rid "${RUN_ID}" '[.[] | select(.databaseId != ($rid | tonumber)) | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+                echo "Pregame recovery verification ${dispatch_attempt}/5: active_or_new=${active_or_new}"
+                if [ "${active_or_new}" -gt 0 ]; then
+                  verified=1
+                  break
+                fi
+              done
+              if [ "${verified}" -ne 1 ]; then
+                echo 'Pregame zero-job recovery dispatch was accepted but no active run was observed.' >&2
+                printf '%s\n' 'Recovery terminal state: FAILED_PREGAME_ZERO_JOB_DISPATCH; parent failure remains authoritative.' >> "$GITHUB_STEP_SUMMARY"
+                exit 0
+              fi
+              printf '%s\n' 'Recovery terminal state: PRE_GAME_ZERO_JOB_REDISPATCHED; parent failure remains authoritative.' >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          fi
 
           # Retry only when every failed step is explicitly classified as
           # transient. A mixed transient + deterministic failure is preserved

@@ -296,3 +296,21 @@ def test_pregame_experience_persist_skips_absent_optional_shadow_dir():
     assert text.count('if [ -d "$experience_path" ]; then') == 2
     assert text.count('git add "$experience_path"') == 2
     assert 'git add data/experience/predictions/ data/experience/research_shadow/' not in text
+
+
+def test_pregame_zero_job_failure_has_bounded_control_plane_recovery():
+    recovery = (ROOT / ".github" / "workflows" / "baseball_actions_recovery.yml").read_text(encoding="utf-8")
+    assert "Baseball 60m Pregame Auto Prediction" in recovery
+    assert "GH_REPO: ${{ github.repository }}" in recovery
+    assert "WORKFLOW_NAME: ${{ github.event.workflow_run.name }}" in recovery
+    assert 'if [ "${WORKFLOW_NAME}" = "Baseball 60m Pregame Auto Prediction" ]; then' in recovery
+    assert 'job_count="$(gh run view "${RUN_ID}" --repo "${GH_REPO}" --json jobs --jq \'.jobs | length\')"' in recovery
+    assert 'if [ "${job_count}" -eq 0 ]; then' in recovery
+    assert "checking 15-minute cooldown" in recovery
+    assert 'prior_age_minutes=$(( (now_epoch - prior_created_epoch) / 60 ))' in recovery
+    assert 'if [ "${prior_age_minutes}" -lt 15 ]; then' in recovery
+    assert "PRE_GAME_ZERO_JOB_COOLDOWN" in recovery
+    assert "workflow run baseball_30m_pregame_auto.yml --repo" in recovery
+    assert "Pregame recovery verification" in recovery
+    assert "PRE_GAME_ZERO_JOB_REDISPATCHED" in recovery
+    assert "FAILED_PREGAME_ZERO_JOB_DISPATCH" in recovery
