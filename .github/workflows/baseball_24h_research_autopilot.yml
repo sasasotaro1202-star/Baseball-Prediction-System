@@ -178,7 +178,8 @@ jobs:
   wave3-candidate-oos:
     name: 24h Wave 3 - Candidate OOS / robustness
     needs: wave2-frontier
-    if: always()
+    # Candidate OOS must fail closed when frontier acquisition fails.
+    if: ${{ always() && needs['wave2-frontier'].result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 355
     steps:
@@ -235,7 +236,8 @@ jobs:
   wave4-meta-research:
     name: 24h Wave 4 - Meta research / verification
     needs: wave3-candidate-oos
-    if: always()
+    # Meta-research must not consume candidate evidence from a failed OOS lane.
+    if: ${{ always() && needs['wave3-candidate-oos'].result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 355
     steps:
