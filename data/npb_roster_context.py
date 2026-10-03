@@ -50,6 +50,22 @@ def normalize_team(value: str) -> str:
     return TEAM_NORMALIZE.get(text, text)
 
 
+def _fetch_text(url: str) -> tuple[str, str]:
+    """Fetch and decode an official NPB HTML page with bounded retries."""
+    response = http_request(HTTP_SESSION, url, timeout=(8, 30), retries=3)
+    encoding = (response.apparent_encoding or response.encoding or "utf-8").lower().replace("-", "_")
+    if "shift_jis" in encoding or "cp932" in encoding or "shiftjis" in encoding:
+        body = response.content.decode("cp932", errors="strict")
+    else:
+        body = response.content.decode(
+            response.apparent_encoding or response.encoding or "utf-8",
+            errors="strict",
+        )
+    return body, datetime.now(timezone.utc).isoformat()
+
+
+
+
 def _identity_key(value: Any) -> str:
     """Normalize names for exact identity resolution without fuzzy matching."""
     value = _clean(value)
