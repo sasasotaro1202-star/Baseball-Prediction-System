@@ -196,3 +196,34 @@ def test_parse_official_schedule_detail_accepts_full_canonical_team_names():
     assert len(rows) == 1
     assert rows[0]["home"] == "東京ヤクルトスワローズ"
     assert rows[0]["away"] == "広島東洋カープ"
+
+
+def test_parse_official_games_accepts_image_alt_and_embedded_time():
+    html = """
+    <table>
+      <tr>
+        <td><img src="yakult.png" alt="ヤクルト"></td>
+        <td><img src="jingu.png" alt="神宮"> 18:00</td>
+        <td><a title="広島">広島</a></td>
+      </tr>
+    </table>
+    """
+    rows = ctx.parse_official_games(html, "2026-10-04")
+    assert len(rows) == 1
+    assert rows[0]["home"] == "東京ヤクルトスワローズ"
+    assert rows[0]["away"] == "広島東洋カープ"
+    assert rows[0]["venue"] == "明治神宮野球場"
+    assert rows[0]["official_start_time"] == "18:00"
+
+
+def test_parse_official_schedule_detail_accepts_day_only_date_cell():
+    html = """
+    <table>
+      <tr><td>4</td><td>ヤクルト</td><td>神宮</td><td>18:00</td><td>広島</td></tr>
+      <tr><td>3</td><td>巨人</td><td>東京ドーム</td><td>18:00</td><td>DeNA</td></tr>
+    </table>
+    """
+    rows = ctx.parse_official_schedule_detail(html, "2026-10-04")
+    assert len(rows) == 1
+    assert rows[0]["home"] == "東京ヤクルトスワローズ"
+    assert rows[0]["away"] == "広島東洋カープ"
