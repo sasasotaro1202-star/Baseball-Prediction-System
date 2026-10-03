@@ -1,12 +1,12 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "dimension_order": [
     "league",
     "competition",
     "phase",
     "target"
   ],
-  "generated_at_utc": "2026-10-03T03:55:32.837589+00:00",
+  "generated_at_utc": "2026-10-03T03:57:11.964729+00:00",
   "status": "UPDATED",
   "canonical_cases": 11,
   "all_prediction_snapshots": 131,
