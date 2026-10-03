@@ -367,6 +367,21 @@ def test_24h_supervisor_recovers_only_latest_zero_job_pregame_failures_with_dail
     assert "--field recovery_mode=zero_job_startup_recovery" in text
 
 
+
+def test_phase1_candidate_gate_stages_npb_data_before_real_validation():
+    text = (ROOT / ".github" / "workflows" / "baseball_phase1_gate.yml").read_text(encoding="utf-8")
+    _assert_official_actions_are_immutable(text)
+
+    cache_pos = text.index("- name: Restore NPB historical PBP cache")
+    stage_pos = text.index("- name: Stage NPB historical PBP when cache is cold")
+    decision_pos = text.index("- name: Validate fail-closed decision contract")
+
+    assert cache_pos < stage_pos < decision_pos
+    assert "actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57" in text
+    assert "gh release download pbp --repo armstjc/Nippon-Baseball-Data-Repository" in text
+    assert "if: matrix.league == 'NPB'" in text
+    assert 'test "${files}" -ge 7' in text
+    assert "timeout-minutes: 20" in text
 def test_24h_autopilot_targeted_test_paths_exist():
     """Never let the long-running autopilot reference deleted test modules."""
     workflow = (ROOT / ".github" / "workflows" / "baseball_24h_research_autopilot.yml").read_text(encoding="utf-8")
