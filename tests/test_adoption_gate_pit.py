@@ -37,6 +37,7 @@ def test_non_mlb_gate_does_not_require_holdout_pit_by_default():
             require_npb_three_way_check=False,
             require_uncertainty_check=False,
             require_pit_starter_evidence=False,
+            require_evaluation_period_stability=False,
         ),
         validation_windows=2,
         calibration_ok=True,
