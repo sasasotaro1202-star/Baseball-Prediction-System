@@ -270,7 +270,7 @@ def test_regression_ci_does_not_cancel_independent_pull_requests():
     _assert_official_actions_are_immutable(text)
 
     assert "group: baseball-regression-tests-${{ github.event.pull_request.number || github.ref }}" in text
-    assert "group: baseball-regression-tests\\n" not in text
+    assert "  group: baseball-regression-tests\n" not in text
     assert "cancel-in-progress: true" in text
 
 
