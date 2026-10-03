@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from sklearn.metrics import log_loss
 
 from evaluation.calibration import fit_temperature
 from baseball_backtest import BaseballBacktest, low_high_probs, score_candidates
@@ -105,6 +106,37 @@ def _development(bt, X, y, start, end, names, block, retrain_every):
             pp = np.vstack(chunks)
             metrics[name] = classification_metrics(yy[:len(pp)], pp, classes=[0, 1])
     return metrics, windows
+
+
+def _evaluation_periods(
+    y: np.ndarray,
+    baseline_proba: np.ndarray,
+    candidate_proba: np.ndarray,
+    *,
+    max_periods: int = 4,
+) -> list[dict[str, float]]:
+    """Build chronological holdout-period evidence for the stability gate."""
+    n = int(len(y))
+    if n < 2:
+        return []
+    period_count = min(int(max_periods), max(2, n // 50))
+    period_count = min(period_count, n)
+    bounds = np.linspace(0, n, period_count + 1, dtype=int)
+    periods: list[dict[str, float]] = []
+    for index in range(period_count):
+        start, stop = int(bounds[index]), int(bounds[index + 1])
+        if stop <= start:
+            continue
+        yy = y[start:stop]
+        bp = baseline_proba[start:stop]
+        cp = candidate_proba[start:stop]
+        periods.append({
+            "period_index": float(index),
+            "rows": float(stop - start),
+            "baseline_LogLoss": float(log_loss(yy, bp, labels=[0, 1])),
+            "candidate_LogLoss": float(log_loss(yy, cp, labels=[0, 1])),
+        })
+    return periods
 
 
 def _target_metrics(bt: BaseballBacktest, X_train, games_train, games_holdout, X_holdout, p: np.ndarray, score_fit=None) -> tuple[dict[str, float], dict[str, float]]:
@@ -389,6 +421,8 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
         raise RuntimeError("MLB score model could not be fitted for locked holdout")
     base_score, base_hilo = _target_metrics(bt, X_train, games_train, games_holdout, X_holdout, base_p, score_fit)
     cand_score, cand_hilo = _target_metrics(bt, X_train, games_train, games_holdout, X_holdout, cand_p, score_fit)
+    evaluation_periods = _evaluation_periods(y_holdout, base_p, cand_p)
+
     holdout_uncertainty = uncertainty_to_dict(
         paired_block_bootstrap(
             y=y_holdout,
@@ -423,6 +457,7 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
         league="MLB",
         policy=GatePolicy(require_pit_starter_evidence=True),
         holdout_uncertainty=holdout_uncertainty,
+        evaluation_periods=evaluation_periods,
     )
     out = {"stage": "locked_holdout_evaluated", "candidate": locked,
            "holdout": {"baseline": base, "candidate": cand,
@@ -433,7 +468,8 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
                        )},
            "validation": asdict(lifecycle), "decision": lifecycle.decision,
            "score_hilo_status": "CONNECTED_PIT_SAFE_TRAINING_ONLY",
-           "holdout_uncertainty": holdout_uncertainty}
+           "holdout_uncertainty": holdout_uncertainty,
+           "evaluation_periods": evaluation_periods}
     RESULTS.mkdir(parents=True, exist_ok=True)
     atomic_write_json(RESULTS / "mlb_candidate_development.json", development)
     atomic_write_json(RESULTS / "mlb_locked_holdout.json", out)
