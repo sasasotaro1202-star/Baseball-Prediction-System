@@ -847,6 +847,30 @@ def reconcile() -> dict[str, Any]:
     reconciled_at_utc = _utc_now()
     matched["experience_available_at_utc"] = reconciled_at_utc
 
+    # Preserve nested pregame/player context in deterministic JSON form so the
+    # experience ledger remains inspectable and replayable without relying on
+    # pandas object serialization. These fields are evidence only; they are not
+    # automatically promoted to model features.
+    def _context_json(value: Any) -> str:
+        if value is None or (isinstance(value, float) and pd.isna(value)):
+            return ""
+        if isinstance(value, str):
+            try:
+                return json.dumps(json.loads(value), ensure_ascii=False, sort_keys=True)
+            except Exception:
+                return value
+        try:
+            return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+        except Exception:
+            return ""
+
+    for column in ("home_starter_player_context", "away_starter_player_context"):
+        if column in matched.columns:
+            matched[column + "_json"] = matched[column].map(_context_json)
+    for column in ("player_context_snapshot_id", "pregame_context_snapshot_id"):
+        if column not in matched.columns:
+            matched[column] = None
+
     matched["prediction_actual_lead_minutes"] = (
         pd.to_datetime(matched["datetime_jst"], utc=True, errors="coerce")
         - pd.to_datetime(matched["prediction_generated_at"], utc=True, errors="coerce")
@@ -872,6 +896,8 @@ def reconcile() -> dict[str, Any]:
         "low_pct", "high_pct", "low_high_actual", "low_high_correct",
         "score_mae", "top1_exact_hit", "top4_hit",
         "lambda_home", "lambda_away", "shared_lambda",
+        "player_context_snapshot_id", "pregame_context_snapshot_id",
+        "home_starter_player_context_json", "away_starter_player_context_json",
         "dominant_classification_expert", "experience_available_at_utc", "source_url",
     ] + weight_keys
     keep = [c for c in keep if c in matched.columns]
