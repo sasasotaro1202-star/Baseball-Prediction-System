@@ -317,3 +317,27 @@ def test_pregame_zero_job_failure_has_bounded_control_plane_recovery():
     assert "Pregame recovery verification" in recovery
     assert "PRE_GAME_ZERO_JOB_REDISPATCHED" in recovery
     assert "FAILED_PREGAME_ZERO_JOB_DISPATCH" in recovery
+
+
+def test_24h_supervisor_recovers_only_latest_zero_job_pregame_failures_with_daily_cap():
+    text = (SUPERVISOR).read_text(encoding="utf-8")
+    _assert_official_actions_are_immutable(text)
+    assert "PREGAME_WORKFLOW=baseball_30m_pregame_auto.yml" in text
+    assert '--workflow "${PREGAME_WORKFLOW}"' in text
+    assert "--branch main" in text
+    assert "latest_failure_id" in text
+    assert "latest_failure_job_count=-1" in text
+    assert "latest_failure_job_count}" in text
+    assert "--jq '.jobs | length'" in text
+    assert "pregame_zero_job_failures" in text
+    assert "le 1440" in text
+    assert 'pregame_latest_age_minutes}" -lt 15' in text
+    assert 'pregame_zero_job_failures}" -ge 3' in text
+    assert "PRE_GAME_ZERO_JOB_COOLDOWN" in text
+    assert "PRE_GAME_ZERO_JOB_DAILY_CAP" in text
+    assert 'gh_retry workflow run "${PREGAME_WORKFLOW}" --repo "${GH_REPO}" --ref main' in text
+    assert "Pregame recovery verification" in text
+    assert "PRE_GAME_ZERO_JOB_REDISPATCHED" in text
+    assert "FAILED_PREGAME_ZERO_JOB_DISPATCH" in text
+    assert "gh run rerun" not in text
+    assert "No recent zero-job pregame failure; no startup recovery dispatch." not in text
