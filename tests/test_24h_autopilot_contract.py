@@ -17,3 +17,10 @@ def test_24h_autopilot_targeted_test_paths_are_discoverable_and_present():
 def test_24h_autopilot_frontier_lane_declares_requests_dependency():
     workflow = WORKFLOW.read_text(encoding="utf-8")
     assert "python -m pip install --disable-pip-version-check --retries 10 --timeout 120 pandas pytest requests" in workflow
+
+def test_24h_autopilot_dependent_research_waves_fail_closed():
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    assert "needs['wave2-frontier'].result == 'success'" in workflow
+    assert "needs['wave3-candidate-oos'].result == 'success'" in workflow
+    assert "closeout:" in workflow
+    assert "needs: [wave1-core-oos, wave2-frontier, wave3-candidate-oos, wave4-meta-research]" in workflow
