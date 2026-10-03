@@ -25,7 +25,11 @@ def test_candidate_recovery_is_reachable_before_canonical_guard() -> None:
 def test_supervisor_keeps_scheduler_recovery_fail_closed() -> None:
     text = _text(SUPERVISOR)
 
-    assert 'cage_minutes} -ge 30' in text
+    stale_candidate_guard = next(
+        line for line in text.splitlines()
+        if "cage_minutes" in line and "-ge 30" in line
+    )
+    assert '[ "${cage_minutes}" -ge 30 ]' in stale_candidate_guard
     assert 'cstatus}" = "in_progress"' not in text
     assert 'updated_age_minutes}" -ge 150' in text
     assert 'Candidate OOS stale-run recovery dispatch verified.' in text
