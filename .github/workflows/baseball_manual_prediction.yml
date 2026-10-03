@@ -103,7 +103,10 @@ jobs:
           rc=$?
           set -e
 
-          test -s "${output}"
+          if [ ! -s "${output}" ]; then
+            echo "current production runtime produced no JSON output (rc=${rc}); preserving the original runtime failure." >&2
+            exit "${rc:-1}"
+          fi
           if [ "${{ inputs.league }}" = "NPB" ]; then
             if grep -Eq '"execution_status": "(BLOCKED_NO_CURRENT_PRODUCTION_RUNTIME|BLOCKED_PRODUCTION_GATE)"' "${output}"; then
               echo "Production runtime is blocked; running explicit research-shadow manual forecast without changing production state."
@@ -120,7 +123,13 @@ jobs:
 
           path = Path(sys.argv[1])
           rc = int(sys.argv[2])
-          obj = json.loads(path.read_text(encoding="utf-8"))
+          try:
+              obj = json.loads(path.read_text(encoding="utf-8"))
+          except json.JSONDecodeError as exc:
+              # Preserve the runtime exit code instead of masking an upstream
+              # failure with a secondary JSON parser error.
+              print(f"manual prediction runtime did not emit valid JSON: {exc}", file=sys.stderr)
+              raise SystemExit(rc if rc else 1)
           status = str(obj.get("execution_status", "UNKNOWN"))
 
           allowed = {

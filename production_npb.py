@@ -10,6 +10,7 @@ The target game itself is never appended to historical training data.
 from __future__ import annotations
 import time
 import argparse, json, re, html as html_lib
+import sys
 from html.parser import HTMLParser
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -1239,7 +1240,7 @@ def predict(
                     for o in outputs
                 ]
                 teams = sorted(set(hist["home"].map(lambda x: norm_team(x, "NPB"))) | set(hist["away"].map(lambda x: norm_team(x, "NPB"))))
-                print("PRODUCTION_DEGENERACY_DEBUG", json.dumps({"predictions": debug, "historical_team_count": len(teams), "historical_teams": teams}, ensure_ascii=False))
+                print("PRODUCTION_DEGENERACY_DEBUG", json.dumps({"predictions": debug, "historical_team_count": len(teams), "historical_teams": teams}, ensure_ascii=False), file=sys.stderr)
                 raise RuntimeError("Production degeneracy guard: PIT-safe recovery remained insufficiently differentiated.")
     # Output validation: probabilities are finite, win probabilities sum to 100,
     # Low/High sum to 100, and exactly four score candidates exist.

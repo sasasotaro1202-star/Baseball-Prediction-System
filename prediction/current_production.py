@@ -14,6 +14,8 @@ import json
 import os
 import subprocess
 import sys
+from contextlib import redirect_stdout
+from io import StringIO
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from pathlib import Path
@@ -149,7 +151,19 @@ def predict_current(
         from production_npb import predict
 
         date_value = resolved_target_date
-        result = predict(date_value, data_dir, pregame_only=bool(pregame_only))
+        diagnostics = StringIO()
+        try:
+            # Production stdout is a machine-readable JSON protocol. Capture
+            # lower-level predictor diagnostics so libraries that print
+            # progress/status lines cannot corrupt the JSON stream.
+            with redirect_stdout(diagnostics):
+                result = predict(date_value, data_dir, pregame_only=bool(pregame_only))
+        finally:
+            captured = diagnostics.getvalue()
+            if captured:
+                sys.stderr.write(captured)
+                if not captured.endswith("\n"):
+                    sys.stderr.write("\n")
         if not isinstance(result, Mapping):
             raise RuntimeError("current production runtime returned a non-object result")
 

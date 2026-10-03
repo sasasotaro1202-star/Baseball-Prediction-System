@@ -20,7 +20,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: baseball-regression-tests
+  # Keep cancellation within the same ref/PR. A new PR must not cancel
+  # regression evidence for another independent candidate.
+  group: baseball-regression-tests-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
