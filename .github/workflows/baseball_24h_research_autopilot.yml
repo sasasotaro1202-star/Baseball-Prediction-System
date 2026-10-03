@@ -54,6 +54,23 @@ jobs:
             if [ "${found}" -gt 0 ]; then continue; fi
             gh release download pbp --repo armstjc/Nippon-Baseball-Data-Repository --pattern "${year}-*_pbp.csv" --dir data --clobber
           done
+      - name: Validate targeted test paths
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import re
+          from pathlib import Path
+
+          workflow = Path(".github/workflows/baseball_24h_research_autopilot.yml").read_text(encoding="utf-8")
+          paths = sorted(set(re.findall(r"tests/[A-Za-z0-9_.-]+\\.py", workflow)))
+          if not paths:
+              raise SystemExit("24h autopilot has no targeted test paths")
+          missing = [path for path in paths if not Path(path).is_file()]
+          if missing:
+              raise SystemExit("24h autopilot references missing test files: " + ", ".join(missing))
+          print("targeted_test_paths_ok=", len(paths))
+          PY
+
       - name: Compile and targeted tests
         run: |
           set -euo pipefail
