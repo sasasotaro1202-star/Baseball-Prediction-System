@@ -8,7 +8,6 @@ export GH_TOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
 
 echo "=== Baseball 60m Pregame Auto Prediction ==="
 
-        run: |
 set -euo pipefail
 python -m py_compile prediction/pregame_scheduler.py
 python prediction/pregame_scheduler.py             --min-lead-minutes 50             --preferred-lead-minutes 60             --scan-ahead-minutes 60             --prediction-source AUTO_60M > pregame_scheduler.json
@@ -50,7 +49,6 @@ print(
 )
 PY
 
-        run: |
 set -euo pipefail
 if [ ! -s due_dates.txt ]; then
   echo "No due pregame games; skipping heavy prediction environment."
@@ -58,7 +56,6 @@ if [ ! -s due_dates.txt ]; then
 fi
 python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
 
-        run: |
 set -euo pipefail
 if [ ! -s due_dates.txt ]; then
   exit 0
@@ -81,7 +78,6 @@ for m in $(seq 2 $((month_num - 1))); do
   test -s "$f"
 done
 
-        run: |
 set -euo pipefail
 if [ ! -s due_dates.txt ]; then
   exit 0
@@ -126,7 +122,6 @@ print("Pregame PIT validation passed; automatic target is approximately 60m befo
 PY
 done < due_dates.txt
 
-        run: |
 set -euo pipefail
 if [ ! -s due_dates.txt ]; then
   exit 0
@@ -145,7 +140,6 @@ for path in sorted(list(Path("results").glob("npb_production_*.json")) + list(Pa
     path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 PY
 
-        run: |
 set -euo pipefail
 if [ ! -s due_dates.txt ]; then
   exit 0
@@ -165,7 +159,6 @@ while IFS= read -r date; do
   fi
 done < due_dates.txt
 
-        run: |
 set -euo pipefail
 if [ ! -d data/experience/predictions ] && [ ! -d data/experience/research_shadow ]; then
   exit 0
