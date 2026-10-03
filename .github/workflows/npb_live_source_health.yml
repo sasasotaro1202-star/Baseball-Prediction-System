@@ -9,6 +9,9 @@ on:
       - 'data/npb_roster_context.py'
       - 'data/npb_team_player_context.py'
       - 'production_npb.py'
+      - 'tests/test_npb_pregame_context.py'
+      - 'tests/test_npb_team_player_context.py'
+      - 'tests/test_npb_roster_context.py'
   schedule:
     - cron: '20 */3 * * *'
   workflow_dispatch:
