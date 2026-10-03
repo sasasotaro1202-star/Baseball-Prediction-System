@@ -129,6 +129,7 @@ def test_empty_result_cache_is_refreshed(tmp_path, monkeypatch):
         encoding="utf-8",
     )
 
+    monkeypatch.setattr(exp, "_should_refresh_result_cache", lambda year, month, now=None: True)
     calls = []
 
     def fake_fetch(year, month):
@@ -205,6 +206,7 @@ def test_current_result_cache_is_refreshed_even_when_nonempty(tmp_path, monkeypa
         encoding="utf-8",
     )
 
+    monkeypatch.setattr(exp, "_should_refresh_result_cache", lambda year, month, now=None: True)
     calls = []
     def fake_fetch(year, month):
         calls.append((year, month))
