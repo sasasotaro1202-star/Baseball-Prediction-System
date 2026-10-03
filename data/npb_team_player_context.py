@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from html.parser import HTMLParser
+import os
 import hashlib
 import json
 import re
@@ -247,7 +248,34 @@ def _derive_batting(row: dict[str, Any]) -> dict[str, float]:
     if ab and ab > 0 and h is not None:
         singles = h - (doubles or 0.0) - (triples or 0.0) - (hr or 0.0)
         total_bases = singles + 2.0 * (doubles or 0.0) + 3.0 * (triples or 0.0) + 4.0 * (hr or 0.0)
-        out["iso_from_totals"] = max(0.0, total_bases / ab - h / ab)
+        avg = h / ab
+        slg = total_bases / ab
+        out["avg"] = avg
+        out["slg"] = slg
+        out["iso_from_totals"] = max(0.0, slg - avg)
+        denom = ab + (bb or 0.0) + (hbp or 0.0) + (_find_num(row, "犠飛") or 0.0)
+        if denom > 0:
+            out["obp_from_totals"] = (h + (bb or 0.0) + (hbp or 0.0)) / denom
+            out["ops_from_totals"] = out["obp_from_totals"] + slg
+        if hr is not None:
+            out["hr_per_ab"] = hr / ab
+    if pa and pa > 0:
+        runs = _find_num(row, "得点", "得点数")
+        rbi = _find_num(row, "打点", "RBI")
+        if runs is not None:
+            out["runs_per_pa"] = runs / pa
+        if rbi is not None:
+            out["rbi_per_pa"] = rbi / pa
+        xbh = sum(x or 0.0 for x in (doubles, triples, hr))
+        if xbh:
+            out["extra_base_hits_per_pa"] = xbh / pa
+        games = _find_num(row, "試合")
+        if games and games > 0:
+            out["pa_per_game"] = pa / games
+    if sb is not None or cs is not None:
+        attempts = (sb or 0.0) + (cs or 0.0)
+        if attempts > 0:
+            out["sb_success_rate"] = (sb or 0.0) / attempts
     if bb is not None and so is not None and so > 0:
         out["bb_k_ratio"] = bb / so
     if h is not None and h > 0 and (doubles is not None or triples is not None or hr is not None):
@@ -272,6 +300,12 @@ def _derive_pitching(row: dict[str, Any]) -> dict[str, float]:
             out["hr9"] = 9.0 * hr / ip
         if h is not None and bb is not None:
             out["whip"] = (h + bb) / ip
+        games = _find_num(row, "登板")
+        if games and games > 0:
+            out["ip_per_game"] = ip / games
+        starts = _find_num(row, "先発")
+        if starts is not None and games and games > 0:
+            out["start_share"] = starts / games
     if tbf and tbf > 0:
         if so is not None:
             out["k_pct"] = so / tbf
@@ -281,6 +315,33 @@ def _derive_pitching(row: dict[str, Any]) -> dict[str, float]:
             out["hr_pct"] = hr / tbf
         if so is not None and bb is not None:
             out["k_minus_bb_pct"] = (so - bb) / tbf
+        if so is not None and bb is not None and bb > 0:
+            out["k_bb_ratio"] = so / bb
+    starts = _find_num(row, "先発")
+    games = _find_num(row, "登板")
+    wins = _find_num(row, "勝")
+    losses = _find_num(row, "敗")
+    if wins is not None and losses is not None and (wins + losses) > 0:
+        out["decision_win_rate"] = wins / (wins + losses)
+    if starts is not None and games and games > 0:
+        out["start_share"] = starts / games
+    return out
+
+def _derive_fielding(row: dict[str, Any]) -> dict[str, float]:
+    games = _find_num(row, "試合")
+    errors = _find_num(row, "失策")
+    putouts = _find_num(row, "刺殺")
+    assists = _find_num(row, "補殺")
+    double_plays = _find_num(row, "併殺")
+    out: dict[str, float] = {}
+    chances = sum(x or 0.0 for x in (putouts, assists, errors))
+    if chances > 0 and errors is not None:
+        out["error_rate"] = errors / chances
+    if games and games > 0:
+        if chances > 0:
+            out["chances_per_game"] = chances / games
+        if double_plays is not None:
+            out["double_plays_per_game"] = double_plays / games
     return out
 
 
@@ -306,6 +367,9 @@ def _merge_players(team: str, pages: dict[str, dict[str, Any]]) -> list[dict[str
                     "pitching": None,
                     "pitching_derived": {},
                     "fielding": [],
+                    "fielding_derived": [],
+                    "profile": None,
+                    "profile_status": "NOT_SELECTED",
                 },
             )
             if raw.get("position") and not item.get("position"):
@@ -321,7 +385,140 @@ def _merge_players(team: str, pages: dict[str, dict[str, Any]]) -> list[dict[str
             else:
                 field = {k: v for k, v in raw.items() if not k.startswith("_") and k not in {"player_name", "player_id", "player_url"}}
                 item["fielding"].append(field)
-    return sorted(merged.values(), key=lambda x: (str(x.get("player_name") or ""), str(x.get("player_id") or "")))
+                item["fielding_derived"].append(_derive_fielding(raw))
+    players = sorted(merged.values(), key=lambda x: (str(x.get("player_name") or ""), str(x.get("player_id") or "")))
+    players, _ = _enrich_profiles(players)
+    return players
+
+
+class _ProfileParser(HTMLParser):
+    """Parse label/value pairs from an official NPB personal profile page."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.rows: list[list[str]] = []
+        self._row: list[str] | None = None
+        self._cell: list[str] | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.lower()
+        if tag == "tr":
+            self._row = []
+            self._cell = None
+        elif tag in {"th", "td"} and self._row is not None:
+            self._cell = []
+        elif tag == "br" and self._cell is not None:
+            self._cell.append(" ")
+
+    def handle_data(self, data: str) -> None:
+        if self._cell is not None:
+            value = _clean(data)
+            if value:
+                self._cell.append(value)
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag in {"th", "td"} and self._cell is not None and self._row is not None:
+            value = _clean(" ".join(self._cell))
+            self._row.append(value)
+            self._cell = None
+        elif tag == "tr" and self._row is not None:
+            if self._row:
+                self.rows.append(self._row)
+            self._row = None
+            self._cell = None
+
+
+def parse_profile_page(html: str) -> dict[str, Any]:
+    parser = _ProfileParser()
+    parser.feed(html)
+    fields: dict[str, str] = {}
+    for row in parser.rows:
+        if len(row) < 2:
+            continue
+        # Support both two-cell label/value rows and compact four-cell
+        # label/value/label/value profile tables.
+        for i in range(0, len(row) - 1, 2):
+            label = _clean(row[i])
+            value = _clean(row[i + 1])
+            if label and value and label not in fields:
+                fields[label] = value
+    handedness = fields.get("投打") or fields.get("投打ち") or ""
+    hand_match = re.search(r"([左右両])投([左右両])打", handedness)
+    return {
+        "profile_fields": fields,
+        "position": fields.get("守備位置") or fields.get("ポジション"),
+        "handedness": handedness or None,
+        "throws": hand_match.group(1) if hand_match else None,
+        "bats": hand_match.group(2) if hand_match else None,
+        "height_cm": _num(fields.get("身長")),
+        "weight_kg": _num(fields.get("体重")),
+        "birth_date": fields.get("生年月日"),
+        "career": fields.get("経歴"),
+        "draft": fields.get("ドラフト"),
+    }
+
+
+def _profile_priority(player: dict[str, Any]) -> float:
+    """Stable deterministic priority for bounded profile enrichment."""
+    batting = player.get("batting") or {}
+    pitching = player.get("pitching") or {}
+    fielding = player.get("fielding") or []
+    pa = _find_num(batting, "打席") or 0.0
+    ip = _find_num(pitching, "投球回") or 0.0
+    field_games = sum((_find_num(x, "試合") or 0.0) for x in fielding)
+    return float(pa + 20.0 * ip + 2.0 * field_games)
+
+
+def _enrich_profiles(players: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+    try:
+        limit = max(0, int(os.getenv("NPB_PLAYER_PROFILE_LIMIT_PER_TEAM", "24")))
+    except Exception as exc:
+        raise ValueError("NPB_PLAYER_PROFILE_LIMIT_PER_TEAM must be an integer >= 0") from exc
+    selected = sorted(
+        players,
+        key=lambda p: (-_profile_priority(p), str(p.get("player_id") or ""), str(p.get("player_name") or "")),
+    )[:limit]
+    selected_ids = {str(p.get("player_id") or "").strip() for p in selected}
+    resolved = 0
+    for player in players:
+        player["profile_status"] = "NOT_SELECTED"
+        if str(player.get("player_id") or "").strip() not in selected_ids:
+            continue
+        url = _clean(player.get("player_url"))
+        if not url:
+            player["profile_status"] = "NO_PROFILE_URL"
+            continue
+        try:
+            body, observed = _fetch(url)
+            profile = parse_profile_page(body)
+            profile.update(
+                {
+                    "schema_version": "npb-player-profile-v1",
+                    "player_id": player.get("player_id"),
+                    "player_name": player.get("player_name"),
+                    "player_url": url,
+                    "source": {
+                        "source_id": "npb_official_player_page",
+                        "url": url,
+                        "status": "AVAILABLE",
+                        "retrieved_at_utc": observed,
+                        "available_at_utc": observed,
+                        "published_at_utc": None,
+                        "revision_time_utc": None,
+                        "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
+                    },
+                    "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
+                }
+            )
+            player["profile"] = profile
+            player["profile_status"] = "AVAILABLE"
+            resolved += 1
+        except Exception as exc:
+            player["profile"] = None
+            player["profile_status"] = "SOURCE_FAILED"
+            player["profile_error"] = f"{type(exc).__name__}: {exc}"
+    return players, resolved
 
 
 def collect_team(team: str, season: int = 2026) -> dict[str, Any]:
@@ -383,6 +580,8 @@ def collect_team(team: str, season: int = 2026) -> dict[str, Any]:
     canonical = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     snapshot["snapshot_id"] = hashlib.sha256(canonical).hexdigest()
     snapshot["player_count"] = len(snapshot["players"])
+    snapshot["profile_count"] = int(sum(1 for p in snapshot["players"] if p.get("profile_status") == "AVAILABLE"))
+    snapshot["profile_limit_per_team"] = int(os.getenv("NPB_PLAYER_PROFILE_LIMIT_PER_TEAM", "24") or 24)
     return snapshot
 
 
