@@ -35,6 +35,7 @@ def run_validation_pipeline(
     league: str | None = None,
     policy: GatePolicy = GatePolicy(),
     holdout_uncertainty: Mapping[str, object] | None = None,
+    evaluation_periods: list[Mapping[str, float]] | None = None,
 ) -> ValidationRecord:
     """Run the full promotion state machine.
 
@@ -55,6 +56,7 @@ def run_validation_pipeline(
             "require_pit_starter_evidence": bool(
                 policy.require_pit_starter_evidence or league == "MLB"
             ),
+            "require_evaluation_period_stability": True,
         }
     )
     result = evaluate_locked_holdout(
@@ -73,6 +75,7 @@ def run_validation_pipeline(
         candidate_hilo=holdout_hilo_candidate,
         league=league,
         holdout_uncertainty=holdout_uncertainty,
+        evaluation_periods=evaluation_periods,
     )
     return ValidationRecord(
         candidate_id=candidate_id,
