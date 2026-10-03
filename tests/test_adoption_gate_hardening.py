@@ -129,6 +129,10 @@ def test_uncertainty_gate_accepts_robust_holdout_signal_when_other_gates_pass():
             "improvement_ci95": {"LogLoss": [0.005, 0.04]},
             "p_improvement_positive": {"LogLoss": 0.97},
         },
+        evaluation_periods=[
+            {"baseline_LogLoss": 0.71, "candidate_LogLoss": 0.69},
+            {"baseline_LogLoss": 0.69, "candidate_LogLoss": 0.68},
+        ],
     )
     assert result["decision"] == "ADOPT"
 
