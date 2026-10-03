@@ -4,6 +4,12 @@ from data import npb_roster_context as ctx
 
 
 ROSTER_HTML = """
+<h4>セントラル・リーグ</h4>
+<h5>出場選手登録</h5>
+<table><tr><td>阪神タイガース</td><td>投手</td><td>18</td><td><a href="/bis/players/100.html">伊原　陵人</a></td></tr></table>
+<h5>出場選手登録抹消</h5>
+<table><tr><td>広島東洋カープ</td><td>投手</td><td>50</td><td><a href="/bis/players/300.html">杉田　健</a></td></tr></table>
+<h5>出場選手一覧</h5>
 <h5>阪神タイガース</h5>
 <ul>
   <li>投手</li><li>18</li>
@@ -30,6 +36,23 @@ def test_parse_roster_page_groups_stable_player_ids_by_team():
         for players in got["teams"].values()
         for p in players
     )
+
+
+
+def test_parse_roster_page_captures_transactions_and_player_state():
+    got = ctx.parse_roster_page(ROSTER_HTML, "2026-10-03")
+    assert got["registered_today_count"] == 1
+    assert got["removed_today_count"] == 1
+    assert got["registered_today"][0]["player_id"] == "100"
+    assert got["registered_today"][0]["transaction_status"] == "REGISTERED"
+    assert got["registered_today"][0]["position"] == "投手"
+    assert got["registered_today"][0]["uniform_number"] == "18"
+    assert got["removed_today"][0]["player_id"] == "300"
+    assert got["removed_today"][0]["transaction_status"] == "REMOVED"
+    hanshin_100 = next(
+        p for p in got["teams"]["阪神タイガース"] if p["player_id"] == "100"
+    )
+    assert hanshin_100["roster_transaction_status"] == "REGISTERED_TODAY"
 
 
 def test_parse_roster_page_deduplicates_player_ids():
