@@ -8,6 +8,7 @@ on:
       - '.github/workflows/npb_live_source_health.yml'
       - 'data/npb_roster_context.py'
       - 'data/npb_team_player_context.py'
+      - 'production_npb.py'
   schedule:
     - cron: '20 */3 * * *'
   workflow_dispatch:
