@@ -395,6 +395,12 @@ def run_npb_candidate_cycle(
         games["starter_evidence_status"] = "not_pit_safe"
     X, y, _meta = bt.build_features(games)
     n = len(X)
+    # Freeze dataset provenance before candidate selection. This hash is
+    # recorded inside the calibrated blend spec so changing the Development
+    # corpus changes the candidate identity deterministically.
+    dataset_hash = hashlib.sha256(
+        pd.util.hash_pandas_object(games, index=True).values.tobytes()
+    ).hexdigest()
     holdout_start = int(n * (1.0 - config.holdout_fraction))
     dev_start = max(config.min_train_rows, int(n * 0.10))
     if holdout_start <= dev_start or n - holdout_start < config.min_holdout_rows:
@@ -489,6 +495,8 @@ def run_npb_candidate_cycle(
             top_k=len(blend_components),
             temperature_grid=RESEARCH_TEMPERATURE_GRID,
             weight_step=0.25,
+            dataset_hash=dataset_hash,
+            git_commit=git_commit,
         )
         development[blend_name] = _metrics(y_dev, blend_pred)
         development_predictions[blend_name] = blend_pred
@@ -570,7 +578,6 @@ def run_npb_candidate_cycle(
             "development": development,
         }
 
-    dataset_hash = hashlib.sha256(pd.util.hash_pandas_object(games, index=True).values.tobytes()).hexdigest()
     blend_token = (
         json.dumps(selected_blend_spec.to_dict(), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         if selected_blend_spec is not None
