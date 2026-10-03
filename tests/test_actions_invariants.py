@@ -323,20 +323,24 @@ def test_24h_supervisor_recovers_only_latest_zero_job_pregame_failures_with_dail
     text = (SUPERVISOR).read_text(encoding="utf-8")
     _assert_official_actions_are_immutable(text)
     assert "PREGAME_WORKFLOW=baseball_30m_pregame_auto.yml" in text
-    assert 'actions/workflows/${PREGAME_WORKFLOW}/runs?branch=main&per_page=100' in text
-    assert '--workflow "${PREGAME_WORKFLOW}"' not in text.split("PREGAME_WORKFLOW=baseball_30m_pregame_auto.yml", 1)[1].split("# Candidate OOS", 1)[0]
-    assert "actions/workflows/${PREGAME_WORKFLOW}/runs?branch=main" in text
+    assert 'actions/runs?event=push&branch=main&per_page=100' in text
+    assert 'select(.path == (".github/workflows/" + $workflow))' in text
+    assert "latest_failure_json" in text
     assert "latest_failure_id" in text
     assert "latest_failure_job_count=-1" in text
-    assert "latest_failure_job_count}" in text
-    assert "--jq '.jobs | length'" in text
-    assert "pregame_zero_job_failures" in text
-    assert 'sort_by(.createdAt) | reverse | .[]' in text
-    assert 'select(((.createdAt | fromdateiso8601) >= ((now - 86400))))' in text
-    assert 'if [ "${pregame_zero_job_failures}" -ge 3 ]; then' in text
-    assert "le 1440" in text
-    assert 'pregame_latest_age_minutes}" -lt 15' in text
-    assert 'pregame_zero_job_failures}" -ge 3' in text
+    assert "pregame_push_api" in text
+    assert "pregame_dispatch_api" in text
+    assert 'actions/runs?event=workflow_dispatch&branch=main&per_page=100' in text
+    assert "pregame_recovery_attempts_24h" in text
+    assert "pregame_recovery_age_minutes" in text
+    assert "latest_recovery_created" in text
+    assert "(now - 86400)" in text
+    assert "sort_by(.createdAt) | reverse | .[0]" in text
+    assert 'if [ "${pregame_recovery_attempts_24h}" -ge 3 ]; then' in text
+    assert 'if [ "${pregame_recovery_age_minutes}" -lt 15 ]; then' in text
+    assert "dispatch_epoch" in text
+    assert "new_pregame_run_id" in text
+    assert "--argjson cutoff" in text
     assert "PRE_GAME_ZERO_JOB_COOLDOWN" in text
     assert "PRE_GAME_ZERO_JOB_DAILY_CAP" in text
     assert 'gh_retry workflow run "${PREGAME_WORKFLOW}" --repo "${GH_REPO}" --ref main' in text
@@ -344,4 +348,4 @@ def test_24h_supervisor_recovers_only_latest_zero_job_pregame_failures_with_dail
     assert "PRE_GAME_ZERO_JOB_REDISPATCHED" in text
     assert "FAILED_PREGAME_ZERO_JOB_DISPATCH" in text
     assert "gh run rerun" not in text
-    assert "No recent zero-job pregame failure; no startup recovery dispatch." not in text
+    assert "Latest pregame failure is not a zero-job startup failure" in text
