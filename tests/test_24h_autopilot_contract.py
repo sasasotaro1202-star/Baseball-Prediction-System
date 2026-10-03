@@ -24,3 +24,10 @@ def test_24h_autopilot_dependent_research_waves_fail_closed():
     assert "needs['wave3-candidate-oos'].result == 'success'" in workflow
     assert "closeout:" in workflow
     assert "needs: [wave1-core-oos, wave2-frontier, wave3-candidate-oos, wave4-meta-research]" in workflow
+
+RELIABILITY_WORKFLOW = ROOT / ".github" / "workflows" / "reliability_preflight.yml"
+
+
+def test_reliability_preflight_concurrency_is_ref_scoped():
+    workflow = RELIABILITY_WORKFLOW.read_text(encoding="utf-8")
+    assert "group: reliability-preflight-${{ github.event.pull_request.number || github.ref }}" in workflow
