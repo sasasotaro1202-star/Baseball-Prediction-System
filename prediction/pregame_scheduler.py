@@ -60,18 +60,20 @@ TEAM_NAMES = set(TEAM_ALIASES) | set(TEAM_ALIASES.values())
 
 
 class _ScheduleParser(HTMLParser):
-    """Collect official team labels and visible clock tokens in document order.
+    """Parse the official schedule section for team labels and clock tokens.
 
-    NPB's official English schedule has used both image-alt and visible-text
-    team labels across page revisions. Accepting either representation is safe
-    because the parser still requires exactly one clock between adjacent team
-    labels before emitting a game. Hidden script/style payloads remain excluded.
+    NPB's official pages contain unrelated team links in navigation/footer
+    regions. The parser therefore starts only after an explicit schedule
+    heading and then accepts both image-alt and visible-text team labels.
     """
 
     def __init__(self) -> None:
         super().__init__()
         self.tokens: list[tuple[str, str]] = []
         self._hidden = 0
+        self._heading_depth: int | None = None
+        self._heading_parts: list[str] = []
+        self._schedule_started = False
 
     def _append_team(self, value: str) -> None:
         value = " ".join(str(value).replace("　", " ").split())
@@ -80,7 +82,7 @@ class _ScheduleParser(HTMLParser):
             value,
             TEAM_ALIASES.get(compact, compact),
         )
-        if canonical not in TEAM_NAMES and canonical not in TEAM_ALIASES.values():
+        if canonical not in TEAM_NAMES:
             return
         token = ("team", canonical)
         # Responsive DOMs may expose the same label through both img[alt] and
@@ -97,17 +99,49 @@ class _ScheduleParser(HTMLParser):
             return
         if self._hidden:
             return
+        if tag in {"h1", "h2", "h3", "h4", "h5", "h6"} and not self._schedule_started:
+            self._heading_depth = 1
+            self._heading_parts = []
+            return
+        if self._heading_depth is not None:
+            self._heading_depth += 1
+            return
+        if not self._schedule_started:
+            return
         if tag == "img":
             self._append_team(attrs_map.get("alt") or "")
 
     def handle_endtag(self, tag: str) -> None:
-        if tag.lower() in {"script", "style", "noscript", "template"}:
+        tag = tag.lower()
+        if tag in {"script", "style", "noscript", "template"}:
             self._hidden = max(0, self._hidden - 1)
+            return
+        if self._heading_depth is None or self._hidden:
+            return
+        self._heading_depth -= 1
+        if self._heading_depth == 0:
+            heading = " ".join(self._heading_parts).strip()
+            normalized = heading.replace("　", " ")
+            if (
+                "Regular Season (Schedules)" in normalized
+                or "公式戦" in normalized and any(
+                    marker in normalized for marker in ("試合予定", "試合結果", "試合日程")
+                )
+            ):
+                self._schedule_started = True
+            self._heading_parts = []
+            self._heading_depth = None
 
     def handle_data(self, data: str) -> None:
         if self._hidden:
             return
         value = " ".join(str(data).replace("　", " ").split())
+        if self._heading_depth is not None:
+            if value:
+                self._heading_parts.append(value)
+            return
+        if not self._schedule_started:
+            return
         compact = value.replace(" ", "")
         if value in TEAM_NAMES or compact in TEAM_NAMES:
             self._append_team(value)
@@ -117,6 +151,7 @@ class _ScheduleParser(HTMLParser):
             mm = int(value[3:])
             if 0 <= hh <= 23 and 0 <= mm <= 59:
                 self.tokens.append(("time", value))
+
 
 
 def load_runtimes() -> dict[str, dict]:
