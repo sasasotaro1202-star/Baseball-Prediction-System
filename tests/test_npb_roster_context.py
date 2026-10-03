@@ -23,9 +23,7 @@ def test_parse_roster_page_groups_stable_player_ids_by_team():
     assert got["status"] == "AVAILABLE"
     assert got["target_date"] == "2026-10-03"
     assert got["player_count"] == 3
-    assert [p["player_id"] for p in got["teams"]["阪神タイガース"]] == ["101", "100"] or {
-        p["player_id"] for p in got["teams"]["阪神タイガース"]
-    } == {"100", "101"}
+    assert {p["player_id"] for p in got["teams"]["阪神タイガース"]} == {"100", "101"}
     assert got["teams"]["横浜DeNAベイスターズ"][0]["player_id"] == "200"
     assert all(
         p["identity_status"] == "VERIFIED_STABLE_ID"
