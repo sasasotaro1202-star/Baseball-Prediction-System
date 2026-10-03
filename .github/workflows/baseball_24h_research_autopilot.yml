@@ -62,7 +62,7 @@ jobs:
           from pathlib import Path
 
           workflow = Path('.github/workflows/baseball_24h_research_autopilot.yml').read_text(encoding='utf-8')
-          paths = sorted(set(re.findall(r'tests/[A-Za-z0-9_.-]+\\.py', workflow)))
+          paths = sorted(set(re.findall(r'tests/[A-Za-z0-9_.-]+\.py', workflow)))
           if not paths:
               raise SystemExit('24h autopilot has no targeted test paths')
           missing = [path for path in paths if not Path(path).is_file()]
@@ -127,7 +127,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install minimal research dependencies
-        run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 pandas pytest
+        run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 pandas pytest requests
       - name: Baseline parser tests
         run: python -m pytest -q tests/test_auto_discovery_frontier.py tests/test_universal_source_matrix.py tests/test_universal_adapter_registry.py tests/test_availability_competitions.py tests/test_npb_tracking_source.py
       - name: Run frontier discovery loop
@@ -178,7 +178,8 @@ jobs:
   wave3-candidate-oos:
     name: 24h Wave 3 - Candidate OOS / robustness
     needs: wave2-frontier
-    if: always()
+    # Candidate OOS must fail closed when frontier acquisition fails.
+    if: ${{ always() && needs['wave2-frontier'].result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 355
     steps:
@@ -235,7 +236,8 @@ jobs:
   wave4-meta-research:
     name: 24h Wave 4 - Meta research / verification
     needs: wave3-candidate-oos
-    if: always()
+    # Meta-research must not consume candidate evidence from a failed OOS lane.
+    if: ${{ always() && needs['wave3-candidate-oos'].result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 355
     steps:
