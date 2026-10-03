@@ -386,9 +386,7 @@ def _merge_players(team: str, pages: dict[str, dict[str, Any]]) -> list[dict[str
                 field = {k: v for k, v in raw.items() if not k.startswith("_") and k not in {"player_name", "player_id", "player_url"}}
                 item["fielding"].append(field)
                 item["fielding_derived"].append(_derive_fielding(raw))
-    players = sorted(merged.values(), key=lambda x: (str(x.get("player_name") or ""), str(x.get("player_id") or "")))
-    players, _ = _enrich_profiles(players)
-    return players
+    return sorted(merged.values(), key=lambda x: (str(x.get("player_name") or ""), str(x.get("player_id") or "")))
 
 
 class _ProfileParser(HTMLParser):
@@ -568,20 +566,21 @@ def collect_team(team: str, season: int = 2026) -> dict[str, Any]:
             })
     available = sum(1 for x in sources if x["status"] == "AVAILABLE")
     status = "AVAILABLE" if available == len(STAT_KIND) else "PARTIAL" if available else "SOURCE_FAILED"
+    players, profile_count = _enrich_profiles(_merge_players(canonical_team, pages))
     snapshot = {
         "schema_version": "npb-team-player-context-v1",
         "team": canonical_team,
         "season": int(season),
         "status": status,
         "sources": sources,
-        "players": _merge_players(canonical_team, pages),
+        "players": players,
+        "profile_count": int(profile_count),
+        "profile_limit_per_team": int(os.getenv("NPB_PLAYER_PROFILE_LIMIT_PER_TEAM", "24") or 24),
         "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
     }
     canonical = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     snapshot["snapshot_id"] = hashlib.sha256(canonical).hexdigest()
     snapshot["player_count"] = len(snapshot["players"])
-    snapshot["profile_count"] = int(sum(1 for p in snapshot["players"] if p.get("profile_status") == "AVAILABLE"))
-    snapshot["profile_limit_per_team"] = int(os.getenv("NPB_PLAYER_PROFILE_LIMIT_PER_TEAM", "24") or 24)
     return snapshot
 
 
