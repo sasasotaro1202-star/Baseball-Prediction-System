@@ -32,6 +32,10 @@ def _label_from_row(row: dict[str, Any]) -> dict[str, str]:
         if candidate in {"NPB", "MLB"}:
             league = candidate
     if not league:
+        target = _text(row.get("target")).upper()
+        if target in {"NPB", "MLB"}:
+            league = target
+    if not league:
         league = UNKNOWN
 
     # Prefer explicitly stored taxonomy metadata from prediction time.
@@ -71,7 +75,11 @@ def _label_from_row(row: dict[str, Any]) -> dict[str, str]:
         "competition_stage": label.stage.upper() if label.stage else UNKNOWN,
         "season_type": label.season_type.upper() if label.season_type else UNKNOWN,
         "game_class": label.game_class.upper() if label.game_class else UNKNOWN,
-        "competition_key": label.competition_key if label.competition_key else f"{league}:{UNKNOWN}:{UNKNOWN}",
+        "competition_key": (
+            f"{league}:{UNKNOWN}:{UNKNOWN}"
+            if label.competition_key == "baseball:unknown"
+            else (label.competition_key if label.competition_key else f"{league}:{UNKNOWN}:{UNKNOWN}")
+        ),
         "competition_classification_status": label.status.upper() if label.status else "UNKNOWN",
     }
 
