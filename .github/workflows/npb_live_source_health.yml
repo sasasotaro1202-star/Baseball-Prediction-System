@@ -46,9 +46,10 @@ jobs:
         run: python -m pip install --disable-pip-version-check --retries 8 --timeout 120 --prefer-binary -r requirements.txt
 
       - name: Verify official NPB sources live
-        run: python scripts/verify_npb_live_sources.py
+        run: python -X faulthandler scripts/verify_npb_live_sources.py
 
       - name: Publish source health artifact
+        if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: npb-live-source-health
