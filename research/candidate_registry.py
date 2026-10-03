@@ -62,6 +62,9 @@ def record_candidate(
     holdout_hilo_baseline: Mapping[str, float] | None,
     holdout_hilo_candidate: Mapping[str, float] | None,
     league: str | None = None,
+    pit_starter_evidence_ok: bool = False,
+    holdout_pit_starter_evidence_ok: bool = False,
+    holdout_uncertainty: Mapping[str, object] | None = None,
     evaluation_periods: list[Mapping[str, float]] | None = None,
 ) -> CandidateRecord:
     """Lock on development metrics, then evaluate the independent holdout."""
@@ -79,6 +82,9 @@ def record_candidate(
         holdout_hilo_baseline=holdout_hilo_baseline,
         holdout_hilo_candidate=holdout_hilo_candidate,
         league=league,
+        pit_starter_evidence_ok=pit_starter_evidence_ok,
+        holdout_pit_starter_evidence_ok=holdout_pit_starter_evidence_ok,
+        holdout_uncertainty=holdout_uncertainty,
         evaluation_periods=evaluation_periods,
     )
     record = CandidateRecord(
