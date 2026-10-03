@@ -93,7 +93,7 @@ ROSTER_TABLE_HTML = """
 def test_parse_roster_page_supports_official_plain_text_roster_table_rows():
     got = ctx.parse_roster_page(ROSTER_TABLE_HTML, "2026-10-03")
     assert got["player_count"] == 3
-    assert [p["player_name"] for p in got["teams"]["阪神タイガース"]] == ["大山 悠輔", "梅野 隆太郎", "岩崎 優"]
+    assert [p["player_name"] for p in got["teams"]["阪神タイガース"]] == ["大山 悠輔", "岩崎 優", "梅野 隆太郎"]
     assert {p["uniform_number"] for p in got["teams"]["阪神タイガース"]} == {"13", "2", "3"}
     assert all(p["identity_status"] == "NAME_ONLY_UNVERIFIED" for p in got["teams"]["阪神タイガース"])
     assert all(p["roster_transaction_status"] == "IDENTITY_UNVERIFIED" for p in got["teams"]["阪神タイガース"])
