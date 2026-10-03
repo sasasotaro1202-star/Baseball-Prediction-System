@@ -349,6 +349,9 @@ def test_24h_supervisor_recovers_only_latest_zero_job_pregame_failures_with_dail
     assert "FAILED_PREGAME_ZERO_JOB_DISPATCH" in text
     assert "gh run rerun" not in text
     assert "Latest pregame failure is not a zero-job startup failure" in text
+    assert "HTTP 4[0-9]{2}" in text
+    assert "HTTP (408|429)" in text
+    assert "gh deterministic HTTP 4xx; refusing retry." in text
     pregame = (ROOT / ".github" / "workflows" / "baseball_30m_pregame_auto.yml").read_text(encoding="utf-8")
     assert "workflow_dispatch:" in pregame
     assert "recovery_mode:" in pregame
