@@ -154,7 +154,7 @@ def reconcile_shadow() -> dict[str, Any]:
         results[["date_key", "home_key", "away_key", "home_score", "away_score", "source_url"]],
         on=["date_key", "home_key", "away_key"],
         how="left",
-        validate="one_to_one",
+        validate="many_to_one",
     )
     matched = merged.dropna(subset=["home_score", "away_score"]).copy()
     if matched.empty:
