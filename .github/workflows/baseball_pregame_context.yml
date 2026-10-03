@@ -1,0 +1,62 @@
+name: Baseball Pregame Context Snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Target date in JST (YYYY-MM-DD)"
+        required: true
+        type: string
+  schedule:
+    - cron: "*/30 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baseball-pregame-context
+  cancel-in-progress: true
+
+env:
+  PYTHONPATH: .
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@3d3c42e95aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+
+      - name: Syntax and unit tests
+        run: |
+          python -m py_compile data/npb_pregame_context.py
+          python -m unittest discover -s tests -p 'test_npb_pregame_context.py' -v
+
+      - name: Resolve JST date
+        id: date
+        run: |
+          DATE="$(TZ=Asia/Tokyo date +%F)"
+          echo "date=$DATE" >> "$GITHUB_OUTPUT"
+
+      - name: Collect context snapshot
+        run: |
+          mkdir -p results
+          python -m data.npb_pregame_context --date "\${{ github.event.inputs.date || steps.date.outputs.date }}" --out results/npb_pregame_context.json
+
+      - name: Upload context snapshot
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: baseball-pregame-context
+          path: results/npb_pregame_context.json
+          if-no-files-found: error
+          retention-days: 7
