@@ -31,7 +31,7 @@ from data.competition_registry import production_eligible
 from data.npb_pregame_context import collect_npb_pregame_context
 from data.npb_player_context import collect_players as collect_npb_player_context
 from data.npb_team_player_context import collect_teams as collect_npb_team_player_context
-from data.npb_roster_context import collect_npb_roster_context
+from data.npb_roster_context import collect_npb_roster_context, resolve_roster_player_ids
 from research.target_strategy import as_dict as target_strategy_dict, standard_target_strategies
 from research.competition_taxonomy import classify_npb
 
@@ -1381,6 +1381,32 @@ def predict(
         }
     roster_snapshot_id = roster_context.get("snapshot_id") if isinstance(roster_context, dict) else None
     roster_teams = roster_context.get("teams", {}) if isinstance(roster_context, dict) else {}
+    # Resolve name-only official roster rows to stable player IDs through the
+    # official NPB player search, limited to teams actually present in today's games.
+    # This is identity/evidence enrichment only; probabilities are unchanged.
+    team_names = []
+    for game in outputs:
+        for key in ("home", "away"):
+            team = str(game.get(key) or "").strip()
+            if team and team not in team_names:
+                team_names.append(team)
+    try:
+        roster_context = resolve_roster_player_ids(roster_context, teams=set(team_names))
+    except Exception as exc:
+        roster_context["identity_resolution"] = {
+            "status": "SOURCE_FAILED",
+            "teams": team_names,
+            "requested_count": 0,
+            "resolved_count": 0,
+            "ambiguous_count": 0,
+            "not_found_count": 0,
+            "source_failed_count": 1,
+            "resolved_rate": 0.0,
+            "source": {"source_id": "npb_official_player_search", "status": "SOURCE_FAILED"},
+            "error": f"{type(exc).__name__}: {exc}",
+            "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
+        }
+    roster_teams = roster_context.get("teams", {}) if isinstance(roster_context, dict) else {}
     preferred_roster_ids_by_team = {
         str(team): {
             str(player.get("player_id") or "").strip()
@@ -1392,15 +1418,8 @@ def predict(
     }
 
     # Capture current official team-wide player context (batting/pitching/fielding).
-    # The roster IDs above are used only as an enrichment-priority signal.
-    # This is an evidence snapshot only; it is not automatically promoted to model
-    # features until a separate PIT/OOS/robustness/holdout experiment validates it.
-    team_names = []
-    for game in outputs:
-        for key in ("home", "away"):
-            team = str(game.get(key) or "").strip()
-            if team and team not in team_names:
-                team_names.append(team)
+    # The resolved roster IDs are used only for deterministic identity and
+    # enrichment-priority; this remains an evidence snapshot, not a model feature.
     preferred_roster_names_by_team = {
         str(team): {
             str(player.get("player_name") or "").strip()
