@@ -1,0 +1,49 @@
+name: NPB Live Source Health
+
+on:
+  schedule:
+    - cron: '20 */3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npb-live-source-health
+  cancel-in-progress: true
+
+jobs:
+  live-source-health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      PYTHONPATH: .
+      PYTHONUNBUFFERED: '1'
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        timeout-minutes: 5
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        timeout-minutes: 5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install
+        timeout-minutes: 5
+        run: python -m pip install --disable-pip-version-check --retries 8 --timeout 120 --prefer-binary -r requirements.txt
+
+      - name: Verify official NPB sources live
+        run: python scripts/verify_npb_live_sources.py
+
+      - name: Publish source health artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: npb-live-source-health
+          path: results/npb_live_source_health.json
+          if-no-files-found: error
+          retention-days: 14
