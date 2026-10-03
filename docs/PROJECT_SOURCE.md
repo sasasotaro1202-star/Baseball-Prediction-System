@@ -1953,7 +1953,7 @@ NPB公式の2026年度公式戦成績はチーム打撃・投手・守備およ�
 
 「取得できるデータ」と「stable identityを取得できるデータ」は別の品質軸として評価する。公式統計ページに選手成績が存在し、parserが選手名・主要数値を取得できる場合、ページ上にplayer_idリンクが埋め込まれていなくてもdata_status=AVAILABLEとする。一方、stable player_id coverageはidentity_status=COMPLETE/PARTIALとして別管理する。
 
-Live Source Healthは、Roster、試合予定、予告先発、個人打撃、個人投手、個人守備、個人プロフィールを実際に取得して検証する。データ取得成功とidentity coverage不足を同一のSOURCE_FAILEDへ混同しない。identityが不足する場合はexact deterministic join可能な別の公式source（Roster等）による補完を研究対象とし、fuzzy mergeやsilent mergeは禁止する。
+Live Source Healthは、Roster、試合予定、予告先発、個人打撃、個人投手、個人守備、個人プロフィールを実際に取得して検証する。データ取得成功とidentity coverage不足を同一のSOURCE_FAILEDへ混同しない。公式統計表にstable player_idリンクが無い場合は、対象日Rosterの選手名とチームを起点に、NPB公式「選手検索」を完全一致で照合してstable player_id / player page URLを解決する。完全一致で一意に決まらない場合はIDENTITY_AMBIGUOUS/IDENTITY_NOT_FOUND/IDENTITY_SEARCH_FAILEDとして残し、fuzzy mergeやsilent mergeは禁止する。
 
 === COPY END ===
 
