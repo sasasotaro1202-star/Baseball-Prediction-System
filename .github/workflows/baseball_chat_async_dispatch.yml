@@ -78,7 +78,7 @@ jobs:
               -H "Accept: application/vnd.github+json" \
               "repos/${GH_REPO}/actions/workflows/${TARGET_WORKFLOW}/dispatches" \
               -f ref=main \
-              -f-json inputs='${{ steps.route.outputs.inputs }}'
+              -F 'inputs=${{ steps.route.outputs.inputs }}'
           else
             timeout --signal=TERM --kill-after=3s 10s \
               gh api \
