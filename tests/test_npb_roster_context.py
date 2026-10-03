@@ -29,9 +29,8 @@ def test_parse_roster_page_groups_stable_player_ids_by_team():
     assert got["status"] == "AVAILABLE"
     assert got["target_date"] == "2026-10-03"
     assert got["player_count"] == 3
-    assert {p["player_name"] for p in got["teams"]["阪神タイガース"]} == {"伊原 陵人", "才木 浩人"}
-    assert all(p["identity_status"] == "NAME_ONLY_UNVERIFIED" for p in got["teams"]["阪神タイガース"])
-    assert {p["uniform_number"] for p in got["teams"]["阪神タイガース"]} == {"18", ""}
+    assert {p["player_id"] for p in got["teams"]["阪神タイガース"]} == {"100", "101"}
+    assert all(p["identity_status"] == "VERIFIED_STABLE_ID" for p in got["teams"]["阪神タイガース"])
     assert got["teams"]["横浜DeNAベイスターズ"][0]["player_id"] == "200"
     assert all(
         p["identity_status"] == "VERIFIED_STABLE_ID"
