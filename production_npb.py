@@ -8,8 +8,9 @@ features -> full-history ensemble -> coherent score distribution -> validated JS
 The target game itself is never appended to historical training data.
 """
 
-from copy import deepcopy
 from __future__ import annotations
+
+from copy import deepcopy
 import time
 import argparse, json, re, html as html_lib
 import sys
