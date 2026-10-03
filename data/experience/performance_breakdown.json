@@ -6,7 +6,7 @@
     "phase",
     "target"
   ],
-  "generated_at_utc": "2026-10-03T04:26:37.455125+00:00",
+  "generated_at_utc": "2026-10-03T04:28:20.262898+00:00",
   "status": "UPDATED",
   "canonical_cases": 11,
   "all_prediction_snapshots": 131,
@@ -66,6 +66,122 @@
           "score_mae": 1.8798167576886002
         }
       },
+      "by_horizon": {
+        "1_TO_3H": {
+          "rows": 3,
+          "overall": {
+            "rows": 3,
+            "accuracy": 0.6666666666666666,
+            "logloss": 0.8008562272402194,
+            "brier": 0.5746254777713334,
+            "draw_recall": 0.0,
+            "low_high_accuracy": 0.6666666666666666,
+            "top1_exact_hit_rate": 0.0,
+            "top4_exact_hit_rate": 0.0,
+            "score_mae": 2.388022260446631
+          },
+          "targets": {
+            "win_3way": {
+              "rows": 3,
+              "accuracy": 0.6666666666666666,
+              "logloss": 0.8008562272402194,
+              "brier": 0.5746254777713334,
+              "ece": 0.5205703333333334,
+              "selective_0.60": {
+                "coverage": 0.3333333333333333,
+                "n": 1,
+                "accuracy": 0.0
+              },
+              "selective_0.70": {
+                "coverage": 0.0,
+                "n": 0,
+                "accuracy": null
+              },
+              "selective_0.80": {
+                "coverage": 0.0,
+                "n": 0,
+                "accuracy": null
+              },
+              "selective_0.90": {
+                "coverage": 0.0,
+                "n": 0,
+                "accuracy": null
+              }
+            },
+            "low_high": {
+              "rows": 3,
+              "accuracy": 0.6666666666666666,
+              "logloss": 0.8105351430658282,
+              "brier": 0.30029437459766667,
+              "ece": 0.526987
+            },
+            "exact_score": {
+              "rows": 3,
+              "top1_exact_hit_rate": 0.0,
+              "top4_exact_hit_rate": 0.0,
+              "score_mae": 2.388022260446631
+            }
+          },
+          "mean_actual_lead_minutes": 70.02153796111112
+        },
+        "3_TO_6H": {
+          "rows": 8,
+          "overall": {
+            "rows": 8,
+            "accuracy": 0.375,
+            "logloss": 1.0213874631483701,
+            "brier": 0.5657428455408378,
+            "draw_recall": 0.0,
+            "low_high_accuracy": 0.75,
+            "top1_exact_hit_rate": 0.0,
+            "top4_exact_hit_rate": 0.125,
+            "score_mae": 1.6892396941543386
+          },
+          "targets": {
+            "win_3way": {
+              "rows": 8,
+              "accuracy": 0.375,
+              "logloss": 1.0213874631483701,
+              "brier": 0.5657428455408378,
+              "ece": 0.37632224127850866,
+              "selective_0.60": {
+                "coverage": 0.5,
+                "n": 4,
+                "accuracy": 0.75
+              },
+              "selective_0.70": {
+                "coverage": 0.25,
+                "n": 2,
+                "accuracy": 1.0
+              },
+              "selective_0.80": {
+                "coverage": 0.0,
+                "n": 0,
+                "accuracy": null
+              },
+              "selective_0.90": {
+                "coverage": 0.0,
+                "n": 0,
+                "accuracy": null
+              }
+            },
+            "low_high": {
+              "rows": 8,
+              "accuracy": 0.75,
+              "logloss": 0.6544698497592145,
+              "brier": 0.23104365289962497,
+              "ece": 0.278587625
+            },
+            "exact_score": {
+              "rows": 8,
+              "top1_exact_hit_rate": 0.0,
+              "top4_exact_hit_rate": 0.125,
+              "score_mae": 1.6892396941543386
+            }
+          },
+          "mean_actual_lead_minutes": 254.46834333541668
+        }
+      },
       "by_competition": {
         "NPB:UNKNOWN:UNKNOWN": {
           "rows": 11,
@@ -122,6 +238,122 @@
               "score_mae": 1.8798167576886002
             }
           },
+          "by_horizon": {
+            "1_TO_3H": {
+              "rows": 3,
+              "overall": {
+                "rows": 3,
+                "accuracy": 0.6666666666666666,
+                "logloss": 0.8008562272402194,
+                "brier": 0.5746254777713334,
+                "draw_recall": 0.0,
+                "low_high_accuracy": 0.6666666666666666,
+                "top1_exact_hit_rate": 0.0,
+                "top4_exact_hit_rate": 0.0,
+                "score_mae": 2.388022260446631
+              },
+              "targets": {
+                "win_3way": {
+                  "rows": 3,
+                  "accuracy": 0.6666666666666666,
+                  "logloss": 0.8008562272402194,
+                  "brier": 0.5746254777713334,
+                  "ece": 0.5205703333333334,
+                  "selective_0.60": {
+                    "coverage": 0.3333333333333333,
+                    "n": 1,
+                    "accuracy": 0.0
+                  },
+                  "selective_0.70": {
+                    "coverage": 0.0,
+                    "n": 0,
+                    "accuracy": null
+                  },
+                  "selective_0.80": {
+                    "coverage": 0.0,
+                    "n": 0,
+                    "accuracy": null
+                  },
+                  "selective_0.90": {
+                    "coverage": 0.0,
+                    "n": 0,
+                    "accuracy": null
+                  }
+                },
+                "low_high": {
+                  "rows": 3,
+                  "accuracy": 0.6666666666666666,
+                  "logloss": 0.8105351430658282,
+                  "brier": 0.30029437459766667,
+                  "ece": 0.526987
+                },
+                "exact_score": {
+                  "rows": 3,
+                  "top1_exact_hit_rate": 0.0,
+                  "top4_exact_hit_rate": 0.0,
+                  "score_mae": 2.388022260446631
+                }
+              },
+              "mean_actual_lead_minutes": 70.02153796111112
+            },
+            "3_TO_6H": {
+              "rows": 8,
+              "overall": {
+                "rows": 8,
+                "accuracy": 0.375,
+                "logloss": 1.0213874631483701,
+                "brier": 0.5657428455408378,
+                "draw_recall": 0.0,
+                "low_high_accuracy": 0.75,
+                "top1_exact_hit_rate": 0.0,
+                "top4_exact_hit_rate": 0.125,
+                "score_mae": 1.6892396941543386
+              },
+              "targets": {
+                "win_3way": {
+                  "rows": 8,
+                  "accuracy": 0.375,
+                  "logloss": 1.0213874631483701,
+                  "brier": 0.5657428455408378,
+                  "ece": 0.37632224127850866,
+                  "selective_0.60": {
+                    "coverage": 0.5,
+                    "n": 4,
+                    "accuracy": 0.75
+                  },
+                  "selective_0.70": {
+                    "coverage": 0.25,
+                    "n": 2,
+                    "accuracy": 1.0
+                  },
+                  "selective_0.80": {
+                    "coverage": 0.0,
+                    "n": 0,
+                    "accuracy": null
+                  },
+                  "selective_0.90": {
+                    "coverage": 0.0,
+                    "n": 0,
+                    "accuracy": null
+                  }
+                },
+                "low_high": {
+                  "rows": 8,
+                  "accuracy": 0.75,
+                  "logloss": 0.6544698497592145,
+                  "brier": 0.23104365289962497,
+                  "ece": 0.278587625
+                },
+                "exact_score": {
+                  "rows": 8,
+                  "top1_exact_hit_rate": 0.0,
+                  "top4_exact_hit_rate": 0.125,
+                  "score_mae": 1.6892396941543386
+                }
+              },
+              "mean_actual_lead_minutes": 254.46834333541668
+            }
+          },
           "by_phase": {
             "UNKNOWN": {
               "rows": 11,
@@ -176,6 +408,122 @@
                   "top1_exact_hit_rate": 0.0,
                   "top4_exact_hit_rate": 0.09090909090909091,
                   "score_mae": 1.8798167576886002
+                }
+              },
+              "by_horizon": {
+                "1_TO_3H": {
+                  "rows": 3,
+                  "overall": {
+                    "rows": 3,
+                    "accuracy": 0.6666666666666666,
+                    "logloss": 0.8008562272402194,
+                    "brier": 0.5746254777713334,
+                    "draw_recall": 0.0,
+                    "low_high_accuracy": 0.6666666666666666,
+                    "top1_exact_hit_rate": 0.0,
+                    "top4_exact_hit_rate": 0.0,
+                    "score_mae": 2.388022260446631
+                  },
+                  "targets": {
+                    "win_3way": {
+                      "rows": 3,
+                      "accuracy": 0.6666666666666666,
+                      "logloss": 0.8008562272402194,
+                      "brier": 0.5746254777713334,
+                      "ece": 0.5205703333333334,
+                      "selective_0.60": {
+                        "coverage": 0.3333333333333333,
+                        "n": 1,
+                        "accuracy": 0.0
+                      },
+                      "selective_0.70": {
+                        "coverage": 0.0,
+                        "n": 0,
+                        "accuracy": null
+                      },
+                      "selective_0.80": {
+                        "coverage": 0.0,
+                        "n": 0,
+                        "accuracy": null
+                      },
+                      "selective_0.90": {
+                        "coverage": 0.0,
+                        "n": 0,
+                        "accuracy": null
+                      }
+                    },
+                    "low_high": {
+                      "rows": 3,
+                      "accuracy": 0.6666666666666666,
+                      "logloss": 0.8105351430658282,
+                      "brier": 0.30029437459766667,
+                      "ece": 0.526987
+                    },
+                    "exact_score": {
+                      "rows": 3,
+                      "top1_exact_hit_rate": 0.0,
+                      "top4_exact_hit_rate": 0.0,
+                      "score_mae": 2.388022260446631
+                    }
+                  },
+                  "mean_actual_lead_minutes": 70.02153796111112
+                },
+                "3_TO_6H": {
+                  "rows": 8,
+                  "overall": {
+                    "rows": 8,
+                    "accuracy": 0.375,
+                    "logloss": 1.0213874631483701,
+                    "brier": 0.5657428455408378,
+                    "draw_recall": 0.0,
+                    "low_high_accuracy": 0.75,
+                    "top1_exact_hit_rate": 0.0,
+                    "top4_exact_hit_rate": 0.125,
+                    "score_mae": 1.6892396941543386
+                  },
+                  "targets": {
+                    "win_3way": {
+                      "rows": 8,
+                      "accuracy": 0.375,
+                      "logloss": 1.0213874631483701,
+                      "brier": 0.5657428455408378,
+                      "ece": 0.37632224127850866,
+                      "selective_0.60": {
+                        "coverage": 0.5,
+                        "n": 4,
+                        "accuracy": 0.75
+                      },
+                      "selective_0.70": {
+                        "coverage": 0.25,
+                        "n": 2,
+                        "accuracy": 1.0
+                      },
+                      "selective_0.80": {
+                        "coverage": 0.0,
+                        "n": 0,
+                        "accuracy": null
+                      },
+                      "selective_0.90": {
+                        "coverage": 0.0,
+                        "n": 0,
+                        "accuracy": null
+                      }
+                    },
+                    "low_high": {
+                      "rows": 8,
+                      "accuracy": 0.75,
+                      "logloss": 0.6544698497592145,
+                      "brier": 0.23104365289962497,
+                      "ece": 0.278587625
+                    },
+                    "exact_score": {
+                      "rows": 8,
+                      "top1_exact_hit_rate": 0.0,
+                      "top4_exact_hit_rate": 0.125,
+                      "score_mae": 1.6892396941543386
+                    }
+                  },
+                  "mean_actual_lead_minutes": 254.46834333541668
                 }
               }
             }
@@ -240,6 +588,179 @@
           "score_mae": 1.8805223352269638
         }
       },
+      "by_horizon": {
+        "1_TO_3H": {
+          "rows": 12,
+          "overall": {
+            "rows": 12,
+            "accuracy": 0.6666666666666666,
+            "logloss": 0.8085437492459389,
+            "brier": 0.5818782783789069,
+            "draw_recall": 0.0,
+            "low_high_accuracy": 0.6666666666666666,
+            "top1_exact_hit_rate": 0.0,
+            "top4_exact_hit_rate": 0.0,
+            "score_mae": 2.3886727958658804
+          },
+          "targets": {
+            "win_3way": {
+              "rows": 12,
+              "accuracy": 0.6666666666666666,
+              "logloss": 0.8085437492459389,
+              "brier": 0.5818782783789069,
+              "ece": 0.5247557610547611,
+              "selective_0.60": {
+                "coverage": 0.3333333333333333,
+                "n": 4,
+                "accuracy": 0.0
+              },
+              "selective_0.70": {
+                "coverage": 0.16666666666666666,
+                "n": 2,
+                "accuracy": 0.0
+              },
+              "selective_0.80": {
+                "coverage": 0.0,
+                "n": 0,
+                "accuracy": null
+              },
+              "selective_0.90": {
+                "coverage": 0.0,
+                "n": 0,
+                "accuracy": null
+              }
+            },
+            "low_high": {
+              "rows": 12,
+              "accuracy": 0.6666666666666666,
+              "logloss": 0.8105359893002687,
+              "brier": 0.30029470410016673,
+              "ece": 0.5269871666666667
+            },
+            "exact_score": {
+              "rows": 12,
+              "top1_exact_hit_rate": 0.0,
+              "top4_exact_hit_rate": 0.0,
+              "score_mae": 2.3886727958658804
+            }
+          },
+          "mean_actual_lead_minutes": 99.64172924305556
+        },
+        "3_TO_6H": {
+          "rows": 40,
+          "overall": {
+            "rows": 40,
+            "accuracy": 0.375,
+            "logloss": 1.1043794399075442,
+            "brier": 0.597076582110428,
+            "draw_recall": 0.0,
+            "low_high_accuracy": 0.8,
+            "top1_exact_hit_rate": 0.0,
+            "top4_exact_hit_rate": 0.075,
+            "score_mae": 1.801655691294308
+          },
+          "targets": {
+            "win_3way": {
+              "rows": 40,
+              "accuracy": 0.375,
+              "logloss": 1.1043794399075442,
+              "brier": 0.597076582110428,
+              "ece": 0.30921880972376525,
+              "selective_0.60": {
+                "coverage": 0.35,
+                "n": 14,
+                "accuracy": 0.7857142857142857
+              },
+              "selective_0.70": {
+                "coverage": 0.25,
+                "n": 10,
+                "accuracy": 0.9
+              },
+              "selective_0.80": {
+                "coverage": 0.0,
+                "n": 0,
+                "accuracy": null
+              },
+              "selective_0.90": {
+                "coverage": 0.0,
+                "n": 0,
+                "accuracy": null
+              }
+            },
+            "low_high": {
+              "rows": 40,
+              "accuracy": 0.8,
+              "logloss": 0.6739327201024123,
+              "brier": 0.23850997755075004,
+              "ece": 0.4061572
+            },
+            "exact_score": {
+              "rows": 40,
+              "top1_exact_hit_rate": 0.0,
+              "top4_exact_hit_rate": 0.075,
+              "score_mae": 1.801655691294308
+            }
+          },
+          "mean_actual_lead_minutes": 278.9228062804167
+        },
+        "GE_6H": {
+          "rows": 79,
+          "overall": {
+            "rows": 79,
+            "accuracy": 0.45569620253164556,
+            "logloss": 0.9661238567703485,
+            "brier": 0.5635369302374293,
+            "draw_recall": 0.0,
+            "low_high_accuracy": 0.569620253164557,
+            "top1_exact_hit_rate": 0.0,
+            "top4_exact_hit_rate": 0.13924050632911392,
+            "score_mae": 1.8432674014249284
+          },
+          "targets": {
+            "win_3way": {
+              "rows": 79,
+              "accuracy": 0.45569620253164556,
+              "logloss": 0.9661238567703485,
+              "brier": 0.5635369302374293,
+              "ece": 0.3459312583712614,
+              "selective_0.60": {
+                "coverage": 0.6075949367088608,
+                "n": 48,
+                "accuracy": 0.5416666666666666
+              },
+              "selective_0.70": {
+                "coverage": 0.31645569620253167,
+                "n": 25,
+                "accuracy": 1.0
+              },
+              "selective_0.80": {
+                "coverage": 0.0,
+                "n": 0,
+                "accuracy": null
+              },
+              "selective_0.90": {
+                "coverage": 0.0,
+                "n": 0,
+                "accuracy": null
+              }
+            },
+            "low_high": {
+              "rows": 79,
+              "accuracy": 0.569620253164557,
+              "logloss": 0.692777219950067,
+              "brier": 0.2490821966762152,
+              "ece": 0.21993051898734176
+            },
+            "exact_score": {
+              "rows": 79,
+              "top1_exact_hit_rate": 0.0,
+              "top4_exact_hit_rate": 0.13924050632911392,
+              "score_mae": 1.8432674014249284
+            }
+          },
+          "mean_actual_lead_minutes": 810.7054967656118
+        }
+      },
       "by_competition": {
         "NPB:UNKNOWN:UNKNOWN": {
           "rows": 131,
@@ -296,6 +817,179 @@
               "score_mae": 1.8805223352269638
             }
           },
+          "by_horizon": {
+            "1_TO_3H": {
+              "rows": 12,
+              "overall": {
+                "rows": 12,
+                "accuracy": 0.6666666666666666,
+                "logloss": 0.8085437492459389,
+                "brier": 0.5818782783789069,
+                "draw_recall": 0.0,
+                "low_high_accuracy": 0.6666666666666666,
+                "top1_exact_hit_rate": 0.0,
+                "top4_exact_hit_rate": 0.0,
+                "score_mae": 2.3886727958658804
+              },
+              "targets": {
+                "win_3way": {
+                  "rows": 12,
+                  "accuracy": 0.6666666666666666,
+                  "logloss": 0.8085437492459389,
+                  "brier": 0.5818782783789069,
+                  "ece": 0.5247557610547611,
+                  "selective_0.60": {
+                    "coverage": 0.3333333333333333,
+                    "n": 4,
+                    "accuracy": 0.0
+                  },
+                  "selective_0.70": {
+                    "coverage": 0.16666666666666666,
+                    "n": 2,
+                    "accuracy": 0.0
+                  },
+                  "selective_0.80": {
+                    "coverage": 0.0,
+                    "n": 0,
+                    "accuracy": null
+                  },
+                  "selective_0.90": {
+                    "coverage": 0.0,
+                    "n": 0,
+                    "accuracy": null
+                  }
+                },
+                "low_high": {
+                  "rows": 12,
+                  "accuracy": 0.6666666666666666,
+                  "logloss": 0.8105359893002687,
+                  "brier": 0.30029470410016673,
+                  "ece": 0.5269871666666667
+                },
+                "exact_score": {
+                  "rows": 12,
+                  "top1_exact_hit_rate": 0.0,
+                  "top4_exact_hit_rate": 0.0,
+                  "score_mae": 2.3886727958658804
+                }
+              },
+              "mean_actual_lead_minutes": 99.64172924305556
+            },
+            "3_TO_6H": {
+              "rows": 40,
+              "overall": {
+                "rows": 40,
+                "accuracy": 0.375,
+                "logloss": 1.1043794399075442,
+                "brier": 0.597076582110428,
+                "draw_recall": 0.0,
+                "low_high_accuracy": 0.8,
+                "top1_exact_hit_rate": 0.0,
+                "top4_exact_hit_rate": 0.075,
+                "score_mae": 1.801655691294308
+              },
+              "targets": {
+                "win_3way": {
+                  "rows": 40,
+                  "accuracy": 0.375,
+                  "logloss": 1.1043794399075442,
+                  "brier": 0.597076582110428,
+                  "ece": 0.30921880972376525,
+                  "selective_0.60": {
+                    "coverage": 0.35,
+                    "n": 14,
+                    "accuracy": 0.7857142857142857
+                  },
+                  "selective_0.70": {
+                    "coverage": 0.25,
+                    "n": 10,
+                    "accuracy": 0.9
+                  },
+                  "selective_0.80": {
+                    "coverage": 0.0,
+                    "n": 0,
+                    "accuracy": null
+                  },
+                  "selective_0.90": {
+                    "coverage": 0.0,
+                    "n": 0,
+                    "accuracy": null
+                  }
+                },
+                "low_high": {
+                  "rows": 40,
+                  "accuracy": 0.8,
+                  "logloss": 0.6739327201024123,
+                  "brier": 0.23850997755075004,
+                  "ece": 0.4061572
+                },
+                "exact_score": {
+                  "rows": 40,
+                  "top1_exact_hit_rate": 0.0,
+                  "top4_exact_hit_rate": 0.075,
+                  "score_mae": 1.801655691294308
+                }
+              },
+              "mean_actual_lead_minutes": 278.9228062804167
+            },
+            "GE_6H": {
+              "rows": 79,
+              "overall": {
+                "rows": 79,
+                "accuracy": 0.45569620253164556,
+                "logloss": 0.9661238567703485,
+                "brier": 0.5635369302374293,
+                "draw_recall": 0.0,
+                "low_high_accuracy": 0.569620253164557,
+                "top1_exact_hit_rate": 0.0,
+                "top4_exact_hit_rate": 0.13924050632911392,
+                "score_mae": 1.8432674014249284
+              },
+              "targets": {
+                "win_3way": {
+                  "rows": 79,
+                  "accuracy": 0.45569620253164556,
+                  "logloss": 0.9661238567703485,
+                  "brier": 0.5635369302374293,
+                  "ece": 0.3459312583712614,
+                  "selective_0.60": {
+                    "coverage": 0.6075949367088608,
+                    "n": 48,
+                    "accuracy": 0.5416666666666666
+                  },
+                  "selective_0.70": {
+                    "coverage": 0.31645569620253167,
+                    "n": 25,
+                    "accuracy": 1.0
+                  },
+                  "selective_0.80": {
+                    "coverage": 0.0,
+                    "n": 0,
+                    "accuracy": null
+                  },
+                  "selective_0.90": {
+                    "coverage": 0.0,
+                    "n": 0,
+                    "accuracy": null
+                  }
+                },
+                "low_high": {
+                  "rows": 79,
+                  "accuracy": 0.569620253164557,
+                  "logloss": 0.692777219950067,
+                  "brier": 0.2490821966762152,
+                  "ece": 0.21993051898734176
+                },
+                "exact_score": {
+                  "rows": 79,
+                  "top1_exact_hit_rate": 0.0,
+                  "top4_exact_hit_rate": 0.13924050632911392,
+                  "score_mae": 1.8432674014249284
+                }
+              },
+              "mean_actual_lead_minutes": 810.7054967656118
+            }
+          },
           "by_phase": {
             "UNKNOWN": {
               "rows": 131,
@@ -350,6 +1044,179 @@
                   "top1_exact_hit_rate": 0.0,
                   "top4_exact_hit_rate": 0.10687022900763359,
                   "score_mae": 1.8805223352269638
+                }
+              },
+              "by_horizon": {
+                "1_TO_3H": {
+                  "rows": 12,
+                  "overall": {
+                    "rows": 12,
+                    "accuracy": 0.6666666666666666,
+                    "logloss": 0.8085437492459389,
+                    "brier": 0.5818782783789069,
+                    "draw_recall": 0.0,
+                    "low_high_accuracy": 0.6666666666666666,
+                    "top1_exact_hit_rate": 0.0,
+                    "top4_exact_hit_rate": 0.0,
+                    "score_mae": 2.3886727958658804
+                  },
+                  "targets": {
+                    "win_3way": {
+                      "rows": 12,
+                      "accuracy": 0.6666666666666666,
+                      "logloss": 0.8085437492459389,
+                      "brier": 0.5818782783789069,
+                      "ece": 0.5247557610547611,
+                      "selective_0.60": {
+                        "coverage": 0.3333333333333333,
+                        "n": 4,
+                        "accuracy": 0.0
+                      },
+                      "selective_0.70": {
+                        "coverage": 0.16666666666666666,
+                        "n": 2,
+                        "accuracy": 0.0
+                      },
+                      "selective_0.80": {
+                        "coverage": 0.0,
+                        "n": 0,
+                        "accuracy": null
+                      },
+                      "selective_0.90": {
+                        "coverage": 0.0,
+                        "n": 0,
+                        "accuracy": null
+                      }
+                    },
+                    "low_high": {
+                      "rows": 12,
+                      "accuracy": 0.6666666666666666,
+                      "logloss": 0.8105359893002687,
+                      "brier": 0.30029470410016673,
+                      "ece": 0.5269871666666667
+                    },
+                    "exact_score": {
+                      "rows": 12,
+                      "top1_exact_hit_rate": 0.0,
+                      "top4_exact_hit_rate": 0.0,
+                      "score_mae": 2.3886727958658804
+                    }
+                  },
+                  "mean_actual_lead_minutes": 99.64172924305556
+                },
+                "3_TO_6H": {
+                  "rows": 40,
+                  "overall": {
+                    "rows": 40,
+                    "accuracy": 0.375,
+                    "logloss": 1.1043794399075442,
+                    "brier": 0.597076582110428,
+                    "draw_recall": 0.0,
+                    "low_high_accuracy": 0.8,
+                    "top1_exact_hit_rate": 0.0,
+                    "top4_exact_hit_rate": 0.075,
+                    "score_mae": 1.801655691294308
+                  },
+                  "targets": {
+                    "win_3way": {
+                      "rows": 40,
+                      "accuracy": 0.375,
+                      "logloss": 1.1043794399075442,
+                      "brier": 0.597076582110428,
+                      "ece": 0.30921880972376525,
+                      "selective_0.60": {
+                        "coverage": 0.35,
+                        "n": 14,
+                        "accuracy": 0.7857142857142857
+                      },
+                      "selective_0.70": {
+                        "coverage": 0.25,
+                        "n": 10,
+                        "accuracy": 0.9
+                      },
+                      "selective_0.80": {
+                        "coverage": 0.0,
+                        "n": 0,
+                        "accuracy": null
+                      },
+                      "selective_0.90": {
+                        "coverage": 0.0,
+                        "n": 0,
+                        "accuracy": null
+                      }
+                    },
+                    "low_high": {
+                      "rows": 40,
+                      "accuracy": 0.8,
+                      "logloss": 0.6739327201024123,
+                      "brier": 0.23850997755075004,
+                      "ece": 0.4061572
+                    },
+                    "exact_score": {
+                      "rows": 40,
+                      "top1_exact_hit_rate": 0.0,
+                      "top4_exact_hit_rate": 0.075,
+                      "score_mae": 1.801655691294308
+                    }
+                  },
+                  "mean_actual_lead_minutes": 278.9228062804167
+                },
+                "GE_6H": {
+                  "rows": 79,
+                  "overall": {
+                    "rows": 79,
+                    "accuracy": 0.45569620253164556,
+                    "logloss": 0.9661238567703485,
+                    "brier": 0.5635369302374293,
+                    "draw_recall": 0.0,
+                    "low_high_accuracy": 0.569620253164557,
+                    "top1_exact_hit_rate": 0.0,
+                    "top4_exact_hit_rate": 0.13924050632911392,
+                    "score_mae": 1.8432674014249284
+                  },
+                  "targets": {
+                    "win_3way": {
+                      "rows": 79,
+                      "accuracy": 0.45569620253164556,
+                      "logloss": 0.9661238567703485,
+                      "brier": 0.5635369302374293,
+                      "ece": 0.3459312583712614,
+                      "selective_0.60": {
+                        "coverage": 0.6075949367088608,
+                        "n": 48,
+                        "accuracy": 0.5416666666666666
+                      },
+                      "selective_0.70": {
+                        "coverage": 0.31645569620253167,
+                        "n": 25,
+                        "accuracy": 1.0
+                      },
+                      "selective_0.80": {
+                        "coverage": 0.0,
+                        "n": 0,
+                        "accuracy": null
+                      },
+                      "selective_0.90": {
+                        "coverage": 0.0,
+                        "n": 0,
+                        "accuracy": null
+                      }
+                    },
+                    "low_high": {
+                      "rows": 79,
+                      "accuracy": 0.569620253164557,
+                      "logloss": 0.692777219950067,
+                      "brier": 0.2490821966762152,
+                      "ece": 0.21993051898734176
+                    },
+                    "exact_score": {
+                      "rows": 79,
+                      "top1_exact_hit_rate": 0.0,
+                      "top4_exact_hit_rate": 0.13924050632911392,
+                      "score_mae": 1.8432674014249284
+                    }
+                  },
+                  "mean_actual_lead_minutes": 810.7054967656118
                 }
               }
             }
