@@ -28,7 +28,7 @@ from data.npb_team_player_context import (
 )
 
 ROSTER_INDEX_URL = NPB_BASE_URL + "/announcement/roster/"
-ROSTER_PAGE_PATTERN = re.compile(r"/announcement/roster/roster_(d{4}).html")
+ROSTER_PAGE_PATTERN = re.compile(r"/announcement/roster/roster_(\d{4}).html")
 SESSION = http_session(user_agent="Baseball-Prediction-System/npb-live-source-smoke")
 OUTPUT = Path("results/npb_live_source_health.json")
 
@@ -44,7 +44,7 @@ class _RosterIndexParser:
         self.links = [
             urljoin(NPB_BASE_URL, match)
             for match in re.findall(
-                r'href=["\']([^"\']*?/announcement/roster/roster_d{4}.html)["\']',
+                r'href=["\']([^"\']*?/announcement/roster/roster_\d{4}.html)["\']',
                 html,
                 flags=re.IGNORECASE,
             )
@@ -64,7 +64,7 @@ def _fetch_text(url: str) -> str:
 
 def _latest_roster_url(today: date) -> tuple[str, str]:
     body = _fetch_text(ROSTER_INDEX_URL)
-    match = re.search(r"(20d{2})年(d{1,2})月(d{1,2})日の出場選手登録", body)
+    match = re.search(r"(20\d{2})年(\d{1,2})月(\d{1,2})日の出場選手登録", body)
     if match:
         d = date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
         if d <= today:
