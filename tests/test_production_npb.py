@@ -205,6 +205,61 @@ def test_daily_schedule_time_parser_accepts_pair_time_stream(monkeypatch):
     assert got[("北海道日本ハムファイターズ", "東北楽天ゴールデンイーグルス")] == "18:00"
 
 
+def test_target_rows_preserves_prediction_time_competition_metadata(monkeypatch):
+    import production_npb as p
+    import pandas as pd
+
+    monkeypatch.setattr(
+        p,
+        "official_starters",
+        lambda target_date, **kwargs: [{
+            "home": "広島東洋カープ",
+            "away": "読売ジャイアンツ",
+            "home_starter": "投手A",
+            "away_starter": "投手B",
+            "confirmed_starters": True,
+            "starter_evidence_status": "official_announced",
+            "starter_source": "https://npb.jp/announcement/starter/",
+            "official_start_time": "18:00",
+        }],
+    )
+    monkeypatch.setattr(
+        p,
+        "_official_daily_start_times",
+        lambda target_date, **kwargs: (
+            kwargs["metadata_out"].update({
+                "competition": "npb_regular",
+                "stage": "regular_season",
+                "season_type": "regular_season",
+                "game_class": "official",
+                "competition_key": "NPB:npb_regular:regular_season",
+                "status": "classified",
+                "source_url": "https://npb.jp/bis/eng/2026/games/gm20260924.html",
+                "source_field": "npb_daily_schedule_heading",
+                "source_value": "公式戦【試合予定】",
+            }) or {("広島東洋カープ", "読売ジャイアンツ"): "18:00"}
+        ),
+    )
+    monkeypatch.setattr(
+        p,
+        "_utc_now",
+        lambda: pd.Timestamp("2026-09-23 12:00:00+00:00"),
+    )
+
+    rows = p.build_target_rows("2026-09-24")
+    assert len(rows) == 1
+    row = rows.iloc[0]
+    assert row["competition"] == "npb_regular"
+    assert row["competition_stage"] == "regular_season"
+    assert row["season_type"] == "regular_season"
+    assert row["game_class"] == "official"
+    assert row["competition_key"] == "NPB:npb_regular:regular_season"
+    assert row["competition_classification_status"] == "classified"
+    assert row["competition_metadata_source"] == "https://npb.jp/bis/eng/2026/games/gm20260924.html"
+    assert row["competition_metadata_source_field"] == "npb_daily_schedule_heading"
+    assert row["competition_metadata_source_value"] == "公式戦【試合予定】"
+
+
 def test_target_rows_uses_official_daily_schedule_time_as_authoritative(monkeypatch):
     import production_npb as p
     import pandas as pd
