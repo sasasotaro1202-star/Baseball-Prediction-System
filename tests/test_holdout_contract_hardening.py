@@ -57,7 +57,7 @@ def test_validation_pipeline_requires_independent_uncertainty_evidence():
         candidate_id="cand-uncertainty",
         development_metrics={"rows": 250},
         holdout_baseline={"rows": 250, "LogLoss": 0.70, "Brier": 0.25, "Accuracy": 0.60, "DrawRecall": 0.20, "DrawProbabilityMAE": 0.01},
-        holdout_candidate={"rows": 250, "LogLoss": 0.68, "Brier": 0.24, "Accuracy": 0.61, "DrawRecall": 0.20, "DrawProbabilityMAE": 0.01},
+        holdout_candidate={"rows": 250, "LogLoss": 0.67, "Brier": 0.24, "Accuracy": 0.61, "DrawRecall": 0.20, "DrawProbabilityMAE": 0.01},
         **_holdout_kwargs(),
     )
     rejected = run_validation_pipeline(**common)
