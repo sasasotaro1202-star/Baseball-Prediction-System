@@ -1856,6 +1856,16 @@ MONITOR
 
 ⸻
 
+86. RECONCILIATION METADATA PRESERVATION
+
+production prediction rows may already contain prediction-time competition metadata such as competition, competition_stage, season_type, game_class, competition_key, classification status, and the source/field/value used to classify the slate.
+
+Postgame reconciliation must preserve these fields into the experience ledger. The reconciliation layer may enrich missing taxonomy metadata only from the immutable prediction snapshot or separately verified prediction-time evidence. It must not infer a historical phase from postgame facts, outcome pages, later revisions, or current schedule state, and it must not silently convert UNKNOWN into a classified phase.
+
+The retained metadata is part of the experience evidence chain because competition/phase segmentation is an evaluation axis. Dropping it during reconciliation invalidates that segmentation even when the original prediction snapshot was classified correctly.
+
+⸻
+
 85. ULTIMATE PRINCIPLE
 
 Baseball Prediction Systemの最適化対象は単なる勝敗Accuracyではない。
