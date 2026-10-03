@@ -97,3 +97,69 @@ def test_parse_roster_page_supports_official_plain_text_roster_table_rows():
     assert {p["uniform_number"] for p in got["teams"]["阪神タイガース"]} == {"13", "2", "3"}
     assert all(p["identity_status"] == "NAME_ONLY_UNVERIFIED" for p in got["teams"]["阪神タイガース"])
     assert all(p["roster_transaction_status"] == "IDENTITY_UNVERIFIED" for p in got["teams"]["阪神タイガース"])
+
+
+PLAYER_SEARCH_HTML = """
+<a href="/bis/players/91495138.html">32 外野手 濱田　太貴 阪神タイガース</a>
+<a href="/bis/players/99999999.html">濱田　太貴 読売ジャイアンツ</a>
+"""
+
+
+def test_parse_player_search_results_extracts_official_stable_ids():
+    rows = ctx._parse_player_search_results(PLAYER_SEARCH_HTML)
+    assert rows[0]["player_id"] == "91495138"
+    assert rows[0]["player_url"].endswith("/bis/players/91495138.html")
+
+
+def test_resolve_roster_player_ids_uses_exact_name_and_team(monkeypatch):
+    snapshot = {
+        "schema_version": "npb-roster-context-v1",
+        "target_date": "2026-10-03",
+        "teams": {
+            "阪神タイガース": [
+                {
+                    "player_id": None,
+                    "player_name": "濱田　太貴",
+                    "player_url": None,
+                    "identity_status": "NAME_ONLY_UNVERIFIED",
+                }
+            ]
+        },
+        "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
+    }
+    seen_urls = []
+
+    def fake_fetch(url):
+        seen_urls.append(url)
+        return PLAYER_SEARCH_HTML, "2026-10-03T00:00:00+00:00"
+
+    monkeypatch.setattr(ctx, "_fetch_text", fake_fetch)
+    got = ctx.resolve_roster_player_ids(snapshot, teams={"阪神タイガース"})
+    player = got["teams"]["阪神タイガース"][0]
+    assert player["player_id"] == "91495138"
+    assert player["identity_status"] == "VERIFIED_STABLE_ID"
+    assert player["identity_resolution_status"] == "RESOLVED_EXACT_OFFICIAL_PLAYER_SEARCH"
+    assert got["identity_resolution"]["resolved_count"] == 1
+    assert got["identity_resolution"]["resolved_rate"] == 1.0
+    assert len(seen_urls) == 1
+
+
+def test_resolve_roster_player_ids_keeps_ambiguous_identity_unverified(monkeypatch):
+    html = """
+    <a href="/bis/players/11111111.html">濱田　太貴 阪神タイガース</a>
+    <a href="/bis/players/22222222.html">濱田　太貴 阪神タイガース</a>
+    """
+    snapshot = {
+        "teams": {
+            "阪神タイガース": [
+                {"player_id": None, "player_name": "濱田　太貴", "player_url": None}
+            ]
+        },
+        "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
+    }
+    monkeypatch.setattr(ctx, "_fetch_text", lambda url: (html, "2026-10-03T00:00:00+00:00"))
+    got = ctx.resolve_roster_player_ids(snapshot, teams={"阪神タイガース"})
+    player = got["teams"]["阪神タイガース"][0]
+    assert player["player_id"] is None
+    assert player["identity_resolution_status"] == "IDENTITY_AMBIGUOUS"
+    assert got["identity_resolution"]["ambiguous_count"] == 1
