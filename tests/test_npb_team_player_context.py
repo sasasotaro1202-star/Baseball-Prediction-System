@@ -85,3 +85,42 @@ def test_merge_players_by_stable_id():
 def test_normalize_team():
     assert ctx.normalize_team("阪神") == "阪神タイガース"
     assert ctx.TEAM_SUFFIX["福岡ソフトバンクホークス"] == "h"
+
+PROFILE_HTML = """
+<table>
+<tr><th>守備位置</th><td>投手</td><th>投打</th><td>右投右打</td></tr>
+<tr><th>身長</th><td>190cm</td><th>体重</th><td>105kg</td></tr>
+<tr><th>生年月日</th><td>1998年1月2日</td><th>経歴</th><td>テスト大学 - テスト球団</td></tr>
+<tr><th>ドラフト</th><td>2019年1位</td></tr>
+</table>
+"""
+
+
+def test_parse_profile_page_extracts_identity_and_physical_context():
+    profile = ctx.parse_profile_page(PROFILE_HTML)
+    assert profile["position"] == "投手"
+    assert profile["handedness"] == "右投右打"
+    assert profile["throws"] == "右"
+    assert profile["bats"] == "右"
+    assert profile["height_cm"] == 190.0
+    assert profile["weight_kg"] == 105.0
+    assert profile["birth_date"] == "1998年1月2日"
+    assert profile["career"] == "テスト大学 - テスト球団"
+    assert profile["draft"] == "2019年1位"
+
+
+def test_derived_batting_totals_add_rate_metrics():
+    rows, _ = ctx.parse_stats_page(BAT_HTML, "batting")
+    derived = ctx._derive_batting(rows[0])
+    assert round(derived["avg"], 6) == round(120 / 450, 6)
+    assert round(derived["slg"], 6) == round((73 + 50 + 6 + 80) / 450, 6)
+    assert "ops_from_totals" in derived
+    assert derived["pa_per_game"] == 5.0
+    assert derived["sb_success_rate"] == 10 / 12
+
+
+def test_derived_fielding_metrics():
+    rows, _ = ctx.parse_stats_page(DEF_HTML, "fielding")
+    derived = ctx._derive_fielding(rows[0])
+    assert derived["error_rate"] == 2 / 2
+    assert derived["chances_per_game"] == 0.0
