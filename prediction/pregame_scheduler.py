@@ -18,7 +18,9 @@ import sys
 from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
 from pathlib import Path
-from core.http import get_text as http_get_text, session as http_session
+import http.client
+import time
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,7 +29,6 @@ PRED_DIR = ROOT / "data" / "experience" / "predictions"
 SHADOW_PRED_DIR = ROOT / "data" / "experience" / "research_shadow" / "predictions"
 JST = ZoneInfo("Asia/Tokyo")
 NPB_DAY_URL = "https://npb.jp/bis/eng/{year}/games/gm{date}.html"
-HTTP_SESSION = http_session(user_agent="Baseball-Prediction-System/pregame-scheduler")
 MLB_SCHEDULE_URL = "https://statsapi.mlb.com/api/v1/schedule?sportId=1&startDate={start}&endDate={end}&hydrate=probablePitcher"
 TEAM_ALIASES = {
     "Yomiuri": "読売ジャイアンツ",
@@ -105,12 +106,34 @@ def load_runtimes() -> dict[str, dict]:
 
 
 def _fetch(url: str) -> str:
-    return http_get_text(
-        HTTP_SESSION,
-        url,
-        timeout=(8, 30),
-        retries=4,
-    )
+    """Fetch schedule data with stdlib-only HTTP and bounded retry/backoff."""
+    parsed = urlsplit(url)
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise ValueError(f"unsupported schedule URL: {url}")
+    path_with_query = parsed.path or "/"
+    if parsed.query:
+        path_with_query += "?" + parsed.query
+    last_error = None
+    for attempt in range(1, 5):
+        connection = http.client.HTTPSConnection(parsed.netloc, timeout=30)
+        try:
+            connection.request(
+                "GET",
+                path_with_query,
+                headers={"User-Agent": "Baseball-Prediction-System/pregame-scheduler"},
+            )
+            response = connection.getresponse()
+            payload = response.read()
+            if 200 <= response.status < 300:
+                return payload.decode("utf-8", errors="strict")
+            last_error = RuntimeError(f"HTTP {response.status} for {url}")
+        except (OSError, UnicodeError) as exc:
+            last_error = exc
+        finally:
+            connection.close()
+        if attempt < 4:
+            time.sleep(float(attempt))
+    raise RuntimeError(f"schedule fetch failed after 4 attempts: {url}") from last_error
 
 def _schedule_for_date(target_date: str) -> list[dict]:
     html = _fetch(NPB_DAY_URL.format(year=target_date[:4], date=target_date.replace("-", "")))
@@ -342,7 +365,6 @@ def due_games(
                         "preferred_prediction_cutoff_utc": preferred_cutoff.isoformat(),
                         # Keep the legacy field for schema compatibility, but
                         # expose the semantically correct preferred-target field.
-                        "preferred_target_met": bool(now <= preferred_cutoff),
                         "preferred_target_met": bool(now <= preferred_cutoff),
                         "preferred_30m_met": bool(now <= preferred_cutoff),
                         "lead_minutes": round(lead, 3),
