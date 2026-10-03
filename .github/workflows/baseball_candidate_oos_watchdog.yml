@@ -102,6 +102,10 @@ jobs:
             sleep 3
             runs="$(gh run list --repo "${GH_REPO}" --workflow "${CANDIDATE_WORKFLOW}" --limit 50               --json databaseId,status,conclusion,createdAt,headSha,number)"
           fi
+          # A stale same-SHA queue was explicitly cancelled by this watchdog.
+          # Restart immediately on the current main instead of entering the
+          # generic cancelled-run cooldown path.
+          pending_recovery_dispatch="${stale_same_sha_pending}"
 
           active_count="$(jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length' <<<"${runs}")"
           echo "active_count_after_pending_recovery=${active_count}"
@@ -124,7 +128,10 @@ jobs:
             dispatch=0
             reason="latest candidate is current and recent"
 
-            if [[ -n "${latest_sha}" && "${latest_sha}" != "${current_sha}" ]]; then
+            if [[ "${pending_recovery_dispatch}" -eq 1 ]]; then
+              dispatch=1
+              reason="same-SHA scheduler-stuck candidate run was recovered"
+            elif [[ -n "${latest_sha}" && "${latest_sha}" != "${current_sha}" ]]; then
               dispatch=1
               reason="latest completed candidate is on superseded SHA ${latest_sha}"
             elif [[ "${latest_conclusion}" == "success" && "${age_seconds}" -ge 604800 ]]; then
