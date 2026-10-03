@@ -84,7 +84,7 @@ def test_reconcile_preserves_prediction_time_competition_metadata(tmp_path, monk
     prediction.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
     exp.archive_production_output(prediction)
-    exp._load_cached_results = lambda dates, **kwargs: pd.DataFrame([{
+    monkeypatch.setattr(exp, "_load_cached_results", lambda dates, **kwargs: pd.DataFrame([{
         "date": "2026-09-26",
         "home": "横浜DeNAベイスターズ",
         "away": "阪神タイガース",
