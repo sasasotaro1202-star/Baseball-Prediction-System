@@ -26,6 +26,12 @@ from data.npb_team_player_context import (
     parse_profile_page,
     parse_stats_page,
 )
+from production_npb import (
+    NPB_STARTER_URL,
+    fetch_text as fetch_starter_text,
+    parse_official_starters_html,
+    _starter_rows_sane,
+)
 
 ROSTER_INDEX_URL = NPB_BASE_URL + "/announcement/roster/"
 ROSTER_PAGE_PATTERN = re.compile(r"/announcement/roster/roster_(\d{4}).html")
@@ -135,6 +141,22 @@ def _verify_player_profile(player_url: str, player_id: str, player_name: str) ->
     }
 
 
+def _verify_official_starters(target_date: str) -> list[dict[str, Any]]:
+    """Verify the dedicated official NPB announced-starter page live."""
+    url = NPB_STARTER_URL + "?_ts=" + str(int(datetime.now().timestamp()))
+    body = fetch_starter_text(url)
+    rows = parse_official_starters_html(body, target_date)
+    if not rows or not _starter_rows_sane(rows):
+        raise RuntimeError(
+            f"official NPB starter source returned no structurally sane target-day rows: {url}"
+        )
+    for row in rows:
+        required = ("home", "away", "home_starter", "away_starter", "official_start_time")
+        if any(not str(row.get(key) or "").strip() for key in required):
+            raise RuntimeError(f"official NPB starter row incomplete: {row!r}")
+    return rows
+
+
 def _select_pregame_probe(today_jst: date, max_future_days: int = 7) -> tuple[str, dict[str, Any]]:
     """Select a real scheduled-game probe without masking source failures.
 
@@ -171,7 +193,7 @@ def main() -> int:
     today_jst = datetime.now(ZoneInfo("Asia/Tokyo")).date()
 
     report: dict[str, Any] = {
-        "schema_version": "npb-live-source-health-v3",
+        "schema_version": "npb-live-source-health-v4",
         "status": "UNKNOWN",
         "checked_at_jst": checked_at,
         "checked_date_jst": today_jst.isoformat(),
@@ -218,7 +240,28 @@ def main() -> int:
     if weather_available == 0:
         raise RuntimeError("Open-Meteo weather source returned no AVAILABLE game weather records")
 
-    # 2) Date-scoped official roster page, including registration transactions.
+    # 2) Dedicated official announced-starter page. This is kept separate
+    # from roster checks because starter timing is a PIT-critical source.
+    starter_rows = _verify_official_starters(probe_date)
+    report["sources"]["npb_official_announced_starter"] = {
+        "status": "AVAILABLE",
+        "url": NPB_STARTER_URL,
+        "target_date": probe_date,
+        "game_count": len(starter_rows),
+        "games": [
+            {
+                "home": row.get("home"),
+                "away": row.get("away"),
+                "home_starter": row.get("home_starter"),
+                "away_starter": row.get("away_starter"),
+                "official_start_time": row.get("official_start_time"),
+                "starter_evidence_status": row.get("starter_evidence_status"),
+            }
+            for row in starter_rows
+        ],
+    }
+
+    # 3) Date-scoped official roster page, including registration transactions.
     roster_date, roster_url = _latest_roster_url(today_jst)
     roster_html = _fetch_text(roster_url)
     roster = parse_roster_page(roster_html, roster_date)
@@ -265,6 +308,7 @@ def main() -> int:
     # evidence paths for artifact inspection.
     critical = [
         "npb_pregame_context",
+        "npb_official_announced_starter",
         "npb_official_roster_status",
         "npb_official_player_page",
         "npb_official_team_stats",
