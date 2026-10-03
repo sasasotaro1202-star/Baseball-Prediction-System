@@ -345,20 +345,44 @@ def _derive_fielding(row: dict[str, Any]) -> dict[str, float]:
     return out
 
 
-def _merge_players(team: str, pages: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+def _merge_players(
+    team: str,
+    pages: dict[str, dict[str, Any]],
+    preferred_player_ids_by_name: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    """Merge official team-stat rows while keeping identity fail-closed.
+
+    The current NPB team-stat tables can expose player names without stable
+    player links. When a date-scoped official roster supplies a *unique exact*
+    name -> stable-id mapping, that mapping is used for deterministic
+    cross-table consolidation. Fuzzy or ambiguous names remain unverified.
+    """
+    roster_ids = {
+        _clean(name): str(player_id).strip()
+        for name, player_id in (preferred_player_ids_by_name or {}).items()
+        if _clean(name) and str(player_id).strip()
+    }
     merged: dict[str, dict[str, Any]] = {}
     for kind in STAT_KIND:
         payload = pages.get(kind) or {}
         for raw in payload.get("rows", []):
-            player_id = str(raw.get("player_id") or "").strip()
+            source_player_id = str(raw.get("player_id") or "").strip()
             name = _clean(raw.get("player_name"))
-            key = f"id:{player_id}" if player_id else f"name:{name}"
+            resolved_player_id = source_player_id or roster_ids.get(name, "")
+            identity_status = "VERIFIED_STABLE_ID" if resolved_player_id else "NAME_ONLY_UNVERIFIED"
+            identity_resolution_status = (
+                "SOURCE_STABLE_ID" if source_player_id
+                else "RESOLVED_EXACT_TARGET_DATE_ROSTER_NAME" if roster_ids.get(name)
+                else "NAME_ONLY_UNVERIFIED"
+            )
+            key = f"id:{resolved_player_id}" if resolved_player_id else f"name:{name}"
             item = merged.setdefault(
                 key,
                 {
                     "team": team,
-                    "player_id": player_id or None,
-                    "identity_status": "VERIFIED_STABLE_ID" if player_id else "NAME_ONLY_UNVERIFIED",
+                    "player_id": resolved_player_id or None,
+                    "identity_status": identity_status,
+                    "identity_resolution_status": identity_resolution_status,
                     "player_name": name,
                     "player_url": raw.get("player_url"),
                     "position": raw.get("position"),
@@ -372,6 +396,10 @@ def _merge_players(team: str, pages: dict[str, dict[str, Any]]) -> list[dict[str
                     "profile_status": "NOT_SELECTED",
                 },
             )
+            if item.get("identity_status") != "VERIFIED_STABLE_ID" and identity_status == "VERIFIED_STABLE_ID":
+                item["player_id"] = resolved_player_id
+                item["identity_status"] = identity_status
+                item["identity_resolution_status"] = identity_resolution_status
             if raw.get("position") and not item.get("position"):
                 item["position"] = raw["position"]
             if raw.get("player_url") and not item.get("player_url"):
@@ -656,6 +684,7 @@ def collect_team(
     season: int = 2026,
     preferred_player_ids: set[str] | None = None,
     preferred_player_names: set[str] | None = None,
+    preferred_player_ids_by_name: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     canonical_team = normalize_team(team)
     suffix = TEAM_SUFFIX.get(canonical_team)
@@ -704,7 +733,11 @@ def collect_team(
     available = sum(1 for x in sources if x["status"] == "AVAILABLE")
     status = "AVAILABLE" if available == len(STAT_KIND) else "PARTIAL" if available else "SOURCE_FAILED"
     players, profile_count = _enrich_profiles(
-        _merge_players(canonical_team, pages),
+        _merge_players(
+            canonical_team,
+            pages,
+            preferred_player_ids_by_name=preferred_player_ids_by_name,
+        ),
         preferred_player_ids=preferred_player_ids,
         preferred_player_names=preferred_player_names,
     )
@@ -721,6 +754,14 @@ def collect_team(
         "profile_count": int(profile_count),
         "profile_limit_per_team": int(os.getenv("NPB_PLAYER_PROFILE_LIMIT_PER_TEAM", "24") or 24),
         "player_coverage_summary": coverage_summary,
+        "roster_identity_resolution": {
+            "requested_exact_name_count": int(len(preferred_player_ids_by_name or {})),
+            "resolved_exact_name_count": int(sum(
+                1 for player in players
+                if str(player.get("identity_resolution_status") or "") == "RESOLVED_EXACT_TARGET_DATE_ROSTER_NAME"
+            )),
+            "status": "AVAILABLE" if preferred_player_ids_by_name else "NOT_REQUESTED",
+        },
         "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
     }
     canonical = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -734,6 +775,7 @@ def collect_teams(
     season: int = 2026,
     preferred_player_ids_by_team: dict[str, set[str]] | None = None,
     preferred_player_names_by_team: dict[str, set[str]] | None = None,
+    preferred_player_ids_by_name_by_team: dict[str, dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     unique = []
     for team in teams:
@@ -748,12 +790,21 @@ def collect_teams(
         normalize_team(team): {_clean(x) for x in names if _clean(x)}
         for team, names in (preferred_player_names_by_team or {}).items()
     }
+    preferred_id_name_map = {
+        normalize_team(team): {
+            _clean(name): str(player_id).strip()
+            for name, player_id in mapping.items()
+            if _clean(name) and str(player_id).strip()
+        }
+        for team, mapping in (preferred_player_ids_by_name_by_team or {}).items()
+    }
     team_contexts = [
         collect_team(
             team,
             season=season,
             preferred_player_ids=preferred_map.get(team, set()),
             preferred_player_names=preferred_name_map.get(team, set()),
+            preferred_player_ids_by_name=preferred_id_name_map.get(team, {}),
         )
         for team in unique
     ]
