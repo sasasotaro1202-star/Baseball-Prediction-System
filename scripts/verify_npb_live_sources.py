@@ -135,12 +135,43 @@ def _verify_player_profile(player_url: str, player_id: str, player_name: str) ->
     }
 
 
+def _select_pregame_probe(today_jst: date, max_future_days: int = 7) -> tuple[str, dict[str, Any]]:
+    """Select a real scheduled-game probe without masking source failures.
+
+    Today is always tried first. An empty schedule is not a source failure,
+    so the health check may probe the next few calendar days. A collector
+    SOURCE_FAILED state is never bypassed.
+    """
+    checked: list[dict[str, Any]] = []
+    for offset in range(0, max_future_days + 1):
+        probe_date = today_jst.fromordinal(today_jst.toordinal() + offset)
+        context = collect_npb_pregame_context(probe_date.isoformat())
+        status = str(context.get("status") or "UNKNOWN")
+        games = context.get("games") or []
+        checked.append({
+            "date": probe_date.isoformat(),
+            "status": status,
+            "game_count": len(games),
+        })
+        if status == "SOURCE_FAILED":
+            raise RuntimeError(
+                f"NPB pregame source failed for probe date {probe_date.isoformat()}: "
+                f"{context.get('error') or 'unknown error'}"
+            )
+        if status == "AVAILABLE" and games:
+            return probe_date.isoformat(), context
+    raise RuntimeError(
+        "official NPB pregame source returned no scheduled games within probe window: "
+        + json.dumps(checked, ensure_ascii=False, sort_keys=True)
+    )
+
+
 def main() -> int:
     checked_at = datetime.now(ZoneInfo("Asia/Tokyo")).isoformat()
     today_jst = datetime.now(ZoneInfo("Asia/Tokyo")).date()
 
     report: dict[str, Any] = {
-        "schema_version": "npb-live-source-health-v2",
+        "schema_version": "npb-live-source-health-v3",
         "status": "UNKNOWN",
         "checked_at_jst": checked_at,
         "checked_date_jst": today_jst.isoformat(),
@@ -148,16 +179,16 @@ def main() -> int:
         "failures": [],
     }
 
-    # 1) Actual today's (JST) NPB game context: schedule + standings + weather.
-    pregame = collect_npb_pregame_context(today_jst.isoformat())
+    # 1) Actual NPB game context: schedule + standings + weather.
+    # A no-game calendar date is not a transport/parser failure. Probe today,
+    # then upcoming dates, while preserving any SOURCE_FAILED result.
+    probe_date, pregame = _select_pregame_probe(today_jst)
     games = pregame.get("games") or []
-    if not games:
-        raise RuntimeError("pregame collector returned zero games for today's JST date")
-
     source_status = pregame.get("sources") or []
     report["sources"]["npb_pregame_context"] = {
         "status": "AVAILABLE",
-        "target_date": today_jst.isoformat(),
+        "target_date": probe_date,
+        "checked_date_jst": today_jst.isoformat(),
         "game_count": len(games),
         "games": [
             {
