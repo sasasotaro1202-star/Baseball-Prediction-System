@@ -20,7 +20,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: reliability-preflight
+  # Keep reliability checks isolated per PR/ref. A failing or superseded
+  # check on one ref must never cancel another ref's validation.
+  group: reliability-preflight-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
