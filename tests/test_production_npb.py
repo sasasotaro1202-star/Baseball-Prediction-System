@@ -34,7 +34,7 @@ def test_20260920_has_six_pit_safe_games(monkeypatch):
     import production_npb as p
     import pandas as pd
     monkeypatch.setattr(p, "fetch_text", lambda url: fixture_html())
-    monkeypatch.setattr(p, "_official_daily_start_times", lambda target_date: {
+    monkeypatch.setattr(p, "_official_daily_start_times", lambda target_date, **kwargs: {
         ("読売ジャイアンツ", "東京ヤクルトスワローズ"): "14:00",
         ("中日ドラゴンズ", "広島東洋カープ"): "18:00",
         ("阪神タイガース", "横浜DeNAベイスターズ"): "18:00",
@@ -104,7 +104,7 @@ def test_target_rows_reject_non_official_starter_source(monkeypatch):
     monkeypatch.setattr(
         p,
         "official_starters",
-        lambda target_date: [{
+        lambda target_date, **kwargs: [{
             "home": "読売ジャイアンツ",
             "away": "阪神タイガース",
             "home_starter": "投手A",
@@ -212,7 +212,7 @@ def test_target_rows_uses_official_daily_schedule_time_as_authoritative(monkeypa
     monkeypatch.setattr(
         p,
         "official_starters",
-        lambda target_date: [{
+        lambda target_date, **kwargs: [{
             "home": "広島東洋カープ",
             "away": "読売ジャイアンツ",
             "home_starter": "投手A",
@@ -226,7 +226,7 @@ def test_target_rows_uses_official_daily_schedule_time_as_authoritative(monkeypa
     monkeypatch.setattr(
         p,
         "_official_daily_start_times",
-        lambda target_date: {("広島東洋カープ", "読売ジャイアンツ"): "18:00"},
+        lambda target_date, **kwargs: {("広島東洋カープ", "読売ジャイアンツ"): "18:00"},
     )
     monkeypatch.setattr(
         p,
@@ -268,7 +268,7 @@ def test_target_rows_uses_actual_information_cutoff_and_keeps_30m_as_preferred(m
     monkeypatch.setattr(
         p,
         "official_starters",
-        lambda target_date: [{
+        lambda target_date, **kwargs: [{
             "home": "広島東洋カープ",
             "away": "読売ジャイアンツ",
             "home_starter": "投手A",
@@ -282,7 +282,7 @@ def test_target_rows_uses_actual_information_cutoff_and_keeps_30m_as_preferred(m
     monkeypatch.setattr(
         p,
         "_official_daily_start_times",
-        lambda target_date: {("広島東洋カープ", "読売ジャイアンツ"): "18:00"},
+        lambda target_date, **kwargs: {("広島東洋カープ", "読売ジャイアンツ"): "18:00"},
     )
     monkeypatch.setattr(
         p,
@@ -312,7 +312,7 @@ def test_pregame_only_limits_prediction_window_to_upcoming_60_minutes(monkeypatc
     monkeypatch.setattr(
         p,
         "official_starters",
-        lambda target_date: [{
+        lambda target_date, **kwargs: [{
             "home": "広島東洋カープ",
             "away": "読売ジャイアンツ",
             "home_starter": "投手A",
@@ -326,7 +326,7 @@ def test_pregame_only_limits_prediction_window_to_upcoming_60_minutes(monkeypatc
     monkeypatch.setattr(
         p,
         "_official_daily_start_times",
-        lambda target_date: {("広島東洋カープ", "読売ジャイアンツ"): "18:00"},
+        lambda target_date, **kwargs: {("広島東洋カープ", "読売ジャイアンツ"): "18:00"},
     )
     monkeypatch.setattr(
         p,
