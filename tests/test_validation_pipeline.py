@@ -19,6 +19,10 @@ def _kwargs():
             "improvement_ci95": {"LogLoss": [0.005, 0.04]},
             "p_improvement_positive": {"LogLoss": 0.99},
         },
+        evaluation_periods=[
+            {"baseline_LogLoss": 0.62, "candidate_LogLoss": 0.60},
+            {"baseline_LogLoss": 0.59, "candidate_LogLoss": 0.58},
+        ],
     )
 
 
@@ -73,3 +77,23 @@ def test_pipeline_accepts_mlb_when_both_starter_pit_evidence_are_verified():
     record = run_validation_pipeline(**kw)
     assert record.decision == "ADOPT"
     assert can_promote(record)
+
+
+def test_pipeline_rejects_unstable_evaluation_periods():
+    kw = _kwargs()
+    kw["evaluation_periods"] = [
+        {"baseline_LogLoss": 0.60, "candidate_LogLoss": 0.61},
+        {"baseline_LogLoss": 0.60, "candidate_LogLoss": 0.61},
+        {"baseline_LogLoss": 0.60, "candidate_LogLoss": 0.59},
+    ]
+    record = run_validation_pipeline(**kw)
+    assert record.decision == "REJECT"
+    assert "evaluation_period_non_worsening_below_gate" in record.locked_holdout["reasons"]
+
+
+def test_pipeline_rejects_missing_evaluation_period_evidence():
+    kw = _kwargs()
+    kw["evaluation_periods"] = None
+    record = run_validation_pipeline(**kw)
+    assert record.decision == "REJECT"
+    assert "evaluation_period_stability_not_evaluated" in record.locked_holdout["reasons"]
