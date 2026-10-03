@@ -248,13 +248,14 @@ def reconcile_shadow() -> dict[str, Any]:
 
     all_metrics = metrics(matched)
     canonical_metrics = metrics(canonical)
-    canonical_metrics = metrics(canonical)
 
+    by_horizon: dict[str, Any] = {}
     for key in ("LT_30M", "30_TO_60M", "1_TO_3H", "3_TO_6H", "GE_6H", "UNKNOWN"):
         group = matched.loc[matched["prediction_horizon"].astype(str) == key]
         if group.empty:
             continue
-        payload["by_horizon"][key] = metrics(group)
+        by_horizon[key] = metrics(group)
+
     by_source: dict[str, Any] = {}
     if "prediction_source" in matched.columns:
         for source, frame in matched.groupby("prediction_source", dropna=False):
@@ -289,7 +290,7 @@ def reconcile_shadow() -> dict[str, Any]:
         "all_snapshot_metrics": all_metrics,
         "canonical_metrics": canonical_metrics,
         "by_prediction_source": by_source,
-        "by_horizon": {},
+        "by_horizon": by_horizon,
     }
     SUMMARY_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return payload
