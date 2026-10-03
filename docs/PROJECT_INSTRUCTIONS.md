@@ -19,3 +19,5 @@ no material calibration degradation;
 PIT violations = 0.
 
 These are promotion gates/benchmarks, not guarantees of future performance.
+
+Manual pregame requests are on-demand and independent of the automatic 30/60-minute scheduler slot. They may be requested hours before a game, but always use the call-time JST date and remain subject to PIT/starter/data/model/calibration eligibility; no lead-time alone authorizes prediction.
