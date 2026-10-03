@@ -53,7 +53,7 @@ def _latest_roster_url(today: date) -> tuple[str, str]:
     body = _fetch_text(ROSTER_INDEX_URL)
     # The official landing page exposes the currently selected announcement date
     # in visible text. Prefer that over guessing from navigation anchors.
-    match = re.search(r"(20\\d{2})年(\\d{1,2})月(\\d{1,2})日の出場選手登録", body)
+    match = re.search(r"(20\d{2})年(\d{1,2})月(\d{1,2})日の出場選手登録", body)
     if match:
         d = date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
         if d <= today:
