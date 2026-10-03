@@ -59,6 +59,13 @@ jobs:
               else
                 rc=$?
                 echo "gh retry $attempt/4 failed (rc=${rc}): $output" >&2
+                # Deterministic HTTP client errors must fail closed instead of
+                # consuming the transient retry budget.  408/429 remain retryable.
+                if printf '%s' "$output" | grep -Eq 'HTTP 4[0-9]{2}' &&
+                   ! printf '%s' "$output" | grep -Eq 'HTTP (408|429)'; then
+                  echo "gh deterministic HTTP 4xx; refusing retry." >&2
+                  return "$rc"
+                fi
                 if [ "$attempt" -lt 4 ]; then
                   sleep $((attempt * 2))
                 else
