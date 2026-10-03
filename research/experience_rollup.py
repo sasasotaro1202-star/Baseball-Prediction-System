@@ -28,6 +28,7 @@ from research.npb_official_results import _fetch_month
 from research import experience_ledger as ledger
 from research.experience_dimensions import add_dimensions
 from research.experience_ledger import (
+    _horizon_bucket,
     _prediction_target_metrics,
     _validate_prediction_time_contract,
     _is_legacy_scheduled_cutoff,
@@ -295,17 +296,38 @@ def _evaluate(merged: pd.DataFrame) -> pd.DataFrame:
         x["datetime_jst"].dt.tz_convert("UTC")
         - x["prediction_cutoff_utc"]
     ).dt.total_seconds() / 60.0
+    x["prediction_actual_lead_minutes"] = (
+        x["datetime_jst"].dt.tz_convert("UTC")
+        - pd.to_datetime(x["prediction_generated_at"], utc=True, errors="coerce")
+    ).dt.total_seconds() / 60.0
+    x["prediction_horizon"] = x["prediction_actual_lead_minutes"].map(_horizon_bucket)
     x["experience_available_at_utc"] = _now()
 
     return x
 
 
 def _performance_bundle(frame: pd.DataFrame, compact_metrics: Any) -> dict[str, Any]:
-    return {
+    bundle = {
         "rows": int(len(frame)),
         "overall": compact_metrics(frame),
         "targets": _prediction_target_metrics(frame),
     }
+    if "prediction_horizon" in frame.columns:
+        by_horizon: dict[str, Any] = {}
+        for key in ("LT_30M", "30_TO_60M", "1_TO_3H", "3_TO_6H", "GE_6H", "UNKNOWN"):
+            group = frame.loc[frame["prediction_horizon"].astype(str) == key]
+            if group.empty:
+                continue
+            by_horizon[key] = {
+                "rows": int(len(group)),
+                "overall": compact_metrics(group),
+                "targets": _prediction_target_metrics(group),
+                "mean_actual_lead_minutes": float(pd.to_numeric(
+                    group["prediction_actual_lead_minutes"], errors="coerce"
+                ).dropna().mean()) if "prediction_actual_lead_minutes" in group and group["prediction_actual_lead_minutes"].notna().any() else None,
+            }
+        bundle["by_horizon"] = by_horizon
+    return bundle
 
 
 def _performance_hierarchy(frame: pd.DataFrame, compact_metrics: Any) -> dict[str, Any]:
@@ -429,7 +451,7 @@ def rollup() -> dict[str, Any]:
     keep = [
         "prediction_id", "source_run_id", "game_id", "date_key",
         "datetime_jst", "prediction_cutoff_utc", "prediction_generated_at",
-        "prediction_horizon_minutes", "league", "competition_id", "competition_key",
+        "prediction_horizon_minutes", "prediction_actual_lead_minutes", "prediction_horizon", "league", "competition_id", "competition_key",
         "competition", "competition_stage", "season_type", "game_class",
         "competition_classification_status", "home", "away", "home_starter", "away_starter",
         "revision_status", "revision_previous_prediction_id", "revision_l1_pct_points",
