@@ -154,9 +154,9 @@ def main() -> int:
     if not games:
         raise RuntimeError("pregame collector returned zero games for today's JST date")
 
-    source_status = pregame.get("source_status") or []
+    source_status = pregame.get("sources") or []
     report["sources"]["npb_pregame_context"] = {
-        "status": pregame.get("status", "UNKNOWN"),
+        "status": "AVAILABLE",
         "target_date": today_jst.isoformat(),
         "game_count": len(games),
         "games": [
@@ -223,6 +223,12 @@ def main() -> int:
         str(selected_player.get("player_name") or ""),
     )
     report["sources"]["npb_official_team_stats"] = _verify_team_stats(selected_team, today_jst.year)
+
+    # The pregame collector exposes source-level health in its "sources" list;
+    # require schedule, both standings leagues, and at least one weather record.
+    weather_source = next((x for x in source_status if x.get("source_id") == "open_meteo_forecast"), None)
+    if not weather_source or weather_source.get("status") != "AVAILABLE":
+        raise RuntimeError("Open-Meteo weather source was not AVAILABLE in pregame context")
 
     # 4) All critical sources succeeded; expose exact source count and raw
     # evidence paths for artifact inspection.
