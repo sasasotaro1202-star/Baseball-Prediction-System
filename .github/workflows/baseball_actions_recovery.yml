@@ -52,6 +52,27 @@ jobs:
           WORKFLOW_PATH: ${{ github.event.workflow_run.path }}
         run: |
           set -euo pipefail
+
+          # Recovery runs on transient control-plane failures, so the
+          # GitHub CLI itself must be retried without masking the parent
+          # workflow failure.
+          gh_retry() {
+            local attempt=1
+            while true; do
+              if gh "$@"; then
+                return 0
+              fi
+              if [ "${attempt}" -ge 3 ]; then
+                return 1
+              fi
+              sleep_seconds=$((attempt * 5))
+              echo "GitHub CLI call failed; retrying in ${sleep_seconds}s..." >&2
+              sleep "${sleep_seconds}"
+              attempt=$((attempt + 1))
+            done
+          }
+
+          now_epoch="$(date +%s)"
           echo "Workflow=${WORKFLOW_NAME}"
           echo "Run=${RUN_ID} attempt=${RUN_ATTEMPT} conclusion=${{ github.event.workflow_run.conclusion }}"
 
@@ -93,7 +114,7 @@ jobs:
           # fresh dispatch is the only useful recovery. Limit it to this exact
           # control-plane failure mode and one retry window at a time.
           if [ "${WORKFLOW_NAME}" = "Baseball 60m Pregame Auto Prediction" ] || [ "${WORKFLOW_NAME}" = ".github/workflows/baseball_60m_pregame_auto.yml" ] || [ "${WORKFLOW_PATH}" = ".github/workflows/baseball_60m_pregame_auto.yml" ]; then
-            job_count="$(gh run view "${RUN_ID}" --repo "${GH_REPO}" --json jobs --jq '.jobs | length')"
+            job_count="$(gh_retry run view "${RUN_ID}" --repo "${GH_REPO}" --json jobs --jq '.jobs | length')"
             echo "Pregame parent job count=${job_count}"
             if [ "${job_count}" -eq 0 ]; then
               echo "Detected zero-job pregame control-plane failure; checking 15-minute cooldown."
@@ -115,7 +136,7 @@ jobs:
                 prior_created_epoch="$(date -d "${prior_created}" +%s)"
                 prior_age_minutes=$(( (now_epoch - prior_created_epoch) / 60 ))
                 if [ "${prior_age_minutes}" -lt 15 ]; then
-                  prior_job_count="$(gh run view "${prior_id}" --repo "${GH_REPO}" --json jobs --jq '.jobs | length')"
+                  prior_job_count="$(gh_retry run view "${prior_id}" --repo "${GH_REPO}" --json jobs --jq '.jobs | length')"
                   echo "Prior pregame failure ${prior_id}: age=${prior_age_minutes}m jobs=${prior_job_count}"
                   if [ "${prior_job_count}" -eq 0 ]; then
                     recent_zero_job=1
@@ -152,7 +173,7 @@ jobs:
               if [ "${verified}" -ne 1 ]; then
                 echo 'Pregame zero-job recovery dispatch was accepted but no active run was observed.' >&2
                 printf '%s\n' 'Recovery terminal state: FAILED_PREGAME_ZERO_JOB_DISPATCH; parent failure remains authoritative.' >> "$GITHUB_STEP_SUMMARY"
-                exit 0
+                exit 1
               fi
               printf '%s\n' 'Recovery terminal state: PRE_GAME_ZERO_JOB_REDISPATCHED; parent failure remains authoritative.' >> "$GITHUB_STEP_SUMMARY"
               exit 0
