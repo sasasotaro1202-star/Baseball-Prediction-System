@@ -278,3 +278,35 @@ def test_collect_team_passes_preferred_player_names(monkeypatch):
     monkeypatch.setattr(ctx, "_enrich_profiles", capture)
     ctx.collect_team("阪神", preferred_player_names={"テスト 太郎"})
     assert captured["names"] == {"テスト 太郎"}
+
+
+
+def test_merge_players_resolves_exact_target_roster_name_to_stable_id_and_consolidates_tables():
+    batting_html = BAT_HTML.replace('<a href="/bis/players/123.html">テスト　太郎</a>', 'テスト　太郎')
+    pitching_html = PIT_HTML.replace('<a href="/bis/players/123.html">テスト　太郎</a>', 'テスト　太郎')
+    fielding_html = DEF_HTML.replace('<a href="/bis/players/123.html">テスト　太郎</a>', 'テスト　太郎')
+    pages = {
+        "batting": {"rows": ctx.parse_stats_page(batting_html, "batting")[0]},
+        "pitching": {"rows": ctx.parse_stats_page(pitching_html, "pitching")[0]},
+        "fielding": {"rows": ctx.parse_stats_page(fielding_html, "fielding")[0]},
+    }
+    players = ctx._merge_players(
+        "阪神タイガース",
+        pages,
+        preferred_player_ids_by_name={"テスト 太郎": "123"},
+    )
+    first = next(p for p in players if p["player_id"] == "123")
+    assert first["identity_status"] == "VERIFIED_STABLE_ID"
+    assert first["identity_resolution_status"] == "RESOLVED_EXACT_TARGET_DATE_ROSTER_NAME"
+    assert first["batting"]["打席"] == "500"
+    assert first["pitching"]["投球回"] == "120"
+    assert len(first["fielding"]) == 1
+
+
+def test_merge_players_keeps_unmatched_name_unverified():
+    batting_html = BAT_HTML.replace('<a href="/bis/players/123.html">テスト　太郎</a>', '未照合　太郎')
+    pages = {"batting": {"rows": ctx.parse_stats_page(batting_html, "batting")[0]}}
+    players = ctx._merge_players("阪神タイガース", pages, preferred_player_ids_by_name={"別人": "999"})
+    only = players[0]
+    assert only["player_id"] is None
+    assert only["identity_status"] == "NAME_ONLY_UNVERIFIED"
