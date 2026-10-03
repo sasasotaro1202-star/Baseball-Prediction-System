@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-from copy import deepcopy
 """Production NPB prediction entrypoint.
 
 Contract:
@@ -8,6 +7,8 @@ features -> full-history ensemble -> coherent score distribution -> validated JS
 
 The target game itself is never appended to historical training data.
 """
+
+from copy import deepcopy
 from __future__ import annotations
 import time
 import argparse, json, re, html as html_lib
