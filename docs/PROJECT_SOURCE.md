@@ -2170,3 +2170,20 @@ NPB公式の「出場選手登録および登録抹消」日付別ページか�
 roster contextはproduction probabilityの自動変更には使用せず、current/future case analysis、player availability、lineup候補集合、fallback/uncertainty researchのために保持する。feature adoptionにはLOCAL PIT → chronological OOS/WFO → calibration → ablation → robustness → frozen holdout → adoption gateを要求する。
 
 source failureはSOURCE_FAILEDとして保存し、未取得選手をゼロや「不在」とは解釈しない。fuzzy name mergeは禁止し、official player_idを優先する。
+
+
+⸻
+
+86. CANDIDATE OOS STALE-RUN RECOVERY
+
+Candidate OOS research intentionally uses `cancel-in-progress: false` so an active chronological validation is not interrupted.
+
+The watchdog may recover a Candidate OOS run only when status is `in_progress`, the run head SHA equals the current main SHA, and run age is at least 360 minutes. The threshold is deliberately longer than the 260-minute candidate workflow timeout and is reserved for scheduler/runner state that remains incorrectly in progress.
+
+After cancellation, the watchdog must refresh run state and verify that no active candidate run still blocks the current main before dispatching. A failed cancellation is fail-closed and must not create a duplicate dispatch. A verified stale-run cancellation may trigger an immediate current-main redispatch rather than waiting for the generic cancelled-run cooldown.
+
+This recovery mechanism does not alter PIT eligibility, chronological OOS semantics, calibration, frozen holdout protection, adoption gates, or production Champion state. Operational recovery evidence remains distinct from performance evidence.
+
+⸻
+
+=== COPY END ===
