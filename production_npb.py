@@ -1360,40 +1360,9 @@ def predict(
         pred["home_starter_player_context"] = player_by_name.get(str(pred.get("home_starter") or "").strip())
         pred["away_starter_player_context"] = player_by_name.get(str(pred.get("away_starter") or "").strip())
 
-    # Capture current official team-wide player context (batting/pitching/fielding).
-    # This is an evidence snapshot only; it is not automatically promoted to model
-    # features until a separate PIT/OOS/robustness/holdout experiment validates it.
-    team_names = []
-    for game in outputs:
-        for key in ("home", "away"):
-            team = str(game.get(key) or "").strip()
-            if team and team not in team_names:
-                team_names.append(team)
-    try:
-        team_player_context = collect_npb_team_player_context(team_names, season=int(target_date[:4])) if team_names else {
-            "schema_version": "npb-team-player-context-v1", "status": "NO_TEAMS",
-            "teams_requested": [], "teams": {},
-            "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
-        }
-    except Exception as exc:
-        team_player_context = {
-            "schema_version": "npb-team-player-context-v1",
-            "status": "SOURCE_FAILED",
-            "teams_requested": team_names,
-            "teams": {},
-            "error": f"{type(exc).__name__}: {exc}",
-            "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
-        }
-    team_context_snapshot_id = team_player_context.get("snapshot_id") if isinstance(team_player_context, dict) else None
-    team_contexts = team_player_context.get("teams", {}) if isinstance(team_player_context, dict) else {}
-    for pred in outputs:
-        pred["team_player_context_snapshot_id"] = team_context_snapshot_id
-        pred["home_team_player_context"] = team_contexts.get(str(pred.get("home") or "").strip())
-        pred["away_team_player_context"] = team_contexts.get(str(pred.get("away") or "").strip())
-
-    # Capture date-scoped official first-team roster context separately from model features.
-    # This records registered/available player identities for the target date while
-    # preserving a strict boundary: current retrieval is observational context only.
+    # Capture date-scoped official first-team roster context before team stats.
+    # Roster player_ids are used only to prioritize profile enrichment and to
+    # annotate the resulting evidence snapshot. They do not alter probabilities.
     roster_context = None
     try:
         roster_context = collect_npb_roster_context(target_date)
@@ -1409,12 +1378,78 @@ def predict(
         }
     roster_snapshot_id = roster_context.get("snapshot_id") if isinstance(roster_context, dict) else None
     roster_teams = roster_context.get("teams", {}) if isinstance(roster_context, dict) else {}
+    preferred_roster_ids_by_team = {
+        str(team): {
+            str(player.get("player_id") or "").strip()
+            for player in players
+            if str(player.get("player_id") or "").strip()
+        }
+        for team, players in (roster_teams or {}).items()
+        if isinstance(players, list)
+    }
+
+    # Capture current official team-wide player context (batting/pitching/fielding).
+    # The roster IDs above are used only as an enrichment-priority signal.
+    # This is an evidence snapshot only; it is not automatically promoted to model
+    # features until a separate PIT/OOS/robustness/holdout experiment validates it.
+    team_names = []
+    for game in outputs:
+        for key in ("home", "away"):
+            team = str(game.get(key) or "").strip()
+            if team and team not in team_names:
+                team_names.append(team)
+    try:
+        team_player_context = collect_npb_team_player_context(
+            team_names,
+            season=int(target_date[:4]),
+            preferred_player_ids_by_team=preferred_roster_ids_by_team,
+        ) if team_names else {
+            "schema_version": "npb-team-player-context-v1", "status": "NO_TEAMS",
+            "teams_requested": [], "teams": {},
+            "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
+        }
+    except Exception as exc:
+        team_player_context = {
+            "schema_version": "npb-team-player-context-v1",
+            "status": "SOURCE_FAILED",
+            "teams_requested": team_names,
+            "teams": {},
+            "error": f"{type(exc).__name__}: {exc}",
+            "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
+        }
+
+    # Join roster membership to each season-stat player by stable player_id.
+    # Non-rostered / unmatched / missing states remain explicit.
+    for team, team_ctx in (team_player_context.get("teams") or {}).items():
+        if not isinstance(team_ctx, dict):
+            continue
+        active_ids = preferred_roster_ids_by_team.get(str(team), set())
+        matched = 0
+        for player in team_ctx.get("players", []) or []:
+            pid = str(player.get("player_id") or "").strip()
+            if pid and pid in active_ids:
+                player["roster_status"] = "REGISTERED_ON_TARGET_DATE"
+                matched += 1
+            elif pid:
+                player["roster_status"] = "NOT_IN_TARGET_DATE_ROSTER"
+            else:
+                player["roster_status"] = "ROSTER_MATCH_UNKNOWN"
+        team_ctx["roster_player_count"] = int(len(active_ids))
+        team_ctx["roster_matched_player_count"] = int(matched)
+        team_ctx["roster_match_rate"] = float(matched / max(1, len(active_ids))) if active_ids else None
+        team_ctx["roster_context_snapshot_id"] = roster_snapshot_id
+
+    team_context_snapshot_id = team_player_context.get("snapshot_id") if isinstance(team_player_context, dict) else None
+    team_contexts = team_player_context.get("teams", {}) if isinstance(team_player_context, dict) else {}
     for pred in outputs:
         home = str(pred.get("home") or "").strip()
         away = str(pred.get("away") or "").strip()
         pred["roster_context_snapshot_id"] = roster_snapshot_id
         pred["home_roster_context"] = roster_teams.get(home)
         pred["away_roster_context"] = roster_teams.get(away)
+        pred["team_player_context_snapshot_id"] = team_context_snapshot_id
+        pred["home_team_player_context"] = team_contexts.get(home)
+        pred["away_team_player_context"] = team_contexts.get(away)
 
     # Capture the request-time game context separately from model features.
     # This release stores the new information for later PIT/OOS experiments;
