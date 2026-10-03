@@ -356,6 +356,11 @@ def test_24h_supervisor_recovers_only_latest_zero_job_pregame_failures_with_dail
     assert "workflow_dispatch:" in pregame
     assert "recovery_mode:" in pregame
     assert 'default: "manual"' in pregame
+    assert "run: bash scripts/pregame_auto.sh" in pregame
+    assert "<<'PY'" not in pregame
+    assert len(pregame.splitlines()) <= 90
+    assert (ROOT / ".github" / "workflows" / "baseball_60m_pregame_auto.yml").is_file()
+    assert (ROOT / "scripts" / "pregame_auto.sh").is_file()
     assert "--field recovery_mode=zero_job_startup_recovery" in text
 
 
