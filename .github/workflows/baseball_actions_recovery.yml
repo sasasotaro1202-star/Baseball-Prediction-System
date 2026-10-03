@@ -13,6 +13,7 @@ on:
       - Baseball 24h Research Autopilot
       - Baseball Scope Frontier Continuous Audit
       - NPB Production Prediction
+      - Baseball 60m Pregame Auto Prediction
     types: [completed]
 
 permissions:
