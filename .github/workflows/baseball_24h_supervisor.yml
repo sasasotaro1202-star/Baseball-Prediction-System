@@ -48,7 +48,103 @@ jobs:
           set -euo pipefail
 
           test -s ".github/workflows/${TARGET_WORKFLOW}"
-          now_epoch=$(date +%s)
+
+          # The pregame workflow has repeatedly produced GitHub Actions startup
+          # failures with zero jobs. Those failures are not reliably emitted as
+          # workflow_run events, so recovery belongs in this scheduled supervisor.
+          PREGAME_WORKFLOW=baseball_30m_pregame_auto.yml
+          test -s ".github/workflows/${PREGAME_WORKFLOW}"
+          pregame_runs="$(gh_retry run list \
+            --repo "${GH_REPO}" \
+            --workflow "${PREGAME_WORKFLOW}" \
+            --branch main \
+            --limit 30 \
+            --json databaseId,status,conclusion,createdAt,updatedAt,headBranch)"
+          echo "Recent pregame runs:"
+          echo "${pregame_runs}" | jq '.[0:10]'
+
+          pregame_active="$(printf '%s' "${pregame_runs}" |
+            jq '[.[] | select(.headBranch == "main") |
+              select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+          echo "Pregame active_count=${pregame_active}"
+
+          pregame_zero_job_failures=0
+          latest_zero_job_id=""
+          latest_zero_job_created=""
+          while IFS= read -r row; do
+            [ -n "${row}" ] || continue
+            pid="$(printf '%s' "${row}" | jq -r '.databaseId')"
+            pstatus="$(printf '%s' "${row}" | jq -r '.status')"
+            pconclusion="$(printf '%s' "${row}" | jq -r '.conclusion // empty')"
+            pcreated="$(printf '%s' "${row}" | jq -r '.createdAt')"
+            [ "${pstatus}" = "completed" ] || continue
+            [ "${pconclusion}" = "failure" ] || continue
+            pcreated_epoch="$(date -d "${pcreated}" +%s)"
+            page_minutes=$(( (now_epoch - pcreated_epoch) / 60 ))
+            [ "${page_minutes}" -le 1440 ] || continue
+            pjob_count="$(gh_retry run view "${pid}" --repo "${GH_REPO}" --json jobs --jq '.jobs | length')"
+            echo "Pregame failure ${pid}: age=${page_minutes}m jobs=${pjob_count}"
+            if [ "${pjob_count}" -eq 0 ]; then
+              pregame_zero_job_failures=$((pregame_zero_job_failures + 1))
+              if [ -z "${latest_zero_job_id}" ]; then
+                latest_zero_job_id="${pid}"
+                latest_zero_job_created="${pcreated}"
+              fi
+            fi
+          done < <(printf '%s' "${pregame_runs}" |
+            jq -c '.[] | select(.headBranch == "main") | select(.status == "completed" and .conclusion == "failure")')
+
+          echo "Pregame zero-job failures in last 24h=${pregame_zero_job_failures}"
+          pregame_dispatch=0
+          pregame_reason=""
+          pregame_latest_age_minutes=999999
+          if [ -n "${latest_zero_job_created}" ]; then
+            latest_zero_epoch="$(date -d "${latest_zero_job_created}" +%s)"
+            pregame_latest_age_minutes=$(( (now_epoch - latest_zero_epoch) / 60 ))
+          fi
+
+          if [ "${pregame_active}" -gt 0 ]; then
+            echo "Pregame workflow already active; no startup recovery dispatch."
+          elif [ -z "${latest_zero_job_id}" ]; then
+            echo "No recent zero-job pregame failure; no startup recovery dispatch."
+          elif [ "${pregame_latest_age_minutes}" -lt 15 ]; then
+            echo "Pregame zero-job cooldown active (${pregame_latest_age_minutes}m); preserving failure."
+            printf '%s\n' 'Pregame terminal state: PRE_GAME_ZERO_JOB_COOLDOWN; parent failure remains authoritative.' >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${pregame_zero_job_failures}" -ge 3 ]; then
+            echo "Pregame zero-job recovery cap reached (${pregame_zero_job_failures}/24h); refusing further dispatch."
+            printf '%s\n' 'Pregame terminal state: PRE_GAME_ZERO_JOB_DAILY_CAP; parent failure remains authoritative.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            pregame_dispatch=1
+            pregame_reason="zero-job startup failure ${latest_zero_job_id} aged ${pregame_latest_age_minutes}m"
+          fi
+
+          if [ "${pregame_dispatch}" -eq 1 ]; then
+            echo "Dispatching bounded pregame recovery: ${pregame_reason}"
+            gh_retry workflow run "${PREGAME_WORKFLOW}" --repo "${GH_REPO}" --ref main
+
+            verified_pregame=0
+            for attempt in 1 2 3 4 5; do
+              sleep 3
+              pregame_active_after="$(gh_retry run list \
+                --repo "${GH_REPO}" \
+                --workflow "${PREGAME_WORKFLOW}" \
+                --branch main \
+                --limit 10 \
+                --json databaseId,status,headBranch,createdAt \
+                --jq '[.[] | select(.headBranch == "main") | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+              echo "Pregame recovery verification ${attempt}/5: active=${pregame_active_after}"
+              if [ "${pregame_active_after}" -gt 0 ]; then
+                verified_pregame=1
+                break
+              fi
+            done
+            if [ "${verified_pregame}" -ne 1 ]; then
+              echo "Pregame zero-job recovery dispatch produced no active run." >&2
+              printf '%s\n' 'Pregame terminal state: FAILED_PREGAME_ZERO_JOB_DISPATCH; parent failure remains authoritative.' >> "$GITHUB_STEP_SUMMARY"
+            else
+              printf '%s\n' 'Pregame terminal state: PRE_GAME_ZERO_JOB_REDISPATCHED; parent failure remains authoritative.' >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
 
           gh_retry() {
             local attempt output rc
