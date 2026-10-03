@@ -102,3 +102,60 @@ def test_record_candidate_uses_atomic_history_persistence(tmp_path, monkeypatch)
     payload = json.loads(registry_path.read_text(encoding="utf-8"))
     assert len(payload) == 1
     assert payload[0]["candidate_id"] == "cand-atomic"
+
+
+def test_record_candidate_forwards_holdout_gate_evidence(tmp_path, monkeypatch):
+    import research.candidate_registry as registry
+    from research.validation_pipeline import ValidationRecord
+
+    registry_path = tmp_path / "candidate_registry.json"
+    monkeypatch.setattr(registry, "REGISTRY", registry_path)
+    captured = {}
+
+    def fake_validation(**kwargs):
+        captured.update(kwargs)
+        return ValidationRecord(
+            candidate_id="cand-evidence",
+            stage="locked_holdout_evaluated",
+            decision="HOLD",
+            development={"stage": "candidate_locked"},
+            locked_holdout={"stage": "locked_holdout_evaluated", "decision": "HOLD"},
+        )
+
+    monkeypatch.setattr(registry, "run_validation_pipeline", fake_validation)
+
+    periods = [
+        {"baseline_LogLoss": 0.61, "candidate_LogLoss": 0.60},
+        {"baseline_LogLoss": 0.59, "candidate_LogLoss": 0.58},
+    ]
+    uncertainty = {
+        "improvement_ci95": {"LogLoss": [0.001, 0.03]},
+        "p_improvement_positive": {"LogLoss": 0.98},
+    }
+    registry.record_candidate(
+        candidate_id="cand-evidence",
+        git_commit="abc123",
+        feature_version="features-v1",
+        model_version="model-v1",
+        development_metrics={"rows": 250, "LogLoss": 0.68},
+        holdout_baseline={"rows": 250, "LogLoss": 0.70, "Brier": 0.25, "Accuracy": 0.60},
+        holdout_candidate={"rows": 250, "LogLoss": 0.68, "Brier": 0.24, "Accuracy": 0.61},
+        validation_windows=2,
+        calibration_ok=True,
+        no_future_target_data=True,
+        reproducible=True,
+        holdout_score_baseline=None,
+        holdout_score_candidate=None,
+        holdout_hilo_baseline=None,
+        holdout_hilo_candidate=None,
+        league="NPB",
+        pit_starter_evidence_ok=True,
+        holdout_pit_starter_evidence_ok=True,
+        holdout_uncertainty=uncertainty,
+        evaluation_periods=periods,
+    )
+
+    assert captured["pit_starter_evidence_ok"] is True
+    assert captured["holdout_pit_starter_evidence_ok"] is True
+    assert captured["holdout_uncertainty"] == uncertainty
+    assert captured["evaluation_periods"] == periods
