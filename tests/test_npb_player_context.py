@@ -75,3 +75,17 @@ def test_resolve_player_refs_exact():
     )
     got = ctx.resolve_player_refs(["テスト太郎"], {"テスト太郎": [ref]})
     assert got["テスト太郎"].player_id == "123"
+
+
+def test_parse_player_index_link_splits_name_team_position():
+    ref = ctx._parse_player_index_link(
+        "/bis/players/43545159.html",
+        "00 投手 Ａ．エスピノーザ オリックス・バファローズ",
+        "https://npb.jp/bis/players/active/index_e.html",
+        "2026-10-04T00:00:00+00:00",
+    )
+    assert ref is not None
+    assert ref.player_id == "43545159"
+    assert ref.name == "Ａ．エスピノーザ"
+    assert ref.team == "オリックス・バファローズ"
+    assert ref.position == "投手"
