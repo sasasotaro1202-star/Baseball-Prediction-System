@@ -349,3 +349,20 @@ def test_24h_supervisor_recovers_only_latest_zero_job_pregame_failures_with_dail
     assert "FAILED_PREGAME_ZERO_JOB_DISPATCH" in text
     assert "gh run rerun" not in text
     assert "Latest pregame failure is not a zero-job startup failure" in text
+    assert "HTTP 4[0-9]{2}" in text
+    assert "HTTP (408|429)" in text
+    assert "gh deterministic HTTP 4xx; refusing retry." in text
+    pregame = (ROOT / ".github" / "workflows" / "baseball_30m_pregame_auto.yml").read_text(encoding="utf-8")
+    assert "workflow_dispatch:" in pregame
+    assert "recovery_mode:" in pregame
+    assert 'default: "manual"' in pregame
+    assert "--field recovery_mode=zero_job_startup_recovery" in text
+
+
+def test_24h_autopilot_targeted_test_paths_exist():
+    """Never let the long-running autopilot reference deleted test modules."""
+    workflow = (ROOT / ".github" / "workflows" / "baseball_24h_research_autopilot.yml").read_text(encoding="utf-8")
+    paths = sorted(set(re.findall(r"tests/[A-Za-z0-9_.-]+\.py", workflow)))
+    assert paths, "expected at least one targeted test path in the 24h autopilot"
+    missing = [path for path in paths if not (ROOT / path).is_file()]
+    assert not missing, f"24h autopilot references missing test files: {missing}"

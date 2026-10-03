@@ -58,7 +58,8 @@ jobs:
         run: |
           set -euo pipefail
           python -m compileall -q data research core
-          python -m pytest -q tests/test_scope_discovery.py tests/test_universal_source_matrix.py tests/test_universal_adapter_registry.py tests/test_espn_baseball_schedule.py tests/test_japan_independent_schedule.py tests/test_data_intelligence_candidates.py tests/test_pit_history_expansion.py tests/test_pit_snapshot_expanded_scope.py tests/test_scope_coverage_audit.py
+          # Keep this list aligned with checked-in focused tests; a repository invariant rejects stale paths.
+          python -m pytest -q tests/test_auto_discovery_frontier.py tests/test_universal_source_matrix.py tests/test_universal_adapter_registry.py tests/test_availability_competitions.py tests/test_npb_tracking_source.py tests/test_pit_replay.py tests/test_pit_replay_reference.py tests/test_pit_ledger_validator.py tests/test_scope_router.py
       - name: Run chronological OOS
         timeout-minutes: 325
         env:
@@ -111,7 +112,7 @@ jobs:
       - name: Install minimal research dependencies
         run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 pandas pytest
       - name: Baseline parser tests
-        run: python -m pytest -q tests/test_scope_discovery.py tests/test_espn_baseball_schedule.py tests/test_japan_independent_schedule.py tests/test_frontier_schedule_adapters.py
+        run: python -m pytest -q tests/test_auto_discovery_frontier.py tests/test_universal_source_matrix.py tests/test_universal_adapter_registry.py tests/test_availability_competitions.py tests/test_npb_tracking_source.py
       - name: Run frontier discovery loop
         timeout-minutes: 335
         shell: bash

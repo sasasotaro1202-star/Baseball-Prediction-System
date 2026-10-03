@@ -2,6 +2,12 @@ name: Baseball 60m Pregame Auto Prediction
 
 on:
   workflow_dispatch:
+    inputs:
+      recovery_mode:
+        description: "Recovery provenance for an explicit supervisor dispatch."
+        required: false
+        default: "manual"
+        type: string
   schedule:
     - cron: "*/5 * * * *"
 
