@@ -218,7 +218,7 @@ def main() -> int:
     today_jst = datetime.now(ZoneInfo("Asia/Tokyo")).date()
 
     report: dict[str, Any] = {
-        "schema_version": "npb-live-source-health-v4",
+        "schema_version": "npb-live-source-health-v5",
         "status": "UNKNOWN",
         "checked_at_jst": checked_at,
         "checked_date_jst": today_jst.isoformat(),
@@ -300,6 +300,23 @@ def main() -> int:
     }
     roster = resolve_roster_player_ids(roster, teams=game_teams)
     identity = roster.get("identity_resolution") or {}
+    identity_team_rates: dict[str, float | None] = {}
+    for team in sorted(game_teams):
+        rows = roster.get("teams", {}).get(team, []) or {}
+        named = [p for p in rows if str(p.get("player_name") or "").strip()]
+        resolved = [p for p in named if str(p.get("player_id") or "").strip()]
+        identity_team_rates[team] = (len(resolved) / len(named)) if named else None
+    # Operational usability gate: each participating team's roster must be
+    # predominantly resolvable through the official player-search identity path.
+    low_coverage = {
+        team: rate for team, rate in identity_team_rates.items()
+        if rate is None or rate < 0.80
+    }
+    if low_coverage:
+        raise RuntimeError(
+            "official NPB roster-to-player identity coverage below 80%: "
+            + json.dumps(low_coverage, ensure_ascii=False, sort_keys=True)
+        )
     report["sources"]["npb_official_roster_status"] = {
         "status": "AVAILABLE",
         "url": roster_url,
@@ -312,6 +329,7 @@ def main() -> int:
         "identity_resolution_requested_count": int(identity.get("requested_count", 0) or 0),
         "identity_resolution_count": int(identity.get("resolved_count", 0) or 0),
         "identity_resolution_rate": identity.get("resolved_rate"),
+        "identity_resolution_rate_by_participating_team": identity_team_rates,
     }
     report["sources"]["npb_official_player_search"] = {
         "status": "AVAILABLE" if identity.get("resolved_count", 0) else "SOURCE_FAILED",
