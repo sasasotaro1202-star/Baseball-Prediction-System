@@ -116,16 +116,21 @@ def predict_current(
     prediction horizon. Historical dates belong to research/audit entry points,
     not the user-facing current-production path.
     """
+    requested_at = datetime.now(timezone.utc).isoformat()
+    resolved_target_date = latest_target_date_jst()
     info = current_runtime(league)
     if not info["available"]:
         return {
             **info,
             "execution_status": "BLOCKED_NO_CURRENT_PRODUCTION_RUNTIME",
+            "prediction_request_mode": "on_demand",
+            "prediction_schedule": "on_demand",
+            "prediction_source": "MANUAL_LIVE",
+            "prediction_requested_at_utc": requested_at,
+            "resolved_target_date": resolved_target_date,
             "predictions": [],
-            "prediction_generated_at": datetime.now(timezone.utc).isoformat(),
+            "prediction_generated_at": requested_at,
         }
-
-    resolved_target_date = latest_target_date_jst()
     if target_date is not None and str(target_date) != resolved_target_date:
         return {
             **info,
@@ -147,7 +152,6 @@ def predict_current(
 
         # Add an immutable runtime identity to every current-production result.
         out = dict(result)
-        requested_at = datetime.now(timezone.utc).isoformat()
         out["prediction_request_mode"] = "on_demand"
         out["prediction_requested_at_utc"] = requested_at
         for pred in out.get("predictions", []) if isinstance(out.get("predictions"), list) else []:
