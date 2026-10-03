@@ -73,12 +73,12 @@ jobs:
           # workflow_run events, so recovery belongs in this scheduled supervisor.
           PREGAME_WORKFLOW=baseball_30m_pregame_auto.yml
           test -s ".github/workflows/${PREGAME_WORKFLOW}"
-          pregame_runs="$(gh_retry run list \
-            --repo "${GH_REPO}" \
-            --workflow "${PREGAME_WORKFLOW}" \
-            --branch main \
-            --limit 100 \
-            --json databaseId,status,conclusion,createdAt,updatedAt,headBranch)"
+          # Use the Actions REST ledger here instead of `gh run list`. The CLI
+          # has returned an empty stdout for this workflow+branch combination
+          # even when runs are visible in the REST API.
+          pregame_runs="$(gh_retry api \
+            "repos/${GH_REPO}/actions/workflows/${PREGAME_WORKFLOW}/runs?branch=main&per_page=100" \
+            --jq '.workflow_runs | map({databaseId: .id, status: .status, conclusion: .conclusion, createdAt: .created_at, updatedAt: .updated_at, headBranch: .head_branch})')"
           echo "Recent pregame runs:"
           echo "${pregame_runs}" | jq '.[0:10]'
 
@@ -116,7 +116,7 @@ jobs:
               fi
             fi
           done < <(printf '%s' "${pregame_runs}" |
-            jq -c '.[] | select(.headBranch == "main") | select(.status == "completed" and .conclusion == "failure") | select(((.createdAt | fromdateiso8601) >= ((now - 86400)))) | .' |
+            jq -c '.[] | select(.headBranch == "main") | select(.status == "completed" and .conclusion == "failure") | select(((.createdAt | fromdateiso8601) >= ((now - 86400))))' |
             jq -s 'sort_by(.createdAt) | reverse | .[]')
 
           echo "Pregame zero-job failures in last 24h=${pregame_zero_job_failures}"
@@ -150,13 +150,9 @@ jobs:
             verified_pregame=0
             for attempt in 1 2 3 4 5; do
               sleep 3
-              pregame_active_after="$(gh_retry run list \
-                --repo "${GH_REPO}" \
-                --workflow "${PREGAME_WORKFLOW}" \
-                --branch main \
-                --limit 10 \
-                --json databaseId,status,headBranch,createdAt \
-                --jq '[.[] | select(.headBranch == "main") | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+              pregame_active_after="$(gh_retry api \
+                "repos/${GH_REPO}/actions/workflows/${PREGAME_WORKFLOW}/runs?branch=main&per_page=20" \
+                --jq '[.workflow_runs[] | select(.head_branch == "main") | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
               echo "Pregame recovery verification ${attempt}/5: active=${pregame_active_after}"
               if [ "${pregame_active_after}" -gt 0 ]; then
                 verified_pregame=1
@@ -170,7 +166,6 @@ jobs:
               printf '%s\n' 'Pregame terminal state: PRE_GAME_ZERO_JOB_REDISPATCHED; parent failure remains authoritative.' >> "$GITHUB_STEP_SUMMARY"
             fi
           fi
-
 
 
           # Candidate OOS has a separate concurrency group because it is much
