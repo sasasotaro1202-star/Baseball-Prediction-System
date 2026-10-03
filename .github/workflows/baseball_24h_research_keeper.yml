@@ -23,6 +23,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TARGET: baseball_24h_research_autopilot.yml
+          CURRENT_SHA: ${{ github.sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -36,7 +37,7 @@ jobs:
             done
             return "$rc"
           }
-          runs="$(gh_retry run list --repo "$GH_REPO" --workflow "$TARGET" --limit 30 --json databaseId,status,conclusion,createdAt,updatedAt)"
+          runs="$(gh_retry run list --repo "$GH_REPO" --workflow "$TARGET" --limit 30 --json databaseId,status,conclusion,createdAt,updatedAt,headSha)"
           active="$(printf '%s' "$runs" | jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
           echo "active=${active}"
           if [ "$active" -gt 0 ]; then
@@ -46,19 +47,24 @@ jobs:
           # Count only the current consecutive failure streak from the newest
           # autopilot run. Historical failures cannot keep the breaker open after
           # a neutral/cancelled/skipped run or any other non-failure conclusion.
-          failure_streak="$(printf '%s' "$runs" | jq '
+          # Breaker state is scoped to the immutable research snapshot SHA.
+          # Failures from superseded code must not block recovery on new code.
+          failure_streak="$(printf '%s' "$runs" | jq --arg sha "$CURRENT_SHA" '
             sort_by(.createdAt)
             | reverse
             | reduce .[] as $r ({streak: 0, done: false};
                 if .done then .
+                elif $r.headSha != $sha then .done = true
                 elif $r.conclusion == "failure" then .streak += 1
                 else .done = true
                 end
               )
             | .streak
           ')"
-          latest_failure_run="$(printf '%s' "$runs" | jq -r '
-            sort_by(.createdAt) | reverse | map(select(.conclusion == "failure")) | .[0].databaseId // empty
+          latest_failure_run="$(printf '%s' "$runs" | jq -r --arg sha "$CURRENT_SHA" '
+            sort_by(.createdAt) | reverse
+            | map(select(.headSha == $sha and .conclusion == "failure"))
+            | .[0].databaseId // empty
           ')"
           echo "latest_failure_run=${latest_failure_run:-<none>}"
           echo "consecutive_failure_streak=${failure_streak}"
