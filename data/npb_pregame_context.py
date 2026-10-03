@@ -195,7 +195,7 @@ def parse_official_games(page_html: str, target_date: str) -> list[dict[str, Any
 
 
 def _parse_number(text: str) -> float | None:
-    m = re.search(r"-?\d+(?:\.\d+)?", text.replace(",", ""))
+    m = re.search(r"-?(?:\d+(?:\.\d+)?|\.\d+)", text.replace(",", ""))
     return float(m.group(0)) if m else None
 
 
