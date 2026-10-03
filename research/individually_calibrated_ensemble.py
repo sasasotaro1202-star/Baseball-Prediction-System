@@ -8,6 +8,8 @@ from the production Champion.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+import hashlib
+import json
 from itertools import product
 from typing import Any, Mapping, Sequence
 
@@ -24,8 +26,10 @@ class CalibratedBlendSpec:
     blend_weights: tuple[float, ...]
     final_temperature: float
     development_logloss: float
+    dataset_hash: str = "UNKNOWN"
+    git_commit: str = "UNKNOWN"
     fit_scope: str = "DEVELOPMENT_OOS_ONLY"
-    schema_version: int = 1
+    schema_version: int = 2
 
     def __post_init__(self) -> None:
         n = len(self.model_names)
@@ -45,9 +49,23 @@ class CalibratedBlendSpec:
             raise ValueError("development logloss must be finite")
         if self.fit_scope != "DEVELOPMENT_OOS_ONLY":
             raise ValueError("candidate fitter is restricted to Development OOS")
+        if not str(self.dataset_hash):
+            raise ValueError("dataset_hash must be explicit or UNKNOWN")
+        if not str(self.git_commit):
+            raise ValueError("git_commit must be explicit or UNKNOWN")
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+    def fingerprint(self) -> str:
+        """Deterministic identity for the complete frozen candidate specification."""
+        raw = json.dumps(
+            self.to_dict(),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def _validate_inputs(y_true: Sequence[int], component_probabilities: Mapping[str, Any]) -> tuple[np.ndarray, int]:
@@ -143,6 +161,8 @@ def fit_calibrated_blend(
     top_k: int = 3,
     temperature_grid: np.ndarray | None = None,
     weight_step: float = 0.25,
+    dataset_hash: str = "UNKNOWN",
+    git_commit: str = "UNKNOWN",
 ) -> tuple[CalibratedBlendSpec, np.ndarray]:
     """Fit an individually calibrated constrained blend on Development OOS only."""
     y, _ = _validate_inputs(y_true, component_probabilities)
@@ -178,6 +198,8 @@ def fit_calibrated_blend(
         blend_weights=tuple(float(x) for x in weights),
         final_temperature=float(final_temperature),
         development_logloss=float(loss),
+        dataset_hash=str(dataset_hash),
+        git_commit=str(git_commit),
     )
     return spec, _normalize(final_probs)
 
