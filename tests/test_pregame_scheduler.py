@@ -449,3 +449,34 @@ def test_due_games_exposes_npb_research_shadow_when_production_is_blocked(monkey
     assert row["status"] == "RESEARCH_SHADOW_DUE"
     assert row["lead_minutes"] == 60.0
 
+
+
+def test_fetch_uses_stdlib_https(monkeypatch):
+    seen = {}
+    class _Response:
+        status = 200
+        def read(self):
+            return "ok".encode("utf-8")
+    class _Connection:
+        def __init__(self, host, timeout):
+            seen["host"] = host
+            seen["timeout"] = timeout
+        def request(self, method, path, headers):
+            seen["method"] = method
+            seen["path"] = path
+            seen["headers"] = headers
+        def getresponse(self):
+            return _Response()
+        def close(self):
+            seen["closed"] = True
+    monkeypatch.setattr(scheduler.http.client, "HTTPSConnection", _Connection)
+    monkeypatch.setattr(scheduler.time, "sleep", lambda seconds: None)
+    assert scheduler._fetch("https://example.test/path?a=1") == "ok"
+    assert seen == {
+        "host": "example.test",
+        "timeout": 30,
+        "method": "GET",
+        "path": "/path?a=1",
+        "headers": {"User-Agent": "Baseball-Prediction-System/pregame-scheduler"},
+        "closed": True,
+    }
