@@ -162,6 +162,7 @@ def resolve_roster_player_ids(
             existing_id = str(player.get("player_id") or "").strip()
             if existing_id:
                 player["identity_resolution_status"] = player.get("identity_resolution_status") or "SOURCE_STABLE_ID"
+                resolved += 1
                 continue
             name = _clean(player.get("player_name"))
             canonical_team = normalize_team(str(team))
