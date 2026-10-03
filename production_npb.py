@@ -26,6 +26,25 @@ from data.competition_registry import production_eligible
 from research.target_strategy import as_dict as target_strategy_dict, standard_target_strategies
 
 ROOT = Path(__file__).resolve().parent
+
+
+def _git_commit() -> str:
+    """Return the commit actually used by the runner, preferring checked-out HEAD."""
+    for env_name in ("BASEBALL_CHECKED_OUT_SHA", "GITHUB_SHA"):
+        value = __import__("os").environ.get(env_name, "").strip()
+        if value:
+            return value
+    try:
+        return __import__("subprocess").check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=ROOT,
+            text=True,
+            stderr=__import__("subprocess").DEVNULL,
+        ).strip() or "unknown"
+    except Exception:
+        return "unknown"
+
+
 TIMEOUT = max(10, int(__import__("os").environ.get("NPB_PRODUCTION_HTTP_TIMEOUT", "45")))
 HTTP_CONNECT_TIMEOUT = max(2, int(__import__("os").environ.get("NPB_PRODUCTION_CONNECT_TIMEOUT", "8")))
 HTTP_RETRIES = max(1, int(__import__("os").environ.get("NPB_PRODUCTION_HTTP_RETRIES", "4")))
@@ -974,7 +993,7 @@ def predict(
             "schema_version":"npb-production-v1", "target_date":target_date,
             "execution_status":"BLOCKED_PRODUCTION_GATE", "pit_status":"NOT_RUN",
             "starter_gate":"NOT_RUN", "model_status":"NOT_RUN",
-            "git_commit":__import__("os").environ.get("GITHUB_SHA","unknown"),
+            "git_commit":_git_commit(),
             "predictions":[], "target_strategy_contracts":NPB_TARGET_CONTRACTS,
             "block_reason":"NPB is RESEARCH_ONLY until an explicit independent holdout-backed adoption decision is recorded.",
             "prediction_generated_at":datetime.now(timezone.utc).isoformat(),

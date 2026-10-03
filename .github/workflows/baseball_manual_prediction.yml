@@ -37,6 +37,15 @@ jobs:
           ref: main
           fetch-depth: 1
 
+      - name: Record actual checked-out commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          checked_out_sha="$(git rev-parse HEAD)"
+          test -n "${checked_out_sha}"
+          echo "BASEBALL_CHECKED_OUT_SHA=${checked_out_sha}" >> "${GITHUB_ENV}"
+          echo "Manual prediction will record the actual checked-out main commit: ${checked_out_sha}" >> "${GITHUB_STEP_SUMMARY}"
+
       - name: Setup Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:

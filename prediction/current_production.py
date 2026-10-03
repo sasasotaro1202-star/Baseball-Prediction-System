@@ -24,9 +24,12 @@ CONFIG = ROOT / "config" / "current_production_runtime.json"
 
 
 def _git_commit() -> str:
-    value = os.getenv("GITHUB_SHA", "").strip()
-    if value:
-        return value
+    # Manual workflows may checkout the live main branch after dispatch.
+    # Prefer the commit actually checked out by the runner.
+    for env_name in ("BASEBALL_CHECKED_OUT_SHA", "GITHUB_SHA"):
+        value = os.getenv(env_name, "").strip()
+        if value:
+            return value
     try:
         return subprocess.check_output(
             ["git", "rev-parse", "HEAD"],

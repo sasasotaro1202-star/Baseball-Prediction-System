@@ -89,3 +89,20 @@ def test_blocked_runtime_preserves_on_demand_request_provenance(monkeypatch):
     assert result["prediction_source"] == "MANUAL_LIVE"
     assert result["resolved_target_date"] == "2026-10-03"
     assert result["prediction_requested_at_utc"] == result["prediction_generated_at"]
+
+
+
+def test_git_commit_prefers_checked_out_head_over_dispatch_sha(monkeypatch):
+    import prediction.current_production as cp
+
+    monkeypatch.setenv("GITHUB_SHA", "dispatch-sha")
+    monkeypatch.setenv("BASEBALL_CHECKED_OUT_SHA", "checked-out-sha")
+    assert cp._git_commit() == "checked-out-sha"
+
+
+def test_git_commit_falls_back_to_dispatch_sha(monkeypatch):
+    import prediction.current_production as cp
+
+    monkeypatch.delenv("BASEBALL_CHECKED_OUT_SHA", raising=False)
+    monkeypatch.setenv("GITHUB_SHA", "dispatch-sha")
+    assert cp._git_commit() == "dispatch-sha"
