@@ -86,10 +86,12 @@ def test_due_games_does_not_repeat_an_archived_pregame_snapshot(monkeypatch):
     assert result["due_games"] == []
 
 
-def test_schedule_parser_fails_closed_without_deterministic_game():
+def test_schedule_parser_ignores_team_labels_before_explicit_schedule_heading():
     parser = scheduler._ScheduleParser()
     parser.feed("<html><body><img alt='読売ジャイアンツ'></body></html>")
-    assert parser.tokens == [("team", "読売ジャイアンツ")]
+    # A team label outside the explicit schedule section is not sufficient
+    # evidence to create a prediction-time game candidate.
+    assert parser.tokens == []
 
 
 def test_non_production_runtime_is_reported_but_not_predicted(monkeypatch):
