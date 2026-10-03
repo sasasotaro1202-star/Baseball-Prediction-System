@@ -712,6 +712,7 @@ def collect_npb_pregame_context(target_date: str, *, now_utc: pd.Timestamp | Non
 
     snapshot = {
         "schema_version": "npb-pregame-context-v1",
+        "status": "AVAILABLE",
         "target_date": target_date,
         "generated_at_utc": now.isoformat(),
         "prediction_cutoff_utc": now.isoformat(),
