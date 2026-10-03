@@ -91,7 +91,7 @@ def test_reconcile_preserves_prediction_time_competition_metadata(tmp_path, monk
         "home_score": 4,
         "away_score": 2,
         "source_url": "test://npb",
-    }])
+    }]))
 
     exp.reconcile()
     ledger = pd.read_csv(tmp_path / "experience" / "experience_ledger.csv")
