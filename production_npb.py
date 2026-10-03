@@ -729,9 +729,10 @@ def _official_daily_competition_metadata(
         r"<h[1-6][^>]*>(.*?)</h[1-6]>",
         re.I | re.S,
     )
+    schedule_heading_markers = ("試合予定", "試合結果", "試合日程")
     for raw in heading_pattern.findall(page_html):
         heading = _clean_name(re.sub(r"<[^>]+>", " ", raw))
-        if not heading:
+        if not heading or not any(marker in heading for marker in schedule_heading_markers):
             continue
         label = classify_npb(heading)
         if label.status == "classified":
