@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 
 from core.http import request as http_request, session as http_session
 from data.npb_pregame_context import collect_npb_pregame_context
-from data.npb_roster_context import parse_roster_page, BASE_URL as NPB_BASE_URL
+from data.npb_roster_context import parse_roster_page, resolve_roster_player_ids, BASE_URL as NPB_BASE_URL
 from data.npb_team_player_context import (
     TEAM_SUFFIX,
     STATS_URL,
