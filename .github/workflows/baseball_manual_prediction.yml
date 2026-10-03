@@ -47,25 +47,12 @@ jobs:
           set -euo pipefail
           python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
 
-      - name: Resolve live call-time target
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          from prediction.current_production import latest_target_date_jst
-          from pathlib import Path
-
-          target = latest_target_date_jst()
-          Path("manual_target_date_jst.txt").write_text(target + "\n", encoding="utf-8")
-          print("Manual prediction target date (JST):", target)
-          PY
-
       - name: Run current production runtime on demand
         id: prediction
         shell: bash
         run: |
           set -euo pipefail
-          target="$(cat manual_target_date_jst.txt)"
-          output="results/manual_prediction_${target}_${{ inputs.league }}.json"
+          output="results/manual_prediction.json"
           mkdir -p results
 
           set +e
@@ -116,8 +103,7 @@ jobs:
       - name: Validate on-demand metadata when a prediction was emitted
         run: |
           set -euo pipefail
-          target="$(cat manual_target_date_jst.txt)"
-          output="results/manual_prediction_${target}_${{ inputs.league }}.json"
+          output="results/manual_prediction.json"
           python - "${output}" <<'PY'
           import json
           import sys
@@ -155,8 +141,7 @@ jobs:
       - name: Archive manual experience snapshot when a production prediction exists
         run: |
           set -euo pipefail
-          target="$(cat manual_target_date_jst.txt)"
-          output="results/manual_prediction_${target}_${{ inputs.league }}.json"
+          output="results/manual_prediction.json"
           if ! grep -q '"execution_status": "EXECUTED"' "${output}"; then
             echo "No executed prediction to archive."
             exit 0
@@ -170,7 +155,7 @@ jobs:
           name: baseball-manual-prediction-${{ inputs.league }}-${{ github.run_id }}
           path: |
             manual_target_date_jst.txt
-            results/manual_prediction_*.json
+            results/manual_prediction.json
             data/experience/**
           if-no-files-found: warn
           retention-days: 14
