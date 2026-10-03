@@ -292,6 +292,14 @@ def main() -> int:
     roster = parse_roster_page(roster_html, roster_date)
     if roster.get("player_count", 0) <= 0:
         raise RuntimeError("official roster page parsed zero players")
+    game_teams = {
+        str(team).strip()
+        for game in games
+        for team in (game.get("home"), game.get("away"))
+        if str(team).strip() in TEAM_SUFFIX
+    }
+    roster = resolve_roster_player_ids(roster, teams=game_teams)
+    identity = roster.get("identity_resolution") or {}
     report["sources"]["npb_official_roster_status"] = {
         "status": "AVAILABLE",
         "url": roster_url,
@@ -301,16 +309,43 @@ def main() -> int:
         "registered_today_count": roster.get("registered_today_count", 0),
         "removed_today_count": roster.get("removed_today_count", 0),
         "transaction_parser_status": roster.get("transaction_parser_status"),
+        "identity_resolution_requested_count": int(identity.get("requested_count", 0) or 0),
+        "identity_resolution_count": int(identity.get("resolved_count", 0) or 0),
+        "identity_resolution_rate": identity.get("resolved_rate"),
+    }
+    report["sources"]["npb_official_player_search"] = {
+        "status": "AVAILABLE" if identity.get("resolved_count", 0) else "SOURCE_FAILED",
+        "requested_count": int(identity.get("requested_count", 0) or 0),
+        "resolved_count": int(identity.get("resolved_count", 0) or 0),
+        "ambiguous_count": int(identity.get("ambiguous_count", 0) or 0),
+        "not_found_count": int(identity.get("not_found_count", 0) or 0),
+        "source_failed_count": int(identity.get("source_failed_count", 0) or 0),
+        "resolved_rate": identity.get("resolved_rate"),
+        "source_id": "npb_official_player_search",
     }
 
-    # 3) Pick an actual rostered team/player from the live page and verify its
-    # individual official profile and that team's three official stat tables.
+    # 3) Pick an actual participating rostered team/player from the live page
+    # and require deterministic stable identity resolution before calling the
+    # identity portion of this source stack operationally healthy.
     teams = roster.get("teams") or {}
-    selected_team = next((team for team in sorted(teams) if teams[team]), None)
+    candidate_teams = sorted(game_teams & set(teams))
+    selected_team = next(
+        (
+            team for team in candidate_teams
+            if any(str(p.get("player_id") or "").strip() and p.get("player_url") for p in teams[team])
+        ),
+        None,
+    )
     if not selected_team:
-        raise RuntimeError("no team with rostered players was parsed")
+        raise RuntimeError(
+            "no participating team had a roster player with deterministically resolved stable identity: "
+            + json.dumps(identity, ensure_ascii=False, sort_keys=True)
+        )
     selected_player = sorted(
-        teams[selected_team],
+        (
+            p for p in teams[selected_team]
+            if str(p.get("player_id") or "").strip() and p.get("player_url")
+        ),
         key=lambda p: (str(p.get("player_name") or ""), str(p.get("player_id") or "")),
     )[0]
     player_url = selected_player.get("player_url")
@@ -339,6 +374,7 @@ def main() -> int:
         "npb_pregame_context",
         "npb_official_announced_starter",
         "npb_official_roster_status",
+        "npb_official_player_search",
         "npb_official_player_page",
         "npb_official_team_stats",
     ]
