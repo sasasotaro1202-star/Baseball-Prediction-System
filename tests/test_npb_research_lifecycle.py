@@ -19,6 +19,7 @@ def test_npb_adoption_requires_draw_metrics():
     base = _base()
     cand = dict(base)
     cand["LogLoss"] = 0.90
+    cand["Brier"] = 0.59
     result = evaluate_locked_holdout(
         base,
         cand,
