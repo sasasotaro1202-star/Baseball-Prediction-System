@@ -21,7 +21,7 @@ def test_dimensions_classify_npb_interleague_without_outcome_data():
     frame = pd.DataFrame([{
         "league": "NPB",
         "competition_id": "NPB",
-        "game_type": +§uçâçdºw^~)Şvéİyø§yÖ",
+        "game_type": "äº¤æµæˆ¦",
     }])
     out = add_dimensions(frame)
     assert out.loc[0, "league"] == "NPB"
