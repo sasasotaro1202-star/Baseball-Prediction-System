@@ -1,5 +1,9 @@
 from pathlib import Path
-from production_npb import build_target_rows, parse_official_starters_html
+from production_npb import (
+    _official_daily_competition_metadata,
+    build_target_rows,
+    parse_official_starters_html,
+)
 
 TEAMS = [
     ("読売ジャイアンツ","小笠原　慎之介"),("東京ヤクルトスワローズ","高橋　奎二"),
@@ -30,7 +34,7 @@ def test_20260920_has_six_pit_safe_games(monkeypatch):
     import production_npb as p
     import pandas as pd
     monkeypatch.setattr(p, "fetch_text", lambda url: fixture_html())
-    monkeypatch.setattr(p, "_official_daily_start_times", lambda target_date: {
+    monkeypatch.setattr(p, "_official_daily_start_times", lambda target_date, **kwargs: {
         ("読売ジャイアンツ", "東京ヤクルトスワローズ"): "14:00",
         ("中日ドラゴンズ", "広島東洋カープ"): "18:00",
         ("阪神タイガース", "横浜DeNAベイスターズ"): "18:00",
@@ -95,12 +99,12 @@ def test_target_rows_reject_non_official_starter_source(monkeypatch):
     monkeypatch.setattr(
         p,
         "_official_daily_start_times",
-        lambda target_date: {("読売ジャイアンツ", "阪神タイガース"): "18:00"},
+        lambda target_date, **kwargs: {("読売ジャイアンツ", "阪神タイガース"): "18:00"},
     )
     monkeypatch.setattr(
         p,
         "official_starters",
-        lambda target_date: [{
+        lambda target_date, **kwargs: [{
             "home": "読売ジャイアンツ",
             "away": "阪神タイガース",
             "home_starter": "投手A",
@@ -208,7 +212,7 @@ def test_target_rows_uses_official_daily_schedule_time_as_authoritative(monkeypa
     monkeypatch.setattr(
         p,
         "official_starters",
-        lambda target_date: [{
+        lambda target_date, **kwargs: [{
             "home": "広島東洋カープ",
             "away": "読売ジャイアンツ",
             "home_starter": "投手A",
@@ -222,7 +226,7 @@ def test_target_rows_uses_official_daily_schedule_time_as_authoritative(monkeypa
     monkeypatch.setattr(
         p,
         "_official_daily_start_times",
-        lambda target_date: {("広島東洋カープ", "読売ジャイアンツ"): "18:00"},
+        lambda target_date, **kwargs: {("広島東洋カープ", "読売ジャイアンツ"): "18:00"},
     )
     monkeypatch.setattr(
         p,
@@ -264,7 +268,7 @@ def test_target_rows_uses_actual_information_cutoff_and_keeps_30m_as_preferred(m
     monkeypatch.setattr(
         p,
         "official_starters",
-        lambda target_date: [{
+        lambda target_date, **kwargs: [{
             "home": "広島東洋カープ",
             "away": "読売ジャイアンツ",
             "home_starter": "投手A",
@@ -278,7 +282,7 @@ def test_target_rows_uses_actual_information_cutoff_and_keeps_30m_as_preferred(m
     monkeypatch.setattr(
         p,
         "_official_daily_start_times",
-        lambda target_date: {("広島東洋カープ", "読売ジャイアンツ"): "18:00"},
+        lambda target_date, **kwargs: {("広島東洋カープ", "読売ジャイアンツ"): "18:00"},
     )
     monkeypatch.setattr(
         p,
@@ -308,7 +312,7 @@ def test_pregame_only_limits_prediction_window_to_upcoming_60_minutes(monkeypatc
     monkeypatch.setattr(
         p,
         "official_starters",
-        lambda target_date: [{
+        lambda target_date, **kwargs: [{
             "home": "広島東洋カープ",
             "away": "読売ジャイアンツ",
             "home_starter": "投手A",
@@ -322,7 +326,7 @@ def test_pregame_only_limits_prediction_window_to_upcoming_60_minutes(monkeypatc
     monkeypatch.setattr(
         p,
         "_official_daily_start_times",
-        lambda target_date: {("広島東洋カープ", "読売ジャイアンツ"): "18:00"},
+        lambda target_date, **kwargs: {("広島東洋カープ", "読売ジャイアンツ"): "18:00"},
     )
     monkeypatch.setattr(
         p,
@@ -359,3 +363,87 @@ def test_direct_npb_production_entrypoint_enforces_registry_gate(tmp_path, monke
     assert result["execution_status"] == "BLOCKED_PRODUCTION_GATE"
     assert result["predictions"] == []
     assert called == []
+
+
+
+def test_daily_schedule_competition_metadata_uses_semantic_heading_not_navigation_links():
+    html = """
+    <html><body>
+      <nav>
+        <a>日本シリーズ</a>
+        <a>クライマックスシリーズ</a>
+        <a>オールスター・ゲーム</a>
+        <a>ファーム日本選手権</a>
+      </nav>
+      <h3>公式戦【試合予定】</h3>
+    </body></html>
+    """
+    metadata = _official_daily_competition_metadata(
+        html,
+        "https://npb.jp/bis/eng/2026/games/gm20261003.html",
+    )
+    assert metadata["competition"] == "npb_regular"
+    assert metadata["stage"] == "regular_season"
+    assert metadata["season_type"] == "regular_season"
+    assert metadata["game_class"] == "official"
+    assert metadata["competition_key"] == "NPB:npb_regular:regular_season"
+    assert metadata["status"] == "classified"
+    assert metadata["source_field"] == "npb_daily_schedule_heading"
+    assert metadata["source_value"] == "公式戦【試合予定】"
+
+
+def test_daily_schedule_competition_metadata_classifies_interleague_without_outcome_data():
+    html = "<h3>交流戦【試合予定】</h3>"
+    metadata = _official_daily_competition_metadata(
+        html,
+        "https://npb.jp/bis/eng/2026/games/gm20260617.html",
+    )
+    assert metadata["competition"] == "npb_interleague"
+    assert metadata["stage"] == "interleague"
+    assert metadata["season_type"] == "regular_season"
+    assert metadata["game_class"] == "official"
+    assert metadata["status"] == "classified"
+
+
+def test_daily_schedule_competition_metadata_fails_closed_when_heading_unknown():
+    html = """
+    <nav><a>日本シリーズ</a><a>交流戦</a></nav>
+    <h3>イベント日程【試合予定】</h3>
+    """
+    metadata = _official_daily_competition_metadata(
+        html,
+        "https://npb.jp/bis/eng/2026/games/gm20261003.html",
+    )
+    assert metadata["competition"] == "npb_unknown"
+    assert metadata["stage"] == "unknown"
+    assert metadata["season_type"] == "unknown"
+    assert metadata["game_class"] == "unknown"
+    assert metadata["competition_key"] == "NPB:npb_unknown:unknown"
+    assert metadata["status"] == "unknown"
+
+
+def test_daily_schedule_metadata_path_is_outcome_free():
+    html = """
+    <h3>日本シリーズ【試合予定】</h3>
+    <div>0 - 99</div>
+    """
+    metadata = _official_daily_competition_metadata(
+        html,
+        "https://npb.jp/bis/eng/2026/games/gm1010.html",
+    )
+    assert metadata["competition"] == "npb_japan_series"
+    assert metadata["status"] == "classified"
+
+
+
+def test_daily_schedule_competition_metadata_ignores_non_schedule_headings():
+    html = """
+    <h3>公式戦成績</h3>
+    <h3>日本シリーズ【試合予定】</h3>
+    """
+    metadata = _official_daily_competition_metadata(
+        html,
+        "https://npb.jp/bis/2026/games/gm20261101.html",
+    )
+    assert metadata["competition"] == "npb_japan_series"
+    assert metadata["stage"] == "japan_series"

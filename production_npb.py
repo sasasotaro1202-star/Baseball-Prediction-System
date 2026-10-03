@@ -14,6 +14,7 @@ import sys
 from html.parser import HTMLParser
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from typing import Any
 import numpy as np
 import pandas as pd
 from core.http import request as http_request, session as http_session
@@ -25,6 +26,7 @@ from research.correlated_score import npb_final_outcomes
 from core.pit_evidence import _is_official_source
 from data.competition_registry import production_eligible
 from research.target_strategy import as_dict as target_strategy_dict, standard_target_strategies
+from research.competition_taxonomy import classify_npb
 
 ROOT = Path(__file__).resolve().parent
 
@@ -713,14 +715,56 @@ def _situation_tags(xrow: pd.DataFrame, regime_label: str) -> list[str]:
     tags.append(f"trend:{side(float(row.get('run_trend_gap_20', 0.0)), 0.12)}")
     return tags
 
-def _official_daily_start_times(target_date: str) -> dict[tuple[str, str], str]:
-    """Read official game start times from NPB's date-specific schedule page.
+def _official_daily_competition_metadata(
+    page_html: str,
+    source_url: str,
+) -> dict[str, str]:
+    """Classify competition only from explicit official schedule headings.
 
-    The English daily page publishes each game as team -> venue/time -> team.
-    Parsing is bounded to team-pair segments and rejects ambiguous evidence.
+    Navigation links contain every NPB competition regardless of the selected
+    slate, so classification must ignore link text and use the page's own
+    semantic heading. Unknown or ambiguous headings remain UNKNOWN.
     """
+    heading_pattern = re.compile(
+        r"<h[1-6][^>]*>(.*?)</h[1-6]>",
+        re.I | re.S,
+    )
+    schedule_heading_markers = ("試合予定", "試合結果", "試合日程")
+    for raw in heading_pattern.findall(page_html):
+        heading = _clean_name(re.sub(r"<[^>]+>", " ", raw))
+        if not heading or not any(marker in heading for marker in schedule_heading_markers):
+            continue
+        label = classify_npb(heading)
+        if label.status == "classified":
+            out = label.as_dict()
+            out["source_url"] = source_url
+            out["source_field"] = "npb_daily_schedule_heading"
+            out["source_value"] = heading
+            return out
+    return {
+        "league": "NPB",
+        "competition": "npb_unknown",
+        "stage": "unknown",
+        "season_type": "unknown",
+        "game_class": "unknown",
+        "competition_key": "NPB:npb_unknown:unknown",
+        "source_field": "npb_daily_schedule_heading",
+        "source_value": "",
+        "status": "unknown",
+        "source_url": source_url,
+    }
+
+
+def _official_daily_start_times(
+    target_date: str,
+    *,
+    metadata_out: dict[str, Any] | None = None,
+) -> dict[tuple[str, str], str]:
+    """Read official start times and explicit competition metadata."""
     url = NPB_DAY_URL.format(year=target_date[:4], date=target_date.replace("-", ""))
     page_html = fetch_text(url)
+    if metadata_out is not None:
+        metadata_out.update(_official_daily_competition_metadata(page_html, url))
     parser = _DailyScheduleTextParser()
     parser.feed(page_html)
     parts = [_clean_name(x) for x in parser.parts if _clean_name(x)]
@@ -806,11 +850,32 @@ def build_target_rows(
     preferred_lead_minutes: float = 30.0,
 ) -> pd.DataFrame:
     rows=official_starters(target_date)
-    daily_times = _official_daily_start_times(target_date)
+    schedule_metadata: dict[str, Any] = {}
+    daily_times = _official_daily_start_times(
+        target_date,
+        metadata_out=schedule_metadata,
+    )
     now_utc=_utc_now()
     output=[]
     for i,r in enumerate(rows):
         r["league"]="NPB"; r["game_id"]=f"NPB-{target_date}-{i+1}"
+        r["competition"] = str(schedule_metadata.get("competition") or "npb_unknown")
+        r["competition_stage"] = str(schedule_metadata.get("stage") or "unknown")
+        r["season_type"] = str(schedule_metadata.get("season_type") or "unknown")
+        r["game_class"] = str(schedule_metadata.get("game_class") or "unknown")
+        r["competition_key"] = str(
+            schedule_metadata.get("competition_key") or "NPB:npb_unknown:unknown"
+        )
+        r["competition_classification_status"] = str(
+            schedule_metadata.get("status") or "unknown"
+        )
+        r["competition_metadata_source"] = str(schedule_metadata.get("source_url") or "")
+        r["competition_metadata_source_field"] = str(
+            schedule_metadata.get("source_field") or "npb_daily_schedule_heading"
+        )
+        r["competition_metadata_source_value"] = str(
+            schedule_metadata.get("source_value") or ""
+        )
         starter_time = str(r.get("official_start_time") or "").strip()
         pair = (str(r.get("home") or "").strip(), str(r.get("away") or "").strip())
         schedule_time = daily_times.get(pair)
@@ -1141,6 +1206,15 @@ def predict(
         outputs.append({
           "game_id":r.game_id,"datetime_jst":pd.Timestamp(r.datetime).tz_convert("Asia/Tokyo").isoformat(),
           "home":r.home,"away":r.away,"home_starter":r.home_starter,"away_starter":r.away_starter,
+          "competition":r.competition,
+          "competition_stage":r.competition_stage,
+          "season_type":r.season_type,
+          "game_class":r.game_class,
+          "competition_key":r.competition_key,
+          "competition_classification_status":r.competition_classification_status,
+          "competition_metadata_source":r.competition_metadata_source,
+          "competition_metadata_source_field":r.competition_metadata_source_field,
+          "competition_metadata_source_value":r.competition_metadata_source_value,
           "starter_evidence_status":r.starter_evidence_status,
           "starter_source":r.starter_source,
           "starter_evidence_observed_at_utc":r.starter_evidence_observed_at_utc,
