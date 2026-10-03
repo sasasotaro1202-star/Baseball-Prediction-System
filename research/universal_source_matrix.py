@@ -146,6 +146,7 @@ SOURCE_CAPABILITIES: dict[str, frozenset[str]] = {
     "open_meteo_forecast": frozenset({"weather"}),
     "npb_official_player_index": frozenset({"roster"}),
     "npb_official_player_page": frozenset({"roster", "batting", "pitching", "fielding"}),
+    "npb_official_roster_status": frozenset({"roster"}),
     "npb_official_team_batting": frozenset({"batting"}),
     "npb_official_team_pitching": frozenset({"pitching"}),
     "npb_official_team_fielding": frozenset({"fielding"}),
