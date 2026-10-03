@@ -27,6 +27,9 @@ Use checkpoint/resume, idempotency, bounded retry/backoff, watchdog/heartbeat, d
 ## Cost/security
 Prefer verified free/OSS/local/cache. Unknown-cost or billing-risk services are not automatic dependencies. Never expose keys/tokens/secrets.
 
+## Reconciliation metadata
+Prediction-time competition/phase metadata captured by the production runner must survive postgame reconciliation into the experience ledger. Reconciliation may enrich missing metadata only from the immutable prediction snapshot or separately verified prediction-time evidence; it must not infer a phase from postgame knowledge or silently remap UNKNOWN.
+
 ## Completion
 Green Actions or generated artifacts are execution evidence, not automatic performance verification. Completion requires tests, PIT/leakage, identity/scope audit, chronological OOS, calibration, ablation, robustness, frozen holdout, artifact integrity, reproducibility, recovery, release gate, monitoring and rollback.
 
