@@ -182,3 +182,17 @@ def test_collect_context_falls_back_to_monthly_official_schedule(monkeypatch):
     assert schedule["endpoint_variant"] == "MONTH_DETAIL_FALLBACK"
     assert "daily endpoint" in schedule["primary_daily_endpoint_error"]
 
+
+def test_parse_official_schedule_detail_accepts_full_canonical_team_names():
+    html = """
+    <table><tr>
+      <td>10/4（日）</td>
+      <td>東京ヤクルトスワローズ - 広島東洋カープ</td>
+      <td>明治神宮野球場</td>
+      <td>18:00</td>
+    </tr></table>
+    """
+    rows = ctx.parse_official_schedule_detail(html, "2026-10-04")
+    assert len(rows) == 1
+    assert rows[0]["home"] == "東京ヤクルトスワローズ"
+    assert rows[0]["away"] == "広島東洋カープ"
