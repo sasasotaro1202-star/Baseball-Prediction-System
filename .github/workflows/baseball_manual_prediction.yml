@@ -1,0 +1,176 @@
+name: Baseball Manual On-Demand Prediction
+
+on:
+  workflow_dispatch:
+    inputs:
+      league:
+        description: "League to predict at request time"
+        required: true
+        type: choice
+        options:
+          - NPB
+          - MLB
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baseball-manual-prediction-${{ inputs.league }}
+  cancel-in-progress: false
+
+jobs:
+  predict:
+    name: Manual ${{ inputs.league }} prediction
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      PYTHONPATH: .
+      PYTHONUNBUFFERED: "1"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      GITHUB_SHA: ${{ github.sha }}
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install production dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
+
+      - name: Resolve live call-time target
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from prediction.current_production import latest_target_date_jst
+          from pathlib import Path
+
+          target = latest_target_date_jst()
+          Path("manual_target_date_jst.txt").write_text(target + "\n", encoding="utf-8")
+          print("Manual prediction target date (JST):", target)
+          PY
+
+      - name: Run current production runtime on demand
+        id: prediction
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="$(cat manual_target_date_jst.txt)"
+          output="results/manual_prediction_${target}_${{ inputs.league }}.json"
+          mkdir -p results
+
+          set +e
+          python -m prediction.current_production \
+            --league "${{ inputs.league }}" \
+            --data-dir data \
+            > "${output}"
+          rc=$?
+          set -e
+
+          test -s "${output}"
+          python - "${output}" "${rc}" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          rc = int(sys.argv[2])
+          obj = json.loads(path.read_text(encoding="utf-8"))
+          status = str(obj.get("execution_status", "UNKNOWN"))
+
+          allowed = {
+              "EXECUTED",
+              "NO_FUTURE_GAMES",
+              "BLOCKED_NO_CURRENT_PRODUCTION_RUNTIME",
+              "BLOCKED_STALE_TARGET_DATE",
+              "BLOCKED_STARTERS",
+              "BLOCKED_PRODUCTION_GATE",
+          }
+          if status not in allowed:
+              raise SystemExit("unexpected manual prediction status: " + status)
+
+          # A fail-closed runtime block is a valid operational result, not a
+          # fabricated prediction and not a successful prediction claim.
+          if status.startswith("BLOCKED_") or status == "NO_FUTURE_GAMES":
+              print(json.dumps({
+                  "status": status,
+                  "prediction_rows": len(obj.get("predictions", [])),
+                  "runtime_available": obj.get("current_production_runtime") is not None,
+                  "exit_code": rc,
+              }, ensure_ascii=False))
+              if status == "BLOCKED_STALE_TARGET_DATE":
+                  raise SystemExit(2)
+          elif rc != 0:
+              raise SystemExit("prediction execution failed with rc=" + str(rc))
+          PY
+
+      - name: Validate on-demand metadata when a prediction was emitted
+        run: |
+          set -euo pipefail
+          target="$(cat manual_target_date_jst.txt)"
+          output="results/manual_prediction_${target}_${{ inputs.league }}.json"
+          python - "${output}" <<'PY'
+          import json
+          import sys
+          from datetime import datetime
+          from pathlib import Path
+
+          obj = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          if obj.get("execution_status") != "EXECUTED":
+              print("Manual request did not emit a production prediction:", obj.get("execution_status"))
+              raise SystemExit(0)
+
+          if obj.get("prediction_request_mode") != "on_demand":
+              raise SystemExit("manual request was not marked on_demand")
+
+          for pred in obj.get("predictions", []):
+              if pred.get("prediction_source") != "MANUAL_LIVE":
+                  raise SystemExit("prediction source is not MANUAL_LIVE")
+              if pred.get("prediction_schedule") != "on_demand":
+                  raise SystemExit("prediction schedule is not on_demand")
+              generated = datetime.fromisoformat(
+                  str(pred["prediction_generated_at"]).replace("Z", "+00:00")
+              )
+              game_time = datetime.fromisoformat(
+                  str(pred["datetime_jst"]).replace("Z", "+00:00")
+              )
+              if generated >= game_time:
+                  raise SystemExit("manual prediction was generated at/after first pitch")
+              if pred.get("pit_status") != "PASS":
+                  raise SystemExit("manual prediction is not PIT PASS")
+              if "prediction_target_lead_minutes" not in pred:
+                  raise SystemExit("manual prediction is missing target lead metadata")
+          print("Manual on-demand PIT/metadata validation passed.")
+          PY
+
+      - name: Archive manual experience snapshot when a production prediction exists
+        run: |
+          set -euo pipefail
+          target="$(cat manual_target_date_jst.txt)"
+          output="results/manual_prediction_${target}_${{ inputs.league }}.json"
+          if ! grep -q '"execution_status": "EXECUTED"' "${output}"; then
+            echo "No executed prediction to archive."
+            exit 0
+          fi
+          python -m research.experience_ledger --archive "${output}" --run-id "${GITHUB_RUN_ID}"
+
+      - name: Upload manual prediction evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: baseball-manual-prediction-${{ inputs.league }}-${{ github.run_id }}
+          path: |
+            manual_target_date_jst.txt
+            results/manual_prediction_*.json
+            data/experience/**
+          if-no-files-found: warn
+          retention-days: 14
