@@ -77,8 +77,8 @@ def test_uncertainty_gate_requires_positive_robust_logloss_improvement():
     from research.adoption_gate import GatePolicy
 
     result = evaluate_locked_holdout(
-        {"rows": 300, "LogLoss": 0.70, "Brier": 0.50, "Accuracy": 0.55},
-        {"rows": 300, "LogLoss": 0.68, "Brier": 0.49, "Accuracy": 0.56},
+        {"rows": 300, "LogLoss": 0.70, "Brier": 0.49, "Accuracy": 0.55},
+        {"rows": 300, "LogLoss": 0.675, "Brier": 0.48, "Accuracy": 0.56},
         policy=GatePolicy(
             require_uncertainty_check=True,
             min_positive_improvement_probability=0.95,
@@ -131,3 +131,46 @@ def test_uncertainty_gate_accepts_robust_holdout_signal_when_other_gates_pass():
         },
     )
     assert result["decision"] == "ADOPT"
+
+
+
+def test_default_primary_gate_rejects_sub_three_percent_logloss_gain():
+    from research.adoption_gate import GatePolicy
+
+    result = evaluate_locked_holdout(
+        {"rows": 300, "LogLoss": 0.60, "Brier": 0.20, "Accuracy": 0.60},
+        {"rows": 300, "LogLoss": 0.59, "Brier": 0.19, "Accuracy": 0.61},
+        policy=GatePolicy(
+            require_score_check=False,
+            require_hilo_check=False,
+            require_npb_three_way_check=False,
+            require_uncertainty_check=False,
+        ),
+        validation_windows=2,
+        calibration_ok=True,
+        no_future_target_data=True,
+        reproducible=True,
+    )
+    assert result["decision"] == "REJECT"
+    assert "logloss_improvement_below_gate" in result["reasons"]
+
+
+def test_default_auxiliary_brier_gate_requires_one_percent_relative_gain():
+    from research.adoption_gate import GatePolicy
+
+    result = evaluate_locked_holdout(
+        {"rows": 300, "LogLoss": 0.60, "Brier": 0.20, "Accuracy": 0.60},
+        {"rows": 300, "LogLoss": 0.58, "Brier": 0.199, "Accuracy": 0.61},
+        policy=GatePolicy(
+            require_score_check=False,
+            require_hilo_check=False,
+            require_npb_three_way_check=False,
+            require_uncertainty_check=False,
+        ),
+        validation_windows=2,
+        calibration_ok=True,
+        no_future_target_data=True,
+        reproducible=True,
+    )
+    assert result["decision"] == "REJECT"
+    assert "brier_improvement_below_gate" in result["reasons"]
