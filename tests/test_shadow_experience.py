@@ -119,7 +119,8 @@ def test_shadow_reconcile_records_horizon_breakdown(tmp_path, monkeypatch):
     monkeypatch.setattr(shadow, "LEDGER_JSONL", root / "shadow_experience_ledger.jsonl")
     monkeypatch.setattr(shadow, "SUMMARY_PATH", root / "shadow_experience_summary.json")
 
-    row = _prediction()["predictions"][0]
+    row = dict(_prediction()["predictions"][0])
+    row["prediction_id"] = "horizon-test"
     row["prediction_cutoff_utc"] = "2026-10-03T04:00:00+00:00"
     row["prediction_generated_at"] = "2026-10-03T04:05:00+00:00"
     row["starter_evidence_observed_at_utc"] = "2026-10-03T03:59:00+00:00"
