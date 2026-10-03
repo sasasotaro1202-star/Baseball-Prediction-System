@@ -52,6 +52,27 @@ jobs:
           WORKFLOW_PATH: ${{ github.event.workflow_run.path }}
         run: |
           set -euo pipefail
+
+          # Recovery runs on transient control-plane failures, so the
+          # GitHub CLI itself must be retried without masking the parent
+          # workflow failure.
+          gh_retry() {
+            local attempt=1
+            while true; do
+              if gh "$@"; then
+                return 0
+              fi
+              if [ "${attempt}" -ge 3 ]; then
+                return 1
+              fi
+              sleep_seconds=$((attempt * 5))
+              echo "GitHub CLI call failed; retrying in ${sleep_seconds}s..." >&2
+              sleep "${sleep_seconds}"
+              attempt=$((attempt + 1))
+            done
+          }
+
+          now_epoch="$(date +%s)"
           echo "Workflow=${WORKFLOW_NAME}"
           echo "Run=${RUN_ID} attempt=${RUN_ATTEMPT} conclusion=${{ github.event.workflow_run.conclusion }}"
 
