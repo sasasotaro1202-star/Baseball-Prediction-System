@@ -170,3 +170,42 @@ def test_enrich_profiles_records_source_failure(monkeypatch):
     assert resolved == 0
     assert enriched[0]["profile_status"] == "SOURCE_FAILED"
     assert enriched[0]["profile"] is None
+
+def test_profile_enrichment_prefers_target_date_roster_players(monkeypatch):
+    players = [
+        {
+            "player_id": "10",
+            "player_name": "非登録高成績",
+            "player_url": "https://npb.jp/bis/players/10.html",
+            "batting": {"打席": "900"},
+            "pitching": {},
+            "fielding": [],
+        },
+        {
+            "player_id": "20",
+            "player_name": "登録低成績",
+            "player_url": "https://npb.jp/bis/players/20.html",
+            "batting": {"打席": "50"},
+            "pitching": {},
+            "fielding": [],
+        },
+    ]
+    monkeypatch.setenv("NPB_PLAYER_PROFILE_LIMIT_PER_TEAM", "1")
+    monkeypatch.setattr(ctx, "_fetch", lambda url: (PROFILE_HTML, "2026-10-03T00:00:00+00:00"))
+    enriched, resolved = ctx._enrich_profiles(players, preferred_player_ids={"20"})
+    assert resolved == 1
+    assert next(p for p in enriched if p["player_id"] == "20")["profile_status"] == "AVAILABLE"
+    assert next(p for p in enriched if p["player_id"] == "10")["profile_status"] == "NOT_SELECTED"
+
+
+def test_collect_team_passes_preferred_profile_ids(monkeypatch):
+    monkeypatch.setenv("NPB_PLAYER_PROFILE_LIMIT_PER_TEAM", "1")
+    monkeypatch.setattr(ctx, "_fetch", lambda url: (
+        BAT_HTML if "idb1_" in url else PIT_HTML if "idp1_" in url else DEF_HTML,
+        "2026-10-03T00:00:00+00:00",
+    ))
+    monkeypatch.setattr(ctx, "_enrich_profiles", lambda players, preferred_player_ids=None: (
+        players, 0
+    ))
+    got = ctx.collect_team("阪神", preferred_player_ids={"123"})
+    assert got["team"] == "阪神タイガース"
