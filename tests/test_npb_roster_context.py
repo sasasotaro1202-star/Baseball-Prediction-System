@@ -29,7 +29,9 @@ def test_parse_roster_page_groups_stable_player_ids_by_team():
     assert got["status"] == "AVAILABLE"
     assert got["target_date"] == "2026-10-03"
     assert got["player_count"] == 3
-    assert {p["player_id"] for p in got["teams"]["阪神タイガース"]} == {"100", "101"}
+    assert {p["player_name"] for p in got["teams"]["阪神タイガース"]} == {"伊原 陵人", "才木 浩人"}
+    assert all(p["identity_status"] == "NAME_ONLY_UNVERIFIED" for p in got["teams"]["阪神タイガース"])
+    assert {p["uniform_number"] for p in got["teams"]["阪神タイガース"]} == {"18", ""}
     assert got["teams"]["横浜DeNAベイスターズ"][0]["player_id"] == "200"
     assert all(
         p["identity_status"] == "VERIFIED_STABLE_ID"
@@ -76,3 +78,23 @@ def test_collect_roster_context_is_fail_closed(monkeypatch):
     assert got["player_count"] == 0
     assert got["source"]["status"] == "SOURCE_FAILED"
     assert got["historical_oos_consumption"] == "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN"
+
+
+ROSTER_TABLE_HTML = """
+<h5>出場選手一覧</h5>
+<h5>阪神タイガース</h5>
+<table>
+<tr><td>投手</td><td>13</td><td>岩崎　優</td></tr>
+<tr><td>捕手</td><td>2</td><td>梅野　隆太郎</td></tr>
+<tr><td>内野手</td><td>3</td><td>大山　悠輔</td></tr>
+</table>
+"""
+
+
+def test_parse_roster_page_supports_official_plain_text_roster_table_rows():
+    got = ctx.parse_roster_page(ROSTER_TABLE_HTML, "2026-10-03")
+    assert got["player_count"] == 3
+    assert [p["player_name"] for p in got["teams"]["阪神タイガース"]] == ["大山 悠輔", "梅野 隆太郎", "岩崎 優"]
+    assert {p["uniform_number"] for p in got["teams"]["阪神タイガース"]} == {"13", "2", "3"}
+    assert all(p["identity_status"] == "NAME_ONLY_UNVERIFIED" for p in got["teams"]["阪神タイガース"])
+    assert all(p["roster_transaction_status"] == "IDENTITY_UNVERIFIED" for p in got["teams"]["阪神タイガース"])
