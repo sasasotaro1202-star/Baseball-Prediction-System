@@ -6,13 +6,14 @@ It deliberately fails closed when an official page cannot be fetched or parsed.
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from html.parser import HTMLParser
 from pathlib import Path
 import json
 import re
 import sys
 from urllib.parse import urljoin
+from zoneinfo import ZoneInfo
 
 from core.http import request as http_request, session as http_session
 from data.npb_roster_context import parse_roster_page, BASE_URL as NPB_BASE_URL
@@ -50,6 +51,13 @@ def _fetch_text(url: str) -> str:
 
 def _latest_roster_url(today: date) -> tuple[str, str]:
     body = _fetch_text(ROSTER_INDEX_URL)
+    # The official landing page exposes the currently selected announcement date
+    # in visible text. Prefer that over guessing from navigation anchors.
+    match = re.search(r"(20\\d{2})年(\\d{1,2})月(\\d{1,2})日の出場選手登録", body)
+    if match:
+        d = date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+        if d <= today:
+            return d.isoformat(), urljoin(NPB_BASE_URL, f"/announcement/roster/roster_{d.month:02d}{d.day:02d}.html")
     parser = _RosterIndexParser()
     parser.feed(body)
     candidates: list[tuple[date, str]] = []
@@ -68,94 +76,3 @@ def _latest_roster_url(today: date) -> tuple[str, str]:
         raise RuntimeError("official NPB roster index did not expose a past/current year date-scoped roster page")
     d, url = max(candidates, key=lambda item: item[0])
     return d.isoformat(), url
-
-
-def _verify_stats(team: str, season: int) -> dict:
-    results = {}
-    suffix = TEAM_SUFFIX[team]
-    for kind in ("batting", "pitching", "fielding"):
-        url = STATS_URL.format(season=season, kind=URL_KIND[kind], team=suffix)
-        body, observed = fetch_team_page(url)
-        rows, as_of = parse_stats_page(body, kind)
-        if not rows:
-            raise RuntimeError(f"{kind} source returned zero parsed player rows: {url}")
-        stable_ids = sum(1 for row in rows if row.get("player_id"))
-        if stable_ids == 0:
-            raise RuntimeError(f"{kind} source returned rows but no stable player ids: {url}")
-        results[kind] = {
-            "url": url,
-            "status": "AVAILABLE",
-            "parsed_rows": len(rows),
-            "stable_player_id_rows": stable_ids,
-            "source_as_of_date": as_of,
-            "observed_at_utc": observed,
-        }
-    return results
-
-
-def main() -> int:
-    today = date.today()
-    report: dict = {
-        "schema_version": "npb-live-source-health-v1",
-        "status": "UNKNOWN",
-        "checked_date": today.isoformat(),
-        "sources": {},
-    }
-    roster_date, roster_url = _latest_roster_url(today)
-    roster_html = _fetch_text(roster_url)
-    roster = parse_roster_page(roster_html, roster_date)
-    team_rows = roster.get("teams") or {}
-    if not team_rows:
-        raise RuntimeError("official roster page parsed successfully but contained no team/player rows")
-    first_team = sorted(team_rows)[0]
-    first_player = (team_rows[first_team] or [None])[0]
-    if not first_player or not first_player.get("player_url"):
-        raise RuntimeError("official roster page did not yield a player profile URL")
-
-    report["sources"]["npb_official_roster_status"] = {
-        "status": "AVAILABLE",
-        "url": roster_url,
-        "target_date": roster_date,
-        "player_count": roster["player_count"],
-        "team_count": len(team_rows),
-        "registered_today_count": roster.get("registered_today_count", 0),
-        "removed_today_count": roster.get("removed_today_count", 0),
-    }
-    report["sources"]["npb_official_team_stats"] = _verify_stats("阪神タイガース", today.year)
-
-    profile_body, profile_observed = fetch_profile_page(first_player["player_url"])
-    profile = parse_profile_page(profile_body)
-    if not profile:
-        raise RuntimeError(f"official player profile parsed empty: {first_player['player_url']}")
-    if not profile.get("position") and not profile.get("handedness"):
-        raise RuntimeError(f"official player profile lacks expected identity/role fields: {first_player['player_url']}")
-    report["sources"]["npb_official_player_page"] = {
-        "status": "AVAILABLE",
-        "url": first_player["player_url"],
-        "player_id": first_player.get("player_id"),
-        "player_name": first_player.get("player_name"),
-        "observed_at_utc": profile_observed,
-        "fields_available": sorted(profile.keys()),
-    }
-
-    report["status"] = "VERIFIED"
-    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps(report, ensure_ascii=False, indent=2))
-    return 0
-
-
-if __name__ == "__main__":
-    try:
-        raise SystemExit(main())
-    except Exception as exc:
-        failure = {
-            "schema_version": "npb-live-source-health-v1",
-            "status": "SOURCE_FAILED",
-            "checked_date": date.today().isoformat(),
-            "error": f"{type(exc).__name__}: {exc}",
-        }
-        OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-        OUTPUT.write_text(json.dumps(failure, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        print(json.dumps(failure, ensure_ascii=False, indent=2))
-        raise
