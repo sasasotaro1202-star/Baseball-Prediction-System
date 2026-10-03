@@ -950,7 +950,7 @@ def reconcile() -> dict[str, Any]:
         "rolling": {},
     }
 
-        for key, group in experience.groupby("league", dropna=False):
+    for key, group in experience.groupby("league", dropna=False):
         summary["by_league"][str(key)] = {
             "rows": int(len(group)),
             "accuracy": float(group["outcome_correct"].mean()),
