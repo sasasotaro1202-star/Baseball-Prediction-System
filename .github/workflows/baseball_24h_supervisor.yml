@@ -125,7 +125,7 @@ jobs:
             echo "Candidate OOS already active; no recovery dispatch required."
           fi
 
-  runs_json="$(gh_retry run list             --repo "${GH_REPO}"             --workflow "${TARGET_WORKFLOW}"             --limit 30             --json databaseId,status,conclusion,createdAt,updatedAt,headSha)"
+          runs_json="$(gh_retry run list             --repo "${GH_REPO}"             --workflow "${TARGET_WORKFLOW}"             --limit 30             --json databaseId,status,conclusion,createdAt,updatedAt,headSha)"
 
           echo "Recent canonical closed-loop runs:"
           echo "${runs_json}" | jq '.[0:8]'
