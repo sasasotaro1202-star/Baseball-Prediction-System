@@ -49,6 +49,10 @@ def test_metrics_and_multi_target_gate():
         candidate_score={"ScoreMAE": 1.9},
         baseline_hilo={"LogLoss": 0.60, "Brier": 0.20, "Accuracy": 0.70},
         candidate_hilo={"LogLoss": 0.58, "Brier": 0.19, "Accuracy": 0.705},
+        evaluation_periods=[
+            {"baseline_LogLoss": 0.60, "candidate_LogLoss": 0.58},
+            {"baseline_LogLoss": 0.59, "candidate_LogLoss": 0.58},
+        ],
     )
     assert result["adopt"] is True
 
