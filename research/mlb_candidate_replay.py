@@ -270,6 +270,12 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
                     continue
                 development_predictions.setdefault(name,[]).append(_proba(bt,model,X.iloc[cut:stop]))
     y_dev=np.concatenate(actual_dev) if actual_dev else np.empty(0,dtype=int)
+    # Freeze the Development corpus identity before calibration/blend
+    # selection so the calibrated challenger carries exact dataset provenance.
+    dataset_bytes = games.to_json(
+        orient="split", date_format="iso", double_precision=15
+    ).encode("utf-8")
+    dataset_hash = hashlib.sha256(dataset_bytes).hexdigest()
     for name in list(development_predictions):
         if development_predictions[name]:
             development_predictions[name]=np.vstack(development_predictions[name])
@@ -328,6 +334,8 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
                 top_k=min(3, len(component_probs)),
                 temperature_grid=RESEARCH_TEMPERATURE_GRID,
                 weight_step=0.25,
+                dataset_hash=dataset_hash,
+                git_commit=git_commit,
             )
             development[blend_name] = classification_metrics(y_dev, blend_pred, classes=[0,1])
             development_predictions[blend_name] = blend_pred
@@ -359,10 +367,6 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
     # Hash the actual ordered dataset content, not only row count/index. This
     # makes candidate identity sensitive to data changes and strengthens
     # reproducibility/auditability.
-    dataset_bytes = games.to_json(
-        orient="split", date_format="iso", double_precision=15
-    ).encode("utf-8")
-    dataset_hash = hashlib.sha256(dataset_bytes).hexdigest()
     blend_token = (
         json.dumps(selected_blend_spec.to_dict(), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         if selected_blend_spec is not None
@@ -465,6 +469,10 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
                        "baseline_hilo": base_hilo, "candidate_hilo": cand_hilo,
                        "candidate_blend_spec": (
                            selected_blend_spec.to_dict() if selected_blend_spec is not None else None
+                       ),
+                       "candidate_blend_fingerprint": (
+                           selected_blend_spec.fingerprint()
+                           if selected_blend_spec is not None else None
                        )},
            "validation": asdict(lifecycle), "decision": lifecycle.decision,
            "score_hilo_status": "CONNECTED_PIT_SAFE_TRAINING_ONLY",
