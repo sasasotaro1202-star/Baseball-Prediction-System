@@ -26,6 +26,7 @@ from research.correlated_score import npb_final_outcomes
 from core.pit_evidence import _is_official_source
 from data.competition_registry import production_eligible
 from data.npb_pregame_context import collect_npb_pregame_context
+from data.npb_player_context import collect_players as collect_npb_player_context
 from research.target_strategy import as_dict as target_strategy_dict, standard_target_strategies
 from research.competition_taxonomy import classify_npb
 
@@ -1317,6 +1318,44 @@ def predict(
                 teams = sorted(set(hist["home"].map(lambda x: norm_team(x, "NPB"))) | set(hist["away"].map(lambda x: norm_team(x, "NPB"))))
                 print("PRODUCTION_DEGENERACY_DEBUG", json.dumps({"predictions": debug, "historical_team_count": len(teams), "historical_teams": teams}, ensure_ascii=False), file=sys.stderr)
                 raise RuntimeError("Production degeneracy guard: PIT-safe recovery remained insufficiently differentiated.")
+    # Capture detailed official player context for the announced starters.
+    # Player data is attached as a snapshot only; this release does not feed it
+    # into the production probabilities without a separate PIT/OOS experiment.
+    starter_names = []
+    for game in outputs:
+        for key in ("home_starter", "away_starter"):
+            name = str(game.get(key) or "").strip()
+            if name and name not in starter_names:
+                starter_names.append(name)
+    player_context = None
+    if starter_names:
+        try:
+            player_context = collect_npb_player_context(starter_names)
+        except Exception as exc:
+            player_context = {
+                "schema_version": "npb-player-context-v1",
+                "status": "SOURCE_FAILED",
+                "players_requested": starter_names,
+                "players_resolved": 0,
+                "error": f"{type(exc).__name__}: {exc}",
+                "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
+            }
+    else:
+        player_context = {
+            "schema_version": "npb-player-context-v1",
+            "status": "NO_STARTERS",
+            "players_requested": [],
+            "players_resolved": 0,
+        }
+    player_by_name = {
+        str(p.get("name_requested") or "").strip(): p
+        for p in player_context.get("players", [])
+        if isinstance(p, dict)
+    }
+    for pred in outputs:
+        pred["home_starter_player_context"] = player_by_name.get(str(pred.get("home_starter") or "").strip())
+        pred["away_starter_player_context"] = player_by_name.get(str(pred.get("away_starter") or "").strip())
+
     # Capture the request-time game context separately from model features.
     # This release stores the new information for later PIT/OOS experiments;
     # it does not silently change model coefficients or promotion status.
@@ -1352,6 +1391,12 @@ def predict(
             if row_context is not None:
                 attached += 1
         pregame_context["attached_prediction_count"] = attached
+    result["player_context_status"] = str(player_context.get("status") or "AVAILABLE")
+    result["player_context_snapshot_id"] = player_context.get("snapshot_id")
+    result["player_context_requested_count"] = int(player_context.get("players_requested") and len(player_context.get("players_requested")) or 0)
+    result["player_context_resolved_count"] = int(player_context.get("players_resolved", 0))
+    result["player_context"] = player_context
+
     result["pregame_context_status"] = (
         str(pregame_context.get("status") or "AVAILABLE")
         if isinstance(pregame_context, dict) else "UNAVAILABLE"
