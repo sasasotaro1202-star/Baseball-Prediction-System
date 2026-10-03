@@ -108,3 +108,30 @@ def test_collect_context_records_pit_boundary_and_snapshot(monkeypatch):
 def test_snapshot_id_is_deterministic_for_identical_content():
     base = {"a": 1, "b": [2, 3]}
     assert ctx._snapshot_id(base) == ctx._snapshot_id(json.loads(json.dumps(base)))
+
+
+def test_schedule_source_uses_official_japanese_endpoint():
+    assert ctx.NPB_DAY_URL == "https://npb.jp/bis/{year}/games/gm{date}.html"
+
+
+def test_parse_realistic_japanese_schedule_row():
+    html = """
+    <table>
+      <tr>
+        <th>対戦カード</th><th>球場・開始時間</th><th>予告先発</th>
+      </tr>
+      <tr>
+        <td>ヤクルト</td><td>神宮 18:00</td><td>吉村</td>
+        <td>広島</td>
+      </tr>
+      <tr>
+        <td>DeNA</td><td>横浜 18:00</td><td>平良</td>
+        <td>阪神</td>
+      </tr>
+    </table>
+    """
+    rows = ctx.parse_official_games(html, "2026-10-04")
+    assert len(rows) == 2
+    assert rows[0]["home"] in {"東京ヤクルトスワローズ", "横浜DeNAベイスターズ"}
+    assert rows[0]["official_start_time"] == "18:00"
+    assert rows[0]["venue"] in {"明治神宮野球場", "横浜スタジアム"}
