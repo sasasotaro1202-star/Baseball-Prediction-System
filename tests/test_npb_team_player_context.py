@@ -123,4 +123,4 @@ def test_derived_fielding_metrics():
     rows, _ = ctx.parse_stats_page(DEF_HTML, "fielding")
     derived = ctx._derive_fielding(rows[0])
     assert derived["error_rate"] == 2 / 2
-    assert derived["chances_per_game"] == 0.0
+    assert derived["chances_per_game"] == 2 / 50
