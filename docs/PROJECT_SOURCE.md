@@ -1913,3 +1913,8 @@ starter/lineupがどの程度確定していたか、
 まで制御できるAdaptive Baseball Prediction Intelligenceを構築することである。
 
 === COPY END ===
+
+---
+## Implementation synchronization note
+
+The current repository implementation additionally formalizes manual pregame requests as independent on-demand calls. A user may request a prediction several hours before first pitch; the automatic 30/60-minute scheduler slot does not constrain that manual request. The call-time JST target date remains authoritative, and the same PIT/starter/data/feature/model/calibration/fail-closed rules apply. This note records implementation synchronization and does not rewrite historical evidence.
