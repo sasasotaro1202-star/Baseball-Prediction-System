@@ -1913,3 +1913,44 @@ starter/lineupがどの程度確定していたか、
 まで制御できるAdaptive Baseball Prediction Intelligenceを構築することである。
 
 === COPY END ===
+
+86. PREGAME CONTEXT ACQUISITION
+
+試合前に取得可能なcontextを独立snapshotとして拡張する。
+
+追加source/fields:
+
+* official date-specific game schedule
+* official venue / stadium identity
+* stadium coordinates / roof class
+* NPB Central/Pacific standings snapshot (G/W/L/T/PCT/GB/Home/Road)
+* hourly weather forecast near scheduled first pitch
+* temperature
+* apparent temperature
+* relative humidity
+* dew point
+* precipitation probability
+* precipitation/rain
+* wind speed/gust/direction
+* pressure
+* cloud cover
+* weather code
+
+各snapshotは、少なくとも:
+
+* snapshot_id
+* generated_at_utc
+* prediction_cutoff_utc
+* source_id
+* source URL
+* available_at/retrieved_at相当の観測時刻
+* per-game source status
+* field-level missingness
+
+を可能な範囲で保持する。
+
+PREGAME CONTEXTは現時点では「取得・保存・観測可能性の証跡」が主目的であり、新featureを本番モデルへ自動投入しない。historical OOSでの利用には、prediction cutoff以前のhistorical availabilityを独立に証明し、LOCAL PIT → chronological OOS → robustness → frozen holdout を通過させる。
+
+source failureは明示的にSOURCE_FAILED/UNAVAILABLEとし、missingを0へ変換しない。weather等の動的sourceはcurrent/future prediction snapshotには利用できるが、retrieved_atだけをhistorical published_atの証明として扱わない。
+
+NPB pregame context collectorは30分間隔のsnapshot workflowから実行可能であり、production prediction JSONにも一致するgame単位contextを紐付ける。context acquisition failureはprediction probability failureとは分離して記録し、既存production modelの安全なfail-closed境界を変更しない。
