@@ -1948,6 +1948,13 @@ team snapshotにはplayer_coverage_summaryを追加し、stable ID coverage、�
 
 NPB公式の2026年度公式戦成績はチーム打撃・投手・守備および個人成績を公開しており、現行collectorはこれらをplayer_idベースで統合する。 
 
+
+92. LIVE SOURCE AVAILABILITY GATE
+
+「取得できるデータ」と「stable identityを取得できるデータ」は別の品質軸として評価する。公式統計ページに選手成績が存在し、parserが選手名・主要数値を取得できる場合、ページ上にplayer_idリンクが埋め込まれていなくてもdata_status=AVAILABLEとする。一方、stable player_id coverageはidentity_status=COMPLETE/PARTIALとして別管理する。
+
+Live Source Healthは、Roster、試合予定、予告先発、個人打撃、個人投手、個人守備、個人プロフィールを実際に取得して検証する。データ取得成功とidentity coverage不足を同一のSOURCE_FAILEDへ混同しない。identityが不足する場合はexact deterministic join可能な別の公式source（Roster等）による補完を研究対象とし、fuzzy mergeやsilent mergeは禁止する。
+
 === COPY END ===
 
 86. PREGAME CONTEXT ACQUISITION
