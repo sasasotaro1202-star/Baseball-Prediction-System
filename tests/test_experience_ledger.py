@@ -121,6 +121,8 @@ def test_archive_preserves_each_prediction_snapshot(tmp_path, monkeypatch):
 
 def test_empty_result_cache_is_refreshed(tmp_path, monkeypatch):
     monkeypatch.setattr(exp, "RESULT_DIR", tmp_path / "experience" / "official_results")
+    # Keep this unit deterministic: the test explicitly models the active month.
+    monkeypatch.setattr(exp, "_should_refresh_result_cache", lambda year, month, now=None: True)
     result_dir = tmp_path / "experience" / "official_results"
     result_dir.mkdir(parents=True, exist_ok=True)
     cache = result_dir / "2026-10.csv"
@@ -196,6 +198,8 @@ def test_legacy_scheduled_cutoff_survives_dataframe_materialization(tmp_path, mo
 
 def test_current_result_cache_is_refreshed_even_when_nonempty(tmp_path, monkeypatch):
     monkeypatch.setattr(exp, "RESULT_DIR", tmp_path / "experience" / "official_results")
+    # Keep this unit deterministic: the test explicitly models the active month.
+    monkeypatch.setattr(exp, "_should_refresh_result_cache", lambda year, month, now=None: True)
     result_dir = tmp_path / "experience" / "official_results"
     result_dir.mkdir(parents=True, exist_ok=True)
     cache = result_dir / "2026-10.csv"
