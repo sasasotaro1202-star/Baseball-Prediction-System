@@ -287,7 +287,7 @@ def test_manual_prediction_contract_preserves_runtime_failure_and_json_stdout():
 
 
 def test_pregame_experience_persist_skips_absent_optional_shadow_dir():
-    text = (ROOT / ".github" / "workflows" / "baseball_30m_pregame_auto.yml").read_text(encoding="utf-8")
+    text = (ROOT / ".github" / "workflows" / "baseball_60m_pregame_auto.yml").read_text(encoding="utf-8")
     _assert_official_actions_are_immutable(text)
 
     # research_shadow is optional; its absence must not turn a valid production
@@ -302,18 +302,18 @@ def test_pregame_zero_job_failure_has_bounded_control_plane_recovery():
     recovery = (ROOT / ".github" / "workflows" / "baseball_actions_recovery.yml").read_text(encoding="utf-8")
     assert "Baseball 60m Pregame Auto Prediction" in recovery
     trigger = recovery.split("permissions:", 1)[0]
-    assert "- .github/workflows/baseball_30m_pregame_auto.yml" in trigger
+    assert "- .github/workflows/baseball_60m_pregame_auto.yml" in trigger
     assert "- Baseball 60m Pregame Auto Prediction" in trigger
     assert "GH_REPO: ${{ github.repository }}" in recovery
     assert "WORKFLOW_NAME: ${{ github.event.workflow_run.name }}" in recovery
-    assert 'if [ "${WORKFLOW_NAME}" = "Baseball 60m Pregame Auto Prediction" ] || [ "${WORKFLOW_NAME}" = ".github/workflows/baseball_30m_pregame_auto.yml" ] || [ "${WORKFLOW_PATH}" = ".github/workflows/baseball_30m_pregame_auto.yml" ]; then' in recovery
+    assert 'if [ "${WORKFLOW_NAME}" = "Baseball 60m Pregame Auto Prediction" ] || [ "${WORKFLOW_NAME}" = ".github/workflows/baseball_60m_pregame_auto.yml" ] || [ "${WORKFLOW_PATH}" = ".github/workflows/baseball_60m_pregame_auto.yml" ]; then' in recovery
     assert 'job_count="$(gh run view "${RUN_ID}" --repo "${GH_REPO}" --json jobs --jq \'.jobs | length\')"' in recovery
     assert 'if [ "${job_count}" -eq 0 ]; then' in recovery
     assert "checking 15-minute cooldown" in recovery
     assert 'prior_age_minutes=$(( (now_epoch - prior_created_epoch) / 60 ))' in recovery
     assert 'if [ "${prior_age_minutes}" -lt 15 ]; then' in recovery
     assert "PRE_GAME_ZERO_JOB_COOLDOWN" in recovery
-    assert "workflow run baseball_30m_pregame_auto.yml --repo" in recovery
+    assert "workflow run baseball_60m_pregame_auto.yml --repo" in recovery
     assert "Pregame recovery verification" in recovery
     assert "PRE_GAME_ZERO_JOB_REDISPATCHED" in recovery
     assert "FAILED_PREGAME_ZERO_JOB_DISPATCH" in recovery
@@ -322,7 +322,7 @@ def test_pregame_zero_job_failure_has_bounded_control_plane_recovery():
 def test_24h_supervisor_recovers_only_latest_zero_job_pregame_failures_with_daily_cap():
     text = (SUPERVISOR).read_text(encoding="utf-8")
     _assert_official_actions_are_immutable(text)
-    assert "PREGAME_WORKFLOW=baseball_30m_pregame_auto.yml" in text
+    assert "PREGAME_WORKFLOW=baseball_60m_pregame_auto.yml" in text
     assert 'actions/runs?event=push&branch=main&per_page=100' in text
     assert 'select(.path == (".github/workflows/" + $workflow))' in text
     assert "latest_failure_json" in text
@@ -352,7 +352,7 @@ def test_24h_supervisor_recovers_only_latest_zero_job_pregame_failures_with_dail
     assert "HTTP 4[0-9]{2}" in text
     assert "HTTP (408|429)" in text
     assert "gh deterministic HTTP 4xx; refusing retry." in text
-    pregame = (ROOT / ".github" / "workflows" / "baseball_30m_pregame_auto.yml").read_text(encoding="utf-8")
+    pregame = (ROOT / ".github" / "workflows" / "baseball_60m_pregame_auto.yml").read_text(encoding="utf-8")
     assert "workflow_dispatch:" in pregame
     assert "recovery_mode:" in pregame
     assert 'default: "manual"' in pregame

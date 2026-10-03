@@ -14,7 +14,7 @@ on:
       - Baseball Scope Frontier Continuous Audit
       - NPB Production Prediction
       - Baseball 60m Pregame Auto Prediction
-      - .github/workflows/baseball_30m_pregame_auto.yml
+      - .github/workflows/baseball_60m_pregame_auto.yml
     types: [completed]
 
 permissions:
@@ -92,7 +92,7 @@ jobs:
           # at all. There is no failed job to rerun in this state, so a bounded
           # fresh dispatch is the only useful recovery. Limit it to this exact
           # control-plane failure mode and one retry window at a time.
-          if [ "${WORKFLOW_NAME}" = "Baseball 60m Pregame Auto Prediction" ] || [ "${WORKFLOW_NAME}" = ".github/workflows/baseball_30m_pregame_auto.yml" ] || [ "${WORKFLOW_PATH}" = ".github/workflows/baseball_30m_pregame_auto.yml" ]; then
+          if [ "${WORKFLOW_NAME}" = "Baseball 60m Pregame Auto Prediction" ] || [ "${WORKFLOW_NAME}" = ".github/workflows/baseball_60m_pregame_auto.yml" ] || [ "${WORKFLOW_PATH}" = ".github/workflows/baseball_60m_pregame_auto.yml" ]; then
             job_count="$(gh run view "${RUN_ID}" --repo "${GH_REPO}" --json jobs --jq '.jobs | length')"
             echo "Pregame parent job count=${job_count}"
             if [ "${job_count}" -eq 0 ]; then
@@ -100,7 +100,7 @@ jobs:
               recent_zero_job=0
               recent_runs="$(gh_retry run list \
                 --repo "${GH_REPO}" \
-                --workflow baseball_30m_pregame_auto.yml \
+                --workflow baseball_60m_pregame_auto.yml \
                 --limit 10 \
                 --json databaseId,status,conclusion,createdAt)"
               while IFS= read -r row; do
@@ -131,14 +131,14 @@ jobs:
               fi
 
               echo "Dispatching one bounded fresh pregame run after zero-job control-plane failure."
-              gh_retry workflow run baseball_30m_pregame_auto.yml --repo "${GH_REPO}" --ref main
+              gh_retry workflow run baseball_60m_pregame_auto.yml --repo "${GH_REPO}" --ref main
 
               verified=0
               for dispatch_attempt in 1 2 3 4 5; do
                 sleep 3
                 current_runs="$(gh_retry run list \
                   --repo "${GH_REPO}" \
-                  --workflow baseball_30m_pregame_auto.yml \
+                  --workflow baseball_60m_pregame_auto.yml \
                   --limit 10 \
                   --json databaseId,status,conclusion,createdAt)"
                 active_or_new="$(printf '%s' "${current_runs}" |

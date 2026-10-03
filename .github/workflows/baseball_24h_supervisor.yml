@@ -78,7 +78,7 @@ jobs:
           # The pregame workflow has repeatedly produced GitHub Actions startup
           # failures with zero jobs. Those failures are not reliably emitted as
           # workflow_run events, so recovery belongs in this scheduled supervisor.
-          PREGAME_WORKFLOW=baseball_30m_pregame_auto.yml
+          PREGAME_WORKFLOW=baseball_60m_pregame_auto.yml
           test -s ".github/workflows/${PREGAME_WORKFLOW}"
 
           # Startup failures with zero jobs are not reliably emitted as

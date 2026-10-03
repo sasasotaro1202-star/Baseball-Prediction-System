@@ -23,7 +23,7 @@ def test_postgame_experience_runs_multiple_daily_reconciliations_and_rollup():
 
 
 def test_pregame_automation_is_five_minute_60m_pit_gated_and_archives_experience():
-    text = (ROOT / ".github/workflows/baseball_30m_pregame_auto.yml").read_text(encoding="utf-8")
+    text = (ROOT / ".github/workflows/baseball_60m_pregame_auto.yml").read_text(encoding="utf-8")
     assert 'cron: "*/5 * * * *"' in text
     assert "python -m prediction.current_production --league NPB --date \"$date\" --data-dir data --pregame-only" in text
     assert "prediction generated at/after first pitch" in text
