@@ -43,6 +43,7 @@ jobs:
       - name: Re-run failed jobs with bounded recovery
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           RUN_ID: ${{ github.event.workflow_run.id }}
           RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
           WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
