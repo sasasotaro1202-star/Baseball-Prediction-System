@@ -27,6 +27,8 @@ jobs:
       PYTHONPATH: .
       PYTHONUNBUFFERED: "1"
       PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      PIT_SAFE_STARTER_DATA: "1"
+      BASEBALL_TIME_BUDGET_SEC: "3600"
       GITHUB_SHA: ${{ github.sha }}
     steps:
       - name: Checkout current main
@@ -46,6 +48,35 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
+
+      - name: Acquire PIT-safe NPB history for manual request
+        if: inputs.league == 'NPB'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p data
+          target="$(TZ=Asia/Tokyo date +%Y-%m-%d)"
+          year="$(printf '%s' "$target" | cut -d- -f1)"
+          month="$(printf '%s' "$target" | cut -d- -f2)"
+          month_num=$((10#$month))
+          if [ "$month_num" -gt 2 ]; then
+            for m in $(seq 2 $((month_num - 1))); do
+              mm="$(printf '%02d' "$m")"
+              f="data/${year}-${mm}_pbp.csv"
+              if [ -s "$f" ]; then
+                continue
+              fi
+              gh release download pbp \
+                --repo armstjc/Nippon-Baseball-Data-Repository \
+                --pattern "${year}-${mm}_pbp.csv" \
+                --dir data \
+                --clobber
+              test -s "$f"
+            done
+          fi
+          test "$(find data -maxdepth 1 -name '*_pbp.csv' | wc -l | tr -d ' ')" -ge 1
+          echo "PIT-safe NPB history staged for manual request target vicinity."
 
       - name: Run current production runtime on demand
         id: prediction
