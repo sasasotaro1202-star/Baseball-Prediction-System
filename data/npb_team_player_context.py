@@ -468,14 +468,23 @@ def _profile_priority(player: dict[str, Any]) -> float:
     return float(pa + 20.0 * ip + 2.0 * field_games)
 
 
-def _enrich_profiles(players: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+def _enrich_profiles(
+    players: list[dict[str, Any]],
+    preferred_player_ids: set[str] | None = None,
+) -> tuple[list[dict[str, Any]], int]:
     try:
         limit = max(0, int(os.getenv("NPB_PLAYER_PROFILE_LIMIT_PER_TEAM", "24")))
     except Exception as exc:
         raise ValueError("NPB_PLAYER_PROFILE_LIMIT_PER_TEAM must be an integer >= 0") from exc
+    preferred = {str(x).strip() for x in (preferred_player_ids or set()) if str(x).strip()}
     selected = sorted(
         players,
-        key=lambda p: (-_profile_priority(p), str(p.get("player_id") or ""), str(p.get("player_name") or "")),
+        key=lambda p: (
+            0 if str(p.get("player_id") or "").strip() in preferred else 1,
+            -_profile_priority(p),
+            str(p.get("player_id") or ""),
+            str(p.get("player_name") or ""),
+        ),
     )[:limit]
     selected_ids = {str(p.get("player_id") or "").strip() for p in selected}
     resolved = 0
@@ -519,7 +528,11 @@ def _enrich_profiles(players: list[dict[str, Any]]) -> tuple[list[dict[str, Any]
     return players, resolved
 
 
-def collect_team(team: str, season: int = 2026) -> dict[str, Any]:
+def collect_team(
+    team: str,
+    season: int = 2026,
+    preferred_player_ids: set[str] | None = None,
+) -> dict[str, Any]:
     canonical_team = normalize_team(team)
     suffix = TEAM_SUFFIX.get(canonical_team)
     if suffix is None:
@@ -566,7 +579,10 @@ def collect_team(team: str, season: int = 2026) -> dict[str, Any]:
             })
     available = sum(1 for x in sources if x["status"] == "AVAILABLE")
     status = "AVAILABLE" if available == len(STAT_KIND) else "PARTIAL" if available else "SOURCE_FAILED"
-    players, profile_count = _enrich_profiles(_merge_players(canonical_team, pages))
+    players, profile_count = _enrich_profiles(
+        _merge_players(canonical_team, pages),
+        preferred_player_ids=preferred_player_ids,
+    )
     snapshot = {
         "schema_version": "npb-team-player-context-v1",
         "team": canonical_team,
@@ -584,13 +600,28 @@ def collect_team(team: str, season: int = 2026) -> dict[str, Any]:
     return snapshot
 
 
-def collect_teams(teams: list[str], season: int = 2026) -> dict[str, Any]:
+def collect_teams(
+    teams: list[str],
+    season: int = 2026,
+    preferred_player_ids_by_team: dict[str, set[str]] | None = None,
+) -> dict[str, Any]:
     unique = []
     for team in teams:
         normalized = normalize_team(team)
         if normalized not in unique:
             unique.append(normalized)
-    team_contexts = [collect_team(team, season=season) for team in unique]
+    preferred_map = {
+        normalize_team(team): {str(x).strip() for x in ids if str(x).strip()}
+        for team, ids in (preferred_player_ids_by_team or {}).items()
+    }
+    team_contexts = [
+        collect_team(
+            team,
+            season=season,
+            preferred_player_ids=preferred_map.get(team, set()),
+        )
+        for team in unique
+    ]
     snapshot = {
         "schema_version": "npb-team-player-context-v1",
         "season": int(season),
