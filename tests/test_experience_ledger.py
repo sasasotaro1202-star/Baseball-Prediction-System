@@ -58,6 +58,54 @@ def _prediction(tmp: Path):
     return path
 
 
+def test_reconcile_preserves_prediction_time_competition_metadata(tmp_path, monkeypatch):
+    monkeypatch.setattr(exp, "EXPERIENCE", tmp_path / "experience")
+    monkeypatch.setattr(exp, "PRED_DIR", tmp_path / "experience" / "predictions")
+    monkeypatch.setattr(exp, "RESULT_DIR", tmp_path / "experience" / "official_results")
+    monkeypatch.setattr(exp, "LEDGER_PATH", tmp_path / "experience" / "experience_ledger.csv")
+    monkeypatch.setattr(exp, "LEDGER_JSONL", tmp_path / "experience" / "experience_ledger.jsonl")
+    monkeypatch.setattr(exp, "SUMMARY_PATH", tmp_path / "experience" / "experience_summary.json")
+
+    prediction = _prediction(tmp_path)
+    payload = json.loads(prediction.read_text(encoding="utf-8"))
+    payload["predictions"][0].update({
+        "competition": "NPB_REGULAR",
+        "competition_stage": "REGULAR_SEASON",
+        "season_type": "REGULAR_SEASON",
+        "game_class": "OFFICIAL",
+        "competition_key": "NPB:NPB_REGULAR:REGULAR_SEASON",
+        "competition_classification_status": "CLASSIFIED",
+        "competition_metadata_source": "https://npb.jp/games/2026/schedule_09_detail.html",
+        "competition_metadata_source_field": "npb_daily_schedule_heading",
+        "competition_metadata_source_value": "公式戦",
+        "game_type": "公式戦",
+        "series_description": "",
+    })
+    prediction.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    exp.archive_production_output(prediction)
+    exp._load_cached_results = lambda dates: pd.DataFrame([{
+        "date": "2026-09-26",
+        "home": "横浜DeNAベイスターズ",
+        "away": "阪神タイガース",
+        "home_score": 4,
+        "away_score": 2,
+        "source_url": "test://npb",
+    }])
+
+    exp.reconcile()
+    ledger = pd.read_csv(tmp_path / "experience" / "experience_ledger.csv")
+    row = ledger.loc[0]
+    assert row["competition"] == "NPB_REGULAR"
+    assert row["competition_stage"] == "REGULAR_SEASON"
+    assert row["season_type"] == "REGULAR_SEASON"
+    assert row["game_class"] == "OFFICIAL"
+    assert row["competition_key"] == "NPB:NPB_REGULAR:REGULAR_SEASON"
+    assert row["competition_classification_status"] == "CLASSIFIED"
+    assert row["competition_metadata_source_field"] == "npb_daily_schedule_heading"
+    assert row["competition_metadata_source_value"] == "公式戦"
+
+
 def test_archive_preserves_each_prediction_snapshot(tmp_path, monkeypatch):
     monkeypatch.setattr(exp, "EXPERIENCE", tmp_path / "experience")
     monkeypatch.setattr(exp, "PRED_DIR", tmp_path / "experience" / "predictions")
