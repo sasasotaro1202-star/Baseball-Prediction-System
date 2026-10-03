@@ -1418,15 +1418,37 @@ def predict(
             "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
         }
 
-    # Join roster membership to each season-stat player by stable player_id.
+    # Join roster membership and same-day registration transactions by stable player_id.
     # Non-rostered / unmatched / missing states remain explicit.
+    transaction_index: dict[tuple[str, str], set[str]] = {}
+    for tx in (roster_context.get("transactions") or []) if isinstance(roster_context, dict) else []:
+        if not isinstance(tx, dict):
+            continue
+        team = str(tx.get("team") or "").strip()
+        pid = str(tx.get("player_id") or "").strip()
+        status = str(tx.get("transaction_status") or "").strip()
+        if team and pid and status:
+            transaction_index.setdefault((team, pid), set()).add(status)
+
     for team, team_ctx in (team_player_context.get("teams") or {}).items():
         if not isinstance(team_ctx, dict):
             continue
         active_ids = preferred_roster_ids_by_team.get(str(team), set())
-        matched = 0
+        registered_today = removed_today = matched = 0
         for player in team_ctx.get("players", []) or []:
             pid = str(player.get("player_id") or "").strip()
+            tx_statuses = transaction_index.get((str(team), pid), set()) if pid else set()
+            if tx_statuses == {"REGISTERED"}:
+                player["roster_transaction_status"] = "REGISTERED_TODAY"
+                registered_today += 1
+            elif tx_statuses == {"REMOVED"}:
+                player["roster_transaction_status"] = "REMOVED_TODAY"
+                removed_today += 1
+            elif tx_statuses:
+                player["roster_transaction_status"] = "TRANSACTION_CONFLICT"
+            else:
+                player["roster_transaction_status"] = "NO_TRANSACTION_RECORDED"
+
             if pid and pid in active_ids:
                 player["roster_status"] = "REGISTERED_ON_TARGET_DATE"
                 matched += 1
@@ -1437,6 +1459,8 @@ def predict(
         team_ctx["roster_player_count"] = int(len(active_ids))
         team_ctx["roster_matched_player_count"] = int(matched)
         team_ctx["roster_match_rate"] = float(matched / max(1, len(active_ids))) if active_ids else None
+        team_ctx["roster_registered_today_count"] = int(registered_today)
+        team_ctx["roster_removed_today_count"] = int(removed_today)
         team_ctx["roster_context_snapshot_id"] = roster_snapshot_id
 
     team_context_snapshot_id = team_player_context.get("snapshot_id") if isinstance(team_player_context, dict) else None
