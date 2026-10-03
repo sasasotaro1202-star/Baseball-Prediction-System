@@ -25,6 +25,7 @@ from baseball_backtest import BaseballBacktest, norm_team, score_candidates, low
 from research.correlated_score import npb_final_outcomes
 from core.pit_evidence import _is_official_source
 from data.competition_registry import production_eligible
+from data.npb_pregame_context import collect_npb_pregame_context
 from research.target_strategy import as_dict as target_strategy_dict, standard_target_strategies
 from research.competition_taxonomy import classify_npb
 
@@ -1316,6 +1317,55 @@ def predict(
                 teams = sorted(set(hist["home"].map(lambda x: norm_team(x, "NPB"))) | set(hist["away"].map(lambda x: norm_team(x, "NPB"))))
                 print("PRODUCTION_DEGENERACY_DEBUG", json.dumps({"predictions": debug, "historical_team_count": len(teams), "historical_teams": teams}, ensure_ascii=False), file=sys.stderr)
                 raise RuntimeError("Production degeneracy guard: PIT-safe recovery remained insufficiently differentiated.")
+    # Capture the request-time game context separately from model features.
+    # This release stores the new information for later PIT/OOS experiments;
+    # it does not silently change model coefficients or promotion status.
+    pregame_context = None
+    try:
+        pregame_context = collect_npb_pregame_context(target_date)
+    except Exception as exc:
+        pregame_context = {
+            "schema_version": "npb-pregame-context-v1",
+            "target_date": target_date,
+            "status": "SOURCE_FAILED",
+            "error": f"{type(exc).__name__}: {exc}",
+            "historical_oos_consumption": "DISABLED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
+        }
+    if isinstance(pregame_context, dict) and isinstance(pregame_context.get("games"), list):
+        context_by_key = {
+            (
+                str(game.get("home") or ""),
+                str(game.get("away") or ""),
+                str(game.get("official_start_time") or ""),
+            ): game
+            for game in pregame_context["games"]
+        }
+        attached = 0
+        for pred in outputs:
+            key = (
+                str(pred.get("home") or ""),
+                str(pred.get("away") or ""),
+                pd.Timestamp(pred["datetime_jst"]).tz_convert("Asia/Tokyo").strftime("%H:%M"),
+            )
+            row_context = context_by_key.get(key)
+            pred["pregame_context"] = row_context
+            if row_context is not None:
+                attached += 1
+        pregame_context["attached_prediction_count"] = attached
+    result["pregame_context_status"] = (
+        str(pregame_context.get("status") or "AVAILABLE")
+        if isinstance(pregame_context, dict) else "UNAVAILABLE"
+    )
+    result["pregame_context_snapshot_id"] = (
+        pregame_context.get("snapshot_id")
+        if isinstance(pregame_context, dict) else None
+    )
+    result["pregame_context_attached_prediction_count"] = (
+        int(pregame_context.get("attached_prediction_count", 0))
+        if isinstance(pregame_context, dict) else 0
+    )
+    result["pregame_context"] = pregame_context
+
     # Output validation: probabilities are finite, win probabilities sum to 100,
     # Low/High sum to 100, and exactly four score candidates exist.
     for o in outputs:
