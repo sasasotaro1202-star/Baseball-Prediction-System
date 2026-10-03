@@ -121,8 +121,7 @@ def test_archive_preserves_each_prediction_snapshot(tmp_path, monkeypatch):
 
 def test_empty_result_cache_is_refreshed(tmp_path, monkeypatch):
     monkeypatch.setattr(exp, "RESULT_DIR", tmp_path / "experience" / "official_results")
-    # Keep this unit deterministic: the test explicitly models the active month.
-    monkeypatch.setattr(exp, "_should_refresh_result_cache", lambda year, month, now=None: True)
+    active_now = pd.Timestamp("2026-10-03T12:00:00+00:00")
     result_dir = tmp_path / "experience" / "official_results"
     result_dir.mkdir(parents=True, exist_ok=True)
     cache = result_dir / "2026-10.csv"
@@ -146,7 +145,8 @@ def test_empty_result_cache_is_refreshed(tmp_path, monkeypatch):
 
     monkeypatch.setattr(exp, "_fetch_month", fake_fetch)
     loaded = exp._load_cached_results(
-        [pd.Timestamp("2026-10-02T18:00:00+09:00")]
+        [pd.Timestamp("2026-10-02T18:00:00+09:00")],
+        now=active_now,
     )
 
     assert calls == [(2026, 10)]
@@ -198,8 +198,7 @@ def test_legacy_scheduled_cutoff_survives_dataframe_materialization(tmp_path, mo
 
 def test_current_result_cache_is_refreshed_even_when_nonempty(tmp_path, monkeypatch):
     monkeypatch.setattr(exp, "RESULT_DIR", tmp_path / "experience" / "official_results")
-    # Keep this unit deterministic: the test explicitly models the active month.
-    monkeypatch.setattr(exp, "_should_refresh_result_cache", lambda year, month, now=None: True)
+    active_now = pd.Timestamp("2026-10-03T12:00:00+00:00")
     result_dir = tmp_path / "experience" / "official_results"
     result_dir.mkdir(parents=True, exist_ok=True)
     cache = result_dir / "2026-10.csv"
@@ -223,7 +222,8 @@ def test_current_result_cache_is_refreshed_even_when_nonempty(tmp_path, monkeypa
 
     monkeypatch.setattr(exp, "_fetch_month", fake_fetch)
     loaded = exp._load_cached_results(
-        [pd.Timestamp("2026-10-02T18:00:00+09:00")]
+        [pd.Timestamp("2026-10-02T18:00:00+09:00")],
+        now=active_now,
     )
     assert calls == [(2026, 10)]
     assert len(loaded) == 1
