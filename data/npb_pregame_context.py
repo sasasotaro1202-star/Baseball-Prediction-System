@@ -26,7 +26,7 @@ from core.http import request as http_request, session as http_session
 ROOT = Path(__file__).resolve().parents[1]
 HTTP_SESSION = http_session(user_agent="Baseball-Prediction-System/pregame-context")
 
-NPB_DAY_URL = "https://npb.jp/bis/eng/{year}/games/gm{date}.html"
+NPB_DAY_URL = "https://npb.jp/bis/{year}/games/gm{date}.html"
 NPB_STANDINGS_URL = "https://npb.jp/bis/eng/{year}/stats/std_{league}.html"
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 
