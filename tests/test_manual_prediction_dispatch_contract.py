@@ -11,6 +11,8 @@ def test_manual_prediction_workflow_is_on_demand_and_not_pregame_slot_bound():
     assert "prediction.current_production" in workflow
     assert "--pregame-only" not in workflow
     assert "prediction_target_lead_minutes" in workflow
+    assert "PIT_SAFE_STARTER_DATA: \"1\"" in workflow
+    assert "Acquire PIT-safe NPB history for manual request" in workflow
     assert "BLOCKED_NO_CURRENT_PRODUCTION_RUNTIME" in workflow
 
 
