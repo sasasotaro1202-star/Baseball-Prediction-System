@@ -157,7 +157,10 @@ def _fetch_text(url: str, timeout: tuple[int, int] = (8, 45)) -> tuple[str, str]
 def _extract_team_sequence(value: str) -> list[str]:
     text = _clean(value)
     hits: list[tuple[int, int, str]] = []
-    for alias, canonical in sorted(TEAM_ALIASES.items(), key=lambda item: len(item[0]), reverse=True):
+    aliases: list[tuple[str, str]] = list(TEAM_ALIASES.items()) + [
+        (canonical, canonical) for canonical in CANONICAL_TEAMS
+    ]
+    for alias, canonical in sorted(aliases, key=lambda item: len(item[0]), reverse=True):
         for match in re.finditer(re.escape(alias), text):
             start, end = match.span()
             if any(start >= a and end <= b for a, b, _ in hits):
