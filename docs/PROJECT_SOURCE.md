@@ -2117,7 +2117,7 @@ derived metricsは現在の可視値を増やす目的であって、feature ado
 
 90. DATE-SCOPED FIRST-TEAM ROSTER CONTEXT
 
-NPB公式の「出場選手登録および登録抹消」日付別ページから、対象日付の出場選手一覧を取得し、player_idを軸に選手群をsnapshot化する。
+NPB公式の「出場選手登録および登録抹消」日付別ページから、対象日付の出場選手一覧を取得し、player_idを軸に選手群をsnapshot化する。実取得性は独立した NPB Live Source Health workflow で定期検証し、Roster・個人打撃・個人投手・個人守備・個人プロフィールの公式ページを実際に取得・parseできた場合だけ VERIFIED とする。
 
 保存:
 
