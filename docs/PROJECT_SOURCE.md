@@ -1912,6 +1912,42 @@ starter/lineupがどの程度確定していたか、
 
 まで制御できるAdaptive Baseball Prediction Intelligenceを構築することである。
 
+
+⸻
+
+91. PLAYER ROLE AND EVIDENCE COVERAGE
+
+TEAM-WIDE PLAYER CONTEXTは、各選手について現在観測できている成績だけでなく、選手の役割とデータ証拠範囲を明示する。
+
+各player rowへ:
+
+* player_role
+* player_role_source
+* player_role_evidence
+* player_data_coverage
+
+を保存する。
+
+player_roleはofficial positionとpitching usageなどの観測値から保守的に導出し、例として:
+
+* STARTING_PITCHER
+* RELIEF_PITCHER
+* PITCHER
+* TWO_WAY_CANDIDATE
+* CATCHER
+* INFIELDER
+* OUTFIELDER
+* UTILITY_POSITION_PLAYER
+* UNKNOWN
+
+等を使用する。証拠不足時はUNKNOWNまたはUNVERIFIED系へ倒し、役割を推測で固定しない。
+
+player_data_coverageではstable player ID、batting、pitching、fielding、official profile、derived metric countを分離して保存する。未観測を0や不在へ変換しない。
+
+team snapshotにはplayer_coverage_summaryを追加し、stable ID coverage、各統計sourceのcoverage、profile availability、observed PA/IP、role distributionを保持する。これはinformation acquisition、uncertainty、case-level analysisのためのevidence layerであり、production probabilityを自動変更しない。
+
+NPB公式の2026年度公式戦成績はチーム打撃・投手・守備および個人成績を公開しており、現行collectorはこれらをplayer_idベースで統合する。 
+
 === COPY END ===
 
 86. PREGAME CONTEXT ACQUISITION
