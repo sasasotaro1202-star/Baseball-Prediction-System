@@ -600,7 +600,9 @@ def test_reconcile_records_realized_prediction_horizon(tmp_path, monkeypatch):
 
     pred_path = _prediction(tmp_path)
     payload = json.loads(pred_path.read_text(encoding="utf-8"))
-    payload["predictions"][0]["prediction_generated_at"] = "2026-09-26T00:00:00+00:00"
+    payload["predictions"][0]["prediction_cutoff_utc"] = "2026-09-26T00:00:00+00:00"
+    payload["predictions"][0]["prediction_generated_at"] = "2026-09-26T00:05:00+00:00"
+    payload["predictions"][0]["starter_evidence_observed_at_utc"] = "2026-09-25T23:59:30+00:00"
     pred_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     exp.archive_production_output(pred_path)
 
@@ -617,4 +619,4 @@ def test_reconcile_records_realized_prediction_horizon(tmp_path, monkeypatch):
     ledger = pd.read_csv(tmp_path / "experience" / "experience_ledger.csv")
     assert ledger.loc[0, "prediction_horizon"] == "3_TO_6H"
     assert summary["by_horizon"]["3_TO_6H"]["rows"] == 1
-    assert summary["by_horizon"]["3_TO_6H"]["mean_actual_lead_minutes"] == pytest.approx(14 * 60)
+    assert summary["by_horizon"]["3_TO_6H"]["mean_actual_lead_minutes"] == pytest.approx(4 * 60 + 55)
