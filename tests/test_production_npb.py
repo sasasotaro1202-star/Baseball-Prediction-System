@@ -433,3 +433,17 @@ def test_daily_schedule_metadata_path_is_outcome_free():
     )
     assert metadata["competition"] == "npb_japan_series"
     assert metadata["status"] == "classified"
+
+
+
+def test_daily_schedule_competition_metadata_ignores_non_schedule_headings():
+    html = """
+    <h3>公式戦成績</h3>
+    <h3>日本シリーズ【試合予定】</h3>
+    """
+    metadata = _official_daily_competition_metadata(
+        html,
+        "https://npb.jp/bis/2026/games/gm20261101.html",
+    )
+    assert metadata["competition"] == "npb_japan_series"
+    assert metadata["stage"] == "japan_series"
