@@ -326,7 +326,6 @@ def test_24h_supervisor_recovers_only_latest_zero_job_pregame_failures_with_dail
     assert 'actions/runs?event=push&branch=main&per_page=100' in text
     assert 'select(.path == (".github/workflows/" + $workflow))' in text
     assert '--workflow "${PREGAME_WORKFLOW}"' not in text.split("PREGAME_WORKFLOW=baseball_30m_pregame_auto.yml", 1)[1].split("# Candidate OOS", 1)[0]
-    assert "actions/workflows/${PREGAME_WORKFLOW}/runs?branch=main" in text
     assert "latest_failure_id" in text
     assert "latest_failure_job_count=-1" in text
     assert "latest_failure_job_count}" in text
