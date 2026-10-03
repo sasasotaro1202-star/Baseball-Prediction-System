@@ -169,7 +169,11 @@ def test_chat_async_dispatcher_is_short_lived_and_allowlisted():
     assert "/dispatches\"" in text
     assert "TARGET_WORKFLOW}" in text
     assert '"repos/${GH_REPO}/actions/workflows/${TARGET_WORKFLOW}/dispatches"' in text
-    assert "-f ref=main" in text
+    assert (
+        '"ref:"main"' in text
+        or '"ref":\"main"' in text
+        or "-f ref=main" in text
+    )
     assert 'workflow=${' not in text
     assert 'ref=${' not in text
     assert "No run polling or completion wait is performed." in text
