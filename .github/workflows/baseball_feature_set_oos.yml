@@ -5,7 +5,9 @@ name: Baseball Feature Set OOS Comparison
     branches: [main]
     paths:
       - "research/feature_set_router.py"
+      - "research/feature_set_variants.py"
       - "tests/test_feature_set_router.py"
+      - "tests/test_feature_set_variants.py"
       - "baseball_backtest.py"
       - "research/real_data_validation.py"
       - ".github/workflows/baseball_feature_set_oos.yml"
@@ -69,7 +71,7 @@ jobs:
           done
           test "$(find data -maxdepth 1 -name "*_pbp.csv" | wc -l | tr -d " ")" -ge 7
 
-      - name: Run 10 feature-set variants on identical chronological folds
+      - name: Run all registered feature-set variants on identical chronological folds
         env:
           PYTHONPATH: .
           PYTHONUNBUFFERED: "1"
@@ -95,7 +97,9 @@ jobs:
           d=json.loads(Path("results/feature_set_screening.json").read_text(encoding="utf-8"))
           assert d.get("status") == "SCREENING_COMPLETED"
           assert d.get("production_promotion") == "NOT_RUN"
-          assert int(d.get("variants_tested", 0)) == 10
+          from research.feature_set_variants import SCREENING_VARIANTS
+          assert int(d.get("variants_tested", 0)) == len(SCREENING_VARIANTS)
+          assert int(d.get("variants_tested", 0)) >= 30
           results=d["results"]
           assert results[0]["mean_metrics"]["LogLoss"] == min(r["mean_metrics"]["LogLoss"] for r in results)
           print(json.dumps({
