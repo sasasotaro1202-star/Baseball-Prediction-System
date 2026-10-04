@@ -59,6 +59,11 @@ The request-generation workflow is a controlled execution mechanism, not a promo
 
 The request queue is append-oriented and idempotent by request fingerprint. Repeating an identical request should reuse a previously generated verified result rather than recompute it unnecessarily. Concurrent requests must be serialized or otherwise written deterministically so one request cannot overwrite another.
 
+## Candidate OOS current-main automation
+GitHub Actions includes a lightweight current-main evidence controller (baseball_candidate_oos_auto_controller.yml) on a 15-minute schedule. It must dispatch Candidate OOS automatically only when no Candidate OOS run is active, the current main SHA lacks terminal Candidate OOS evidence, and the change since the latest completed evidence is Candidate-OOS-evidence-affecting. It must not cancel a live Candidate OOS replay, and deterministic terminal failures remain authoritative.
+
+Continuity-only changes such as append-only experience reconciliation, tests, documentation and explicitly validated control-plane workflow edits do not justify an expensive Candidate OOS replay. Changes to the Candidate OOS workflow itself, research/runtime code, configuration, dependencies, PIT data/source contracts or evaluation logic remain evidence-affecting and require a fresh current-main replay.
+
 ## Candidate OOS stale-run recovery
 Candidate OOS keeps `cancel-in-progress: false` so a live chronological validation is never interrupted. The watchdog may recover only a same-main-SHA `in_progress` Candidate OOS run older than 360 minutes, which is deliberately beyond the 260-minute workflow timeout. Cancellation failure is fail-closed and blocks duplicate dispatch. A verified stale-run recovery triggers an immediate current-main redispatch. This operational recovery rule does not relax PIT, chronological OOS, calibration, holdout, adoption, or production gates.
 
