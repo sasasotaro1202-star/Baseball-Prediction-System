@@ -204,6 +204,10 @@ def _explicit_timestamp(
             f"{side}starteravailableat", f"{side}_starter_available_at",
             f"{side}probablepitcheravailableat", f"{side}_probable_pitcher_available_at",
         },
+        "revision": {
+            "revisiontime", "revision_time", "lastrevisiontime", "last_revision_time",
+            "schedule_revision_time", "schedule_revision_at",
+        },
     }.get(kind)
     if names is None:
         raise ValueError(f"unsupported starter timestamp kind: {kind}")
@@ -584,6 +588,7 @@ def acquire_mlb() -> int:
         a_pub = _explicit_timestamp(g, "away", "published")
         h_avail = _explicit_timestamp(g, "home", "available") or h_ann
         a_avail = _explicit_timestamp(g, "away", "available") or a_ann
+        revision_time = _explicit_timestamp(g, "", "revision")
         row = {
             "event_id": f"MLB:{gid}", "league": "MLB", "game_id": gid,
             "home_team": hname, "away_team": aname,
@@ -595,6 +600,7 @@ def acquire_mlb() -> int:
             "away_starter_published_at": a_pub,
             "home_starter_available_at": h_avail,
             "away_starter_available_at": a_avail,
+            "revision_time": revision_time,
             "home_starter_evidence_level": "OFFICIAL_ANNOUNCEMENT" if h_ann else "RETRIEVAL_ONLY",
             "away_starter_evidence_level": "OFFICIAL_ANNOUNCEMENT" if a_ann else "RETRIEVAL_ONLY",
             "observed_at": retrieved, "prediction_cutoff": retrieved,
