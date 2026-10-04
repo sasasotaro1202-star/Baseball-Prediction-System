@@ -55,3 +55,8 @@ def test_user_prediction_workflow_has_bounded_cache():
     assert "actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809" in workflow
     assert "path: data/*_pbp.csv" in workflow
     assert "git/ref/tags/pbp" in workflow
+    # The manual workflow must consume the wrapper's atomic JSON artifact rather
+    # than parsing stdout, which may contain model diagnostics.
+    assert 'source_output="results/npb_shadow_${target}.json"' in workflow
+    assert 'cp "${source_output}" "${output}"' in workflow
+    assert "npb_fast_stderr.log" in workflow
