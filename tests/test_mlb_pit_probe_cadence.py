@@ -97,3 +97,11 @@ def test_mlb_acquisition_persists_first_observed_starter_boundary(tmp_path, monk
     assert current["away_starter_availability_evidence"] == "OFFICIAL_FIRST_OBSERVED"
     assert current["home_starter_announced_at"] is None
     assert current["away_starter_announced_at"] is None
+
+
+def test_pit_ledger_workflow_is_ref_scoped_and_runs_acquisition_regression():
+    from pathlib import Path
+
+    workflow = (Path(__file__).resolve().parents[1] / ".github" / "workflows" / "baseball_pit_ledger_tests.yml").read_text(encoding="utf-8")
+    assert "group: baseball-pit-ledger-tests-${{ github.event.pull_request.number || github.ref }}" in workflow
+    assert "tests/test_mlb_pit_probe_cadence.py" in workflow
