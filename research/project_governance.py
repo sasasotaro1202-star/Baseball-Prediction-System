@@ -82,6 +82,16 @@ WORKFLOW_CONTRACTS: dict[str, dict[str, Any]] = {
         "max_age_hours": 1,
         "required": ("schedule:", "cron: '*/5 * * * *'", "actions: write"),
     },
+    ".github/workflows/npb_experience_reconciliation.yml": {
+        "monitor": True,
+        "max_age_hours": 30,
+        "required": ("schedule:", "workflow_dispatch:", "experience_ledger --reconcile"),
+    },
+    ".github/workflows/npb_experience_learning.yml": {
+        "monitor": True,
+        "max_age_hours": 12,
+        "required": ("schedule:", "workflow_dispatch:", "research.experience_learning", "research.experience_learning_gate"),
+    },
     ".github/workflows/baseball_actions_recovery.yml": {
         "monitor": False,
         "max_age_hours": 0,
