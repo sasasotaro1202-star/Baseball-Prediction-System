@@ -71,6 +71,25 @@ def test_reconstructed_state_score_ignores_final_score_label():
     assert int(first["state_home_score"]) == 0
     assert int(first["state_away_score"]) == 0
 
+def test_first_play_can_legitimately_score():
+    raw = _frame(1)
+    raw.loc[0, "pitch_number"] = 1
+    raw.loc[0, "addedRuns"] = 1
+    raw.loc[0, "away_total_runs"] = 1
+    normalized = canonicalize_pbp_frame(raw)
+    assert not normalized.empty
+    first = normalized.iloc[0]
+    assert int(first["state_away_score"]) == 1
+
+def test_simulation_rejects_nonpositive_step_guard():
+    kernel = fit_transition_kernel(_frame(), min_transitions=10)
+    try:
+        simulate_game(kernel, base_run=3.5, home_factor=1.0, away_factor=1.0, simulations=1, max_steps_per_simulation=0)
+    except ValueError as exc:
+        assert "max_steps_per_simulation" in str(exc)
+    else:
+        raise AssertionError("expected max_steps_per_simulation validation")
+
 def test_score_reversal_is_rejected():
     current = {
         "inning": 1,
