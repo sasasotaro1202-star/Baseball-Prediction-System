@@ -128,7 +128,7 @@ def _validate_generated_output(payload: dict[str, Any], request: dict[str, Any],
             raise ValueError("research lane output must retain RESEARCH_SHADOW_EXECUTED status")
 
 
-def _find_cached(result_dir: Path, fingerprint: str) -> Path | None:
+def _find_cached(result_dir: Path, fingerprint: str, lane: str, max_age_seconds: int) -> Path | None:
     if not result_dir.exists():
         return None
     for path in sorted(result_dir.glob("*.json"), reverse=True):
@@ -138,12 +138,24 @@ def _find_cached(result_dir: Path, fingerprint: str) -> Path | None:
             continue
         if str(obj.get("request_fingerprint", "")) != fingerprint:
             continue
+        if str(obj.get("generation_lane", "")) != lane:
+            continue
         cached_output = obj.get("prediction_output")
         if not isinstance(cached_output, dict):
             continue
         status = str(cached_output.get("execution_status", "")).strip()
-        if status in {"EXECUTED", "RESEARCH_SHADOW_EXECUTED"}:
-            return path
+        if status not in {"EXECUTED", "RESEARCH_SHADOW_EXECUTED"}:
+            continue
+        try:
+            generated_at = datetime.fromisoformat(
+                str(obj.get("generated_at_utc")).replace("Z", "+00:00")
+            )
+            age = (_utc_now() - generated_at).total_seconds()
+        except Exception:
+            continue
+        if age < 0 or age > max_age_seconds:
+            continue
+        return path
     return None
 
 
@@ -225,29 +237,6 @@ def main(argv: list[str] | None = None) -> int:
     result_dir = ROOT / str(policy.get("result_directory", "prediction_requests/results"))
     source_commit = os.environ.get("GITHUB_SHA") or "unknown"
 
-    cached = _find_cached(result_dir, fingerprint)
-    if cached is not None:
-        cached_obj = _load_json(cached)
-        cached_output = cached_obj.get("prediction_output")
-        if not isinstance(cached_output, dict):
-            raise ValueError("cached result does not contain a valid prediction_output object")
-        _validate_generated_output(cached_output, request, str(cached_obj.get("generation_lane", "")))
-        out = _write_result(
-            result_dir=result_dir,
-            request=request,
-            request_id=request_id,
-            fingerprint=fingerprint,
-            target_date=target_date,
-            competition_id=competition_id,
-            lane=str(cached_obj.get("generation_lane", "CACHED")),
-             source_commit=str(cached_obj.get("source_commit") or source_commit),
-            status="CACHED_VERIFIED_RESULT",
-            output=cached_output,
-            reused_from=str(cached_obj.get("request_id", "")) or None,
-        )
-        print(json.dumps({"result_path": str(out), "generation_status": "CACHED_VERIFIED_RESULT"}, ensure_ascii=False))
-        return 0
-
     production_template = policy.get("production_commands", {}).get(competition_id)
     research_template = policy.get("validated_research_shadow_commands", {}).get(competition_id)
 
@@ -287,6 +276,34 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"result_path": str(out), "generation_status": "BLOCKED_NO_VALIDATED_PREDICTION_RUNTIME"}, ensure_ascii=False))
         return 0
 
+    cache_ttl = int(policy.get("max_verified_cache_age_seconds", 900))
+    force_refresh = bool(request.get("force_refresh", False))
+    if cache_ttl < 0:
+        raise ValueError("max_verified_cache_age_seconds must be non-negative")
+    if not force_refresh:
+        cached = _find_cached(result_dir, fingerprint, lane, cache_ttl)
+        if cached is not None:
+            cached_obj = _load_json(cached)
+            cached_output = cached_obj.get("prediction_output")
+            if not isinstance(cached_output, dict):
+                raise ValueError("cached result does not contain a valid prediction_output object")
+            _validate_generated_output(cached_output, request, lane)
+            out = _write_result(
+                result_dir=result_dir,
+                request=request,
+                request_id=request_id,
+                fingerprint=fingerprint,
+                target_date=target_date,
+                competition_id=competition_id,
+                lane=lane,
+                source_commit=str(cached_obj.get("source_commit") or source_commit),
+                status="CACHED_VERIFIED_RESULT",
+                output=cached_output,
+                reused_from=str(cached_obj.get("request_id", "")) or None,
+            )
+            print(json.dumps({"result_path": str(out), "generation_status": "CACHED_VERIFIED_RESULT"}, ensure_ascii=False))
+            return 0
+
     timeout_seconds = int(policy.get("max_runtime_seconds", 5400))
     try:
         rc, stdout, stderr = _run(command, timeout_seconds)
@@ -313,8 +330,10 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"result_path": str(out), "generation_status": "GENERATION_TIMEOUT"}, ensure_ascii=False))
         return 1
 
-    generated_path = ROOT / "results" / f"npb_{'shadow' if lane == 'VALIDATED_RESEARCH_SHADOW' else 'production'}_{target_date}.json"
-    if competition_id != "NPB" or not generated_path.exists():
+    output_paths = policy.get("output_paths", {}).get(competition_id, {})
+    path_template = output_paths.get(lane) if isinstance(output_paths, dict) else None
+    generated_path = ROOT / str(path_template).replace("{target_date}", target_date) if path_template else None
+    if generated_path is None or not generated_path.exists():
         # Production/other routes are expected to return their JSON on stdout
         # when they don't use the shared results path.
         try:
