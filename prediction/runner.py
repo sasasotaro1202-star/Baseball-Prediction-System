@@ -1,3 +1,132 @@
+"""Production prediction eligibility gate and canonical logging adapter."""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+import math
+from typing import Any, Callable, Mapping
+
+from core.pit import _ts
+from data.availability import AvailabilityRecord, prediction_eligible, production_prediction_eligible
+from prediction.prediction_log import PredictionRecord, append_prediction, make_prediction_id
+from prediction.score_distribution import build_score_outputs
+
+
+def eligibility_gate(*, availability: AvailabilityRecord, required_data_ok: bool,
+                     feature_complete: bool, model_available: bool,
+                     calibration_available: bool, production: bool = False) -> tuple[bool, list[str]]:
+    """Fail closed unless every required condition is satisfied.
+
+    ``production=False`` preserves the research/replay runner contract. The
+    production path must pass ``production=True`` so competition-level
+    promotion status is enforced in the actual prediction entry point.
+    """
+    if production:
+        ok, reasons = production_prediction_eligible(availability)
+    else:
+        ok, reasons = prediction_eligible(availability)
+    if not required_data_ok:
+        reasons.append("required_data_unavailable")
+    if not feature_complete:
+        reasons.append("feature_incomplete")
+    if not model_available:
+        reasons.append("model_unavailable")
+    if not calibration_available:
+        reasons.append("calibration_unavailable")
+    cutoff = _ts(availability.prediction_cutoff)
+    retrieved = _ts(availability.retrieved_at)
+    if retrieved > cutoff:
+        reasons.append("retrieval_after_cutoff")
+    return (not reasons, reasons)
+
+
+def _validate_final_probabilities(probabilities: Mapping[str, float], league: str) -> dict[str, float]:
+    if not isinstance(probabilities, Mapping):
+        raise ValueError("probability callback must return a mapping")
+    expected = {"home", "away"} | ({"draw"} if league == "NPB" else set())
+    if set(probabilities) != expected:
+        raise ValueError("probability callback returned the wrong league contract")
+    values: dict[str, float] = {}
+    for key, raw in probabilities.items():
+        value = float(raw)
+        if not math.isfinite(value) or value < 0.0 or value > 1.0:
+            raise ValueError("final probabilities must be finite and in [0,1]")
+        values[key] = value
+    if abs(sum(values.values()) - 1.0) > 1e-8:
+        raise ValueError("final probabilities must sum to 1")
+    return values
+
+
+def _optional_probability(value: Any, name: str) -> float | None:
+    if value is None:
+        return None
+    value = float(value)
+    if not math.isfinite(value) or value < 0.0 or value > 1.0:
+        raise ValueError(f"{name} must be finite and in [0,1]")
+    return value
+
+
+def _validate_score_candidates(candidates: Any) -> list[dict[str, Any]]:
+    if candidates is None:
+        return []
+    if not isinstance(candidates, (list, tuple)):
+        raise ValueError("score_candidates must be a list or tuple")
+    out = []
+    for item in candidates:
+        if not isinstance(item, Mapping) or "score" not in item or "probability" not in item:
+            raise ValueError("each score candidate requires score and probability")
+        p = float(item["probability"])
+        if not math.isfinite(p) or p < 0 or p > 1:
+            raise ValueError("score candidate probability must be finite and in [0,1]")
+        out.append(dict(item))
+    if out and len(out) != 4:
+        raise ValueError("production score contract requires exactly four candidates")
+    if len({str(x["score"]) for x in out}) != len(out):
+        raise ValueError("score candidates must be unique")
+    return out
+
+
+def _derive_score_outputs(row: Mapping[str, Any]) -> dict[str, Any]:
+    """Derive score/Low-High from game-specific PIT-safe run means.
+
+    Run means are the only accepted upstream contract for exact-score outputs.
+    We deliberately do not reconstruct a score distribution from win
+    probabilities, because that would invent information and can produce
+    internally inconsistent production outputs.
+    """
+    home_lambda = row.get("home_run_lambda")
+    away_lambda = row.get("away_run_lambda")
+    if home_lambda is None or away_lambda is None:
+        return {}
+    return build_score_outputs(float(home_lambda), float(away_lambda))
+
+
+def _assert_generated_outputs_are_authoritative(
+    row: Mapping[str, Any], derived: Mapping[str, Any]
+) -> None:
+    """Prevent caller-supplied score/Low-High fields from overriding model output."""
+    if not derived:
+        return
+    supplied_scores = row.get("score_candidates")
+    if supplied_scores is not None:
+        supplied = _validate_score_candidates(supplied_scores)
+        generated = list(derived["score_candidates"])
+        if supplied != generated:
+            raise ValueError("supplied score_candidates do not match generated score distribution")
+    for name in ("low_probability", "high_probability"):
+        supplied = row.get(name)
+        if supplied is not None:
+            supplied_value = _optional_probability(supplied, name)
+            generated_value = float(derived[name])
+            if not math.isclose(supplied_value, generated_value, rel_tol=0.0, abs_tol=1e-12):
+                raise ValueError(f"supplied {name} does not match generated score distribution")
+
+
+def run_prediction(*, row: Mapping[str, Any], availability: AvailabilityRecord,
+                   probability_fn: Callable[[Mapping[str, Any]], Mapping[str, float]],
+                   model_version: str, feature_version: str, calibration_version: str,
+                   git_commit: str, data_snapshot_id: str, log_path: str,
+                   calibrate_fn: Callable[[Mapping[str, float]], Mapping[str, float]] | None = None,
+                   production: bool = False) -> dict[str, Any]:
     eligible, reasons = eligibility_gate(
         availability=availability,
         required_data_ok=bool(row.get("required_data_ok", True)),
@@ -58,30 +187,6 @@
         ),
         competition_stage=(
             str(row.get("competition_stage") or "").strip()
-            or None
-        ),
-        season_type=(
-            str(row.get("season_type") or "").strip()
-            or None
-        ),
-        game_class=(
-            str(row.get("game_class") or "").strip()
-            or None
-        ),
-        competition_classification_status=(
-            str(row.get("competition_classification_status") or "").strip()
-            or None
-        ),
-        competition_metadata_source=(
-            str(row.get("competition_metadata_source") or "").strip()
-            or None
-        ),
-        competition_metadata_source_field=(
-            str(row.get("competition_metadata_source_field") or "").strip()
-            or None
-        ),
-        competition_metadata_source_value=(
-            str(row.get("competition_metadata_source_value") or "").strip()
             or None
         ),
         prediction_set=(
