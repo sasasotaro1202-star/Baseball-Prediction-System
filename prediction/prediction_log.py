@@ -72,12 +72,6 @@ class PredictionRecord:
     eligibility: str = "ELIGIBLE"
     competition_key: str | None = None
     competition_stage: str | None = None
-    season_type: str | None = None
-    game_class: str | None = None
-    competition_classification_status: str | None = None
-    competition_metadata_source: str | None = None
-    competition_metadata_source_field: str | None = None
-    competition_metadata_source_value: str | None = None
     prediction_set: list[str] | None = None
     prediction_set_alpha: float | None = None
     prediction_set_method: str | None = None
@@ -234,3 +228,20 @@ def append_prediction(record: PredictionRecord, path: str | Path) -> None:
         with _ledger_lock(fh):
             fh.seek(0)
             for line in fh:
+                if not line.strip():
+                    continue
+                existing = json.loads(line)
+                if existing.get("prediction_id") == record.prediction_id:
+                    if line.rstrip("\n") != serialized:
+                        raise ValueError("prediction_id collision with different record")
+                    return
+            fh.seek(0, 2)
+            fh.write(serialized + "\n")
+            fh.flush()
+            os.fsync(fh.fileno())
+
+
+def record_from_mapping(row: Mapping[str, Any]) -> PredictionRecord:
+    record = PredictionRecord(**dict(row))
+    validate_prediction(record)
+    return record
