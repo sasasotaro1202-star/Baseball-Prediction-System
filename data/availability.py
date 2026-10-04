@@ -103,12 +103,16 @@ class AvailabilityRecord:
                     raise ValueError(f"{side} starter availability is after source retrieval")
                 if published_at:
                     published_ts = _dt(published_at)
+                    # Check source-retrieval ordering first so a clearly
+                    # post-retrieval publication is classified as the more
+                    # fundamental PIT provenance violation, even when the same
+                    # timestamp also violates the announcement ordering.
+                    if published_ts > retrieved:
+                        raise ValueError(f"{side} starter publication is after source retrieval")
                     if published_ts > announced_ts:
                         raise ValueError(f"{side} starter publication is after announcement time")
                     if published_ts > cutoff:
                         raise ValueError(f"{side} starter publication is after prediction cutoff")
-                    if published_ts > retrieved:
-                        raise ValueError(f"{side} starter publication is after source retrieval")
             elif available_at:
                 # An availability timestamp without an explicit announcement
                 # cannot establish that a starter was announced/known by cutoff.
