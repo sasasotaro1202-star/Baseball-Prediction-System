@@ -69,3 +69,11 @@ def test_full_validated_ensemble_preserves_all_columns():
 def test_unknown_variant_fails_closed():
     with pytest.raises(ValueError):
         select_feature_set(_sample_frame(), "NPB", variant="NOT_A_REAL_VARIANT")
+
+
+def test_pit_context_variants_fail_closed_without_required_context():
+    base = _sample_frame().drop(columns=["h_lineup_avg", "a_lineup_avg", "d_lineup_avg", "weather_temp_c", "weather_run_signal"])
+    with pytest.raises(ValueError, match="requires unavailable PIT-safe feature families"):
+        select_feature_set(base, "NPB", variant="TEAM_PLUS_LINEUP_PIT_SAFE")
+    with pytest.raises(ValueError, match="requires unavailable PIT-safe feature families"):
+        select_feature_set(base, "NPB", variant="TEAM_PLUS_WEATHER_PIT_SAFE")
