@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -74,6 +75,16 @@ def main() -> int:
     parser.add_argument("--minimum-lead-minutes", type=float, default=0.0)
     args = parser.parse_args()
 
+    # Fast-shadow model profile: reduce ensemble iteration counts only for this
+    # explicitly non-production lane. The canonical production runner and
+    # adoption registry are untouched.
+    os.environ.setdefault("BASEBALL_FAST_OOS", "1")
+    os.environ.setdefault("BASEBALL_HISTGB_MAX_ITER", "140")
+    os.environ.setdefault("BASEBALL_RF_ESTIMATORS", "140")
+    os.environ.setdefault("BASEBALL_ET_ESTIMATORS", "140")
+    os.environ.setdefault("BASEBALL_LGBM_ESTIMATORS", "140")
+    os.environ.setdefault("BASEBALL_XGB_ESTIMATORS", "100")
+    os.environ.setdefault("BASEBALL_CATBOOST_ITERATIONS", "100")
     # These collectors are explicitly observation/evidence-only in the current
     # NPB production feature contract. Replace them only for this user-facing
     # fast lane; the feature/model/PIT computation itself remains canonical.
@@ -95,6 +106,17 @@ def main() -> int:
         raise RuntimeError("NPB fast prediction returned a non-object result")
 
     result["fast_mode"] = True
+    result["model_runtime_profile"] = "FAST_SHADOW"
+    result["model_runtime_profile_config"] = {
+        "BASEBALL_FAST_OOS": os.getenv("BASEBALL_FAST_OOS"),
+        "BASEBALL_HISTGB_MAX_ITER": os.getenv("BASEBALL_HISTGB_MAX_ITER"),
+        "BASEBALL_RF_ESTIMATORS": os.getenv("BASEBALL_RF_ESTIMATORS"),
+        "BASEBALL_ET_ESTIMATORS": os.getenv("BASEBALL_ET_ESTIMATORS"),
+        "BASEBALL_LGBM_ESTIMATORS": os.getenv("BASEBALL_LGBM_ESTIMATORS"),
+        "BASEBALL_XGB_ESTIMATORS": os.getenv("BASEBALL_XGB_ESTIMATORS"),
+        "BASEBALL_CATBOOST_ITERATIONS": os.getenv("BASEBALL_CATBOOST_ITERATIONS"),
+        "promotion_status": "RESEARCH_ONLY"
+    }
     result["observation_enrichment_mode"] = "DEFERRED_FAST_MODE"
     result["fast_lane_contract"] = (
         "Canonical production_npb probability/PIT path with observation-only "
