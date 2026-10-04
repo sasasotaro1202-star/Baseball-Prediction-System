@@ -2,11 +2,9 @@ name: Baseball 24h Supervisor
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths-ignore:
-      - 'data/pit/**'
-      - 'prediction_requests/**'
+  # Supervisor is control-plane only. It is driven by schedule/workflow_run,
+  # not every source/config push, so it cannot consume the runner queue needed
+  # for user-facing predictions.
   workflow_run:
     workflows: ["Baseball Closed Loop Research"]
     types: [completed]
