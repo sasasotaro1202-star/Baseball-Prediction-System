@@ -39,3 +39,5 @@ MONITOR → DETECT → TRIAGE → RESEARCH → IMPLEMENT → TEST → PIT → OO
 
 ## Candidate OOS stale-run recovery
 Candidate OOS keeps `cancel-in-progress: false` so a live chronological validation is never interrupted. The watchdog may recover only a same-main-SHA `in_progress` Candidate OOS run older than 360 minutes, which is deliberately beyond the 260-minute workflow timeout. Cancellation failure is fail-closed and blocks duplicate dispatch. A verified stale-run recovery triggers an immediate current-main redispatch. This operational recovery rule does not relax PIT, chronological OOS, calibration, holdout, adoption, or production gates.
+## Candidate OOS evidence freshness
+Any change to a module that can alter Candidate OOS selection, calibration, scoring, routing, adoption gating, or candidate identity must retrigger the Candidate OOS workflow before its evidence can be treated as current. Trigger coverage is part of the evidence-integrity contract; green CI from an older snapshot is not evidence for the changed implementation.
