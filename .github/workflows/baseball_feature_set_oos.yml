@@ -1,0 +1,157 @@
+name: Baseball Feature Set OOS Comparison
+
+"on":
+  push:
+    branches: [main]
+    paths:
+      - "research/feature_set_router.py"
+      - "tests/test_feature_set_router.py"
+      - "baseball_backtest.py"
+      - "research/real_data_validation.py"
+      - ".github/workflows/baseball_feature_set_oos.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baseball-feature-set-oos
+  cancel-in-progress: false
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - {league: NPB, variant: BASELINE_TEAM_STATE}
+          - {league: NPB, variant: TEAM_PLUS_STARTER}
+          - {league: NPB, variant: TEAM_PLUS_BULLPEN}
+          - {league: NPB, variant: TEAM_PLUS_STARTER_BULLPEN}
+          - {league: NPB, variant: TEAM_PLUS_LINEUP_PIT_SAFE}
+          - {league: NPB, variant: TEAM_PLUS_STARTER_LINEUP_PIT_SAFE}
+          - {league: NPB, variant: TEAM_PLUS_STARTER_BULLPEN_LINEUP_PIT_SAFE}
+          - {league: NPB, variant: FULL_VALIDATED_ENSEMBLE}
+          - {league: MLB, variant: BASELINE_TEAM_STATE}
+          - {league: MLB, variant: TEAM_PLUS_STARTER}
+          - {league: MLB, variant: TEAM_PLUS_STARTER_BULLPEN}
+          - {league: MLB, variant: FULL_VALIDATED_ENSEMBLE}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
+
+      - name: Compile and router tests
+        run: |
+          set -euo pipefail
+          python -m py_compile baseball_backtest.py production_npb.py research/feature_set_router.py
+          python -m pytest -q tests/test_feature_set_router.py tests/test_feature_integrity.py
+
+      - name: Stage NPB historical data
+        if: matrix.league == 'NPB'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p data
+          for year in 2020 2021 2022 2023 2024 2025 2026; do
+            downloaded=0
+            if find data -maxdepth 1 -type f -name "${year}-*_pbp.csv" -print -quit | grep -q .; then
+              downloaded=1
+            else
+              for attempt in 1 2 3; do
+                if timeout --signal=TERM --kill-after=10s 150s gh release download pbp \
+                  --repo armstjc/Nippon-Baseball-Data-Repository \
+                  --pattern "${year}-*_pbp.csv" \
+                  --dir data --clobber; then
+                  downloaded=1
+                  break
+                fi
+                sleep $((attempt * 3))
+              done
+            fi
+            if [ "$downloaded" -ne 1 ]; then
+              echo "failed to stage NPB ${year}" >&2
+              exit 1
+            fi
+          done
+          test "$(find data -maxdepth 1 -name '*_pbp.csv' | wc -l | tr -d ' ')" -ge 7
+
+      - name: Run identical chronological OOS with selected feature set
+        env:
+          PYTHONPATH: .
+          PYTHONUNBUFFERED: "1"
+          BASEBALL_FEATURE_SET_VARIANT: ${{ matrix.variant }}
+          BASEBALL_FAST_OOS: "1"
+          BASEBALL_TIME_BUDGET_SEC: "1500"
+          BASEBALL_HARD_CAP_SEC: "1800"
+          NPB_RETRAIN_EVERY: "250"
+          BASEBALL_CATBOOST_DETERMINISTIC: "1"
+          BASEBALL_SCORE_FAST_VALIDATION: "1"
+          MLB_ENRICH_STARTERS: "0"
+          PIT_SAFE_STARTER_DATA: "0"
+        run: |
+          set -euo pipefail
+          python -m research.real_data_validation \
+            --league "${{ matrix.league }}" \
+            --mlb-start 2020 \
+            --mlb-end 2026
+
+      - name: Validate comparison artifact
+        run: |
+          set -euo pipefail
+          test -s results/real_data_validation.json
+          python - <<'PY'
+import json
+from pathlib import Path
+p=Path("results/real_data_validation.json")
+d=json.loads(p.read_text(encoding="utf-8"))
+print(json.dumps({
+    "league": "${{ matrix.league }}",
+    "feature_set_variant": "${{ matrix.variant }}",
+    "status": d.get("status"),
+    "execution_status": d.get("execution_status"),
+    "overall_decision": d.get("overall_decision"),
+}, ensure_ascii=False))
+if d.get("execution_status") == "FAILED":
+    raise SystemExit("feature-set OOS execution failed")
+PY
+
+      - name: Write feature-set run summary
+        if: always()
+        run: |
+          {
+            echo "## Feature Set OOS"
+            echo "- League: ${{ matrix.league }}"
+            echo "- Feature set: ${{ matrix.variant }}"
+            if [ -s results/real_data_validation.json ]; then
+              echo '```json'
+              cat results/real_data_validation.json
+              echo '```'
+            else
+              echo "Result: NOT PRODUCED"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload feature-set evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: baseball-feature-set-oos-${{ matrix.league }}-${{ matrix.variant }}-${{ github.run_id }}
+          path: results/**
+          if-no-files-found: warn
+          retention-days: 30
