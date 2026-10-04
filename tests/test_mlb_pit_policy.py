@@ -199,6 +199,25 @@ def test_explicit_mlb_starter_timestamp_rejects_future_of_retrieval():
     ) is None
 
 
+@pytest.mark.parametrize(
+    ("kind", "payload"),
+    [
+        ("published", {"home_starter_published_at": "2026-09-19T09:11:00+00:00"}),
+        ("available", {"home_starter_available_at": "2026-09-19T09:11:00+00:00"}),
+        ("revision", {"revision_time": "2026-09-19T09:11:00+00:00"}),
+    ],
+)
+def test_explicit_mlb_starter_timestamp_rejects_future_of_retrieval_for_all_kinds(kind, payload):
+    import data.pit_acquisition as pit
+
+    assert pit._explicit_timestamp(
+        payload,
+        "home",
+        kind,
+        retrieved_at="2026-09-19T09:10:00+00:00",
+    ) is None
+
+
 def test_explicit_mlb_starter_timestamp_accepts_at_retrieval():
     import data.pit_acquisition as pit
 
