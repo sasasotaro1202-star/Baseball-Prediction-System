@@ -148,15 +148,53 @@ jobs:
           fi
           python -m research.real_data_validation --league "${{ matrix.league }}" --mlb-start 2020 --mlb-end 2026
 
-      - name: Verify main snapshot is still current
+      - name: Verify candidate OOS snapshot remains evidence-current
         env:
           EXPECTED_REF: ${{ github.sha }}
         run: |
           set -euo pipefail
           git fetch --no-tags --prune origin main
           current_main="$(git rev-parse origin/main)"
-          test "$current_main" = "$EXPECTED_REF"
-          echo "candidate_snapshot_still_current=$EXPECTED_REF"
+          echo "candidate_snapshot_sha=$EXPECTED_REF"
+          echo "current_main_sha=$current_main"
+          if [ "$current_main" = "$EXPECTED_REF" ]; then
+            echo "candidate_snapshot_still_current=$EXPECTED_REF"
+            exit 0
+          fi
+
+          # Historical postgame experience is append-only reconciliation data.
+          # Those commits do not alter the candidate runtime or selection
+          # contract and must not invalidate an already-running OOS replay.
+          #
+          # Any other main-branch change can alter code, configuration,
+          # orchestration, PIT inputs, or candidate identity, so the run fails
+          # closed instead of producing evidence under a mixed snapshot.
+          mapfile -t changed_files < <(git diff --name-only "$EXPECTED_REF" "$current_main")
+          if [ "${#changed_files[@]}" -eq 0 ]; then
+            echo "Unable to determine changes between candidate snapshot and current main." >&2
+            exit 1
+          fi
+
+          unexpected=0
+          for path in "${changed_files[@]}"; do
+            case "$path" in
+              data/experience/*)
+                echo "Allowed historical experience-only main update: $path"
+                ;;
+              *)
+                unexpected=1
+                echo "Evidence-affecting main update detected: $path" >&2
+                ;;
+            esac
+          done
+
+          if [ "$unexpected" -ne 0 ]; then
+            echo "Candidate OOS snapshot is no longer evidence-current; refusing mixed-snapshot evidence." >&2
+            exit 1
+          fi
+
+          echo "candidate_snapshot_still_evidence_current=$EXPECTED_REF"
+          echo "candidate_snapshot_current_main=$current_main"
 
       - name: Verify lifecycle decision is explicit
         timeout-minutes: 5

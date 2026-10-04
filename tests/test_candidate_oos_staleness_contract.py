@@ -6,8 +6,8 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_candidate_oos_fails_closed_on_stale_main_snapshot():
     workflow = (ROOT / '.github' / 'workflows' / 'baseball_candidate_oos.yml').read_text(encoding='utf-8')
     assert 'name: Verify main snapshot is current' in workflow
-    assert 'name: Verify main snapshot is still current' in workflow
-    assert workflow.count('test "$current_main" = "$EXPECTED_REF"') >= 2
+    assert 'name: Verify candidate OOS snapshot remains evidence-current' in workflow
+    assert 'test "$current_main" = "$EXPECTED_REF"' in workflow
     assert 'git fetch --no-tags --prune origin main' in workflow
 
 def test_candidate_oos_watchdog_monitors_all_candidate_dependencies():
@@ -28,3 +28,10 @@ def test_candidate_oos_watchdog_monitors_all_candidate_dependencies():
         'evaluation/**',
     ):
         assert path in workflow
+
+def test_candidate_oos_allows_only_experience_data_main_updates():
+    workflow = (ROOT / '.github' / 'workflows' / 'baseball_candidate_oos.yml').read_text(encoding='utf-8')
+    assert 'mapfile -t changed_files' in workflow
+    assert 'data/experience/*)' in workflow
+    assert 'Evidence-affecting main update detected' in workflow
+    assert 'refusing mixed-snapshot evidence' in workflow
