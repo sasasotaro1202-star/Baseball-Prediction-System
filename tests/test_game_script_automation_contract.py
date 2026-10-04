@@ -22,6 +22,10 @@ def test_game_script_autoresearch_is_daily_and_fail_closed():
     assert "code_fingerprint" in text
     assert "prev_code" in text
     assert "game_script_checkpoint.json" in text
+    assert "validation_source_fingerprint" in text
+    assert "context_source_fingerprint" in text
+    assert "SHADOW_REFRESH_ONLY" in text
+    assert "--shadow-only" in text
 
 
 def test_game_script_autoresearch_has_main_snapshot_guard():
