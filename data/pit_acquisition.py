@@ -184,19 +184,43 @@ def _starter_id(side: dict[str, Any]) -> str | None:
     return str(value) if value not in (None, "") else None
 
 
-def _explicit_announcement(g: dict[str, Any], side: str) -> str | None:
+def _explicit_timestamp(
+    g: dict[str, Any],
+    side: str,
+    kind: str,
+) -> str | None:
+    kind = str(kind).strip().lower()
     names = {
-        f"{side}starterannouncedat", f"{side}_starter_announced_at",
-        f"{side}probablepitcherannouncedat", f"{side}_probable_pitcher_announced_at",
-        f"{side}pitcherannouncedat", f"{side}_pitcher_announced_at",
-    }
+        "announcement": {
+            f"{side}starterannouncedat", f"{side}_starter_announced_at",
+            f"{side}probablepitcherannouncedat", f"{side}_probable_pitcher_announced_at",
+            f"{side}pitcherannouncedat", f"{side}_pitcher_announced_at",
+        },
+        "published": {
+            f"{side}starterpublishedat", f"{side}_starter_published_at",
+            f"{side}probablepitcherpublishedat", f"{side}_probable_pitcher_published_at",
+        },
+        "available": {
+            f"{side}starteravailableat", f"{side}_starter_available_at",
+            f"{side}probablepitcheravailableat", f"{side}_probable_pitcher_available_at",
+        },
+    }.get(kind)
+    if names is None:
+        raise ValueError(f"unsupported starter timestamp kind: {kind}")
     value = _find_value(g, names)
     if value in (None, ""):
         return None
     try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).isoformat()
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     except Exception:
         return None
+    if dt.tzinfo is None:
+        return None
+    return dt.astimezone(timezone.utc).isoformat()
+
+
+def _explicit_announcement(g: dict[str, Any], side: str) -> str | None:
+    return _explicit_timestamp(g, side, "announcement")
 
 
 
@@ -554,15 +578,25 @@ def acquire_mlb() -> int:
         seen.add(gid)
         home, away = _mlb_teams(g)
         hname, aname = _team_name(home), _team_name(away)
+        h_ann = _explicit_timestamp(g, "home", "announcement")
+        a_ann = _explicit_timestamp(g, "away", "announcement")
+        h_pub = _explicit_timestamp(g, "home", "published")
+        a_pub = _explicit_timestamp(g, "away", "published")
+        h_avail = _explicit_timestamp(g, "home", "available") or h_ann
+        a_avail = _explicit_timestamp(g, "away", "available") or a_ann
         row = {
             "event_id": f"MLB:{gid}", "league": "MLB", "game_id": gid,
             "home_team": hname, "away_team": aname,
             "home_starter": _starter_name(home), "away_starter": _starter_name(away),
             "home_starter_id": _starter_id(home), "away_starter_id": _starter_id(away),
-            "home_starter_announced_at": _explicit_announcement(g, "home"),
-            "away_starter_announced_at": _explicit_announcement(g, "away"),
-            "home_starter_evidence_level": "OFFICIAL_ANNOUNCEMENT" if _explicit_announcement(g, "home") else "RETRIEVAL_ONLY",
-            "away_starter_evidence_level": "OFFICIAL_ANNOUNCEMENT" if _explicit_announcement(g, "away") else "RETRIEVAL_ONLY",
+            "home_starter_announced_at": h_ann,
+            "away_starter_announced_at": a_ann,
+            "home_starter_published_at": h_pub,
+            "away_starter_published_at": a_pub,
+            "home_starter_available_at": h_avail,
+            "away_starter_available_at": a_avail,
+            "home_starter_evidence_level": "OFFICIAL_ANNOUNCEMENT" if h_ann else "RETRIEVAL_ONLY",
+            "away_starter_evidence_level": "OFFICIAL_ANNOUNCEMENT" if a_ann else "RETRIEVAL_ONLY",
             "observed_at": retrieved, "prediction_cutoff": retrieved,
             # Use the canonical first-party MLB URL rather than a symbolic
             # provider label so the production PIT gate can independently
@@ -600,6 +634,11 @@ def acquire_mlb() -> int:
         _append_jsonl(AVAILABILITY_LOG, {
             **row,
             "starter_status": "ANNOUNCED" if row["home_starter_announced_at"] and row["away_starter_announced_at"] else "OBSERVED_UNVERIFIABLE_ANNOUNCEMENT_TIME",
+            "starter_pit_proof": (
+                "EXPLICIT_ANNOUNCEMENT_TIMESTAMP"
+                if row["home_starter_announced_at"] and row["away_starter_announced_at"]
+                else "OBSERVED_ONLY_UNVERIFIABLE_ANNOUNCEMENT_TIME"
+            ),
             "lineup_status": "UNVERIFIABLE",
         })
         _record_snapshot(event_id=f"MLB:{gid}", league="MLB", entity_type="game",
