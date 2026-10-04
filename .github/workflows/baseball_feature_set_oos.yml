@@ -10,12 +10,12 @@ on:
       - "research/feature_set_variants.py"
       - "research/feature_set_router.py"
       - "research/feature_model_matrix.py"
-      - "config/feature_model_matrix.json"
+      - "scripts/verify_feature_model_matrix.py"
       - "evaluation/**"
       - "core/**"
+      - "config/feature_policy.json"
       - "tests/test_feature_set_router.py"
       - "tests/test_feature_set_variants.py"
-      - "tests/test_feature_integrity.py"
       - ".github/workflows/baseball_feature_set_oos.yml"
 
 permissions:
@@ -33,37 +33,26 @@ jobs:
       fail-fast: false
       max-parallel: 6
       matrix:
-        include:
-          - league: NPB
-            model_pool: LINEAR_TREE
-            model_names: "Logistic,HistGB"
-            output_file: feature_model_matrix_npb.json
-          - league: NPB
-            model_pool: BROAD_TREE
-            model_names: "Logistic,HistGB,RandomForest,ExtraTrees"
-            output_file: feature_model_matrix_npb.json
-          - league: NPB
-            model_pool: DIVERSE
-            model_names: "Logistic,HistGB,RandomForest,ExtraTrees,KNNAnalog"
-            output_file: feature_model_matrix_npb.json
-          - league: MLB
-            model_pool: LINEAR_TREE
-            model_names: "Logistic,HistGB"
-            output_file: feature_model_matrix_mlb.json
-          - league: MLB
-            model_pool: BROAD_TREE
-            model_names: "Logistic,HistGB,RandomForest,ExtraTrees"
-            output_file: feature_model_matrix_mlb.json
-          - league: MLB
-            model_pool: DIVERSE
-            model_names: "Logistic,HistGB,RandomForest,ExtraTrees,KNNAnalog"
-            output_file: feature_model_matrix_mlb.json
-
+        league: [NPB, MLB]
+        model_pool: [LINEAR_TREE, BROAD_TREE, DIVERSE]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 1
+
+      - name: Verify main snapshot is evidence-current
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --prune origin main
+          current_main="$(git rev-parse origin/main)"
+          echo "matrix_snapshot_sha=$GITHUB_SHA"
+          echo "current_main_sha=$current_main"
+          if [ "$current_main" != "$GITHUB_SHA" ]; then
+            echo "Feature/model matrix snapshot is stale; refusing mixed-snapshot evidence." >&2
+            exit 1
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
@@ -76,12 +65,12 @@ jobs:
         timeout-minutes: 12
         run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
 
-      - name: Compile and tests
+      - name: Compile and feature tests
         timeout-minutes: 8
         run: |
           set -euo pipefail
-          python -m py_compile             baseball_backtest.py             production_npb.py             research/feature_set_variants.py             research/feature_set_router.py             research/feature_model_matrix.py
-          python -m pytest -q             tests/test_feature_set_router.py             tests/test_feature_set_variants.py             tests/test_feature_integrity.py
+          python -m py_compile baseball_backtest.py production_npb.py research/feature_set_variants.py research/feature_set_router.py research/feature_model_matrix.py scripts/verify_feature_model_matrix.py
+          python -m pytest -q tests/test_feature_set_router.py tests/test_feature_set_variants.py tests/test_feature_integrity.py
 
       - name: Stage NPB historical data
         if: matrix.league == 'NPB'
@@ -97,70 +86,42 @@ jobs:
             fi
             ok=0
             for attempt in 1 2 3; do
-              if timeout --signal=TERM --kill-after=10s 150s gh release download pbp                 --repo armstjc/Nippon-Baseball-Data-Repository                 --pattern "${year}-*_pbp.csv"                 --dir data --clobber; then
+              if timeout --signal=TERM --kill-after=10s 150s gh release download pbp --repo armstjc/Nippon-Baseball-Data-Repository --pattern "${year}-*_pbp.csv" --dir data --clobber; then
                 ok=1
                 break
               fi
-              sleep $((attempt * 3))
+              [ "$attempt" -lt 3 ] && sleep $((attempt * 3))
             done
             if [ "$ok" -ne 1 ]; then
               echo "failed to stage NPB ${year}" >&2
               exit 1
             fi
           done
-          test "$(find data -maxdepth 1 -name "*_pbp.csv" | wc -l | tr -d ' ')" -ge 7
+          test "$(find data -maxdepth 1 -name '*_pbp.csv' | wc -l | tr -d ' ')" -ge 7
 
-      - name: Run exhaustive Development OOS matrix
-        timeout-minutes: 120
+      - name: Run matrix experiment
+        timeout-minutes: 115
         env:
           PYTHONPATH: .
           PYTHONUNBUFFERED: "1"
-          BASEBALL_FEATURE_SCREEN_MODEL_POOL: ${{ matrix.model_names }}
-          BASEBALL_TIME_BUDGET_SEC: "6900"
-          BASEBALL_HARD_CAP_SEC: "7200"
+          BASEBALL_TIME_BUDGET_SEC: "6600"
+          BASEBALL_HARD_CAP_SEC: "6900"
           BASEBALL_CATBOOST_DETERMINISTIC: "1"
           BASEBALL_FAST_OOS: "1"
           BASEBALL_SCORE_FAST_VALIDATION: "1"
           PIT_SAFE_STARTER_DATA: "0"
           BASEBALL_MAX_FIT_ROWS: "0"
+        shell: bash
         run: |
           set -euo pipefail
-          python -m research.feature_model_matrix             --league "${{ matrix.league }}"             --half-life 600             --half-life 900             --half-life 1800             --half-life 3600             --half-life 7200             --model-pool "${{ matrix.model_pool }}"             --max-configs 165             --mlb-start 2020             --mlb-end 2026
+          python -m research.feature_model_matrix --league "${{ matrix.league }}" --half-life 600 --half-life 900 --half-life 1800 --half-life 3600 --half-life 7200 --model-pool "${{ matrix.model_pool }}" --max-configs 165 --mlb-start 2020 --mlb-end 2026
 
-      - name: Verify evidence and research-only gate
+      - name: Verify research-only decision
+        shell: bash
         run: |
           set -euo pipefail
-          test -s "results/${{ matrix.output_file }}"
-          python - <<'PY'
-import json
-from pathlib import Path
-
-path = Path("results") / "${{ matrix.output_file }}"
-obj = json.loads(path.read_text(encoding="utf-8"))
-
-if obj.get("status") != "RESEARCH_ONLY":
-    raise SystemExit("matrix result is not research-only")
-if obj.get("decision") != "NO_AUTO_ADOPTION":
-    raise SystemExit("automatic adoption is forbidden")
-if obj.get("selection_basis") != "Development OOS only":
-    raise SystemExit("selection basis is not Development OOS only")
-if not obj.get("holdout_locked_before_selection"):
-    raise SystemExit("locked holdout contract missing")
-if obj.get("matrix_size_executed", 0) < 1:
-    raise SystemExit("no matrix configurations executed")
-if obj.get("successful_configs", 0) < 1:
-    raise SystemExit("no successful matrix configurations")
-print(json.dumps({
-    "league": obj.get("league"),
-    "model_pool": "${{ matrix.model_pool }}",
-    "matrix_requested": obj.get("matrix_size_requested"),
-    "matrix_executed": obj.get("matrix_size_executed"),
-    "successful": obj.get("successful_configs"),
-    "failed": obj.get("failed_configs"),
-    "winner": obj.get("winner", {}).get("config_id"),
-    "holdout_rows": obj.get("locked_holdout_rows"),
-}, ensure_ascii=False, indent=2))
-PY
+          lower="$(printf '%s' "${{ matrix.league }}" | tr '[:upper:]' '[:lower:]')"
+          python scripts/verify_feature_model_matrix.py "results/feature_model_matrix_${lower}.json" "${{ matrix.model_pool }}"
 
       - name: Upload matrix evidence
         if: always()
@@ -173,24 +134,14 @@ PY
 
       - name: Summary
         if: always()
+        shell: bash
         run: |
-          {
-            echo "## Baseball Feature × Model Matrix"
-            echo "League: ${{ matrix.league }}"
-            echo "Model pool: ${{ matrix.model_pool }}"
-            if [ -s "results/${{ matrix.output_file }}" ]; then
-              echo "### Result"
-              python - <<'PY'
-import json
-from pathlib import Path
-obj = json.loads((Path("results") / "${{ matrix.output_file }}").read_text(encoding="utf-8"))
-print(json.dumps({
-    "status": obj.get("status"),
-    "executed": obj.get("matrix_size_executed"),
-    "successful": obj.get("successful_configs"),
-    "winner": obj.get("winner", {}).get("config_id"),
-    "holdout_rows": obj.get("locked_holdout_rows"),
-}, ensure_ascii=False, indent=2))
-PY
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
+          set -euo pipefail
+          echo "## Baseball Feature × Model Matrix" >> "$GITHUB_STEP_SUMMARY"
+          echo "League: ${{ matrix.league }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Model pool: ${{ matrix.model_pool }}" >> "$GITHUB_STEP_SUMMARY"
+          if ls results/feature_model_matrix_*.json >/dev/null 2>&1; then
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat results/feature_model_matrix_*.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
