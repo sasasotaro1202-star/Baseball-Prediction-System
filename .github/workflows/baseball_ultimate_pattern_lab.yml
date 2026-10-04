@@ -138,7 +138,7 @@ jobs:
         if: steps.result-cache.outputs.cache-hit != 'true' && success()
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
-          path: results
+          path: results/ultimate_pattern_lab_${{ matrix.league }}.json
           key: baseball-ultimate-pattern-v1-${{ matrix.league }}-${{ github.sha }}
 
       - name: Upload research evidence
