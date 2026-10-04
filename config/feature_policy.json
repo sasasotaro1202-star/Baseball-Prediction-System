@@ -1,0 +1,31 @@
+{
+  "schema_version": "baseball-feature-policy-v1",
+  "manifest": "docs/FEATURE_MANIFEST.md",
+  "manifest_version": "feature-contract-v1",
+  "feature_matrix_expected_without_conditional_context": {
+    "NPB": 482,
+    "MLB": 470
+  },
+  "deterministic_feature_assembly": true,
+  "conditional_context": {
+    "pit_safe_env": "PIT_SAFE_CONTEXT_DATA",
+    "default_enabled": false,
+    "lineup_requires": [
+      "lineup_announced_at",
+      "prediction_cutoff"
+    ],
+    "weather_requires": [
+      "weather_available_at",
+      "prediction_cutoff"
+    ]
+  },
+  "observation_only_by_default": [
+    "detailed_official_npb_player_profile",
+    "team_wide_player_context",
+    "date_scoped_roster_context",
+    "standings_snapshot",
+    "current_weather_snapshot"
+  ],
+  "adoption_rule": "LOCAL_PIT -> chronological OOS/WFO -> calibration -> ablation -> robustness -> frozen holdout -> adoption",
+  "missingness_rule": "missing/unavailable/unknown/delayed/source_failed are not TRUE_ZERO and must not be silently converted into observed zero"
+}
