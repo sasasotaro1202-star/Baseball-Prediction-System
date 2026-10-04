@@ -19,7 +19,8 @@ permissions:
 
 concurrency:
   group: baseball-ultimate-pattern-lab
-  cancel-in-progress: true
+  # Preserve active evidence runs; snapshot gates invalidate evidence when main advances.
+  cancel-in-progress: false
 
 jobs:
   lab:
