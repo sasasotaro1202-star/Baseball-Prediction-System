@@ -36,15 +36,14 @@
   "validated_research_shadow_commands": {
     "NPB": [
       "python",
-      "production_npb.py",
+      "scripts/npb_fast_prediction.py",
       "--date",
       "{target_date}",
       "--data-dir",
       "data",
       "--research-shadow",
       "--minimum-lead-minutes",
-      "0",
-      "--fast"
+      "0"
     ]
   },
   "result_directory": "prediction_requests/results",
@@ -55,7 +54,7 @@
     "research_shadow": "Explicit research lane only; never changes Champion/Production state.",
     "unknown_competition": "Must fail closed.",
     "missing_output": "Must fail closed; never substitute an independently generated forecast.",
-    "fast_mode": "Fast user requests defer observation-only enrichment; PIT-safe model inputs and probability computation remain unchanged."
+    "fast_mode": "Fast user requests use a dedicated wrapper that defers observation-only NPB enrichment; the canonical probability/PIT path is unchanged."
   },
   "max_verified_cache_age_seconds": 900,
   "output_paths": {
