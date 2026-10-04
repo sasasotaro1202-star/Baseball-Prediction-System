@@ -54,5 +54,12 @@
     "research_shadow": "Explicit research lane only; never changes Champion/Production state.",
     "unknown_competition": "Must fail closed.",
     "missing_output": "Must fail closed; never substitute an independently generated forecast."
+  },
+  "max_verified_cache_age_seconds": 900,
+  "output_paths": {
+    "NPB": {
+      "CURRENT_PRODUCTION_RUNTIME": "results/npb_production_{target_date}.json",
+      "VALIDATED_RESEARCH_SHADOW": "results/npb_shadow_{target_date}.json"
+    }
   }
 }
