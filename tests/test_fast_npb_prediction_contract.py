@@ -27,7 +27,8 @@ def test_fast_npb_wrapper_defers_only_observation_context():
     # The canonical production predictor remains responsible for the PIT/model path.
     assert "official_starters(target_date)" in predictor
     assert "BaseballBacktest(Path(data_dir))" in predictor
-    assert "fit_ensemble(X,y,"NPB")" in predictor
+    assert "fit_ensemble(X,y," in predictor
+    assert '"NPB")' in predictor
 
 
 def test_fast_lane_does_not_enable_production():
