@@ -51,6 +51,18 @@ jobs:
         timeout-minutes: 12
         run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
 
+      - name: Verify main snapshot is evidence-current
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --prune origin main
+          current_main="$(git rev-parse origin/main)"
+          echo "screen_snapshot_sha=$GITHUB_SHA"
+          echo "current_main_sha=$current_main"
+          if [ "$current_main" != "$GITHUB_SHA" ]; then
+            echo "Feature/model matrix snapshot is stale; refusing mixed-snapshot evidence." >&2
+            exit 1
+          fi
+
       - name: Compile and router tests
         timeout-minutes: 8
         run: |
@@ -102,7 +114,7 @@ jobs:
           if [ "${{ matrix.league }}" = "NPB" ]; then
             python -m research.feature_model_matrix               --league NPB               --half-life 600 --half-life 900 --half-life 1800 --half-life 3600 --half-life 7200               --model-pool ${{ matrix.model_pool }}               --max-configs 165
           else
-            python -m research.feature_model_matrix               --league MLB               --half-life 600 --half-life 900 --half-life 1800 --half-life 3600 --half-life 7200               --model-pool ${{ matrix.model_pool }}               --max-configs 150               --mlb-start 2020 --mlb-end 2026
+            python -m research.feature_model_matrix               --league MLB               --half-life 600 --half-life 900 --half-life 1800 --half-life 3600 --half-life 7200               --model-pool ${{ matrix.model_pool }}               --max-configs 165               --mlb-start 2020 --mlb-end 2026
           fi
 
       - name: Verify research-only decision
