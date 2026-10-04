@@ -18,6 +18,11 @@ def test_fast_npb_wrapper_defers_only_observation_context():
     assert '"status": "DEFERRED_FAST_MODE"' in source
     assert "FAST_SHADOW" in source
     assert '"BASEBALL_CATBOOST_ITERATIONS", "100"' in source
+    # Diagnostics from the canonical predictor must not corrupt the user-facing
+    # machine-readable JSON stdout protocol.
+    assert "redirect_stdout" in source
+    assert "StringIO()" in source
+    assert "sys.stderr.write(captured)" in source
 
     # Fast mode must call the canonical predictor rather than create a second
     # probability implementation.
