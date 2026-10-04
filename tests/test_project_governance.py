@@ -19,6 +19,7 @@ def test_source_contract_accepts_all_85_sections():
             "LOW = total runs <= 6",
             "HIGH = total runs >= 7",
             "random split禁止",
+            "PIT Integrity",
             "PIT violations = 0",
             "NO-FAKE-SUCCESS",
             "Future Generalization",
