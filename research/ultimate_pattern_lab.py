@@ -39,6 +39,11 @@ HALF_LIVES = (600, 900, 1800, 3600, 7200)
 STAGE_POOLS = ("LINEAR_TREE", "BROAD_TREE", "DIVERSE")
 
 
+def _git_sha() -> str:
+    value = os.environ.get("GITHUB_SHA", "").strip()
+    return value or "unknown"
+
+
 def _family_pattern_catalog() -> list[frozenset[str]]:
     patterns = []
     for mask in range(1 << len(OPTIONAL_FAMILIES)):
@@ -357,6 +362,7 @@ def run(
     return {
         "schema_version": "baseball-ultimate-pattern-lab-v1",
         "status": "RESEARCH_ONLY",
+        "git_commit_sha": _git_sha(),
         "decision": "NO_AUTO_ADOPTION",
         "selection_basis": "disjoint chronological Stage A -> B -> C OOS; frozen holdout after winner lock",
         "league": league,
