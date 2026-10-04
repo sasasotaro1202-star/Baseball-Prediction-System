@@ -190,6 +190,17 @@ def _load_generated_output(path: Path) -> dict[str, Any]:
     return _load_json(path)
 
 
+def _default_output_template(competition_id: str, lane: str) -> str | None:
+    """Return the repository's conventional prediction output path when policy omits one."""
+    prefixes = {
+        ("NPB", "CURRENT_PRODUCTION_RUNTIME"): "results/npb_production_{target_date}.json",
+        ("NPB", "VALIDATED_RESEARCH_SHADOW"): "results/npb_shadow_{target_date}.json",
+        ("MLB", "CURRENT_PRODUCTION_RUNTIME"): "results/mlb_production_{target_date}.json",
+        ("MLB", "VALIDATED_RESEARCH_SHADOW"): "results/mlb_shadow_{target_date}.json",
+    }
+    return prefixes.get((str(competition_id).upper(), str(lane)))
+
+
 def _write_result(
     *,
     result_dir: Path,
@@ -359,6 +370,8 @@ def main(argv: list[str] | None = None) -> int:
 
     output_paths = policy.get("output_paths", {}).get(competition_id, {})
     path_template = output_paths.get(lane) if isinstance(output_paths, dict) else None
+    if not path_template:
+        path_template = _default_output_template(competition_id, lane)
     if path_template:
         generated_value = Path(str(path_template).replace("{target_date}", target_date))
         generated_path = generated_value if generated_value.is_absolute() else request_root / generated_value
