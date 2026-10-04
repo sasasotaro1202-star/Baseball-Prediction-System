@@ -120,3 +120,8 @@ def test_first_observed_does_not_backdate_changed_starter_or_accept_third_party(
     assert evidence.evidence_class is EvidenceClass.OFFICIAL_FIRST_OBSERVED
     assert evidence.timestamp == datetime(2026, 9, 19, 10, tzinfo=timezone.utc)
     assert pit_available_by(evidence, cutoff)
+
+
+def test_mlb_pit_policy_workflow_is_ref_scoped():
+    workflow = (ROOT / ".github" / "workflows" / "mlb_pit_policy.yml").read_text(encoding="utf-8")
+    assert "group: mlb-pit-policy-${{ github.event.pull_request.number || github.ref }}" in workflow
