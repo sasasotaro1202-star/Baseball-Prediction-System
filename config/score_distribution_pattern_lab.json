@@ -1,0 +1,42 @@
+{
+  "schema_version": "baseball-score-distribution-pattern-lab-v1",
+  "status": "RESEARCH_ONLY",
+  "model_mixes": [
+    "TOP1",
+    "TOP2_INVLOSS",
+    "TOP3_INVLOSS",
+    "TOP3_UNIFORM",
+    "TOP3_POWER_0.5",
+    "TOP3_POWER_1.5",
+    "TOP3_POWER_2.0"
+  ],
+  "shared_scales": [0.0, 0.25, 0.5, 0.75, 1.0, 1.25],
+  "mean_shrinks": [0.0, 0.05, 0.1, 0.2, 0.3],
+  "variant_count": 210,
+  "chronological_development_bands": {
+    "screen": [0.50, 0.60],
+    "confirm": [0.60, 0.70],
+    "deep": [0.70, 0.80]
+  },
+  "frozen_holdout": {
+    "fraction": 0.20,
+    "winner_only": true,
+    "tuning_allowed": false
+  },
+  "selection": {
+    "primary": "HighLogLoss",
+    "secondary": ["ScoreMAE", "HighBrier", "Top4HitRate"],
+    "development_only": true,
+    "auto_adoption": false
+  },
+  "pit": {
+    "feature_build": "existing FULL_VALIDATED_ENSEMBLE PIT-safe feature build",
+    "score_pattern_layer": "post-fit only; no new information source",
+    "missing_is_not_zero": true
+  },
+  "execution": {
+    "score_fit_once_per_chronological_block": true,
+    "common_oos_cases_across_variants": true,
+    "exact_git_sha_recorded": true
+  }
+}
