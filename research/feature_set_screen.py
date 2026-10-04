@@ -82,7 +82,15 @@ def run_screen(*, data_dir: str | Path = "data") -> dict[str, object]:
     results: list[dict[str, object]] = []
 
     for variant in SCREENING_VARIANTS:
-        X, feature_meta = select_feature_set(X_full, "NPB", variant=variant)
+        try:
+            X, feature_meta = select_feature_set(X_full, "NPB", variant=variant)
+        except ValueError as exc:
+            results.append({
+                "feature_set_variant": variant,
+                "screening_status": "BLOCKED",
+                "block_reason": str(exc),
+            })
+            continue
         fold_metrics: list[dict[str, float]] = []
         for train_end, val_len in folds:
             Xtr = X.iloc[:train_end]
@@ -123,13 +131,22 @@ def run_screen(*, data_dir: str | Path = "data") -> dict[str, object]:
             "evaluation_games": int(sum(v for _, v in folds)),
         })
 
-    results.sort(key=lambda x: (float(x["mean_metrics"]["LogLoss"]), -float(x["mean_metrics"]["Accuracy"])))
-    baseline = next(x for x in results if x["feature_set_variant"] == "BASELINE_TEAM_STATE")
+    scored = [x for x in results if x.get("screening_status") != "BLOCKED"]
+    scored.sort(key=lambda x: (float(x["mean_metrics"]["LogLoss"]), -float(x["mean_metrics"]["Accuracy"])))
+    baseline = next(
+        x for x in scored if x["feature_set_variant"] == "BASELINE_TEAM_STATE"
+    )
     baseline_ll = float(baseline["mean_metrics"]["LogLoss"])
-    for row in results:
+    for row in scored:
         ll = float(row["mean_metrics"]["LogLoss"])
-        row["relative_logloss_improvement_vs_baseline"] = float((baseline_ll - ll) / max(abs(baseline_ll), 1e-12))
+        row["relative_logloss_improvement_vs_baseline"] = float(
+            (baseline_ll - ll) / max(abs(baseline_ll), 1e-12)
+        )
         row["screening_status"] = "SCREENING_ONLY"
+    # Blocked variants remain visible evidence, but never participate in ranking.
+    results = scored + [
+        x for x in results if x.get("screening_status") == "BLOCKED"
+    ]
 
     output = {
         "schema_version": "baseball-feature-set-screen-v1",
@@ -139,7 +156,9 @@ def run_screen(*, data_dir: str | Path = "data") -> dict[str, object]:
         "objective": "compare feature variants on identical chronological folds",
         "folds": [{"train_end": tr, "validation_len": va} for tr, va in folds],
         "variants_tested": len(results),
-        "winner_by_mean_logloss": results[0]["feature_set_variant"],
+        "variants_scored": len(scored),
+        "variants_blocked": int(len(results) - len(scored)),
+        "winner_by_mean_logloss": scored[0]["feature_set_variant"],
         "baseline_variant": baseline["feature_set_variant"],
         "baseline_mean_logloss": baseline_ll,
         "results": results,
