@@ -85,3 +85,7 @@ A prediction may use a variant selected from validated families such as BASELINE
 The exact features consumed by a prediction are identified by feature_set_id + ordered feature_schema_hash + feature_manifest_version + context mode. Production output must expose these fields. A feature-family snapshot, research candidate list, or collector output is not evidence of production consumption.
 
 Feature-set selection must be chronological-OOS/PIT/calibration/robustness/holdout driven and may prefer a smaller, more stable set over a larger one.
+
+## Ultimate research pattern laboratory
+Use `research/ultimate_pattern_lab.py` for broad research-only pattern exploration. Stage A enumerates every subset of the eight optional feature families (256 patterns) on an early chronological OOS band. Stage B retests the top eight across ALL/SHORT/LONG core horizons, five recency half-lives and three model pools on a disjoint later OOS band. Stage C uses full ensemble/routing/calibration on a third disjoint band. Only the Development-selected Stage-C winner may be scored on the newest locked holdout, exactly once. No artifact from this lab can auto-promote Champion/Production.
+
