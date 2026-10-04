@@ -20,6 +20,8 @@ on:
       - 'research/real_data_validation.py'
       - 'research/validation_pipeline.py'
       - 'research/candidates.py'
+      - 'research/individually_calibrated_ensemble.py'
+      - 'research/adoption_gate.py'
       - 'research/regime_router.py'
       - 'research/correlated_score.py'
       - 'baseball_backtest.py'
