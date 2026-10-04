@@ -2284,3 +2284,27 @@ GitHub Actionsはrequest generationについて、
 を満たす。
 
 Generation artifactが確認できない場合、assistantはGitHub resultを「生成済み」と断定しない。prediction request statusはUNAVAILABLE、UNVERIFIABLE、BLOCKED、FAILED等、実際の状態を表示する。
+
+96. FEATURE CONTRACT AND RUNTIME FEATURE EVIDENCE
+
+Canonical feature documentation is `docs/FEATURE_MANIFEST.md` and machine-readable feature governance is `config/feature_policy.json`.
+
+Feature lifecycle states:
+ACTIVE
+CONDITIONAL
+OBSERVATION_ONLY
+RESEARCH_CANDIDATE
+
+Source-code presence alone never means a feature is active in production. The production runtime must preserve actual feature count, feature-schema hash, feature manifest version and context mode.
+
+Expected base feature counts from the current `match_features` contract are:
+- NPB: 482
+- MLB: 470
+before conditional lineup/weather context.
+
+Lineup and weather features require explicit PIT-safe context configuration and cutoff-valid timestamps. Current production collection of player, roster, standings, weather, identity and source-health context is not itself permission to change production probability.
+
+Feature assembly order must be deterministic. Differential columns must remain exactly home-minus-away. Any feature modification that can alter values is evidence-affecting and requires TEST → PIT → chronological OOS/WFO → calibration → ablation → robustness → frozen holdout → adoption/release before promotion.
+
+A runtime feature schema mismatch between prediction games is a fail-closed condition. Feature metadata is part of artifact integrity and reproducibility.
+
