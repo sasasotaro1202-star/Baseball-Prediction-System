@@ -12,6 +12,7 @@ on:
     paths:
       - "core/mlb_pit_policy.py"
       - "tests/test_mlb_pit_policy.py"
+      - "data/pit_acquisition.py"
       - ".github/workflows/mlb_pit_policy.yml"
   workflow_dispatch:
 
