@@ -7,8 +7,28 @@
     "target",
     "horizon"
   ],
-  "generated_at_utc": "2026-10-03T23:57:36.779856+00:00",
+  "generated_at_utc": "2026-10-04T01:37:50.207675+00:00",
   "status": "UPDATED",
+  "evidence": {
+    "scope": "HISTORICAL_POSTGAME_EXPERIENCE",
+    "performance_status": "HISTORICAL_ONLY_NOT_CURRENT_MODEL_VERIFICATION",
+    "generated_from_commit": "e1d30f33c82c5eab9a04d7922b361b8ce0c3a7ba",
+    "prediction_source_commits": [],
+    "prediction_models": [
+      "BaseballBacktest.fit_ensemble + fit_score_ensemble + NPB extra-inning result calibration",
+      "Production ML ensemble + PIT-safe chronological direct run-rate recovery",
+      "Production ML ensemble + PIT-safe direct run-rate fallback (degeneracy recovery)"
+    ],
+    "prediction_model_versions": [],
+    "prediction_feature_versions": [],
+    "prediction_calibration_versions": [],
+    "prediction_targets": [],
+    "comparison_to_current_production": {
+      "status": "UNVERIFIED",
+      "current_runtime_equivalence": "NOT_ESTABLISHED",
+      "reason": "Post-game experience is historical reconciliation evidence, not a chronological OOS/frozen-holdout evaluation of the currently registered production runtime."
+    }
+  },
   "canonical_cases": 11,
   "all_prediction_snapshots": 131,
   "league_competition_phase_target": {
