@@ -16,6 +16,9 @@ from research.ultimate_pattern_lab import (
 
 def validate(path: str) -> dict:
     obj = json.loads(Path(path).read_text(encoding="utf-8"))
+    sha = str(obj.get("git_commit_sha", ""))
+    if len(sha) != 40 or any(ch not in "0123456789abcdef" for ch in sha.lower()):
+        raise RuntimeError("artifact Git snapshot SHA is missing or invalid")
     if obj.get("status") != "RESEARCH_ONLY":
         raise RuntimeError("artifact is not research-only")
     if obj.get("decision") != "NO_AUTO_ADOPTION":
