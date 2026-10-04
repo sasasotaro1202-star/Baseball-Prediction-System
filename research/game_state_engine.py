@@ -240,7 +240,7 @@ def fit_transition_kernel(
             if t is None:
                 continue
             nh, no, nb, runs, scorer = t
-            key = _state_key(int(a["inning"]), str(a["half"]), int(a["outs"]), _base_mask(a), int(round(float(a["state_home_score"]) - float(a["state_away_score"]))))
+            key = _transition_state_key(a, use_score_diff=use_score_diff)
             outcome = (nh, no, nb, runs, scorer)
             exact[key][outcome] += 1
             by_state[(key[0], key[1], key[2], key[3])][outcome] += 1
