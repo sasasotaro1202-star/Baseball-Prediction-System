@@ -881,10 +881,20 @@ def build_target_rows(
 ) -> pd.DataFrame:
     rows=official_starters(target_date)
     schedule_metadata: dict[str, Any] = {}
-    daily_times = _official_daily_start_times(
-        target_date,
-        metadata_out=schedule_metadata,
-    )
+    daily_times: dict[tuple[str, str], str] = {}
+    daily_schedule_error: str | None = None
+    try:
+        daily_times = _official_daily_start_times(
+            target_date,
+            metadata_out=schedule_metadata,
+        )
+    except RuntimeError as exc:
+        # The starter page is already first-party NPB evidence and its game-card
+        # parser validates the associated start clock structurally. A failure in
+        # the separate date-detail parser must not discard an otherwise valid
+        # target when the two official sources can be reconciled. We still fail
+        # closed on missing/invalid starter-page clocks or conflicting clocks.
+        daily_schedule_error = str(exc)
     now_utc=_utc_now()
     output=[]
     for i,r in enumerate(rows):
@@ -909,16 +919,28 @@ def build_target_rows(
         starter_time = str(r.get("official_start_time") or "").strip()
         pair = (str(r.get("home") or "").strip(), str(r.get("away") or "").strip())
         schedule_time = daily_times.get(pair)
-        if not schedule_time:
+        starter_time = str(r.get("official_start_time") or "").strip()
+        valid_time = bool(re.fullmatch(r"\\d{1,2}:\\d{2}", starter_time))
+        if schedule_time and valid_time and schedule_time != starter_time:
             raise RuntimeError(
-                f"Official NPB daily schedule has no exact time for {pair[0]} vs {pair[1]}; refusing prediction."
+                f"Official NPB schedule time conflict for {pair[0]} vs {pair[1]}: "
+                f"daily={schedule_time}, starter_page={starter_time}; refusing prediction."
             )
-        # The dedicated NPB starter page can contain non-game clock values
-        # (for example the displayed average game duration). Treat the
-        # official date-specific schedule as the sole authoritative source for
-        # the target game's start time. The starter page remains authoritative
-        # for starter identity/evidence, but its auxiliary time field is not
-        # used as a competing clock signal.
+        if not schedule_time:
+            if not valid_time:
+                reason = daily_schedule_error or "daily schedule did not contain the target game"
+                raise RuntimeError(
+                    f"Official NPB start-time evidence unavailable for {pair[0]} vs {pair[1]}: {reason}; refusing prediction."
+                )
+            schedule_time = starter_time
+            r["start_time_resolution"] = "OFFICIAL_STARTER_PAGE_STRUCTURAL_FALLBACK"
+        else:
+            r["start_time_resolution"] = "OFFICIAL_DAILY_SCHEDULE"
+        # Prefer the date-specific schedule when available, while retaining a
+        # strictly bounded fallback to the starter page's structurally parsed
+        # game-card clock. The fallback is valid only after explicit conflict
+        # checking; unrelated clocks such as average-duration text cannot enter
+        # because parse_official_starters_html validates structural game cards.
         start_time = schedule_time
         r["official_start_time"] = start_time
         r["start_time_source"] = NPB_DAY_URL.format(year=target_date[:4], date=target_date.replace("-", ""))
