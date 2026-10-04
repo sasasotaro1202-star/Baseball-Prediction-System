@@ -127,3 +127,4 @@
 {"mlb_error": "name '_starter_id' is not defined", "mlb_events": 0, "mlb_status": "UNAVAILABLE", "npb_events": 16, "npb_status": "OK", "run_finished_at": "2026-10-04T00:16:53.373661+00:00", "run_started_at": "2026-10-04T00:16:45.875418+00:00"}
 {"mlb_error": "name '_starter_id' is not defined", "mlb_events": 0, "mlb_status": "UNAVAILABLE", "npb_events": 16, "npb_status": "OK", "run_finished_at": "2026-10-04T00:48:30.921456+00:00", "run_started_at": "2026-10-04T00:48:23.428545+00:00"}
 {"mlb_events": 14, "mlb_status": "OK", "npb_events": 16, "npb_status": "OK", "run_finished_at": "2026-10-04T01:35:47.288074+00:00", "run_started_at": "2026-10-04T01:35:39.707396+00:00"}
+{"mlb_events": 14, "mlb_status": "OK", "npb_events": 16, "npb_status": "OK", "run_finished_at": "2026-10-04T05:26:02.949724+00:00", "run_started_at": "2026-10-04T05:25:55.033943+00:00"}
