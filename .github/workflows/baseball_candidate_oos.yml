@@ -212,8 +212,8 @@ jobs:
           unexpected=0
           for path in "${changed_files[@]}"; do
             case "$path" in
-              data/experience/*)
-                echo "Allowed historical experience-only main update: $path"
+              data/experience/*|tests/*)
+                echo "Allowed non-runtime main update: $path"
                 ;;
               *)
                 unexpected=1
