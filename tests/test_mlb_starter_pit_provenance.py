@@ -59,6 +59,16 @@ def test_starter_timestamps_after_retrieval_fail_closed():
     with pytest.raises(ValueError, match="announcement is after source retrieval"):
         record.validate()
 
+def test_starter_publication_after_retrieval_is_reported_as_pit_boundary():
+    record = _record(
+        home_starter_published_at="2026-09-01T09:01:00+00:00",
+    )
+    # The announcement remains before retrieval; the publication timestamp is
+    # the invalid boundary and must be rejected before relative timestamp checks.
+    with pytest.raises(ValueError, match="publication is after source retrieval"):
+        record.validate()
+
+
 def test_revision_time_after_cutoff_fails_closed():
     record = _record(revision_time="2026-09-01T09:01:00+00:00")
     with pytest.raises(ValueError, match="revision_time is after prediction cutoff"):
