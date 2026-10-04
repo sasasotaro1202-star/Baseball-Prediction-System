@@ -133,6 +133,11 @@ jobs:
           set -euo pipefail
           closed=".github/workflows/baseball_closed_loop.yml"
           supervisor=".github/workflows/baseball_24h_supervisor.yml"
+          governance=".github/workflows/baseball_governance_autopilot.yml"
+          test -s "$governance"
+          grep -Fq 'cron: "13 */6 * * *"' "$governance"
+          grep -Fq 'research.project_governance --actions' "$governance"
+          grep -Fq 'actions: read' "$governance"
           recovery=".github/workflows/baseball_actions_recovery.yml"
           test -s "$closed"
           test -s "$supervisor"

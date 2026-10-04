@@ -340,6 +340,67 @@ jobs:
           current_main_sha="$(gh_retry api "repos/${GH_REPO}/git/ref/heads/main" --jq ".object.sha")"
           latest_sha="$(printf '%s' "${latest}" | jq -r '.headSha // empty')"
 
+          # Governance Autopilot is a cheap control-plane audit. Keep it alive
+          # without creating a second expensive research loop. Only recover
+          # missing/stale scheduler state; deterministic governance failures
+          # remain authoritative and are never retried indefinitely.
+          GOVERNANCE_WORKFLOW=baseball_governance_autopilot.yml
+          test -s ".github/workflows/${GOVERNANCE_WORKFLOW}"
+          governance_runs="$(gh_retry run list --repo "${GH_REPO}" --workflow "${GOVERNANCE_WORKFLOW}" --limit 30 --json databaseId,status,conclusion,createdAt,updatedAt,headSha)"
+          governance_active="$(printf '%s' "${governance_runs}" | jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+          echo "Governance Autopilot active_count=${governance_active}"
+          if [ "${governance_active}" -eq 0 ]; then
+            governance_latest="$(printf '%s' "${governance_runs}" | jq 'sort_by(.createdAt) | last // {}')"
+            governance_latest_created="$(printf '%s' "${governance_latest}" | jq -r '.createdAt // empty')"
+            governance_latest_conclusion="$(printf '%s' "${governance_latest}" | jq -r '.conclusion // empty')"
+            governance_latest_sha="$(printf '%s' "${governance_latest}" | jq -r '.headSha // empty')"
+            governance_latest_age_minutes=999999
+            if [ -n "${governance_latest_created}" ]; then
+              governance_latest_epoch="$(date -d "${governance_latest_created}" +%s)"
+              governance_latest_age_minutes=$(( (now_epoch - governance_latest_epoch) / 60 ))
+            fi
+
+            governance_dispatch=0
+            governance_reason=''
+            if [ -z "${governance_latest_created}" ]; then
+              governance_dispatch=1
+              governance_reason='no Governance Autopilot history'
+            elif [ -n "${governance_latest_sha}" ] && [ "${governance_latest_sha}" != "${current_main_sha}" ]; then
+              governance_dispatch=1
+              governance_reason="latest Governance Autopilot is on superseded SHA ${governance_latest_sha}"
+            elif [ "${governance_latest_conclusion}" = "cancelled" ] || [ "${governance_latest_conclusion}" = "timed_out" ] || [ "${governance_latest_conclusion}" = "startup_failure" ]; then
+              if [ "${governance_latest_age_minutes}" -ge 15 ]; then
+                governance_dispatch=1
+                governance_reason="latest Governance Autopilot ended ${governance_latest_conclusion}"
+              fi
+            elif [ "${governance_latest_conclusion}" = "success" ] && [ "${governance_latest_age_minutes}" -ge 720 ]; then
+              governance_dispatch=1
+              governance_reason="Governance Autopilot is stale at ${governance_latest_age_minutes}m"
+            elif [ "${governance_latest_conclusion}" = "failure" ]; then
+              echo 'Governance Autopilot deterministic failure remains authoritative; no automatic retry.'
+            fi
+
+            if [ "${governance_dispatch}" -eq 1 ]; then
+              echo "Dispatching Governance Autopilot: ${governance_reason}"
+              gh_retry workflow run "${GOVERNANCE_WORKFLOW}" --repo "${GH_REPO}" --ref main
+              governance_verified=0
+              for attempt in 1 2 3 4 5; do
+                sleep 2
+                governance_active_after="$(gh_retry run list --repo "${GH_REPO}" --workflow "${GOVERNANCE_WORKFLOW}" --limit 10 --json status --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+                echo "Governance dispatch verification ${attempt}/5: active=${governance_active_after}"
+                if [ "${governance_active_after}" -gt 0 ]; then
+                  governance_verified=1
+                  break
+                fi
+              done
+              if [ "${governance_verified}" -ne 1 ]; then
+                echo "Governance Autopilot dispatch accepted but active run was not observed." >&2
+                exit 1
+              fi
+            fi
+          else
+            echo 'Governance Autopilot already active; no duplicate dispatch.'
+          fi
           dispatch=0
           reason=''
           if [ -z "${latest_created}" ]; then
