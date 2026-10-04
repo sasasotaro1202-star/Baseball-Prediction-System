@@ -103,6 +103,7 @@ def _validate_generated_output(payload: dict[str, Any], request: dict[str, Any],
         "BLOCKED_STARTERS",
         "BLOCKED_PRODUCTION_GATE",
         "BLOCKED_NO_CURRENT_PRODUCTION_RUNTIME",
+        "BLOCKED_NO_VALIDATED_PREDICTION_RUNTIME",
     }
     if status not in allowed:
         raise ValueError(f"unrecognized prediction execution status: {status}")
@@ -135,7 +136,13 @@ def _find_cached(result_dir: Path, fingerprint: str) -> Path | None:
             obj = _load_json(path)
         except Exception:
             continue
-        if str(obj.get("request_fingerprint", "")) == fingerprint:
+        if str(obj.get("request_fingerprint", "")) != fingerprint:
+            continue
+        cached_output = obj.get("prediction_output")
+        if not isinstance(cached_output, dict):
+            continue
+        status = str(cached_output.get("execution_status", "")).strip()
+        if status in {"EXECUTED", "RESEARCH_SHADOW_EXECUTED"}:
             return path
     return None
 
@@ -233,7 +240,7 @@ def main(argv: list[str] | None = None) -> int:
             target_date=target_date,
             competition_id=competition_id,
             lane=str(cached_obj.get("generation_lane", "CACHED")),
-            source_commit=source_commit,
+             source_commit=str(cached_obj.get("source_commit") or source_commit),
             status="CACHED_VERIFIED_RESULT",
             output=cached_output,
             reused_from=str(cached_obj.get("request_id", "")) or None,
