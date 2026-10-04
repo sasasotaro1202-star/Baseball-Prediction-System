@@ -8,6 +8,7 @@ from research.feature_set_router import (
     select_features,
     summarize_sets,
 )
+from research.feature_set_variants import SCREENING_VARIANTS
 
 
 def sample_frame() -> pd.DataFrame:
