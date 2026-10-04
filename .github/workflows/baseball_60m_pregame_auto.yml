@@ -9,14 +9,16 @@ on:
         default: "manual"
         type: string
   schedule:
-    - cron: "*/5 * * * *"
+    # 15-minute cadence keeps the 60-minute look-ahead while preventing periodic queue buildup.
+    - cron: "*/15 * * * *"
 
 permissions:
   contents: write
 
 concurrency:
   group: baseball-pregame-auto-prediction
-  cancel-in-progress: false
+  # A newer periodic scan supersedes stale queued/in-progress scans.
+  cancel-in-progress: true
 
 env:
   PYTHONPATH: .
