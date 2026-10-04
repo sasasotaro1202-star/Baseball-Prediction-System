@@ -257,3 +257,10 @@ def test_expected_skipped_archive_is_not_failed(monkeypatch):
     entry = report["workflows"][".github/workflows/npb_prediction_experience_archive.yml"]
     assert entry["state"] == "HEALTHY"
     assert not any("npb_prediction_experience_archive.yml" in x for x in report["blockers"])
+
+
+def test_autonomous_control_plane_is_single_heartbeat_not_workflow_run_driven():
+    workflow = Path(".github/workflows/baseball_autonomous_control_plane.yml").read_text(encoding="utf-8")
+    assert "cron: '*/15 * * * *'" in workflow
+    assert "workflow_run:" not in workflow
+    assert "research.autonomous_control_plane" in workflow
