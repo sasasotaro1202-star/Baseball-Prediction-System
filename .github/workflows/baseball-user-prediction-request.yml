@@ -40,18 +40,32 @@ jobs:
         run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
 
       - name: Generate requested prediction through repository router
+        id: generate
         env:
           GITHUB_SHA: ${{ github.sha }}
           REQUEST_FILE: ${{ github.event.inputs.request_file || 'prediction_requests/inbox/active.json' }}
         run: |
           set -euo pipefail
           python scripts/prediction_request.py --request-file "$REQUEST_FILE"
+          request_id="$(python - "$REQUEST_FILE" <<'PY'
+          import json, sys
+          with open(sys.argv[1], encoding="utf-8") as fh:
+              obj = json.load(fh)
+          value = str(obj.get("request_id", "")).strip()
+          if not value:
+              raise SystemExit("request_id missing")
+          print(value)
+          PY
+          )"
+          result="prediction_requests/results/${request_id}.json"
+          test -s "$result"
+          echo "result_path=$result" >> "$GITHUB_OUTPUT"
 
       - name: Validate and upload request result
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: baseball-user-prediction-${{ github.run_id }}
-          path: prediction_requests/results/*.json
+          path: ${{ steps.generate.outputs.result_path }}
           if-no-files-found: error
           retention-days: 14
 
@@ -72,7 +86,11 @@ jobs:
               exit 0
             fi
             git fetch origin main
-            git rebase origin/main || git reset --hard origin/main
+            if ! git rebase origin/main; then
+              git rebase --abort || true
+              echo "request-result push conflict could not be reconciled safely" >&2
+              exit 1
+            fi
           done
           echo "bounded request-result push recovery exhausted" >&2
           exit 1
