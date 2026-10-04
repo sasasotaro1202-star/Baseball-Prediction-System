@@ -2388,4 +2388,37 @@ Expected execution breadth is:
 All failures remain explicit. Unexpected execution failures fail verification. Successful artifacts remain `RESEARCH_ONLY` with `NO_AUTO_ADOPTION`.
 
 Ultimate-pattern results do not replace the incumbent production champion. Any promotion still requires the normal PIT audit, chronological WFO/OOS, calibration, ablation, robustness, frozen holdout and release gate.
+⸻
+
+## 94. EXTREME FEATURE REPRESENTATION LAB
+
+The repository contains a complementary representation-focused laboratory.
+
+### 94.1 Representation search
+The lab transforms only already-constructed PIT-safe features. No new source is introduced and no transformation parameter is learned from future rows.
+
+Candidate representations:
+
+* LEVEL
+* HOME_AWAY_ONLY
+* GAP_ONLY
+* GAP_ABS
+* GAP_POLY2
+* GAP_SIGNED_LOG
+* LEVEL_GAP_ABS_LOG
+* PAIR_LOG_RATIO
+
+The ratio representation is name-gated to semantically positive/rate-like paired features. No ratio is used merely because a pair exists.
+
+### 94.2 Staged evaluation
+Stage A evaluates 16 deterministic feature-family seed patterns × 8 representations = 128 configurations on an early chronological band.
+
+Stage B takes the top 12 and evaluates five recency half-lives × three model pools = 180 configurations on a later disjoint band.
+
+Stage C evaluates the top four using the full ensemble/routing/calibration path on a third chronological band.
+
+The newest 20% remains a locked winner-only holdout.
+
+### 94.3 Safety
+Transforms are fixed algebraic operations on PIT-safe columns. Missing/non-finite values fail closed. Representation selection never auto-promotes a model. The exact Git SHA is stored in the artifact and checked by the verifier.
 

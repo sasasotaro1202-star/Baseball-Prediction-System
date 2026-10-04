@@ -88,4 +88,6 @@ Feature-set selection must be chronological-OOS/PIT/calibration/robustness/holdo
 
 ## Ultimate research pattern laboratory
 Use `research/ultimate_pattern_lab.py` for broad research-only pattern exploration. Stage A enumerates every subset of the eight optional feature families (256 patterns) on an early chronological OOS band. Stage B retests the top eight across ALL/SHORT/LONG core horizons, five recency half-lives and three model pools on a disjoint later OOS band. Stage C uses full ensemble/routing/calibration on a third disjoint band. Only the Development-selected Stage-C winner may be scored on the newest locked holdout, exactly once. No artifact from this lab can auto-promote Champion/Production.
+## Extreme representation research
+The research system also includes `research/extreme_representation_lab.py`. It explores fixed mathematical representations of the existing PIT-safe feature matrix (level, home/away-only, gap-only, absolute-gap, squared-gap, signed-log gap, level+gap transforms, and gated log-ratios). Representation selection is research-only and must use chronological OOS; the newest holdout remains locked and winner-only.
 
