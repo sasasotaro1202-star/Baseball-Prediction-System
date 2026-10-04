@@ -665,7 +665,9 @@ def _hash_inputs(files: list[Path], *, config: Mapping[str, Any]) -> str:
         stat = path.stat()
         h.update(str(path).encode())
         h.update(str(stat.st_size).encode())
-        h.update(str(stat.st_mtime_ns).encode())
+        # Runner mtimes are not stable across executions; never use them in the
+        # experiment fingerprint. Content samples + size provide a deterministic
+        # cache identity without hashing every byte of multi-GB inputs.
         # Full file content hashing is expensive for very large PBP releases.
         # Hash the first/last 1 MiB plus metadata; the exact run fingerprint also
         # records the file list and size. This is a cache identity, not a data
@@ -726,6 +728,9 @@ def run_game_script_cycle(
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
 
     raw = load_raw_pbp(data_dir)
+    # Group indices once. Re-scanning the entire raw frame for every target game
+    # turns a linear chronological replay into an accidental O(G*N) operation.
+    group_indices = raw.groupby("__game_id", sort=False).indices
     index = build_game_index(raw)
     if mode == "recent":
         eval_count = max(1, int(recent_games))
@@ -756,13 +761,16 @@ def run_game_script_cycle(
 
     store = TransitionStore()
     baseline = BaselineState()
-    predictions: list[dict[str, Any]] = []
-    actual_home: list[float] = []
-    actual_away: list[float] = []
-    actual_target: list[int] = []
+    predictions: list[dict[str, Any]] = list(checkpoint.get("predictions", [])) if checkpoint else []
+    actual_home: list[float] = [float(p["actual"]["home_score"]) for p in predictions if "actual" in p]
+    actual_away: list[float] = [float(p["actual"]["away_score"]) for p in predictions if "actual" in p]
+    actual_target: list[int] = [int(p["actual"]["outcome_class"]) for p in predictions if "actual" in p]
 
     def game_frame(game_id: str) -> pd.DataFrame:
-        return raw.loc[raw["__game_id"].astype(str) == str(game_id)].sort_values("__order").copy()
+        positions = group_indices.get(str(game_id))
+        if positions is None:
+            return pd.DataFrame()
+        return raw.iloc[positions].sort_values("__order").copy()
 
     # Rebuild state up to the checkpoint boundary without evaluating those games.
     for idx in range(start_idx):
@@ -801,6 +809,7 @@ def run_game_script_cycle(
                 "schema_version": SCHEMA_VERSION,
                 "fingerprint": fingerprint,
                 "next_index": start_idx,
+                "predictions": predictions,
                 "status": "CHECKPOINTED_TIME_BUDGET",
                 "updated_at_utc": _utc_now(),
             })
@@ -869,6 +878,7 @@ def run_game_script_cycle(
                 "schema_version": SCHEMA_VERSION,
                 "fingerprint": fingerprint,
                 "next_index": start_idx,
+                "predictions": predictions,
                 "status": "RUNNING_CHECKPOINT",
                 "updated_at_utc": _utc_now(),
             })
