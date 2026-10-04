@@ -28,3 +28,10 @@ def test_candidate_oos_watchdog_monitors_all_candidate_dependencies():
         'evaluation/**',
     ):
         assert path in workflow
+
+def test_candidate_oos_allows_only_experience_data_main_updates():
+    workflow = (ROOT / '.github' / 'workflows' / 'baseball_candidate_oos.yml').read_text(encoding='utf-8')
+    assert 'mapfile -t changed_files' in workflow
+    assert 'data/experience/*)' in workflow
+    assert 'Evidence-affecting main update detected' in workflow
+    assert 'refusing mixed-snapshot evidence' in workflow
