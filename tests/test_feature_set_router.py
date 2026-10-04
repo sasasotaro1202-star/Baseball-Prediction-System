@@ -41,18 +41,8 @@ def sample_frame() -> pd.DataFrame:
 
 def test_variants_registered():
     variants = set(available_variants())
-    for expected in {
-        "BASELINE_TEAM_STATE",
-        "TEAM_PLUS_STARTER",
-        "TEAM_PLUS_BULLPEN",
-        "TEAM_PLUS_LINEUP_PIT_SAFE",
-        "TEAM_PLUS_WEATHER_PIT_SAFE",
-        "TEAM_PLUS_STARTER_BULLPEN",
-        "TEAM_PLUS_STARTER_LINEUP_PIT_SAFE",
-        "TEAM_PLUS_STARTER_BULLPEN_LINEUP_PIT_SAFE",
-        "FULL_VALIDATED_ENSEMBLE",
-    }:
-        assert expected in variants
+    assert set(SCREENING_VARIANTS).issubset(variants)
+    assert len(variants) >= 30
 
 
 def test_baseline_excludes_conditional_and_unrelated():
@@ -70,7 +60,9 @@ def test_starter_adds_starter_family():
     starter, _ = select_features(sample_frame(), "TEAM_PLUS_STARTER")
     assert set(baseline.columns) < set(starter.columns)
     assert "hs_era" in starter
-    assert "starter_x_quality_proxy" in starter
+    assert "hs_era" in starter
+    interactions, _ = select_features(sample_frame(), "TEAM_PLUS_STARTER_INTERACTIONS")
+    assert "starter_x_quality_proxy" in interactions
 
 
 def test_bullpen_and_context_are_separate():
