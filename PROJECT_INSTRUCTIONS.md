@@ -93,3 +93,6 @@ The research system also includes `research/extreme_representation_lab.py`. It e
 
 ## Ultimate breadth expansion
 The extreme representation laboratory may cross selected PIT-safe feature families and representations with deterministic model profiles. Such exploration remains RESEARCH_ONLY and cannot auto-promote Production.
+## MLB starter PIT provenance
+Starter evidence keeps announcement, publication, availability, retrieval, observation and revision timestamps distinct.
+A probable-pitcher observation from MLB's current official page is not treated as an announcement timestamp. Production remains fail-closed until explicit announcement/availability provenance is present and passes the timestamp ordering gates.
