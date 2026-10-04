@@ -345,20 +345,20 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: \${{ github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 1
 
       - name: Verify research snapshot
         env:
-          EXPECTED_REF: \${{ github.sha }}
+          EXPECTED_REF: ${{ github.sha }}
         run: |
           set -euo pipefail
-          actual="\$(git rev-parse HEAD)"
-          test "\$actual" = "\$EXPECTED_REF"
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_REF"
           git fetch --no-tags --prune origin main
-          current_main="\$(git rev-parse origin/main)"
-          test "\$current_main" = "\$EXPECTED_REF"
-          echo "research_snapshot_sha=\$actual"
+          current_main="$(git rev-parse origin/main)"
+          test "$current_main" = "$EXPECTED_REF"
+          echo "research_snapshot_sha=$actual"
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
@@ -377,7 +377,7 @@ jobs:
 
       - name: Build PBP manifest and detect delegated run
         env:
-          GH_TOKEN: \${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           mkdir -p results
@@ -388,106 +388,106 @@ jobs:
               | @tsv' \
             | sort > results/pbp_release_manifest.tsv
           test -s results/pbp_release_manifest.tsv
-          sha256sum results/pbp_release_manifest.tsv | awk '{print \$1}' > results/source_fingerprint.txt
-          awk -F '\t' '$1 ~ /^(2022|2023|2024|2025)-[0-9]{2}_pbp\\.csv$/ {print}' results/pbp_release_manifest.tsv | sha256sum | awk '{print \$1}' > results/validation_source_fingerprint.txt
-          awk -F '\t' '$1 ~ /^2026-[0-9]{2}_pbp\\.csv$/ {print}' results/pbp_release_manifest.tsv | sha256sum | awk '{print \$1}' > results/context_source_fingerprint.txt
+          sha256sum results/pbp_release_manifest.tsv | awk '{print $1}' > results/source_fingerprint.txt
+          awk -F '\t' '$1 ~ /^(2022|2023|2024|2025)-[0-9]{2}_pbp\\.csv$/ {print}' results/pbp_release_manifest.tsv | sha256sum | awk '{print $1}' > results/validation_source_fingerprint.txt
+          awk -F '\t' '$1 ~ /^2026-[0-9]{2}_pbp\\.csv$/ {print}' results/pbp_release_manifest.tsv | sha256sum | awk '{print $1}' > results/context_source_fingerprint.txt
           code_files=(research/game_script_common.py research/game_script_wfo.py research/game_script_engine.py tests/test_game_script_engine.py tests/test_game_script_automation_contract.py .github/workflows/npb_game_script_autoresearch.yml .github/workflows/npb_game_script_watchdog.yml docs/GAME_SCRIPT_V4.md)
-          (for f in "\${code_files[@]}"; do sha256sum "\$f"; done) | sha256sum | awk '{print \$1}' > results/code_fingerprint.txt
+          (for f in "${code_files[@]}"; do sha256sum "$f"; done) | sha256sum | awk '{print $1}' > results/code_fingerprint.txt
 
-          dedicated_json="\$(gh run list --repo "\$GITHUB_REPOSITORY" --workflow npb_game_script_autoresearch.yml --branch main --limit 20 --json databaseId,conclusion,createdAt 2>/dev/null || true)"
-          dedicated_success_id="\$(echo "\$dedicated_json" | jq -r '[.[] | select(.conclusion=="success")] | .[0].databaseId // empty')"
-          dedicated_success_created="\$(echo "\$dedicated_json" | jq -r '[.[] | select(.conclusion=="success")] | .[0].createdAt // empty')"
+          dedicated_json="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow npb_game_script_autoresearch.yml --branch main --limit 20 --json databaseId,conclusion,createdAt 2>/dev/null || true)"
+          dedicated_success_id="$(echo "$dedicated_json" | jq -r '[.[] | select(.conclusion=="success")] | .[0].databaseId // empty')"
+          dedicated_success_created="$(echo "$dedicated_json" | jq -r '[.[] | select(.conclusion=="success")] | .[0].createdAt // empty')"
           delegated_recent=0
-          if [ -n "\$dedicated_success_created" ]; then
-            created_epoch="\$(date -d "\$dedicated_success_created" +%s)"
-            age_minutes=\$(( (\$(date +%s) - created_epoch) / 60 ))
-            if [ "\$age_minutes" -le 1500 ]; then delegated_recent=1; fi
+          if [ -n "$dedicated_success_created" ]; then
+            created_epoch="$(date -d "$dedicated_success_created" +%s)"
+            age_minutes=$(( ($(date +%s) - created_epoch) / 60 ))
+            if [ "$age_minutes" -le 1500 ]; then delegated_recent=1; fi
           fi
 
-          printf 'dedicated_success_id=%s\\ndedicated_recent=%s\\n' "\$dedicated_success_id" "\$delegated_recent" | tee results/delegation_decision.txt
+          printf 'dedicated_success_id=%s\ndedicated_recent=%s\n' "$dedicated_success_id" "$delegated_recent" | tee results/delegation_decision.txt
 
       - name: Restore previous Game-Script evidence
-        if: \${{ always() }}
+        if: ${{ always() }}
         env:
-          GH_TOKEN: \${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           mkdir -p .previous_evidence
-          delegated_id="\$(awk -F= '\$1=="dedicated_success_id"{print \$2; exit}' results/delegation_decision.txt)"
-          if [ -n "\$delegated_id" ]; then
-            gh run download "\$delegated_id" --repo "\$GITHUB_REPOSITORY" --dir .previous_evidence 2>/dev/null || true
+          delegated_id="$(awk -F= '$1=="dedicated_success_id"{print $2; exit}' results/delegation_decision.txt)"
+          if [ -n "$delegated_id" ]; then
+            gh run download "$delegated_id" --repo "$GITHUB_REPOSITORY" --dir .previous_evidence 2>/dev/null || true
           fi
           if ! find .previous_evidence -type f -name 'game_script_checkpoint.json' -print -quit | grep -q .; then
-            autopilot_id="\$(gh run list --repo "\$GITHUB_REPOSITORY" --workflow baseball_24h_research_autopilot.yml --branch main --limit 20 --json databaseId,conclusion \
-              --jq '[.[] | select(.conclusion=="success") | select(.databaseId != ('"\$GITHUB_RUN_ID"'))] | .[0].databaseId // empty' 2>/dev/null || true)"
-            if [ -n "\$autopilot_id" ]; then
-              gh run download "\$autopilot_id" --repo "\$GITHUB_REPOSITORY" --name npb-game-script-fallback --dir .previous_evidence 2>/dev/null || true
+            autopilot_id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow baseball_24h_research_autopilot.yml --branch main --limit 20 --json databaseId,conclusion \
+              --jq '[.[] | select(.conclusion=="success") | select(.databaseId != ('"$GITHUB_RUN_ID"'))] | .[0].databaseId // empty' 2>/dev/null || true)"
+            if [ -n "$autopilot_id" ]; then
+              gh run download "$autopilot_id" --repo "$GITHUB_REPOSITORY" --name npb-game-script-fallback --dir .previous_evidence 2>/dev/null || true
             fi
           fi
 
       - name: Stage only the PBP needed for Game-Script
         env:
-          GH_TOKEN: \${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         timeout-minutes: 55
         run: |
           set -euo pipefail
           mkdir -p data/pbp
           required_file() {
-            local name="\$1"
-            grep -Fq "\$(printf '%s\t' "\$name")" results/pbp_release_manifest.tsv
+            local name="$1"
+            grep -Fq "$(printf '%s\t' "$name")" results/pbp_release_manifest.tsv
           }
           download_if_needed() {
-            local name="\$1"
+            local name="$1"
             local digest
-            digest=\$(awk -F '\t' -v n="\$name" '\$1==n {print \$2; exit}' results/pbp_release_manifest.tsv)
-            test -n "\$digest"
-            local target="data/pbp/\$name"
+            digest=$(awk -F '\t' -v n="$name" '$1==n {print $2; exit}' results/pbp_release_manifest.tsv)
+            test -n "$digest"
+            local target="data/pbp/$name"
             local wanted
-            wanted=\$(printf '%s' "\$digest" | sed 's/^sha256://')
-            if [ -s "\$target" ] && [ "\$(sha256sum "\$target" | awk '{print \$1}')" = "\$wanted" ]; then
-              echo "cache hit: \$name"
+            wanted=$(printf '%s' "$digest" | sed 's/^sha256://')
+            if [ -s "$target" ] && [ "$(sha256sum "$target" | awk '{print $1}')" = "$wanted" ]; then
+              echo "cache hit: $name"
             else
-              gh release download pbp --repo armstjc/Nippon-Baseball-Data-Repository --pattern "\$name" --dir data/pbp --clobber
-              test -s "\$target"
-              test "\$(sha256sum "\$target" | awk '{print \$1}')" = "\$wanted"
+              gh release download pbp --repo armstjc/Nippon-Baseball-Data-Repository --pattern "$name" --dir data/pbp --clobber
+              test -s "$target"
+              test "$(sha256sum "$target" | awk '{print $1}')" = "$wanted"
             fi
           }
           for year in 2022 2023 2024 2025; do
-            for m in \$(seq 3 10); do
-              file="\$year-\$(printf '%02d' "\$m")_pbp.csv"
-              required_file "\$file"
-              download_if_needed "\$file"
+            for m in $(seq 3 10); do
+              file="$year-$(printf '%02d' "$m")_pbp.csv"
+              required_file "$file"
+              download_if_needed "$file"
             done
           done
-          current_month_num=\$((10#\$(TZ=Asia/Tokyo date +%m)))
-          if [ "\$current_month_num" -ge 3 ]; then
-            for m in \$(seq 3 "\$current_month_num"); do
-              file="2026-\$(printf '%02d' "\$m")_pbp.csv"
-              required_file "\$file"
-              download_if_needed "\$file"
+          current_month_num=$((10#$(TZ=Asia/Tokyo date +%m)))
+          if [ "$current_month_num" -ge 3 ]; then
+            for m in $(seq 3 "$current_month_num"); do
+              file="2026-$(printf '%02d' "$m")_pbp.csv"
+              required_file "$file"
+              download_if_needed "$file"
             done
           fi
 
       - name: Run bounded Game-Script fallback or skip delegated duplicate
         env:
-          GH_TOKEN: \${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         timeout-minutes: 90
         run: |
           set -euo pipefail
-          delegated_recent="\$(awk -F= '\$1=="dedicated_recent"{print \$2; exit}' results/delegation_decision.txt)"
-          current_code="\$(tr -d '[:space:]' < results/code_fingerprint.txt)"
-          current_validation="\$(tr -d '[:space:]' < results/validation_source_fingerprint.txt)"
-          previous_json="\$(find .previous_evidence -type f -name 'game_script_screening.json' -print -quit || true)"
+          delegated_recent="$(awk -F= '$1=="dedicated_recent"{print $2; exit}' results/delegation_decision.txt)"
+          current_code="$(tr -d '[:space:]' < results/code_fingerprint.txt)"
+          current_validation="$(tr -d '[:space:]' < results/validation_source_fingerprint.txt)"
+          previous_json="$(find .previous_evidence -type f -name 'game_script_screening.json' -print -quit || true)"
           previous_code=""
           previous_validation=""
-          if [ -n "\$previous_json" ]; then
-            previous_code="\$(python - "\$previous_json" <<'PY'
+          if [ -n "$previous_json" ]; then
+            previous_code="$(python - "$previous_json" <<'PY'
 import json, sys
 try: print(json.load(open(sys.argv[1],encoding="utf-8")).get("code_fingerprint",""))
 except Exception: print("")
 PY
 )"
-            previous_validation="\$(python - "\$previous_json" <<'PY'
+            previous_validation="$(python - "$previous_json" <<'PY'
 import json, sys
 try: print(json.load(open(sys.argv[1],encoding="utf-8")).get("validation_source_fingerprint",""))
 except Exception: print("")
@@ -496,7 +496,7 @@ PY
           fi
 
           mode="FULL_WFO_FALLBACK"
-          if [ "\$delegated_recent" = "1" ]; then
+          if [ "$delegated_recent" = "1" ]; then
             python - <<'PY'
 import json, os
 from pathlib import Path
@@ -518,21 +518,21 @@ PY
             exit 0
           fi
 
-          checkpoint="\$(find .previous_evidence -type f -name 'game_script_checkpoint.json' -print -quit || true)"
-          if [ -n "\$checkpoint" ] && [ "\$previous_code" = "\$current_code" ] && [ "\$previous_validation" = "\$current_validation" ]; then
-            cp "\$checkpoint" results/game_script_checkpoint.json
+          checkpoint="$(find .previous_evidence -type f -name 'game_script_checkpoint.json' -print -quit || true)"
+          if [ -n "$checkpoint" ] && [ "$previous_code" = "$current_code" ] && [ "$previous_validation" = "$current_validation" ]; then
+            cp "$checkpoint" results/game_script_checkpoint.json
             mode="SHADOW_REFRESH_FALLBACK"
           fi
-          echo "mode=\$mode" | tee -a results/delegation_decision.txt
+          echo "mode=$mode" | tee -a results/delegation_decision.txt
 
-          current_month=\$(TZ=Asia/Tokyo date +%Y-%m)
+          current_month=$(TZ=Asia/Tokyo date +%Y-%m)
           args=(
             --data-glob 'data/pbp/*.csv'
             --development-end 2024-12-31
             --validation-start 2025-01-01
             --validation-end 2025-12-31
-            --shadow-start "\$current_month-01"
-            --shadow-end "\$(TZ=Asia/Tokyo date +%Y-%m-%d)"
+            --shadow-start "$current_month-01"
+            --shadow-end "$(TZ=Asia/Tokyo date +%Y-%m-%d)"
             --max-validation-games 160
             --max-shadow-games 60
             --simulations 300
@@ -541,10 +541,10 @@ PY
             --checkpoint-every 1
             --output results/game_script_screening.json
           )
-          if [ "\$mode" = "SHADOW_REFRESH_FALLBACK" ]; then
+          if [ "$mode" = "SHADOW_REFRESH_FALLBACK" ]; then
             args+=(--shadow-only)
           fi
-          python -m research.game_script_engine "\${args[@]}"
+          python -m research.game_script_engine "${args[@]}"
           python - <<'PY'
 import json, os
 from pathlib import Path
