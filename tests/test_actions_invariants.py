@@ -353,7 +353,9 @@ def test_24h_supervisor_recovers_only_latest_zero_job_pregame_failures_with_dail
     assert "PRE_GAME_ZERO_JOB_DAILY_CAP" in text
     assert 'gh_retry workflow run "${PREGAME_WORKFLOW}" --repo "${GH_REPO}" --ref main' in text
     assert "Pregame recovery verification" in text
-    assert "PRE_GAME_ZERO_JOB_REDISPATCHED" in text
+    # The supervisor records a verified redispatch as a summary event; the
+    # recovery workflow owns the stronger terminal-state token.
+    assert "Pregame dispatch verified:" in text
     assert "FAILED_PREGAME_ZERO_JOB_DISPATCH" in text
     assert "gh run rerun" not in text
     assert "Latest pregame failure is not a zero-job startup failure" in text
