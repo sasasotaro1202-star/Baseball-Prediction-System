@@ -1,6 +1,13 @@
 name: Baseball Actions Recovery
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/baseball_actions_recovery.yml'
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
   workflow_run:
     workflows:
       - Baseball Closed Loop Research
@@ -16,12 +23,51 @@ on:
       - Baseball 60m Pregame Auto Prediction
       - .github/workflows/baseball_60m_pregame_auto.yml
     types: [completed]
+  queue-cleanup:
+    # Preserve runner capacity for user-facing predictions by cancelling only
+    # stale queued validation/research jobs. Manual Prediction and Dispatcher
+    # workflows are explicitly excluded.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion != 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Cancel stale non-user-facing queued runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          now_epoch="$(date +%s)"
+          stale_after_minutes=2
+          runs_json="$(gh run list --repo "${GH_REPO}" --limit 100 --json databaseId,status,name,createdAt,event)"
+          test -n "${runs_json}"
+          cancelled=0
+          while IFS= read -r row; do
+            [ -n "${row}" ] || continue
+            id="$(printf '%s' "${row}" | jq -r '.databaseId')"
+            name="$(printf '%s' "${row}" | jq -r '.name')"
+            status="$(printf '%s' "${row}" | jq -r '.status')"
+            created="$(printf '%s' "${row}" | jq -r '.createdAt')"
+            created_epoch="$(date -d "${created}" +%s)"
+            age_minutes=$(( (now_epoch - created_epoch) / 60 ))
+            case "${name}" in
+              "Baseball Regression Tests"|"Baseball Research Preflight"|"Baseball Research Readiness"|"Baseball Hardening Fast Gate"|"Baseball v4.4 Bridge Compatibility"|"Reliability Preflight") ;;
+              *) continue ;;
+            esac
+            case "${status}" in
+              queued|pending|waiting|requested) ;;
+              *) continue ;;
+            esac
+            if [ "${age_minutes}" -ge "${stale_after_minutes}" ]; then
+              echo "Cancelling stale queue run id=${id} name=${name} age=${age_minutes}m"
+              gh run cancel "${id}" --repo "${GH_REPO}"
+              cancelled=$((cancelled + 1))
+            fi
+          done < <(printf '%s' "${runs_json}" | jq -c '.[]')
+          echo "stale_queue_runs_cancelled=${cancelled}" >> "${GITHUB_STEP_SUMMARY}"
 
-permissions:
-  actions: write
-  contents: read
 
-jobs:
   recover:
     # Recover only transient infrastructure/data-acquisition failures.
     # Deterministic code/test/lifecycle failures must remain visible instead
