@@ -329,12 +329,14 @@ def test_24h_supervisor_recovers_only_latest_zero_job_pregame_failures_with_dail
     text = (SUPERVISOR).read_text(encoding="utf-8")
     _assert_official_actions_are_immutable(text)
     assert "PREGAME_WORKFLOW=baseball_60m_pregame_auto.yml" in text
-    assert 'actions/runs?event=push&branch=main&per_page=100' in text
+    # The supervisor inspects the complete main-branch run ledger because both
+    # scheduled and control-plane startup failures must remain recoverable.
+    assert 'actions/runs?branch=main&per_page=100' in text
     assert 'select(.path == (".github/workflows/" + $workflow))' in text
     assert "latest_failure_json" in text
     assert "latest_failure_id" in text
     assert "latest_failure_job_count=-1" in text
-    assert "pregame_push_api" in text
+    assert "pregame_api" in text
     assert "pregame_dispatch_api" in text
     assert 'actions/runs?event=workflow_dispatch&branch=main&per_page=100' in text
     assert "pregame_recovery_attempts_24h" in text
