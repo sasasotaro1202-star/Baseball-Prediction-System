@@ -53,6 +53,10 @@ TARGETS = (
     # modify the production runtime; the control plane only recovers queued/stale
     # executions and re-dispatches the current main snapshot.
     Target(".github/workflows/npb_game_state_research.yml", 192.0, True, 60, 2.5),
+    # Daily Game-Script v4 challenger. It remains research-only and is also
+    # protected by its own six-hour watchdog; this target gives the project
+    # control plane a second bounded recovery path without production writes.
+    Target(".github/workflows/npb_game_script_autoresearch.yml", 30.0, True, 60, 3.0),
 )
 
 ROOT = Path(__file__).resolve().parents[1]
