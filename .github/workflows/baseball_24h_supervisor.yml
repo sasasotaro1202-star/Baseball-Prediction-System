@@ -153,6 +153,7 @@ jobs:
 
           pregame_dispatch=0
           pregame_reason=""
+           pregame_recovery_mode="manual"
           if [ "${pregame_active}" -gt 0 ]; then
             echo "Pregame workflow already active; no recovery dispatch."
           elif [ -n "${latest_failure_id}" ] && [ "${latest_failure_job_count}" -eq 0 ]; then
@@ -166,6 +167,7 @@ jobs:
             else
               pregame_dispatch=1
               pregame_reason="zero-job startup failure ${latest_failure_id}"
+               pregame_recovery_mode="zero_job_startup_recovery"
             fi
           elif [ -z "${pregame_latest_id}" ]; then
             # A missing run ledger can occur after a newly enabled workflow or a
@@ -179,6 +181,7 @@ jobs:
             else
               pregame_dispatch=1
               pregame_reason="no pregame run observed on main"
+               pregame_recovery_mode="bootstrap_recovery"
             fi
           elif [ "${pregame_latest_status}" = "completed" ] && [ "${pregame_latest_conclusion}" = "success" ] && [ "${pregame_latest_age_minutes}" -ge 15 ]; then
             # The normal trigger is a 5-minute schedule, but GitHub can delay
@@ -193,13 +196,14 @@ jobs:
             else
               pregame_dispatch=1
               pregame_reason="latest successful pregame run is stale (${pregame_latest_age_minutes}m)"
+               pregame_recovery_mode="missed_schedule_recovery"
             fi
           else
             echo "Latest pregame terminal state is not eligible for speculative restart; preserving authoritative failure/blocked state."
           if [ "${pregame_dispatch}" -eq 1 ]; then
             dispatch_epoch="$(date +%s)"
-            echo "Dispatching pregame: ${pregame_reason} dispatch_epoch=${dispatch_epoch}"
-            gh_retry workflow run "${PREGAME_WORKFLOW}" --repo "${GH_REPO}" --ref main
+            echo "Dispatching pregame: ${pregame_reason} recovery_mode=${pregame_recovery_mode} dispatch_epoch=${dispatch_epoch}"
+            gh_retry workflow run "${PREGAME_WORKFLOW}" --repo "${GH_REPO}" --ref main --field recovery_mode="${pregame_recovery_mode}"
             verified_pregame=0
             new_pregame_run_id=""
             for attempt in 1 2 3 4 5; do
