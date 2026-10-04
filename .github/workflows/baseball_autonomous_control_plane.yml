@@ -4,20 +4,10 @@ on:
   workflow_dispatch: {}
   schedule:
     - cron: '*/15 * * * *'
-  workflow_run:
-    workflows:
-      - Baseball Governance Autopilot
-      - Project Source Provenance Audit
-      - Baseball 24h Research Autopilot
-      - NPB Production Prediction
-      - Baseball Production Runtime Health
-      - NPB Prediction Experience Archive
-      - NPB Prediction Experience Reconciliation
-      - NPB Experience Learning Loop
-      - Baseball Phase 1 Production Gate
-      - Baseball Universal Readiness Audit
-      - Baseball Candidate OOS Validation
-    types: [completed]
+  # The control plane is intentionally schedule-driven. Target workflow_run
+  # completions are too bursty and caused self-cancellation/queue storms.
+  # The 15-minute loop is the single orchestration heartbeat; target workflows
+  # retain their own workflow_run hooks for evidence-specific tasks.
   push:
     branches: [main]
     paths:
