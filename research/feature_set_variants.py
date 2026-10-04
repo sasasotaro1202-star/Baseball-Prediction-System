@@ -14,10 +14,12 @@ import pandas as pd
 FEATURE_SET_CONTRACT = "feature-contract-v1"
 
 _FAMILY_PATTERNS = (
-    ("context", re.compile(r"^(context_pit_safe|(?:h_|a_|d_)?lineup_|weather_)")),
+    ("lineup", re.compile(r"^(?:h_|a_|d_)?lineup_")),
+    ("weather", re.compile(r"^weather_")),
+    ("context", re.compile(r"(?:^|_)context(?:_|$)")),
     ("starter", re.compile(r"^(?:hs_|as_|starter_)|^starter_(?:known|x_)")),
     ("bullpen", re.compile(r"^(?:h_|a_|d_)?(?:bp_|bullpen_)|^(?:bullpen_|bp_)")),
-    ("offense", re.compile(r"^(?:h_|a_|d_)?(?:bat_|offense_)")),
+    ("offense", re.compile(r"^(?:h_|a_|d_)?(?:bat_|offense_|matchup_)")),
     ("volatility", re.compile(r"(?:sd_20|slope_20)$|^run_(?:volatility|trend)_")),
     ("interaction", re.compile(r"_x_|(?:^|_)(?:gap|diff)_(?:10|20)$")),
 )
@@ -27,8 +29,14 @@ VARIANT_FAMILIES: dict[str, frozenset[str]] = {
     "TEAM_PLUS_STARTER": frozenset({"core", "volatility", "starter"}),
     "TEAM_PLUS_BULLPEN": frozenset({"core", "volatility", "bullpen"}),
     "TEAM_PLUS_OFFENSE": frozenset({"core", "volatility", "offense"}),
+    "TEAM_PLUS_LINEUP_PIT_SAFE": frozenset({"core", "volatility", "lineup"}),
+    "TEAM_PLUS_WEATHER_PIT_SAFE": frozenset({"core", "volatility", "weather"}),
     "TEAM_PLUS_STARTER_BULLPEN": frozenset({"core", "volatility", "starter", "bullpen"}),
     "TEAM_PLUS_STARTER_OFFENSE": frozenset({"core", "volatility", "starter", "offense"}),
+    "TEAM_PLUS_STARTER_LINEUP_PIT_SAFE": frozenset({"core", "volatility", "starter", "lineup"}),
+    "TEAM_PLUS_STARTER_BULLPEN_LINEUP_PIT_SAFE": frozenset(
+        {"core", "volatility", "starter", "bullpen", "lineup"}
+    ),
     "TEAM_PLUS_STARTER_BULLPEN_OFFENSE": frozenset({"core", "volatility", "starter", "bullpen", "offense"}),
     "TEAM_PLUS_STARTER_BULLPEN_OFFENSE_INTERACTIONS": frozenset(
         {"core", "volatility", "starter", "bullpen", "offense", "interaction"}
@@ -37,7 +45,7 @@ VARIANT_FAMILIES: dict[str, frozenset[str]] = {
         {"core", "volatility", "starter", "bullpen", "offense", "interaction"}
     ),
     "FULL_VALIDATED_ENSEMBLE": frozenset(
-        {"core", "volatility", "starter", "bullpen", "offense", "interaction", "context"}
+        {"core", "volatility", "starter", "bullpen", "offense", "interaction", "lineup", "weather", "context"}
     ),
 }
 
