@@ -59,6 +59,18 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
+      - name: Resolve published NPB PBP release fingerprint
+        if: matrix.league == 'NPB'
+        id: npb-pbp-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_sha="$(gh api repos/armstjc/Nippon-Baseball-Data-Repository/git/ref/tags/pbp --jq '.object.sha')"
+          test -n "${release_sha}"
+          echo "sha=${release_sha}" >> "${GITHUB_OUTPUT}"
+
       - name: Restore NPB historical PBP cache
         if: matrix.league == 'NPB'
         uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57
@@ -70,9 +82,10 @@ jobs:
             data/2023-*_pbp.csv
             data/2024-*_pbp.csv
             data/2025-*_pbp.csv
-          key: baseball-npb-historical-v6-${{ runner.os }}-${{ hashFiles('requirements.txt', 'research/npb_official_results.py') }}
+          # Raw-data cache identity includes the published release snapshot.
+          key: baseball-npb-historical-v6-${{ runner.os }}-${{ steps.npb-pbp-release.outputs.sha }}-${{ hashFiles('requirements.txt', 'research/npb_official_results.py') }}
           restore-keys: |
-            baseball-npb-historical-v6-${{ runner.os }}-
+            baseball-npb-historical-v6-${{ runner.os }}-${{ steps.npb-pbp-release.outputs.sha }}-
       - name: Stage NPB historical PBP when cache is cold
         if: matrix.league == 'NPB'
         env:
