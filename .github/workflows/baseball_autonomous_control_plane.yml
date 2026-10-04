@@ -53,7 +53,7 @@ jobs:
       - name: Install control-plane test dependency
         run: |
           set -euo pipefail
-          python -m pip install --disable-pip-version-check "pytest>=8.3,<9"
+          python -m pip install --disable-pip-version-check --retries 5 --timeout 60 "pytest>=8.3,<9"
 
       - name: Run control-plane unit tests
         id: control_plane_tests
@@ -63,7 +63,7 @@ jobs:
           python -m pytest -q tests/test_autonomous_control_plane.py
 
       - name: Preserve test-failure evidence
-        if: steps.control_plane_tests.outcome == 'failure'
+        if: ${{ failure() && steps.control_plane_tests.outcome == 'failure' }}
         run: |
           set -euo pipefail
           mkdir -p results/control_plane
