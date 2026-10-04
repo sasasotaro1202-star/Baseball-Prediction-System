@@ -1469,7 +1469,7 @@ def predict(
             pred["player_context_snapshot_id"] = player_snapshot_id
             pred["home_starter_player_context"] = player_by_name.get(str(pred.get("home_starter") or "").strip())
             pred["away_starter_player_context"] = player_by_name.get(str(pred.get("away_starter") or "").strip())
-    
+
         # Capture date-scoped official first-team roster context before team stats.
         # Roster player_ids are used only to prioritize profile enrichment and to
         # annotate the resulting evidence snapshot. They do not alter probabilities.
@@ -1523,7 +1523,7 @@ def predict(
             for team, players in (roster_teams or {}).items()
             if isinstance(players, list)
         }
-    
+
         # Capture current official team-wide player context (batting/pitching/fielding).
         # The resolved roster IDs are used only for deterministic identity and
         # enrichment-priority; this remains an evidence snapshot, not a model feature.
@@ -1556,7 +1556,7 @@ def predict(
                 "error": f"{type(exc).__name__}: {exc}",
                 "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
             }
-    
+
         # Resolve name-only official roster rows against already-fetched official team
         # stats by exact normalized player name. This is deterministic (not fuzzy).
         resolved_roster_teams = deepcopy(roster_teams)
@@ -1591,7 +1591,7 @@ def predict(
                     player["identity_resolution_status"] = "IDENTITY_AMBIGUOUS"
                 else:
                     player["identity_resolution_status"] = "IDENTITY_NOT_FOUND"
-    
+
         for tx in (roster_context.get("transactions") or []) if isinstance(roster_context, dict) else []:
             if not isinstance(tx, dict):
                 continue
@@ -1610,9 +1610,9 @@ def predict(
                     pid = next(iter(candidates))
             if team and pid and status:
                 resolved_transaction_index.setdefault((team, pid), set()).add(status)
-    
+
         transaction_index = resolved_transaction_index
-    
+
         for team, team_ctx in (team_player_context.get("teams") or {}).items():
             if not isinstance(team_ctx, dict):
                 continue
@@ -1631,7 +1631,7 @@ def predict(
                     player["roster_transaction_status"] = "TRANSACTION_CONFLICT"
                 else:
                     player["roster_transaction_status"] = "NO_TRANSACTION_RECORDED"
-    
+
                 if pid and pid in active_ids:
                     player["roster_status"] = "REGISTERED_ON_TARGET_DATE"
                     matched += 1
@@ -1645,7 +1645,7 @@ def predict(
             team_ctx["roster_registered_today_count"] = int(registered_today)
             team_ctx["roster_removed_today_count"] = int(removed_today)
             team_ctx["roster_context_snapshot_id"] = roster_snapshot_id
-    
+
         team_context_snapshot_id = team_player_context.get("snapshot_id") if isinstance(team_player_context, dict) else None
         team_contexts = team_player_context.get("teams", {}) if isinstance(team_player_context, dict) else {}
         for pred in outputs:
@@ -1657,7 +1657,7 @@ def predict(
             pred["team_player_context_snapshot_id"] = team_context_snapshot_id
             pred["home_team_player_context"] = team_contexts.get(home)
             pred["away_team_player_context"] = team_contexts.get(away)
-    
+
         # Capture the request-time game context separately from model features.
         # This release stores the new information for later PIT/OOS experiments;
         # it does not silently change model coefficients or promotion status.
@@ -1704,13 +1704,13 @@ def predict(
         result["player_context_requested_count"] = int(player_context.get("players_requested") and len(player_context.get("players_requested")) or 0)
         result["player_context_resolved_count"] = int(player_context.get("players_resolved", 0))
         result["player_context"] = player_context
-    
+
         result["team_player_context_status"] = str(team_player_context.get("status") or "AVAILABLE")
         result["team_player_context_snapshot_id"] = team_player_context.get("snapshot_id")
         result["team_player_context_requested_count"] = int(team_player_context.get("teams_requested") and len(team_player_context.get("teams_requested")) or 0)
         result["team_player_context_resolved_count"] = int(sum(1 for _k, _v in (team_player_context.get("teams") or {}).items() if isinstance(_v, dict) and _v.get("status") in {"AVAILABLE", "PARTIAL"}))
         result["team_player_context"] = team_player_context
-    
+
         result["pregame_context_status"] = (
             str(pregame_context.get("status") or "AVAILABLE")
             if isinstance(pregame_context, dict) else "UNAVAILABLE"
