@@ -135,3 +135,4 @@ def test_critical_ci_targets_are_under_control_plane_supervision():
     workflows = {target.workflow for target in TARGETS}
     assert ".github/workflows/baseball_regression_tests.yml" in workflows
     assert ".github/workflows/baseball_v44_compatibility.yml" in workflows
+    assert ".github/workflows/npb_game_state_research.yml" in workflows

@@ -242,3 +242,66 @@ def run(repo: str, output: Path, max_dispatches_per_cycle: int = 2) -> dict[str,
     for item, target in zip(decisions, TARGETS):
         if item["decision"] not in {"DISPATCH", "RECOVER"}:
             continue
+        if dispatched >= max_dispatches_per_cycle:
+            item["decision"], item["reason"] = "HOLD", "cycle_dispatch_cap_reached"
+            continue
+        if target.heavy and heavy_dispatched >= 1:
+            item["decision"], item["reason"] = "HOLD", "heavy_dispatch_cap_reached"
+            continue
+
+        if item["decision"] == "RECOVER" and item.get("latest_run_id") is not None:
+            cancel_run(repo, int(item["latest_run_id"]))
+            item["recovered_run_id"] = int(item["latest_run_id"])
+
+        epoch = int(time.time())
+        run_id = dispatch_and_verify(repo, target, epoch)
+        item["decision"] = "DISPATCHED"
+        item["dispatched_run_id"] = run_id
+        dispatched += 1
+        if target.heavy:
+            heavy_dispatched += 1
+
+    blockers = [
+        x
+        for x in decisions
+        if x["decision"] == "HOLD"
+        and x["reason"] == "deterministic_failure_is_authoritative"
+    ]
+    report = {
+        "schema_version": 2,
+        "generated_at": now.isoformat(),
+        "git_commit": os.environ.get("GITHUB_SHA") or None,
+        "current_main_sha": main_sha,
+        "repository": repo,
+        "control_plane_status": "EXECUTED_WITH_BLOCKERS" if blockers else "EXECUTED",
+        "cycle_dispatch_count": dispatched,
+        "cycle_heavy_dispatch_count": heavy_dispatched,
+        "targets": decisions,
+        "deterministic_failure_targets": [x["workflow"] for x in blockers],
+        "safety_contract": {
+            "production_modified": False,
+            "auto_promotion": False,
+            "fail_closed": True,
+            "max_heavy_dispatches_per_cycle": 1,
+        },
+    }
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return report
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", ""))
+    parser.add_argument("--output", default="results/control_plane/autonomous_control_plane.json")
+    parser.add_argument("--max-dispatches-per-cycle", type=int, default=2)
+    args = parser.parse_args()
+    if not args.repo:
+        raise SystemExit("GITHUB_REPOSITORY is required")
+    if args.max_dispatches_per_cycle < 1:
+        raise SystemExit("--max-dispatches-per-cycle must be >= 1")
+    report = run(args.repo, ROOT / args.output, args.max_dispatches_per_cycle)
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    return 0
+
+if __name__ == "__main__":
+    raise SystemExit(main())
