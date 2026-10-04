@@ -291,7 +291,8 @@ def action_health(repo: str, now: datetime | None = None) -> dict[str, Any]:
         if age_hours > float(contract["max_age_hours"]):
             state = "STALE"
             reasons.append(f"age_hours={age_hours:.2f}>{contract['max_age_hours']}")
-        if status not in {"queued", "in_progress"} and conclusion != "success":
+        active_statuses = {"queued", "pending", "waiting", "requested", "in_progress"}
+        if status not in active_statuses and conclusion != "success":
             state = "FAILED"
             reasons.append(f"conclusion={conclusion}")
         if state != "HEALTHY":
