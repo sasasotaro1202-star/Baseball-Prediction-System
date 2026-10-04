@@ -16,7 +16,8 @@ permissions:
 
 concurrency:
   group: baseball-manual-prediction-${{ inputs.league }}
-  cancel-in-progress: false
+  # A newer same-league on-demand prediction supersedes stale work.
+  cancel-in-progress: true
 
 jobs:
   predict:
