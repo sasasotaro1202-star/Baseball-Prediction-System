@@ -1,0 +1,101 @@
+
+name: NPB Game-Script Research Watchdog
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: npb-game-script-watchdog
+  cancel-in-progress: true
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Inspect and recover Game-Script research loop
+        env:
+          GH_TOKEN: $GITHUB_TOKEN
+        run: |
+          set -euo pipefail
+          workflow="npb_game_script_autoresearch.yml"
+          repo="$GITHUB_REPOSITORY"
+          now=$(date +%s)
+
+          runs=$(gh run list --repo "$repo" --workflow "$workflow" --branch main --limit 20             --json databaseId,status,conclusion,createdAt,updatedAt,headSha,url)
+          echo "$runs" | jq '.[0:8]'
+
+          active=$(echo "$runs" | jq '[.[] | select(.status=="queued" or .status=="in_progress" or .status=="waiting" or .status=="requested" or .status=="pending")]')
+          active_count=$(echo "$active" | jq 'length')
+
+          if [ "$active_count" -gt 0 ]; then
+            stale_cancelled=0
+            while IFS= read -r row; do
+              [ -n "$row" ] || continue
+              id=$(echo "$row" | jq -r '.databaseId')
+              status=$(echo "$row" | jq -r '.status')
+              updated=$(echo "$row" | jq -r '.updatedAt')
+              updated_epoch=$(date -d "$updated" +%s)
+              age_minutes=$(( (now - updated_epoch) / 60 ))
+              echo "run=$id status=$status age_minutes=$age_minutes"
+              if [ "$status" = "in_progress" ] && [ "$age_minutes" -ge 165 ]; then
+                echo "Cancelling stale in-progress run $id."
+                gh run cancel "$id" --repo "$repo"
+                stale_cancelled=1
+              elif [ "$status" != "in_progress" ] && [ "$age_minutes" -ge 90 ]; then
+                echo "Cancelling stale scheduler-blocked run $id."
+                gh run cancel "$id" --repo "$repo"
+                stale_cancelled=1
+              fi
+            done < <(echo "$active" | jq -c '.[]')
+            if [ "$stale_cancelled" -eq 0 ]; then
+              echo "Healthy active run exists; watchdog takes no further action."
+              exit 0
+            fi
+            sleep 5
+          fi
+
+          latest=$(gh run list --repo "$repo" --workflow "$workflow" --branch main --limit 1             --json databaseId,status,conclusion,createdAt,updatedAt,headSha,url | jq '.[0] // {}')
+          latest_created=$(echo "$latest" | jq -r '.createdAt // empty')
+          latest_conclusion=$(echo "$latest" | jq -r '.conclusion // empty')
+          latest_age_minutes=999999
+          if [ -n "$latest_created" ]; then
+            latest_epoch=$(date -d "$latest_created" +%s)
+            latest_age_minutes=$(( (now - latest_epoch) / 60 ))
+          fi
+
+          dispatch=0
+          reason=""
+          if [ -z "$latest_created" ]; then
+            dispatch=1
+            reason="no Game-Script Auto Research history"
+          elif [ "$latest_age_minutes" -ge 1560 ]; then
+            dispatch=1
+            reason="no completed/started cycle within 26 hours"
+          elif [ "$latest_conclusion" = "startup_failure" ] || [ "$latest_conclusion" = "timed_out" ] || [ "$latest_conclusion" = "cancelled" ]; then
+            if [ "$latest_age_minutes" -ge 360 ]; then
+              dispatch=1
+              reason="last run ended with recoverable infrastructure conclusion: $latest_conclusion"
+            fi
+          elif [ "$latest_conclusion" = "failure" ]; then
+            echo "Latest run has deterministic failure; preserving failure evidence and waiting for the normal daily schedule or manual force_research."
+          fi
+
+          if [ "$dispatch" -eq 1 ]; then
+            echo "Dispatching $workflow: $reason"
+            gh workflow run "$workflow" --repo "$repo" --ref main
+            verified=0
+            for attempt in 1 2 3 4 5; do
+              sleep 6
+              count=$(gh run list --repo "$repo" --workflow "$workflow" --branch main --limit 10                 --json status --jq '[.[] | select(.status=="queued" or .status=="in_progress" or .status=="waiting" or .status=="requested" or .status=="pending")] | length')
+              echo "dispatch verification $attempt/5 active=$count"
+              if [ "$count" -gt 0 ]; then verified=1; break; fi
+            done
+            test "$verified" -eq 1
+          fi
