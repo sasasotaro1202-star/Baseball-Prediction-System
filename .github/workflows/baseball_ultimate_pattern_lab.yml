@@ -111,9 +111,12 @@ jobs:
           python -m research.ultimate_pattern_lab             --league "${{ matrix.league }}"             --top-k-b 8             --top-k-c 4             --mlb-start 2020             --mlb-end 2026
 
       - name: Verify research artifact
+        env:
+          TARGET_LEAGUE: ${{ matrix.league }}
         run: |
           set -euo pipefail
-          python scripts/verify_ultimate_pattern_lab.py             "results/ultimate_pattern_lab_${{ matrix.league,, }}.json"
+          file="results/ultimate_pattern_lab_${TARGET_LEAGUE,,}.json"
+          python scripts/verify_ultimate_pattern_lab.py "$file"
 
       - name: Verify main snapshot after evidence generation
         env:
