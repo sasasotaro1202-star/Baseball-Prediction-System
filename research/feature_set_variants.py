@@ -112,18 +112,53 @@ def feature_family(column: str) -> str:
 
 def _keep_variant_specific(name: str, variant: str) -> bool:
     chosen = str(variant).strip().upper()
-    if chosen not in _VARIANT_EXCLUDES:
-        return True
-    pattern = _VARIANT_EXCLUDES[chosen]
+    if chosen == "TEAM_CORE_SHORT_HORIZON":
+        return bool(
+            _STABLE_CORE.search(name)
+            or (feature_family(name) == "core" and re.search(r"_(?:3|5|10)$", name))
+        )
+    if chosen == "TEAM_CORE_MEDIUM_HORIZON":
+        return bool(
+            _STABLE_CORE.search(name)
+            or (feature_family(name) == "core" and re.search(r"_(?:5|10|20)$", name))
+        )
+    if chosen == "TEAM_CORE_LONG_HORIZON":
+        return bool(
+            _STABLE_CORE.search(name)
+            or (feature_family(name) == "core" and re.search(r"_(?:10|20|30|45|60)$", name))
+        )
+    if chosen == "TEAM_CORE_NO_SHRINK":
+        return "_shrunk_" not in name
     if chosen == "TEAM_CORE_SHRINK_ONLY":
         return bool(_STABLE_CORE.search(name) or "_shrunk_" in name)
-    if chosen == "TEAM_CORE_SHORT_HORIZON":
-        return bool(_STABLE_CORE.search(name) or (feature_family(name) == "core" and _ANY_WINDOW.search(name)))
-    if chosen == "TEAM_CORE_MEDIUM_HORIZON":
-        return bool(_STABLE_CORE.search(name) or (feature_family(name) == "core" and _ANY_WINDOW.search(name)))
-    if chosen == "TEAM_CORE_LONG_HORIZON":
-        return bool(_STABLE_CORE.search(name) or (feature_family(name) == "core" and _ANY_WINDOW.search(name)))
-    return not bool(pattern.search(name))
+    if chosen == "TEAM_CORE_NO_VOLATILITY":
+        return feature_family(name) != "volatility"
+    if chosen == "TEAM_PLUS_STARTER_RECENT":
+        return bool(
+            feature_family(name) != "starter"
+            or re.search(r"^(?:hs_|as_)(?:recent_|starts$)", name)
+        )
+    if chosen == "TEAM_PLUS_BULLPEN_WORKLOAD":
+        return bool(
+            feature_family(name) != "bullpen"
+            or re.search(r"^(?:h_|a_|d_)?(?:bp3|bp7|bp_app_10|bp_runs_10|bp_er_10)$", name)
+        )
+    if chosen == "TEAM_PLUS_BULLPEN_QUALITY":
+        return bool(
+            feature_family(name) != "bullpen"
+            or re.search(r"^(?:h_|a_|d_)?(?:bp_ip_10|bp_era_10|bp_whip_10|bp_k9_10|bp_bb9_10|bp_hr9_10|bp_actual_coverage_10)$", name)
+        )
+    if chosen == "TEAM_PLUS_OFFENSE_RATE":
+        return bool(
+            feature_family(name) != "offense"
+            or re.search(r"^(?:h_|a_|d_)?(?:bat_(?:avg|bb_rate|so_rate|hr_rate|iso_proxy|extra_base_rate)_|matchup_)", name)
+        )
+    if chosen == "TEAM_PLUS_OFFENSE_POWER":
+        return bool(
+            feature_family(name) != "offense"
+            or re.search(r"^(?:h_|a_|d_)?(?:bat_(?:hr|xbh|hr_rate|iso_proxy|extra_base_rate)_|offense_power_gap_10|matchup_)", name)
+        )
+    return True
 
 
 def selected_columns(columns: Iterable[str], variant: str) -> list[str]:
