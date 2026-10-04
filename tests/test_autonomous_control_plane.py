@@ -128,3 +128,10 @@ def test_expected_skipped_is_healthy():
     result = decide(Target(".github/workflows/x.yml", 2, skip_is_healthy=True), runs, now)
     assert result["decision"] == "NOOP"
     assert result["reason"] == "expected_skipped_state"
+
+
+def test_critical_ci_targets_are_under_control_plane_supervision():
+    from research.autonomous_control_plane import TARGETS
+    workflows = {target.workflow for target in TARGETS}
+    assert ".github/workflows/baseball_regression_tests.yml" in workflows
+    assert ".github/workflows/baseball_v44_compatibility.yml" in workflows
