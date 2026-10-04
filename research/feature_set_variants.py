@@ -81,6 +81,15 @@ VARIANT_FAMILIES: dict[str, frozenset[str]] = {
 REGISTERED_VARIANTS: tuple[str, ...] = tuple(VARIANT_FAMILIES)
 SCREENING_VARIANTS: tuple[str, ...] = tuple(VARIANT_FAMILIES)
 
+VARIANT_REQUIRED_FAMILIES: dict[str, frozenset[str]] = {
+    "TEAM_PLUS_LINEUP_PIT_SAFE": frozenset({"lineup"}),
+    "TEAM_PLUS_STARTER_LINEUP_PIT_SAFE": frozenset({"lineup"}),
+    "TEAM_PLUS_STARTER_BULLPEN_LINEUP_PIT_SAFE": frozenset({"lineup"}),
+    "FULL_PIT_LINEUP_ONLY": frozenset({"lineup"}),
+    "TEAM_PLUS_WEATHER_PIT_SAFE": frozenset({"weather"}),
+    "FULL_PIT_WEATHER_ONLY": frozenset({"weather"}),
+}
+
 _STABLE_CORE = re.compile(
     r"^(?:home_adv|expected_env|h_(?:venue_|elo$|rest_days$|matches$|bp3$|bp7$)|"
     r"a_(?:venue_|elo$|rest_days$|matches$|bp3$|bp7$)|"
@@ -171,6 +180,14 @@ def selected_columns(columns: Iterable[str], variant: str) -> list[str]:
             f"unknown feature-set variant {chosen!r}; allowed={','.join(SCREENING_VARIANTS)}"
         )
     families = VARIANT_FAMILIES[chosen]
+    available_families = {feature_family(str(c)) for c in columns}
+    required = VARIANT_REQUIRED_FAMILIES.get(chosen, frozenset())
+    missing_required = sorted(required - available_families)
+    if missing_required:
+        raise ValueError(
+            f"feature-set variant {chosen} requires unavailable PIT-safe feature families: "
+            + ",".join(missing_required)
+        )
     selected = [
         str(c)
         for c in columns
