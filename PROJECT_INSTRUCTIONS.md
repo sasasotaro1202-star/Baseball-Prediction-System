@@ -67,3 +67,12 @@ Any change to a module that can alter Candidate OOS selection, calibration, scor
 
 ### Long-running OOS versus append-only experience commits
 An already-running Candidate OOS replay may tolerate a main-branch commit only when the complete diff is limited to non-runtime continuity files: `data/experience/**`, `tests/**`, or `.github/workflows/baseball_candidate_oos_watchdog.yml`. Experience files are append-only historical postgame reconciliation outputs; tests and the candidate-OOS watchdog are verification/control-plane files and are not runtime inputs to candidate selection or scoring. Any code, candidate workflow, configuration, PIT source, evaluation, or other data change remains evidence-affecting and must fail closed. This distinction prevents operational/test maintenance from invalidating otherwise valid long-running OOS evidence without weakening the code/config snapshot gate.
+
+## Feature contract and runtime evidence
+The canonical feature manifest is `docs/FEATURE_MANIFEST.md` and the machine-readable policy is `config/feature_policy.json`. Feature status must be distinguished as ACTIVE, CONDITIONAL, OBSERVATION_ONLY, or RESEARCH_CANDIDATE. Do not infer production usage from a feature name appearing in source code.
+
+The current default model matrix is expected to contain 482 NPB features and 470 MLB features before conditional lineup/weather context. Production prediction output should record actual feature count, feature-schema hash, manifest version and context mode. Feature assembly order must be deterministic.
+
+Lineup/weather context is not production-active by default. It requires explicit PIT-safe configuration and cutoff-valid availability evidence. Observation-only player/roster/standings/context snapshots must not silently alter production probabilities.
+
+Any feature change capable of changing prediction values is evidence-affecting and requires the normal TEST → PIT → chronological OOS/WFO → calibration → ablation → robustness → frozen holdout → release gate before adoption.
