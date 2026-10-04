@@ -350,6 +350,8 @@ assert str(obj.get("pit_status","")).startswith("UNVERIFIABLE")
 assert obj.get("production_eligible") is False
 assert obj.get("git_sha")
 assert obj.get("source_fingerprint")
+assert obj.get("validation_source_fingerprint")
+assert obj.get("context_source_fingerprint")
 assert obj.get("code_fingerprint")
 if obj["status"] == "RESEARCH_SCREENING_ONLY":
     v=obj["aggregate"]["validation"]
