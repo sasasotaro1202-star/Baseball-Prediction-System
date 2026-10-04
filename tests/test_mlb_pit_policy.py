@@ -1,3 +1,5 @@
+import pytest
+
 from datetime import datetime, timezone
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
@@ -164,6 +166,24 @@ def test_first_observed_does_not_backdate_changed_starter_or_accept_third_party(
     assert pit_available_by(evidence, cutoff)
 
 
+def test_mlb_pit_policy_workflow_covers_shared_pit_dependencies():
+    workflow = (ROOT / ".github" / "workflows" / "mlb_pit_policy.yml").read_text(encoding="utf-8")
+    for path in (
+        "data/pit_acquisition.py",
+        "data/availability.py",
+        "tests/test_mlb_starter_pit_provenance.py",
+    ):
+        assert f'      - "{path}"' in workflow
+    assert "python -m pytest -q tests/test_mlb_pit_policy.py tests/test_mlb_starter_pit_provenance.py" in workflow
+
+
+def test_mlb_pit_policy_workflow_covers_acquisition_dependency():
+    workflow = (ROOT / ".github" / "workflows" / "mlb_pit_policy.yml").read_text(encoding="utf-8")
+    assert '      - "data/pit_acquisition.py"' in workflow
+    pull_request = workflow.split("  pull_request:", 1)[1].split("  workflow_dispatch:", 1)[0]
+    assert '      - "data/pit_acquisition.py"' in pull_request
+
+
 def test_mlb_pit_policy_workflow_is_ref_scoped():
     workflow = (ROOT / ".github" / "workflows" / "mlb_pit_policy.yml").read_text(encoding="utf-8")
     assert "group: mlb-pit-policy-${{ github.event.pull_request.number || github.ref }}" in workflow
@@ -180,3 +200,68 @@ def test_mlb_starter_id_is_read_from_probable_pitcher():
 def test_mlb_pit_policy_workflow_installs_requests_dependency():
     workflow = (ROOT / ".github" / "workflows" / "mlb_pit_policy.yml").read_text(encoding="utf-8")
     assert "python -m pip install --disable-pip-version-check pytest requests" in workflow
+
+
+def test_explicit_mlb_starter_timestamp_rejects_future_of_retrieval():
+    import data.pit_acquisition as pit
+
+    retrieval = "2026-09-19T09:10:00+00:00"
+    assert pit._explicit_timestamp(
+        {"home_starter_announced_at": "2026-09-19T09:11:00+00:00"},
+        "home",
+        "announcement",
+        retrieved_at=retrieval,
+    ) is None
+
+
+@pytest.mark.parametrize(
+    ("kind", "payload"),
+    [
+        ("published", {"home_starter_published_at": "2026-09-19T09:11:00+00:00"}),
+        ("available", {"home_starter_available_at": "2026-09-19T09:11:00+00:00"}),
+        ("revision", {"revision_time": "2026-09-19T09:11:00+00:00"}),
+    ],
+)
+def test_explicit_mlb_starter_timestamp_rejects_future_of_retrieval_for_all_kinds(kind, payload):
+    import data.pit_acquisition as pit
+
+    assert pit._explicit_timestamp(
+        payload,
+        "home",
+        kind,
+        retrieved_at="2026-09-19T09:10:00+00:00",
+    ) is None
+
+
+def test_explicit_mlb_starter_timestamp_accepts_at_retrieval():
+    import data.pit_acquisition as pit
+
+    retrieval = "2026-09-19T09:10:00+00:00"
+    assert pit._explicit_timestamp(
+        {"home_starter_announced_at": retrieval},
+        "home",
+        "announcement",
+        retrieved_at=retrieval,
+    ) == retrieval
+
+
+def test_explicit_mlb_starter_timestamp_rejects_malformed_retrieval_boundary():
+    import data.pit_acquisition as pit
+
+    assert pit._explicit_timestamp(
+        {"home_starter_announced_at": "2026-09-19T09:05:00+00:00"},
+        "home",
+        "announcement",
+        retrieved_at="not-a-timestamp",
+    ) is None
+
+
+def test_explicit_mlb_starter_timestamp_rejects_naive_retrieval_boundary():
+    import data.pit_acquisition as pit
+
+    assert pit._explicit_timestamp(
+        {"home_starter_announced_at": "2026-09-19T09:05:00+00:00"},
+        "home",
+        "announcement",
+        retrieved_at="2026-09-19T09:10:00",
+    ) is None
