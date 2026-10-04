@@ -61,5 +61,6 @@
       "CURRENT_PRODUCTION_RUNTIME": "results/npb_production_{target_date}.json",
       "VALIDATED_RESEARCH_SHADOW": "results/npb_shadow_{target_date}.json"
     }
-  }
+  },
+  "competition_specific_research_commands": {}
 }
