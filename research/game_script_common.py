@@ -169,14 +169,64 @@ class TransitionKernel:
 
 class TeamStrength:
     def __init__(self,base_run=4.0,shrink_games=24.0,half_life_days=90.0):
-        self.base_run=float(base_run); self.shrink_games=float(shrink_games); self.half_life_days=float(half_life_days); self.gf=defaultdict(float); self.ga=defaultdict(float); self.games=defaultdict(float); self.total_runs=self.total_weight=0.0
-    def update(self,h,a,hs,aw,date,latest):
-        w=math.exp(-math.log(2)*max(0.0,(latest-date).total_seconds()/86400)/self.half_life_days); self.gf[h]+=hs*w; self.ga[h]+=aw*w; self.games[h]+=w; self.gf[a]+=aw*w; self.ga[a]+=hs*w; self.games[a]+=w; self.total_runs+=(hs+aw)*w; self.total_weight+=w
-    def factors(self,h,a):
-        league=max(.1,self.total_runs/max(1e-9,2*self.total_weight)) if self.total_weight else self.base_run
+        self.base_run=float(base_run)
+        self.shrink_games=float(shrink_games)
+        self.half_life_days=float(half_life_days)
+        self.gf=defaultdict(float)
+        self.ga=defaultdict(float)
+        self.games=defaultdict(float)
+        self.total_runs=0.0
+        self.total_weight=0.0
+        self._teams=set()
+        self._asof=None
+
+    def advance_to(self,asof):
+        ts=pd.Timestamp(asof)
+        ts=ts.tz_localize("UTC") if ts.tzinfo is None else ts.tz_convert("UTC")
+        if self._asof is None:
+            self._asof=ts
+            return
+        delta_days=max(0.0,(ts-self._asof).total_seconds()/86400.0)
+        if delta_days<=0:
+            return
+        decay=math.exp(-math.log(2)*delta_days/self.half_life_days)
+        for t in self._teams:
+            self.gf[t]*=decay
+            self.ga[t]*=decay
+            self.games[t]*=decay
+        self.total_runs*=decay
+        self.total_weight*=decay
+        self._asof=ts
+
+    def update(self,h,a,hs,aw,date,latest=None):
+        asof=pd.Timestamp(date if latest is None else latest)
+        self.advance_to(asof)
+        self.gf[h]+=float(hs)
+        self.ga[h]+=float(aw)
+        self.games[h]+=1.0
+        self.gf[a]+=float(aw)
+        self.ga[a]+=float(hs)
+        self.games[a]+=1.0
+        self.total_runs+=float(hs+aw)
+        self.total_weight+=2.0
+        self._teams.update((str(h),str(a)))
+
+    def factors(self,h,a,asof=None):
+        if asof is not None:
+            self.advance_to(asof)
+        league=max(.1,self.total_runs/max(1e-9,self.total_weight)) if self.total_weight else self.base_run
         def one(t):
-            n=self.games[t]; return float(np.clip(((self.gf[t]+self.shrink_games*league)/(n+self.shrink_games))/league,.60,1.55)), float(np.clip(((self.ga[t]+self.shrink_games*league)/(n+self.shrink_games))/league,.60,1.55))
-        ho,hd=one(h); ao,ad=one(a); return float(np.clip(math.sqrt(max(.01,ho/max(.01,ad))),.60,1.55)),float(np.clip(math.sqrt(max(.01,ao/max(.01,hd))),.60,1.55))
+            n=self.games[t]
+            offense=float(np.clip(((self.gf[t]+self.shrink_games*league)/(n+self.shrink_games))/league,.60,1.55))
+            defense=float(np.clip(((self.ga[t]+self.shrink_games*league)/(n+self.shrink_games))/league,.60,1.55))
+            return offense,defense
+        ho,hd=one(h)
+        ao,ad=one(a)
+        return (
+            float(np.clip(math.sqrt(max(.01,ho/max(.01,ad))),.60,1.55)),
+            float(np.clip(math.sqrt(max(.01,ao/max(.01,hd))),.60,1.55)),
+        )
+
 
 
 def simulate_game(kernel,home_factor,away_factor,simulations=800,seed=42,max_innings=12,profile="rich"):
