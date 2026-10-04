@@ -42,8 +42,7 @@ def load_checkpoint(path: Path|None,cfg):
 
 def save_checkpoint(path:Path,cfg,ids,rows,ablation):
     path.parent.mkdir(parents=True,exist_ok=True); tmp=path.with_suffix(path.suffix+".tmp")
-    tmp.write_text(json.dumps({"checkpoint_schema":1,"config":dict(cfg),"processed_game_ids":sorted(ids),"validation_rows":list(rows),"ablation_rows":list(ablation)},ensure_ascii=False,indent=2,default=str)+"
-",encoding="utf-8")
+    tmp.write_text(json.dumps({"checkpoint_schema":1,"config":dict(cfg),"processed_game_ids":sorted(ids),"validation_rows":list(rows),"ablation_rows":list(ablation)},ensure_ascii=False,indent=2,default=str)+"\n",encoding="utf-8")
     tmp.replace(path)
 
 
@@ -79,7 +78,10 @@ def evaluate(paths: Sequence[str|Path], *, development_end="2024-12-31", validat
         if ck and done%max(1,int(checkpoint_every))==0: save_checkpoint(ck,cfg,processed,val_rows,ablation_rows)
     if ck: save_checkpoint(ck,cfg,processed,val_rows,ablation_rows)
     if not val_rows: raise ValueError("validation set is empty")
-    v=pd.DataFrame(val_rows);\n    if v.empty:\n        raise ValueError("validation set is empty")\n    warmup={"status":"NOT_REQUESTED","games":0,"transitions":0}
+    v=pd.DataFrame(val_rows);
+    if v.empty:
+        raise ValueError("validation set is empty")
+    warmup={"status":"NOT_REQUESTED","games":0,"transitions":0}
     if sh_start is not None:
         warmup_latest=sh_start-pd.Timedelta(nanoseconds=1)
         warmup_games=0
