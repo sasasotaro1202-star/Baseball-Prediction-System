@@ -48,6 +48,12 @@ def test_starter_publication_after_announcement_fails_closed():
         record.validate()
 
 
+def test_revision_time_after_cutoff_fails_closed():
+    record = _record(revision_time="2026-09-01T09:01:00+00:00")
+    with pytest.raises(ValueError, match="revision_time is after prediction cutoff"):
+        record.validate()
+
+
 def test_starter_availability_after_cutoff_fails_closed():
     record = _record(
         home_starter_available_at="2026-09-01T09:01:00+00:00",
@@ -75,5 +81,6 @@ def test_explicit_timestamp_parser_requires_timezone_and_known_kind():
     assert _explicit_timestamp(payload, "home", "announcement") == "2026-09-01T08:00:00+00:00"
     assert _explicit_timestamp(payload, "home", "published") == "2026-09-01T07:55:00+00:00"
     assert _explicit_timestamp(payload, "home", "available") == "2026-09-01T07:55:00+00:00"
+    assert _explicit_timestamp(payload, "", "revision") is None
     with pytest.raises(ValueError, match="unsupported starter timestamp kind"):
-        _explicit_timestamp(payload, "home", "revision")
+        _explicit_timestamp(payload, "home", "unknown")
