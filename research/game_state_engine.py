@@ -515,9 +515,15 @@ def _simulation_stability(
             simulations=max(100, min(250, simulations)),
             seed=(int(seed) + 17) ^ int.from_bytes(hashlib.sha256(str(r.game_id).encode()).digest()[:4], "big"),
         )
-        p1 = np.asarray(first["probabilities"], dtype=float)
-        p2 = np.asarray(second["probabilities"], dtype=float)
-        l1_values.append(float(np.abs(p1[:3] - p2[:3]).sum()))
+        p1 = np.asarray(
+            [first["probabilities"]["home_win"], first["probabilities"]["draw"], first["probabilities"]["away_win"]],
+            dtype=float,
+        )
+        p2 = np.asarray(
+            [second["probabilities"]["home_win"], second["probabilities"]["draw"], second["probabilities"]["away_win"]],
+            dtype=float,
+        )
+        l1_values.append(float(np.abs(p1 - p2).sum()))
     return {
         "status": "MEASURED",
         "rows": int(len(probe)),
