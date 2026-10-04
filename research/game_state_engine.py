@@ -43,8 +43,15 @@ def _base_mask(row: Mapping[str, Any]) -> int:
         value = next((row[n] for n in names if n in row), None)
         if value is None or pd.isna(value):
             continue
-        if str(value).strip().lower() not in {"", "nan", "none", "nat", "0", "false"}:
-            mask |= bit
+        text = str(value).strip().lower()
+        if text in {"", "nan", "none", "nat", "0", "0.0", "false"}:
+            continue
+        try:
+            if float(text) == 0.0:
+                continue
+        except (TypeError, ValueError):
+            pass
+        mask |= bit
     return mask
 
 
@@ -57,15 +64,15 @@ def canonicalize_pbp_frame(raw: pd.DataFrame) -> pd.DataFrame:
     if raw.empty:
         return pd.DataFrame()
     out = pd.DataFrame(index=raw.index)
-    out["game_id"] = _first(raw, ["game_id", "GameID"]).astype(str).str.strip()
+    out["game_id"] = _first(raw, ["game_id", "GameID"], "").astype("string").fillna("").str.strip()
     out["inning"] = pd.to_numeric(_first(raw, ["inning", "Inning"]), errors="coerce")
     out["half"] = _first(raw, ["TB", "half", "Half"]).map(_half)
     out["play_order"] = pd.to_numeric(_first(raw, ["PlayInfo_SeqNo", "play_id", "ID", "page"]), errors="coerce")
     out["pitch_number"] = pd.to_numeric(_first(raw, ["pitch_number", "atBatBallCount"]), errors="coerce")
-    out["page"] = _first(raw, ["page", "fiveDigitSerialNumber"], "").astype(str)
+    out["page"] = _first(raw, ["page", "fiveDigitSerialNumber"], "").astype("string").fillna("").str.strip()
     out["game_date"] = pd.to_datetime(_first(raw, ["game_date", "GameDate"]), errors="coerce", utc=True)
-    out["home"] = _first(raw, ["home_team_name", "H_NameS"], "").astype(str)
-    out["away"] = _first(raw, ["away_team_name", "V_NameS"], "").astype(str)
+    out["home"] = _first(raw, ["home_team_name", "H_NameS"], "").astype("string").fillna("").str.strip()
+    out["away"] = _first(raw, ["away_team_name", "V_NameS"], "").astype("string").fillna("").str.strip()
     out["home_score"] = pd.to_numeric(_first(raw, ["home_total_runs", "H_R"]), errors="coerce")
     out["away_score"] = pd.to_numeric(_first(raw, ["away_total_runs", "V_R"]), errors="coerce")
     out["outs"] = pd.to_numeric(_first(raw, ["outs_when_up", "out"]), errors="coerce")
@@ -73,7 +80,7 @@ def canonicalize_pbp_frame(raw: pd.DataFrame) -> pd.DataFrame:
         out[dst] = raw[src] if src in raw.columns else (_first(raw, [dst]))
 
     required = ["game_id", "inning", "half", "play_order", "game_date", "home_score", "away_score", "outs"]
-    out = out[out["game_id"].ne("")]
+    out = out[out["game_id"].ne("") & out["home"].ne("") & out["away"].ne("")]
     out = out[out["half"].isin({"T", "B"})]
     for col in required[1:]:
         out = out[out[col].notna()]
@@ -209,8 +216,8 @@ def poisson_matrix(home_lambda: float, away_lambda: float, max_runs: int = 14) -
 
 
 def _summary(matrix: np.ndarray, hs: int, aw: int) -> dict[str, float]:
-    ph = float(np.triu(matrix, 1).sum())
-    pa = float(np.tril(matrix, -1).sum())
+    ph = float(np.tril(matrix, -1).sum())
+    pa = float(np.triu(matrix, 1).sum())
     pd = float(np.trace(matrix))
     flat = matrix.ravel()
     top4 = np.argsort(-flat, kind="mergesort")[:4]
@@ -284,7 +291,7 @@ def simulate_game(kernel: TransitionKernel, *, base_run: float, home_factor: flo
     for hs, aw in scores: matrix[min(14, hs), min(14, aw)] += 1
     matrix /= matrix.sum()
     flat = matrix.ravel(); top4 = np.argsort(-flat, kind="mergesort")[:4]
-    home_win, away_win, draw = float(np.triu(matrix, 1).sum()), float(np.tril(matrix, -1).sum()), float(np.trace(matrix))
+    home_win, away_win, draw = float(np.tril(matrix, -1).sum()), float(np.triu(matrix, 1).sum()), float(np.trace(matrix))
     low = float(sum(matrix[i, j] for i in range(15) for j in range(15) if i + j <= 6))
     return {
         "schema_version": SCHEMA_VERSION, "simulations": int(simulations), "valid_simulations": int(valid), "seed": int(seed),
@@ -366,7 +373,8 @@ def main(argv: list[str] | None = None) -> int:
     a = p.parse_args(argv); files = sorted(Path().glob(a.data_glob));
     if not files: raise SystemExit(f"no PBP files matched: {a.data_glob}")
     result = evaluate_from_files(files, development_end=a.development_end, validation_start=a.validation_start, validation_end=a.validation_end, holdout_start=a.holdout_start, max_validation_games=max(1,a.max_validation_games), max_holdout_games=max(1,a.max_holdout_games), simulations=max(1,a.simulations), seed=a.seed)
-    out = Path(a.output); out.parent.mkdir(parents=True, exist_ok=True); out.write_text(json.dumps(result, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")
+    out = Path(a.output); out.parent.mkdir(parents=True, exist_ok=True); out.write_text(json.dumps(result, ensure_ascii=False, indent=2, default=str) + "
+", encoding="utf-8")
     print(json.dumps({k: result[k] for k in ("status", "pit_status", "production_eligible", "decision", "aggregate", "delta_vs_poisson")}, ensure_ascii=False, indent=2)); return 0
 
 
