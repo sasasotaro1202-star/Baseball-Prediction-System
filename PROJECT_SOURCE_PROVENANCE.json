@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "source_path": "PROJECT_SOURCE.md",
+  "source_sha256": "0a557d9a4c94a641b667de3b15a6c2d1bc731327b59f89a9e71a42d9c5cbc4e",
+  "source_git_blob_sha1": "49fe81ee680b6e9140195275250e16b742668fd9",
+  "source_bytes": 29102,
+  "source_lines": 1915,
+  "origin_file": "pasted(1).txt",
+  "policy": "intentional Project Source changes must update this lock in the same commit; mismatches are BLOCKED"
+}

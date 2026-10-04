@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 REQUIRED_FILES = (
     "PROJECT_SOURCE.md",
+    "PROJECT_SOURCE_PROVENANCE.json",
     "PROJECT_INSTRUCTIONS.md",
     "BASEBALL_SYSTEM_SPEC.md",
     "config/current_production_runtime.json",
@@ -113,6 +114,27 @@ def source_contract_errors(text: str) -> list[str]:
     return errors
 
 
+def source_provenance_errors(root: Path = ROOT) -> list[str]:
+    source = root / "PROJECT_SOURCE.md"
+    provenance = root / "PROJECT_SOURCE_PROVENANCE.json"
+    if not source.is_file() or not provenance.is_file():
+        return ["project_source_provenance_missing"]
+    try:
+        payload = json.loads(_read(provenance))
+    except Exception as exc:
+        return [f"project_source_provenance_invalid_json:{type(exc).__name__}"]
+    expected = str(payload.get("source_sha256") or "").strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{64}", expected):
+        return ["project_source_provenance_sha256_invalid"]
+    actual = hashlib.sha256(source.read_bytes()).hexdigest()
+    if actual != expected:
+        return [f"project_source_sha256_mismatch:{actual}!={expected}"]
+    expected_bytes = payload.get("source_bytes")
+    if isinstance(expected_bytes, int) and source.stat().st_size != expected_bytes:
+        return [f"project_source_bytes_mismatch:{source.stat().st_size}!={expected_bytes}"]
+    return []
+
+
 def runtime_policy_errors(payload: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     policy = payload.get("policy")
@@ -166,6 +188,7 @@ def repository_static_errors(root: Path = ROOT) -> list[str]:
     source = root / "PROJECT_SOURCE.md"
     if source.is_file():
         errors.extend(source_contract_errors(_read(source)))
+    errors.extend(source_provenance_errors(root))
 
     runtime = root / "config/current_production_runtime.json"
     if runtime.is_file():

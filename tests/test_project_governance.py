@@ -2,6 +2,7 @@ from pathlib import Path
 
 from research.project_governance import (
     source_contract_errors,
+    source_provenance_errors,
     runtime_policy_errors,
     workflow_contract_errors,
 )
@@ -92,3 +93,38 @@ def test_source_section_parser_ignores_numbered_lists():
     from research.project_governance import SECTION_RE
     text = "71. COST FIREWALL\n\n1. verified free\n2. free quota\n3. OSS/local\n\n⸻\n\n72. SECURITY / DATA GOVERNANCE\n"
     assert [int(m[0]) for m in SECTION_RE.findall(text)] == [71, 72]
+
+def test_source_provenance_accepts_matching_hash(tmp_path: Path):
+    import hashlib
+    import json
+    source = tmp_path / "PROJECT_SOURCE.md"
+    provenance = tmp_path / "PROJECT_SOURCE_PROVENANCE.json"
+    payload = "canonical source\n"
+    source.write_text(payload, encoding="utf-8")
+    provenance.write_text(
+        json.dumps({
+            "schema_version": 1,
+            "source_sha256": hashlib.sha256(payload.encode("utf-8")).hexdigest(),
+            "source_bytes": len(payload.encode("utf-8")),
+        }),
+        encoding="utf-8",
+    )
+    assert source_provenance_errors(tmp_path) == []
+
+
+def test_source_provenance_rejects_drift(tmp_path: Path):
+    import hashlib
+    import json
+    source = tmp_path / "PROJECT_SOURCE.md"
+    provenance = tmp_path / "PROJECT_SOURCE_PROVENANCE.json"
+    source.write_text("changed\n", encoding="utf-8")
+    provenance.write_text(
+        json.dumps({
+            "schema_version": 1,
+            "source_sha256": hashlib.sha256(b"canonical\n").hexdigest(),
+            "source_bytes": len(b"canonical\n"),
+        }),
+        encoding="utf-8",
+    )
+    errors = source_provenance_errors(tmp_path)
+    assert errors and errors[0].startswith("project_source_sha256_mismatch:")

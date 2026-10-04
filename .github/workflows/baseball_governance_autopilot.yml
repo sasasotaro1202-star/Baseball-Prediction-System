@@ -6,6 +6,7 @@ name: Baseball Governance Autopilot
     branches: [main]
     paths:
       - "PROJECT_SOURCE.md"
+      - "PROJECT_SOURCE_PROVENANCE.json"
       - "PROJECT_INSTRUCTIONS.md"
       - "BASEBALL_SYSTEM_SPEC.md"
       - "config/current_production_runtime.json"
