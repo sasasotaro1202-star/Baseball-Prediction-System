@@ -13,6 +13,8 @@ on:
     paths:
       - "research/autonomous_control_plane.py"
       - "tests/test_autonomous_control_plane.py"
+      - "tests/test_project_governance.py"
+      - "tests/test_action_preflight.py"
       - ".github/workflows/baseball_autonomous_control_plane.yml"
       - ".github/workflows/**"
       - "research/project_governance.py"
