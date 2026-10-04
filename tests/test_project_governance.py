@@ -177,3 +177,9 @@ def test_pending_actions_status_is_treated_as_active(monkeypatch):
     from datetime import datetime, timezone
     report = governance.action_health("owner/repo", datetime(2026, 10, 4, 9, 30, tzinfo=timezone.utc))
     assert report["workflows"][".github/workflows/baseball_governance_autopilot.yml"]["state"] == "HEALTHY"
+
+
+def test_phase1_and_universal_readiness_are_monitored():
+    from research.project_governance import WORKFLOW_CONTRACTS
+    assert ".github/workflows/baseball_phase1_gate.yml" in WORKFLOW_CONTRACTS
+    assert ".github/workflows/baseball_universal_readiness.yml" in WORKFLOW_CONTRACTS
