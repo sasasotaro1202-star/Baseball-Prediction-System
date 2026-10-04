@@ -11,7 +11,7 @@ from typing import Iterable
 
 import pandas as pd
 
-FEATURE_SET_CONTRACT = "feature-contract-v2"
+FEATURE_SET_CONTRACT = "feature-contract-v1"
 
 _FAMILY_PATTERNS = (
     ("context", re.compile(r"^(context_pit_safe|(?:h_|a_|d_)?lineup_|weather_)")),
