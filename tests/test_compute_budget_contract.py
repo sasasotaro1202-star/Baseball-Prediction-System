@@ -117,7 +117,7 @@ def test_score_fast_validation_activates_bounded_profile():
     )
     assert 'if score_fast_validation:' in source
     assert '            fast = True' in source
-    assert 'score_pool_raw = "Poisson,HistPoisson"' in source
+    assert 'if score_fast_validation and not score_pool_raw and league == "NPB":' in source
     assert '"type": "score_compute_profile"' in source
 
 
