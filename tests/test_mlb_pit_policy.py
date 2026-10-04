@@ -1,5 +1,12 @@
 from datetime import datetime, timezone
-from core.mlb_pit_policy import EvidenceClass, MLBStarterEvidence, production_eligible, research_only
+from core.mlb_pit_policy import (
+    EvidenceClass,
+    MLBStarterEvidence,
+    derive_first_observed_evidence,
+    pit_available_by,
+    production_eligible,
+    research_only,
+)
 
 
 def ev(level, ts="2026-09-19T10:00:00+00:00", source="https://www.mlb.com/"):
@@ -43,3 +50,73 @@ def test_official_announcement_requires_timezone_aware_timestamps():
         "https://www.mlb.com/",
     )
     assert not production_eligible(naive, cutoff)
+
+
+
+def test_first_observed_is_research_availability_evidence_not_announcement():
+    cutoff = datetime(2026, 9, 19, 12, tzinfo=timezone.utc)
+    observations = [
+        {
+            "game_id": "1",
+            "home_starter_id": "123",
+            "home_starter": "Pitcher",
+            "source": "https://www.mlb.com/schedule/",
+            "available_at": "2026-09-19T10:30:00+00:00",
+            "observed_at": "2026-09-19T10:30:00+00:00",
+            "retrieved_at": "2026-09-19T10:31:00+00:00",
+            "payload_hash": "later",
+        },
+        {
+            "game_id": "1",
+            "home_starter_id": "123",
+            "home_starter": "Pitcher",
+            "source": "https://www.mlb.com/schedule/",
+            "available_at": "2026-09-19T10:00:00+00:00",
+            "observed_at": "2026-09-19T10:00:00+00:00",
+            "retrieved_at": "2026-09-19T10:01:00+00:00",
+            "payload_hash": "earlier",
+        },
+    ]
+    evidence = derive_first_observed_evidence(
+        observations, game_id="1", side="home", starter_id="123", starter_name="Pitcher"
+    )
+    assert evidence.evidence_class is EvidenceClass.OFFICIAL_FIRST_OBSERVED
+    assert evidence.timestamp == datetime(2026, 9, 19, 10, tzinfo=timezone.utc)
+    assert pit_available_by(evidence, cutoff)
+    assert not production_eligible(evidence, cutoff)
+
+
+def test_first_observed_does_not_backdate_changed_starter_or_accept_third_party():
+    cutoff = datetime(2026, 9, 19, 12, tzinfo=timezone.utc)
+    observations = [
+        {
+            "game_id": "1",
+            "home_starter_id": "111",
+            "home_starter": "Pitcher A",
+            "source": "https://www.mlb.com/schedule/",
+            "available_at": "2026-09-19T08:00:00+00:00",
+            "payload_hash": "a",
+        },
+        {
+            "game_id": "1",
+            "home_starter_id": "222",
+            "home_starter": "Pitcher B",
+            "source": "https://third-party.example/",
+            "available_at": "2026-09-19T08:30:00+00:00",
+            "payload_hash": "third-party",
+        },
+        {
+            "game_id": "1",
+            "home_starter_id": "222",
+            "home_starter": "Pitcher B",
+            "source": "https://www.mlb.com/schedule/",
+            "available_at": "2026-09-19T10:00:00+00:00",
+            "payload_hash": "b",
+        },
+    ]
+    evidence = derive_first_observed_evidence(
+        observations, game_id="1", side="home", starter_id="222", starter_name="Pitcher B"
+    )
+    assert evidence.evidence_class is EvidenceClass.OFFICIAL_FIRST_OBSERVED
+    assert evidence.timestamp == datetime(2026, 9, 19, 10, tzinfo=timezone.utc)
+    assert pit_available_by(evidence, cutoff)
