@@ -1,7 +1,7 @@
 # PROJECT_INSTRUCTIONS — Baseball-Prediction-System
 
 ## Mission
-Maximize future-game generalization, case-level correctness, calibration, predictability awareness, uncertainty quality, robustness, PIT integrity and operational reliability for NPB/MLB prediction.
+Maximize future-game generalization, case-level correctness, calibration, predictability awareness, uncertainty quality, robustness, PIT integrity and operational reliability for NPB/MLB and other validated baseball competitions.
 
 ## Every run
 Re-check latest GitHub HEAD/default branch, code/config, tests, workflows, Actions, artifacts, registries, production/champion/challenger state, OOS/holdout evidence, failures and backlog. Prefer REUSE → REPAIR → INTEGRATE → TEST → VERIFY. Never rewrite historical evidence.
@@ -10,13 +10,13 @@ Re-check latest GitHub HEAD/default branch, code/config, tests, workflows, Actio
 Separate game_time, prediction_time, cutoff, source availability/publication, retrieval and revision. Starter, lineup, bullpen, weather, market and player-availability information is time-varying. Later confirmations or corrections cannot flow backward. Postgame/finalized same-game statistics are prohibited from pregame features.
 
 ## Target isolation
-NPB uses HOME/DRAW/AWAY; MLB uses HOME/AWAY. Score distributions, exact-score candidates and LOW/HIGH are separate target contracts. Do not convert incompatible targets silently.
+NPB uses HOME/DRAW/AWAY; MLB uses HOME/AWAY. Other competitions use their registered competition-specific contract. Score distributions, exact-score candidates and LOW/HIGH are separate target contracts. Do not convert incompatible targets silently.
 
 ## Evaluation
 Chronological WFO/OOS only; random temporal splits are prohibited. Candidate selection and final OOS are separate. Frozen holdout is final evidence only and must not be tuned.
 
 ## Models / routing
-Maintain naive/class-frequency/Elo/logistic baselines. Complex models, starter experts, Statcast experts and specialist routing require incremental OOS value, adequate sample/folds, calibration evidence and robustness. Sparse scopes fallback to broader validated models.
+Maintain naive/class-frequency/Elo/logistic baselines. Complex models, starter experts, Statcast experts and specialist routing require incremental OOS value, adequate sample/folds, calibration evidence and robustness. Sparse scopes fallback to broader validated models. Research-only models never become production merely because they produce output.
 
 ## Calibration / uncertainty
 Evaluate LogLoss, Brier, ECE and calibration parameters chronologically. Track model disagreement, starter uncertainty, source uncertainty, OOD and regime ambiguity separately from confidence.
@@ -36,12 +36,28 @@ Green Actions or generated artifacts are execution evidence, not automatic perfo
 ## Loop
 MONITOR → DETECT → TRIAGE → RESEARCH → IMPLEMENT → TEST → PIT → OOS/WFO → CALIBRATION → ROBUSTNESS → HOLDOUT → ADOPT/HOLD/REJECT → RELEASE → PRODUCTION → RECONCILE → FAILURE ANALYSIS → MEMORY → NEXT RESEARCH.
 
-## Mandatory GitHub source for NPB prediction requests
-Whenever a user asks for an NPB prediction, today's NPB forecast, a daily NPB forecast, or otherwise requests an NPB game prediction, the answer MUST use the prediction produced by the current GitHub repository `sasasotaro1202-star/Baseball-Prediction-System` as the primary prediction source. Before presenting any NPB prediction, re-check the repository's current default branch/HEAD and the applicable production prediction path/artifact for the requested JST date. The GitHub-derived probability, selected outcome, Top-4 exact scores, and Low/High output are authoritative for that request unless the repository marks the output BLOCKED, UNKNOWN, UNVERIFIABLE, FALLBACK, ABSTAIN, or otherwise ineligible.
+## Global GitHub-backed baseball prediction request contract
+Whenever a user asks for a baseball game prediction, including phrases such as "試合予想して", "今日の試合を予想して", "NPB予想", "MLB予想", tournament prediction, or a named baseball matchup, the primary prediction source MUST be the current GitHub repository `sasasotaro1202-star/Baseball-Prediction-System`. This rule applies to NPB, MLB, international senior/youth tournaments, Japanese high-school/college competitions, and any other competition explicitly registered by the repository.
 
-External web/current-game information may be used only as a separate verification/context layer and must never be silently substituted for the GitHub prediction. It may not override the GitHub model output unless the response explicitly states that the GitHub output is unavailable/invalid and the result is therefore not a GitHub-based prediction. If a valid current GitHub prediction artifact/output cannot be located or generated, do not label an independently generated forecast as the GitHub prediction; report the GitHub prediction status as UNAVAILABLE/UNVERIFIABLE and preserve the distinction between repository evidence and external inference.
+Before presenting any game prediction:
+1. Re-check the current default branch/HEAD.
+2. Identify the requested competition and target JST date/game.
+3. Check whether a current valid GitHub prediction output/artifact already exists for that exact request.
+4. If no valid prediction exists, do NOT stop merely because the artifact is missing. Use the repository's prediction-request generation path: create/update `prediction_requests/inbox/active.json` with the request, which triggers the GitHub Actions prediction-request workflow, or use the repository's equivalent workflow-dispatch path when a direct dispatch capability exists.
+5. The GitHub request router must choose the strongest eligible lane in this order: CURRENT_PRODUCTION_RUNTIME → VALIDATED_RESEARCH_SHADOW → explicitly registered competition-specific research runtime → BLOCKED/UNAVAILABLE. It must never silently treat a research result as production.
+6. Verify the generated request-result JSON and its status before treating it as usable evidence.
+7. If generation is blocked, incomplete, PIT-unverifiable, starter/personnel-ineligible, or the expected GitHub result cannot be verified, report UNAVAILABLE/UNVERIFIABLE instead of substituting an independently generated forecast.
 
-Every such response should retain, when available, the GitHub commit SHA, model version, feature/calibration version, prediction timestamp/cutoff, data snapshot or artifact identifier, and production/fallback status so the user can distinguish current GitHub evidence from live contextual information.
+External web/current-game information may be used only as a separate context/verification layer. It may supplement the GitHub prediction with current schedule, confirmed starters, weather, roster and source-health facts, but it must not silently replace or override the GitHub model output.
+
+Every response should preserve, when available: GitHub commit SHA, request id/fingerprint, model/runtime lane and version, feature/calibration version, prediction timestamp/cutoff, data/source snapshot identifiers, PIT status, generation status and production/research/fallback state. Evidence from GitHub and external context must remain explicitly separated.
+
+A successful GitHub Action, existing workflow, code presence, or generated file alone never proves model performance. Performance claims remain governed by OOS/WFO, calibration, robustness, holdout and adoption gates.
+
+## Prediction generation safety
+The request-generation workflow is a controlled execution mechanism, not a promotion mechanism. It may generate a user-requested prediction with a validated research lane when a production runtime is unavailable, but the output must be labeled RESEARCH_SHADOW or other exact research status. It must never mutate Champion/Production state, alter historical evidence, bypass PIT, or convert UNKNOWN into PASS.
+
+The request queue is append-oriented and idempotent by request fingerprint. Repeating an identical request should reuse a previously generated verified result rather than recompute it unnecessarily. Concurrent requests must be serialized or otherwise written deterministically so one request cannot overwrite another.
 
 ## Candidate OOS stale-run recovery
 Candidate OOS keeps `cancel-in-progress: false` so a live chronological validation is never interrupted. The watchdog may recover only a same-main-SHA `in_progress` Candidate OOS run older than 360 minutes, which is deliberately beyond the 260-minute workflow timeout. Cancellation failure is fail-closed and blocks duplicate dispatch. A verified stale-run recovery triggers an immediate current-main redispatch. This operational recovery rule does not relax PIT, chronological OOS, calibration, holdout, adoption, or production gates.
