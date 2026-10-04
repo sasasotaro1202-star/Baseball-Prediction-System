@@ -221,9 +221,11 @@ PY
             done
           done
           if [ "$has_current_pbp" -eq 1 ]; then
-            current_file="$current_year-$(printf '%02d' "$current_month_num")_pbp.csv"
-            required_file "$current_file" || { echo "Current release asset missing: $current_file" >&2; exit 1; }
-            download_if_needed "$current_file"
+            for m in $(seq 3 "$current_month_num"); do
+              current_file="$current_year-$(printf '%02d' "$m")_pbp.csv"
+              required_file "$current_file" || { echo "Current-season release asset missing: $current_file" >&2; exit 1; }
+              download_if_needed "$current_file"
+            done
           else
             echo "No in-season current-year PBP is expected yet."
           fi
@@ -268,8 +270,10 @@ PY
           shadow_end=$(TZ=Asia/Tokyo date +%Y-%m-%d)
           mkdir -p results
           previous_checkpoint=$(find .previous_evidence -type f -name 'game_script_checkpoint.json' -print -quit || true)
-          if [ -n "$previous_checkpoint" ] && [ -s "$previous_checkpoint" ]; then
+          if [ -n "$previous_checkpoint" ] && [ -s "$previous_checkpoint" ] && [ "$prev_code" = "$current_code" ]; then
             cp "$previous_checkpoint" results/game_script_checkpoint.json
+          else
+            echo "Checkpoint not reused because Game-Script code fingerprint changed or no compatible checkpoint exists."
           fi
           python -m research.game_script_engine             --data-glob 'data/pbp/*.csv'             --development-end 2024-12-31             --validation-start 2025-01-01             --validation-end 2025-12-31             --shadow-start "$shadow_start"             --shadow-end "$shadow_end"             --max-validation-games "$max_validation_games"             --max-shadow-games "$max_shadow_games"             --simulations "$simulations"             --seed 42             --checkpoint-path results/game_script_checkpoint.json             --checkpoint-every 1             --output results/game_script_screening.json
           python - <<'PY'
