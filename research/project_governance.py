@@ -97,6 +97,16 @@ WORKFLOW_CONTRACTS: dict[str, dict[str, Any]] = {
         "max_age_hours": 30,
         "required": ("schedule:", "PROJECT_SOURCE.md", "PROJECT_SOURCE_PROVENANCE.json", "sha256"),
     },
+    ".github/workflows/baseball_phase1_gate.yml": {
+        "monitor": True,
+        "max_age_hours": 30,
+        "required": ("schedule:", "Phase 1 scope", "matrix:", "league: [NPB, MLB]"),
+    },
+    ".github/workflows/baseball_universal_readiness.yml": {
+        "monitor": True,
+        "max_age_hours": 30,
+        "required": ("schedule:", "research.universal_readiness", "tests/test_universal_readiness.py"),
+    },
     ".github/workflows/baseball_actions_recovery.yml": {
         "monitor": False,
         "max_age_hours": 0,
