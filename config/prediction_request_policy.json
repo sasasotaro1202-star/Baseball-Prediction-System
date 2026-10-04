@@ -1,0 +1,58 @@
+{
+  "schema_version": "baseball-prediction-request-policy-v1",
+  "description": "Deterministic routing policy for user-requested baseball predictions.",
+  "source_repository": "sasasotaro1202-star/Baseball-Prediction-System",
+  "lane_priority": [
+    "CURRENT_PRODUCTION_RUNTIME",
+    "VALIDATED_RESEARCH_SHADOW",
+    "COMPETITION_SPECIFIC_RESEARCH_RUNTIME",
+    "BLOCKED"
+  ],
+  "production_runtime_config": "config/current_production_runtime.json",
+  "production_commands": {
+    "NPB": [
+      "python",
+      "-m",
+      "prediction.current_production",
+      "--league",
+      "NPB",
+      "--date",
+      "{target_date}",
+      "--data-dir",
+      "data"
+    ],
+    "MLB": [
+      "python",
+      "-m",
+      "prediction.current_production",
+      "--league",
+      "MLB",
+      "--date",
+      "{target_date}",
+      "--data-dir",
+      "data"
+    ]
+  },
+  "validated_research_shadow_commands": {
+    "NPB": [
+      "python",
+      "production_npb.py",
+      "--date",
+      "{target_date}",
+      "--data-dir",
+      "data",
+      "--research-shadow",
+      "--minimum-lead-minutes",
+      "0"
+    ]
+  },
+  "result_directory": "prediction_requests/results",
+  "request_file": "prediction_requests/inbox/active.json",
+  "max_runtime_seconds": 5400,
+  "notes": {
+    "production_runtime": "Only use when the current production runtime registry says the competition is CURRENT_PRODUCTION.",
+    "research_shadow": "Explicit research lane only; never changes Champion/Production state.",
+    "unknown_competition": "Must fail closed.",
+    "missing_output": "Must fail closed; never substitute an independently generated forecast."
+  }
+}
