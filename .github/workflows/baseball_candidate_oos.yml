@@ -62,16 +62,50 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         timeout-minutes: 5
 
-      - name: Verify main snapshot is current
+      - name: Verify main snapshot is evidence-current
         env:
           EXPECTED_REF: ${{ github.sha }}
         run: |
           set -euo pipefail
           git fetch --no-tags --prune origin main
           current_main="$(git rev-parse origin/main)"
-          test "$current_main" = "$EXPECTED_REF"
           echo "candidate_snapshot_sha=$EXPECTED_REF"
           echo "current_main_sha=$current_main"
+          if [ "$current_main" = "$EXPECTED_REF" ]; then
+            echo "candidate_snapshot_current=true"
+            exit 0
+          fi
+
+          # Candidate OOS may survive only non-runtime test maintenance or
+          # append-only historical experience updates between queue time and
+          # job start. Workflow/code/config/PIT/data changes remain evidence-
+          # affecting and fail closed.
+          mapfile -t changed_files < <(git diff --name-only "$EXPECTED_REF" "$current_main")
+          if [ "${#changed_files[@]}" -eq 0 ]; then
+            echo "Unable to determine main-branch changes." >&2
+            exit 1
+          fi
+
+          unexpected=0
+          for path in "${changed_files[@]}"; do
+            case "$path" in
+              data/experience/*|tests/*)
+                echo "Allowed non-runtime main update: $path"
+                ;;
+              *)
+                unexpected=1
+                echo "Evidence-affecting main update detected: $path" >&2
+                ;;
+            esac
+          done
+
+          if [ "$unexpected" -ne 0 ]; then
+            echo "Candidate OOS snapshot is not evidence-current; refusing mixed-snapshot evaluation." >&2
+            exit 1
+          fi
+
+          echo "candidate_snapshot_current=true"
+          echo "candidate_snapshot_main_diff=non_runtime_only"
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
