@@ -26,7 +26,7 @@ permissions:
 
 concurrency:
   group: baseball-ultimate-v13
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   foundation:
