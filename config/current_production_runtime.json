@@ -20,5 +20,10 @@
       "contract": "",
       "formal_adoption_status": "BLOCKED_UNTIL_REGISTERED"
     }
+  },
+  "feature_policy": {
+    "manifest": "docs/FEATURE_MANIFEST.md",
+    "config": "config/feature_policy.json",
+    "version": "feature-contract-v1"
   }
 }
