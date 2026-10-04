@@ -212,7 +212,7 @@ jobs:
           unexpected=0
           for path in "${changed_files[@]}"; do
             case "$path" in
-              data/experience/*|tests/*)
+              data/experience/*|tests/*|.github/workflows/baseball_candidate_oos_watchdog.yml)
                 echo "Allowed non-runtime main update: $path"
                 ;;
               *)
