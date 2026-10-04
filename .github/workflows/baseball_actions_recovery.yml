@@ -15,6 +15,7 @@ on:
       - NPB Production Prediction
       - Baseball 60m Pregame Auto Prediction
       - .github/workflows/baseball_60m_pregame_auto.yml
+      - Baseball Autonomous Control Plane
     types: [completed]
 
 permissions:
@@ -189,7 +190,7 @@ jobs:
           while IFS= read -r step; do
             [ -n "${step}" ] || continue
             case "${step}" in
-              'Install research dependencies'|'Install dependencies'|'Install production dependencies'|'Acquire current PIT observations'|'Install acquisition dependencies'|'Run PIT acquisition'|'Commit PIT observations'|'Acquire PIT-safe public NPB PBP data'|'Stage historical NPB PBP release data'|'Restore immutable historical NPB PBP and official-result cache'|'Restore chronological OOS checkpoints'|'Install minimal research dependencies'|'Install'|'Setup Python'|'Install lightweight research dependencies')
+              'Install research dependencies'|'Install dependencies'|'Install production dependencies'|'Install control-plane test dependency'|'Acquire current PIT observations'|'Install acquisition dependencies'|'Run PIT acquisition'|'Commit PIT observations'|'Acquire PIT-safe public NPB PBP data'|'Stage historical NPB PBP release data'|'Restore immutable historical NPB PBP and official-result cache'|'Restore chronological OOS checkpoints'|'Install minimal research dependencies'|'Install'|'Setup Python'|'Install lightweight research dependencies')
                 retryable=$((retryable + 1))
                 ;;
               *)
