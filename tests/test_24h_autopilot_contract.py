@@ -31,3 +31,11 @@ RELIABILITY_WORKFLOW = ROOT / ".github" / "workflows" / "reliability_preflight.y
 def test_reliability_preflight_concurrency_is_ref_scoped():
     workflow = RELIABILITY_WORKFLOW.read_text(encoding="utf-8")
     assert "group: reliability-preflight-${{ github.event.pull_request.number || github.ref }}" in workflow
+
+
+def test_24h_autopilot_has_current_main_staleness_guard():
+    workflow = (ROOT / ".github" / "workflows" / "baseball_24h_research_autopilot.yml").read_text(encoding="utf-8")
+    assert workflow.count("name: Verify main has not advanced") == 4
+    assert "current_main=\"$(git rev-parse origin/main)\"" in workflow
+    assert "test \"$current_main\" = \"$EXPECTED_REF\"" in workflow
+    assert "'stale_run':stale_run" in workflow

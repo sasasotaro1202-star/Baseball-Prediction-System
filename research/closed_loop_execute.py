@@ -466,12 +466,13 @@ def main() -> int:
         write_json("lifecycle_execution.json", {"status": "BLOCKED", "blockers": blockers, "reports": reports})
         raise SystemExit("; ".join(blockers))
 
-    write_json("calibration.json", {"version": 3, "method": "chronological temperature calibration", "leagues": {k: v["calibration"] for k, v in reports.items()}, "holdout_untouched_during_fit_and_selection": True})
-    write_json("development_oos.json", {k: v["development_oos"] for k, v in reports.items()})
-    write_json("independent_holdout.json", {k: v["holdout"] for k, v in reports.items()})
-    write_json("result_audit.json", {k: v["result_audit"] for k, v in reports.items()})
-    write_json("weakness_report.json", {k: v["weakness"] for k, v in reports.items()})
-    write_json("candidate_validation.json", {k: v["candidate_gate"] for k, v in reports.items()})
+    current_commit = _git_commit()
+    write_json("calibration.json", {"version": 3, "git_commit": current_commit, "method": "chronological temperature calibration", "leagues": {k: v["calibration"] for k, v in reports.items()}, "holdout_untouched_during_fit_and_selection": True})
+    write_json("development_oos.json", {"git_commit": current_commit, **{k: v["development_oos"] for k, v in reports.items()}})
+    write_json("independent_holdout.json", {"git_commit": current_commit, **{k: v["holdout"] for k, v in reports.items()}})
+    write_json("result_audit.json", {"git_commit": current_commit, **{k: v["result_audit"] for k, v in reports.items()}})
+    write_json("weakness_report.json", {"git_commit": current_commit, **{k: v["weakness"] for k, v in reports.items()}})
+    write_json("candidate_validation.json", {"git_commit": current_commit, **{k: v["candidate_gate"] for k, v in reports.items()}})
 
     decisions = {k: v["candidate_gate"]["decision"] for k, v in reports.items()}
     lifecycle = {

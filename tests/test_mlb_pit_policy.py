@@ -1,4 +1,7 @@
 from datetime import datetime, timezone
+from pathlib import Path
+ROOT = Path(__file__).resolve().parents[1]
+
 from core.mlb_pit_policy import (
     EvidenceClass,
     MLBStarterEvidence,
@@ -125,3 +128,16 @@ def test_first_observed_does_not_backdate_changed_starter_or_accept_third_party(
 def test_mlb_pit_policy_workflow_is_ref_scoped():
     workflow = (ROOT / ".github" / "workflows" / "mlb_pit_policy.yml").read_text(encoding="utf-8")
     assert "group: mlb-pit-policy-${{ github.event.pull_request.number || github.ref }}" in workflow
+
+
+def test_mlb_starter_id_is_read_from_probable_pitcher():
+    import data.pit_acquisition as pit
+
+    assert pit._starter_id({"probablePitcher": {"id": 123}}) == "123"
+    assert pit._starter_id({"probablePitcher": {"playerId": "456"}}) == "456"
+    assert pit._starter_id({"probablePitcher": {}}) is None
+    assert pit._starter_id({}) is None
+
+def test_mlb_pit_policy_workflow_installs_requests_dependency():
+    workflow = (ROOT / ".github" / "workflows" / "mlb_pit_policy.yml").read_text(encoding="utf-8")
+    assert "python -m pip install --disable-pip-version-check pytest requests" in workflow

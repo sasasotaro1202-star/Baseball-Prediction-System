@@ -310,7 +310,7 @@ def test_pregame_zero_job_failure_has_bounded_control_plane_recovery():
     assert "GH_REPO: ${{ github.repository }}" in recovery
     assert "WORKFLOW_NAME: ${{ github.event.workflow_run.name }}" in recovery
     assert 'if [ "${WORKFLOW_NAME}" = "Baseball 60m Pregame Auto Prediction" ] || [ "${WORKFLOW_NAME}" = ".github/workflows/baseball_60m_pregame_auto.yml" ] || [ "${WORKFLOW_PATH}" = ".github/workflows/baseball_60m_pregame_auto.yml" ]; then' in recovery
-    assert 'job_count="$(gh run view "${RUN_ID}" --repo "${GH_REPO}" --json jobs --jq \'.jobs | length\')"' in recovery
+    assert 'job_count="$(gh_retry run view "${RUN_ID}" --repo "${GH_REPO}" --json jobs --jq \'.jobs | length\')"' in recovery
     assert 'if [ "${job_count}" -eq 0 ]; then' in recovery
     assert "checking 15-minute cooldown" in recovery
     assert 'prior_age_minutes=$(( (now_epoch - prior_created_epoch) / 60 ))' in recovery

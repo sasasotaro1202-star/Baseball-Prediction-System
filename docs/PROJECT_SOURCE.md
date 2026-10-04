@@ -2195,3 +2195,11 @@ The experience ledger must preserve them through reconciliation. Missing taxonom
 ⸻
 
 === COPY END ===
+
+⸻
+
+## 93. CANDIDATE OOS EVIDENCE FRESHNESS
+
+Candidate OOS evidence is valid only for the implementation and data snapshot it actually evaluates. Any change that can alter candidate selection, calibration, score modeling, routing, adoption gating, or candidate identity must retrigger the Candidate OOS workflow. The workflow trigger contract is therefore part of evidence integrity, not merely CI convenience.
+
+A green Candidate OOS run from an older commit must not be reused as evidence for a changed implementation. Trigger coverage must include direct research dependencies that are not otherwise covered by the existing path filters, while avoiding unnecessary broad recomputation where a narrower dependency set is sufficient.
