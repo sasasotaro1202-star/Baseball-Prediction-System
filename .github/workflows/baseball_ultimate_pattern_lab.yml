@@ -71,7 +71,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m py_compile             baseball_backtest.py             research/feature_set_variants.py             research/feature_model_matrix.py             research/ultimate_pattern_lab.py             scripts/verify_ultimate_pattern_lab.py
-          python -m pytest -q             tests/test_feature_set_router.py             tests/test_feature_set_variants.py             tests/test_verify_feature_model_matrix.py             tests/test_ultimate_pattern_lab.py             tests/test_feature_integrity.py
+          python -m pytest -q             tests/test_feature_set_router.py             tests/test_feature_set_variants.py             tests/test_verify_feature_model_matrix.py             tests/test_ultimate_pattern_lab.py             tests/test_feature_integrity.py             tests/test_mlb_starter_pit_provenance.py
 
       - name: Stage NPB historical data
         if: matrix.league == 'NPB' && steps.result-cache.outputs.cache-hit != 'true'
