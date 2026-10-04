@@ -90,7 +90,9 @@ def evaluate(paths: Sequence[str|Path], *, development_end="2024-12-31", validat
         rec=record(game)
         if rec["game_date"]<val_start or rec["game_date"]>val_end:
             continue
-        if rec["complete_status"]!="PASS" or rec["game_id"] in processed:
+        if rec["complete_status"]!="PASS":
+            continue
+        if run_validation and rec["game_id"] in processed:
             continue
         added=kernel.add_game(game)
         if added:
