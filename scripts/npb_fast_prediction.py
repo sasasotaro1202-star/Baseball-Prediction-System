@@ -92,7 +92,11 @@ def main() -> int:
     # challengers only; no production/adoption state is changed by this lane.
     os.environ.setdefault(
         "BASEBALL_FAST_MODEL_POOL_NPB",
-        "HistGB,RandomForest,ExtraTrees,HierarchicalDrawResult,LightGBM,XGBoost,CatBoost",
+        "HistGB,RandomForest,ExtraTrees,HierarchicalDrawResult",
+    )
+    os.environ.setdefault(
+        "BASEBALL_FAST_SCORE_MODEL_POOL_NPB",
+        "Poisson,HistPoisson,ExtraTreesReg",
     )
     os.environ.setdefault("BASEBALL_LOGISTIC_MAX_ITER", "600")
     os.environ.setdefault("BASEBALL_SCORE_REGRESSION_MAX_ITER", "300")
@@ -136,6 +140,8 @@ def main() -> int:
         "BASEBALL_LGBM_ESTIMATORS": os.getenv("BASEBALL_LGBM_ESTIMATORS"),
         "BASEBALL_XGB_ESTIMATORS": os.getenv("BASEBALL_XGB_ESTIMATORS"),
         "BASEBALL_CATBOOST_ITERATIONS": os.getenv("BASEBALL_CATBOOST_ITERATIONS"),
+        "BASEBALL_FAST_MODEL_POOL_NPB": os.getenv("BASEBALL_FAST_MODEL_POOL_NPB"),
+        "BASEBALL_FAST_SCORE_MODEL_POOL_NPB": os.getenv("BASEBALL_FAST_SCORE_MODEL_POOL_NPB"),
         "promotion_status": "RESEARCH_ONLY"
     }
     result["observation_enrichment_mode"] = "DEFERRED_FAST_MODE"
