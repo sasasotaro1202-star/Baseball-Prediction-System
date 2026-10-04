@@ -188,6 +188,8 @@ def _explicit_timestamp(
     g: dict[str, Any],
     side: str,
     kind: str,
+    *,
+    retrieved_at: str | datetime | None = None,
 ) -> str | None:
     kind = str(kind).strip().lower()
     names = {
@@ -220,7 +222,27 @@ def _explicit_timestamp(
         return None
     if dt.tzinfo is None:
         return None
-    return dt.astimezone(timezone.utc).isoformat()
+    dt = dt.astimezone(timezone.utc)
+
+    # A timestamp embedded in a payload cannot establish a pre-retrieval PIT
+    # boundary when it lies after the response was received. Reject it rather
+    # than allowing future or malformed source metadata into eligibility.
+    if retrieved_at not in (None, ""):
+        try:
+            retrieval_dt = (
+                retrieved_at
+                if isinstance(retrieved_at, datetime)
+                else datetime.fromisoformat(str(retrieved_at).replace("Z", "+00:00"))
+            )
+        except ValueError:
+            retrieval_dt = None
+        if retrieval_dt is not None:
+            if retrieval_dt.tzinfo is None:
+                return None
+            if dt > retrieval_dt.astimezone(timezone.utc):
+                return None
+
+    return dt.isoformat()
 
 
 def _explicit_announcement(g: dict[str, Any], side: str) -> str | None:
@@ -582,13 +604,13 @@ def acquire_mlb() -> int:
         seen.add(gid)
         home, away = _mlb_teams(g)
         hname, aname = _team_name(home), _team_name(away)
-        h_ann = _explicit_timestamp(g, "home", "announcement")
-        a_ann = _explicit_timestamp(g, "away", "announcement")
-        h_pub = _explicit_timestamp(g, "home", "published")
-        a_pub = _explicit_timestamp(g, "away", "published")
-        h_avail = _explicit_timestamp(g, "home", "available") or h_ann
-        a_avail = _explicit_timestamp(g, "away", "available") or a_ann
-        revision_time = _explicit_timestamp(g, "", "revision")
+        h_ann = _explicit_timestamp(g, "home", "announcement", retrieved_at=retrieved)
+        a_ann = _explicit_timestamp(g, "away", "announcement", retrieved_at=retrieved)
+        h_pub = _explicit_timestamp(g, "home", "published", retrieved_at=retrieved)
+        a_pub = _explicit_timestamp(g, "away", "published", retrieved_at=retrieved)
+        h_avail = _explicit_timestamp(g, "home", "available", retrieved_at=retrieved) or h_ann
+        a_avail = _explicit_timestamp(g, "away", "available", retrieved_at=retrieved) or a_ann
+        revision_time = _explicit_timestamp(g, "", "revision", retrieved_at=retrieved)
         row = {
             "event_id": f"MLB:{gid}", "league": "MLB", "game_id": gid,
             "home_team": hname, "away_team": aname,
