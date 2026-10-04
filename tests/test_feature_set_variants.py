@@ -35,8 +35,8 @@ def test_feature_family_is_explicit():
     assert feature_family("h_bp_app_10") == "bullpen"
     assert feature_family("h_bat_avg_10") == "offense"
     assert feature_family("form_x_rest_gap") == "interaction"
-    assert feature_family("h_lineup_avg") == "context"
-    assert feature_family("weather_temp_c") == "context"
+    assert feature_family("h_lineup_avg") == "lineup"
+    assert feature_family("weather_temp_c") == "weather"
 
 
 def test_baseline_excludes_starter_bullpen_offense_context_and_interactions():
