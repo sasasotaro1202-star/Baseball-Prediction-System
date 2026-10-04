@@ -46,7 +46,7 @@ def save_checkpoint(path:Path,cfg,ids,rows,ablation):
     tmp.replace(path)
 
 
-def evaluate(paths: Sequence[str|Path], *, development_end="2024-12-31", validation_start="2025-01-01", validation_end="2025-12-31", shadow_start=None, shadow_end=None, max_validation_games=160, max_shadow_games=60, simulations=800, seed=42, ablation=True, checkpoint_path=None, checkpoint_every=1):
+def evaluate(paths: Sequence[str|Path], *, development_end="2024-12-31", validation_start="2025-01-01", validation_end="2025-12-31", shadow_start=None, shadow_end=None, max_validation_games=160, max_shadow_games=60, simulations=800, seed=42, ablation=True, checkpoint_path=None, checkpoint_every=1, run_validation=True):
     files=sorted(Path(p) for p in paths); dev_end=boundary(development_end,end_of_day=True); val_start=boundary(validation_start); val_end=boundary(validation_end,end_of_day=True); sh_start=boundary(shadow_start); sh_end=boundary(shadow_end,end_of_day=True) if shadow_end else None
     if not files: raise ValueError("no input files matched")
     ck=Path(checkpoint_path) if checkpoint_path else None; cfg=_cfg(files,development_end=development_end,validation_start=validation_start,validation_end=validation_end,max_validation_games=int(max_validation_games),simulations=int(simulations),seed=int(seed))
@@ -60,7 +60,10 @@ def evaluate(paths: Sequence[str|Path], *, development_end="2024-12-31", validat
     if dev_games==0 or kernel.transitions<100: raise ValueError(f"insufficient development support: games={dev_games} transitions={kernel.transitions}")
     processed,val_rows,ablation_rows=load_checkpoint(ck,cfg); processed=set(processed); val_rows=list(val_rows); ablation_rows=list(ablation_rows); done=len(processed)
     if done: print(f"[CHECKPOINT] restoring {done} validation games")
+    validation_loop_enabled=bool(run_validation)
     for game in iter_games(files):
+        if not validation_loop_enabled:
+            break
         rec=record(game)
         if rec["game_date"]<val_start: continue
         if rec["game_date"]>val_end: break
@@ -77,7 +80,24 @@ def evaluate(paths: Sequence[str|Path], *, development_end="2024-12-31", validat
         kernel.add_game(game); strength.update(rec["home"],rec["away"],rec["home_score"],rec["away_score"],rec["game_date"],rec["game_date"]); processed.add(rec["game_id"]); done+=1
         if ck and done%max(1,int(checkpoint_every))==0: save_checkpoint(ck,cfg,processed,val_rows,ablation_rows)
     if ck: save_checkpoint(ck,cfg,processed,val_rows,ablation_rows)
+    if not run_validation and len(val_rows)<max_validation_games:
+        raise ValueError("shadow-only mode requires a complete validation checkpoint")
     if not val_rows: raise ValueError("validation set is empty")
+
+    context_games=0
+    context_transitions=0
+    for game in iter_games(files):
+        rec=record(game)
+        if rec["game_date"]<val_start or rec["game_date"]>val_end:
+            continue
+        if rec["complete_status"]!="PASS" or rec["game_id"] in processed:
+            continue
+        added=kernel.add_game(game)
+        if added:
+            strength.update(rec["home"],rec["away"],rec["home_score"],rec["away_score"],rec["game_date"],val_end)
+            context_games+=1
+            context_transitions+=added
+
     v=pd.DataFrame(val_rows);
     if v.empty:
         raise ValueError("validation set is empty")
@@ -123,4 +143,4 @@ def evaluate(paths: Sequence[str|Path], *, development_end="2024-12-31", validat
     if not adf.empty: ab.update({"rich_logloss":float(adf.rich_logloss.mean()),"coarse_logloss":float(adf.coarse_logloss.mean()),"rich_vs_coarse_logloss_relative_improvement":float((adf.coarse_logloss.mean()-adf.rich_logloss.mean())/max(1e-12,adf.coarse_logloss.mean()))})
     total=max(1,cov["rows"]); coverage={"sample_rows":int(cov["rows"]),"count_available":float(cov["count"]/total),"base_state_complete":float(cov["base"]/total),"batter_id_available":float(cov["batter"]/total),"pitcher_id_available":float(cov["pitcher"]/total),"pitch_id_available":float(cov["pitch"]/total),"release_speed_available":float(cov["speed"]/total),"plate_xy_available":float(cov["xy"]/total)}
     latest=v.tail(min(30,len(v)))
-    return {"schema_version":SCHEMA_VERSION,"validation_cases":val_rows,"shadow_cases":shadow.get("cases",[]),"warmup":warmup,"status":"RESEARCH_SCREENING_ONLY","candidate_role":"CHALLENGER_RESEARCH","pit_status":PIT_STATUS,"production_eligible":False,"decision":"HOLD_RESEARCH_ONLY","reason":"Historical PBP publication/availability timestamps are not proven; no production OOS or promotion evidence is claimed.","development_end":development_end,"validation_start":validation_start,"validation_end":validation_end,"shadow_start":shadow_start or "","shadow_end":shadow_end or "","games_seen":games_seen,"development_games":dev_games,"validation_games":len(v),"kernel":kernel.snapshot(),"aggregate":{"validation":aggregate(v),"latest_validation_30":aggregate(latest.reset_index(drop=True))},"period_aggregates":{str(k):aggregate(g.reset_index(drop=True)) for k,g in v.groupby("period",sort=True)},"ablation":ab,"recent_shadow":shadow,"data_coverage":coverage,"checkpoint":{"enabled":ck is not None,"processed_validation_games":len(processed),"every_games":int(checkpoint_every)},"reproducibility":{"seed":int(seed),"simulations":int(simulations),"chronological_order":"file_month_then_game_date_then_game_id","validation_updates":"POST_TARGET_ONLY","shadow_updates":"FORBIDDEN","holdout_tuning":"FORBIDDEN","production_promotion":"FORBIDDEN"}}
+    return {"schema_version":SCHEMA_VERSION,"validation_cases":val_rows,"shadow_cases":shadow.get("cases",[]),"warmup":warmup,"status":"RESEARCH_SCREENING_ONLY","candidate_role":"CHALLENGER_RESEARCH","pit_status":PIT_STATUS,"production_eligible":False,"decision":"HOLD_RESEARCH_ONLY","reason":"Historical PBP publication/availability timestamps are not proven; no production OOS or promotion evidence is claimed.","development_end":development_end,"validation_start":validation_start,"validation_end":validation_end,"shadow_start":shadow_start or "","shadow_end":shadow_end or "","games_seen":games_seen,"development_games":dev_games,"validation_games":len(v),"run_mode":"FULL_WFO" if run_validation else "SHADOW_REFRESH_ONLY","validation_context_rebuild":{"games":int(context_games),"transitions":int(context_transitions)},"kernel":kernel.snapshot(),"aggregate":{"validation":aggregate(v),"latest_validation_30":aggregate(latest.reset_index(drop=True))},"period_aggregates":{str(k):aggregate(g.reset_index(drop=True)) for k,g in v.groupby("period",sort=True)},"ablation":ab,"recent_shadow":shadow,"data_coverage":coverage,"checkpoint":{"enabled":ck is not None,"processed_validation_games":len(processed),"every_games":int(checkpoint_every)},"reproducibility":{"seed":int(seed),"simulations":int(simulations),"chronological_order":"file_month_then_game_date_then_game_id","validation_updates":"POST_TARGET_ONLY","shadow_updates":"FORBIDDEN","holdout_tuning":"FORBIDDEN","production_promotion":"FORBIDDEN"}}
