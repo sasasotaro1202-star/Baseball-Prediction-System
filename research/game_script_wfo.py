@@ -56,7 +56,7 @@ def evaluate(paths: Sequence[str|Path], *, development_end="2024-12-31", validat
         cov["count"]+=sum(_count(r) is not None for r in rows); cov["base"]+=sum(_base(r) is not None for r in rows)
         cov["batter"]+=int(game.batter_id.ne("").sum()); cov["pitcher"]+=int(game.pitcher_id.ne("").sum()); cov["pitch"]+=int(game.pitch_id.notna().sum()); cov["speed"]+=int(game.release_speed_kmh.notna().sum()); cov["xy"]+=int(game[["plate_x","plate_y"]].notna().all(axis=1).sum())
         if rec["game_date"]<=dev_end and rec["complete_status"]=="PASS" and kernel.add_game(game):
-            strength.update(rec["home"],rec["away"],rec["home_score"],rec["away_score"],rec["game_date"],dev_end); dev_games+=1
+            strength.update(rec["home"],rec["away"],rec["home_score"],rec["away_score"],rec["game_date"],rec["game_date"]); dev_games+=1
     if dev_games==0 or kernel.transitions<100: raise ValueError(f"insufficient development support: games={dev_games} transitions={kernel.transitions}")
     processed,val_rows,ablation_rows=load_checkpoint(ck,cfg); processed=set(processed); val_rows=list(val_rows); ablation_rows=list(ablation_rows); done=len(processed)
     if done: print(f"[CHECKPOINT] restoring {done} validation games")
@@ -71,7 +71,7 @@ def evaluate(paths: Sequence[str|Path], *, development_end="2024-12-31", validat
         if done>=max_validation_games: break
         if rec["game_id"] in processed:
             kernel.add_game(game); strength.update(rec["home"],rec["away"],rec["home_score"],rec["away_score"],rec["game_date"],rec["game_date"]); continue
-        hf,af=strength.factors(rec["home"],rec["away"]); gid=int.from_bytes(hashlib.sha256(rec["game_id"].encode()).digest()[:4],"big")
+        hf,af=strength.factors(rec["home"],rec["away"],asof=rec["game_date"]); gid=int.from_bytes(hashlib.sha256(rec["game_id"].encode()).digest()[:4],"big")
         sim=simulate_game(kernel,home_factor=hf,away_factor=af,simulations=simulations,seed=seed^gid,profile="rich"); s=summary(np.asarray(sim["score_distribution"],float),rec["home_score"],rec["away_score"])
         val_rows.append({"game_id":rec["game_id"],"game_date":str(rec["game_date"]),"period":str(rec["game_date"])[:7],**s,"predictability":sim["uncertainty"]["outcome_predictability"],"fallback_rate":sim["uncertainty"]["fallback_rate"],"mc_se_home_win":sim["uncertainty"]["mc_se_home_win"]})
         if ablation:
@@ -105,7 +105,6 @@ def evaluate(paths: Sequence[str|Path], *, development_end="2024-12-31", validat
         raise ValueError("validation set is empty")
     warmup={"status":"NOT_REQUESTED","games":0,"transitions":0}
     if sh_start is not None:
-        warmup_latest=sh_start-pd.Timedelta(nanoseconds=1)
         warmup_games=0
         warmup_transitions=0
         for game in iter_games(files):
@@ -118,7 +117,7 @@ def evaluate(paths: Sequence[str|Path], *, development_end="2024-12-31", validat
                 continue
             added=kernel.add_game(game)
             if added:
-                strength.update(rec["home"],rec["away"],rec["home_score"],rec["away_score"],rec["game_date"],warmup_latest)
+                strength.update(rec["home"],rec["away"],rec["home_score"],rec["away_score"],rec["game_date"],rec["game_date"])
                 warmup_games+=1
                 warmup_transitions+=added
         warmup={
