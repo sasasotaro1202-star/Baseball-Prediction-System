@@ -1,0 +1,80 @@
+name: Project Source Provenance Audit
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - "PROJECT_SOURCE.md"
+      - "PROJECT_SOURCE_PROVENANCE.json"
+      - ".github/workflows/project_source_provenance_audit.yml"
+  schedule:
+    - cron: "23 3 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: project-source-provenance-audit
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify source provenance independently
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s PROJECT_SOURCE.md
+          test -s PROJECT_SOURCE_PROVENANCE.json
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          source = Path("PROJECT_SOURCE.md").read_bytes()
+          provenance = json.loads(Path("PROJECT_SOURCE_PROVENANCE.json").read_text(encoding="utf-8"))
+          actual = hashlib.sha256(source).hexdigest()
+          actual_bytes = len(source)
+          actual_lines = len(Path("PROJECT_SOURCE.md").read_text(encoding="utf-8").splitlines())
+          expected = str(provenance.get("source_sha256") or "")
+          expected_bytes = provenance.get("source_bytes")
+          expected_lines = provenance.get("source_lines")
+
+          print(f"actual_sha256={actual}")
+          print(f"expected_sha256={expected}")
+          print(f"actual_bytes={actual_bytes}")
+          print(f"expected_bytes={expected_bytes}")
+          print(f"actual_lines={actual_lines}")
+          print(f"expected_lines={expected_lines}")
+
+          if actual != expected:
+              raise SystemExit("PROJECT_SOURCE SHA256 provenance mismatch")
+          if expected_bytes is not None and int(expected_bytes) != actual_bytes:
+              raise SystemExit("PROJECT_SOURCE byte-count provenance mismatch")
+          if expected_lines is not None and int(expected_lines) != actual_lines:
+              raise SystemExit("PROJECT_SOURCE line-count provenance mismatch")
+          PY
+
+      - name: Publish provenance summary
+        if: always()
+        run: |
+          set -euo pipefail
+          sha="$(sha256sum PROJECT_SOURCE.md | awk '{print $1}')"
+          bytes="$(wc -c < PROJECT_SOURCE.md | tr -d ' ')"
+          lines="$(wc -l < PROJECT_SOURCE.md | tr -d ' ')"
+          {
+            echo "## Project Source Provenance Audit"
+            echo "- commit: ${GITHUB_SHA}"
+            echo "- sha256: ${sha}"
+            echo "- bytes: ${bytes}"
+            echo "- lines: ${lines}"
+          } >> "${GITHUB_STEP_SUMMARY}"
