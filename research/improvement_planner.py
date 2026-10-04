@@ -31,6 +31,7 @@ TASKS: tuple[ResearchTask, ...] = (
     ResearchTask("market_baseline", 50, ("closing_line_timestamp_audit", "walk_forward_oos"), "Never use closing information as a pregame model feature unless it was available at cutoff."),
     ResearchTask("target_permutation", 95, ("target_shuffle_oos", "fixed_features", "deterministic_seed"), "Reject or investigate if the real target advantage is not clearly separated from shuffled-target performance."),
     ResearchTask("feature_influence", 70, ("walk_forward_oos", "permutation_importance", "stability_across_windows"), "Do not add or retain a feature solely because its in-sample importance is high."),
+    ResearchTask("feature_set_variants", 92, ("same_chronological_splits", "pit_audit", "calibration", "ablation", "robustness"), "Do not promote a feature set because it has more columns; require incremental OOS evidence and stable holdout behavior."),
 )
 
 
