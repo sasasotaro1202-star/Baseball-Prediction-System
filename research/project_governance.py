@@ -67,6 +67,21 @@ WORKFLOW_CONTRACTS: dict[str, dict[str, Any]] = {
         "max_age_hours": 30,
         "required": ("schedule:", "workflow_dispatch:"),
     },
+    ".github/workflows/baseball_governance_autopilot.yml": {
+        "monitor": True,
+        "max_age_hours": 8,
+        "required": ("schedule:", "cron: \"13 */6 * * *\"", "actions: read", "--actions"),
+    },
+    ".github/workflows/npb_prediction_experience_archive.yml": {
+        "monitor": True,
+        "max_age_hours": 6,
+        "required": ("workflow_run:", "schedule:", "contents: write"),
+    },
+    ".github/workflows/baseball_24h_research_keeper.yml": {
+        "monitor": True,
+        "max_age_hours": 1,
+        "required": ("schedule:", "cron: '*/5 * * * *'", "actions: write"),
+    },
     ".github/workflows/baseball_actions_recovery.yml": {
         "monitor": False,
         "max_age_hours": 0,
