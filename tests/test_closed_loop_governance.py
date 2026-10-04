@@ -179,3 +179,35 @@ def test_holdout_stage_blocks_row_mismatch(tmp_path):
     stage = holdout_stage(path)
     assert stage.status == "BLOCKED"
     assert "holdout_row_mismatch:NPB" in stage.blockers
+
+
+def test_governance_blocks_stale_artifact_commit(tmp_path):
+    from research.closed_loop_governance import oos_stage, holdout_stage, candidate_stage, calibration_stage
+
+    calibration = tmp_path / "calibration.json"
+    calibration.write_text(json.dumps({
+        "git_commit": "old-sha",
+        "version": 3,
+        "leagues": {"NPB": {"temperature": 1.0}, "MLB": {"temperature": 1.0}},
+    }), encoding="utf-8")
+    oos = tmp_path / "development_oos.json"
+    oos.write_text(json.dumps({"git_commit": "old-sha", "NPB": {}, "MLB": {}}), encoding="utf-8")
+    holdout = tmp_path / "independent_holdout.json"
+    holdout.write_text(json.dumps({"git_commit": "old-sha", "NPB": {}, "MLB": {}}), encoding="utf-8")
+    candidate = tmp_path / "candidate_validation.json"
+    candidate.write_text(json.dumps({"git_commit": "old-sha", "NPB": {}, "MLB": {}}), encoding="utf-8")
+
+    assert calibration_stage(calibration, expected_commit="new-sha").blockers == ("calibration_git_commit_mismatch:old-sha!=new-sha",)
+    assert oos_stage(oos, expected_commit="new-sha").blockers == ("development_oos_git_commit_mismatch:old-sha!=new-sha",)
+    assert holdout_stage(holdout, expected_commit="new-sha").blockers == ("independent_holdout_git_commit_mismatch:old-sha!=new-sha",)
+    assert candidate_stage(candidate, expected_commit="new-sha").blockers == ("candidate_validation_git_commit_mismatch:old-sha!=new-sha",)
+
+
+def test_governance_blocks_missing_artifact_commit_when_expected(tmp_path):
+    from research.closed_loop_governance import oos_stage
+
+    path = tmp_path / "development_oos.json"
+    path.write_text(json.dumps({"NPB": {}, "MLB": {}}), encoding="utf-8")
+    stage = oos_stage(path, expected_commit="new-sha")
+    assert stage.status == "BLOCKED"
+    assert stage.blockers == ("development_oos_git_commit_missing",)
