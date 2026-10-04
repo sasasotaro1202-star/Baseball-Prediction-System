@@ -284,7 +284,7 @@ def test_manual_prediction_contract_preserves_runtime_failure_and_json_stdout():
     assert 'if [ ! -s "${output}" ]; then' in workflow
     assert "preserving the original runtime failure" in workflow
     assert "except json.JSONDecodeError as exc:" in workflow
-    assert "raise SystemExit(rc if rc else 1)" in workflow
+    assert 'exit "${rc:-1}"' in workflow
     assert 'PRODUCTION_DEGENERACY_DEBUG", json.dumps' in production
     assert ", file=sys.stderr)" in production
 
