@@ -266,8 +266,10 @@ def run(
         })
 
     rows.sort(key=lambda r: (
-        r["metrics"]["HighLogLoss"],
         r["metrics"]["ScoreMAE"],
+        float(r["metrics"]["ExactScoreLogLoss"])
+        if np.isfinite(float(r["metrics"]["ExactScoreLogLoss"])) else float("inf"),
+        r["metrics"]["HighLogLoss"],
         r["metrics"]["Top4HitRate"] * -1.0,
         r["variant_id"],
     ))
