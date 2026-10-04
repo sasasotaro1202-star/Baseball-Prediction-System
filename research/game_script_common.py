@@ -117,7 +117,11 @@ def _reconstruct_scores(frame:pd.DataFrame)->pd.DataFrame:
         if len(hp)!=len(g) or not hp or hp[0]!=0 or ap[0]!=0: continue
         fh,fa=float(g.home_score.iloc[-1]),float(g.away_score.iloc[-1])
         if not np.isfinite(fh) or not np.isfinite(fa) or hp[-1]!=round(fh) or ap[-1]!=round(fa): continue
-        g["state_home_score"],g["state_away_score"]=hp,ap; g["complete_status"]="PASS" if (g.result_id.ne("").any() or g.end_time.ne("").any()) else "UNKNOWN"; kept.append(g)
+        g["state_home_score"],g["state_away_score"]=hp,ap
+        final_result_id=_id(g.result_id.iloc[-1]) if "result_id" in g else ""
+        final_end_time=_id(g.end_time.iloc[-1]) if "end_time" in g else ""
+        g["complete_status"]="PASS" if (final_result_id or final_end_time) else "UNKNOWN"
+        kept.append(g)
     return pd.concat(kept,ignore_index=True) if kept else frame.iloc[0:0].copy()
 
 
