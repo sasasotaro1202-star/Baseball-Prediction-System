@@ -1599,6 +1599,20 @@ class BaseballBacktest:
         validation observations exist for that regime; otherwise it shrinks
         completely back to the global weights.
         """
+        # Each fit is an independent experiment/configuration. Never carry
+        # routing, stacking, calibration, or blend state from a prior config.
+        self._stacking_model = None
+        self._stacking_model_names = ()
+        self._model_temperatures = {}
+        self._competition_temperatures = {}
+        self._competition_strategy_ids = {}
+        self._competition_calibration_rows = {}
+        self._regime_router = None
+        self._regime_weights = {}
+        self._ensemble_blend_mode = "linear"
+        self._last_temperature = 1.0
+        self._ensemble_diversity_lambda = 0.0
+        self._ensemble_model_redundancy = {}
         models=self.models(league); k=3 if league=="NPB" else 2
         if context_keys is None:
             context = pd.Series([f"{league}:unknown:unknown"] * len(X), index=X.index, dtype=object)
