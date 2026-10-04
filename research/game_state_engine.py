@@ -208,7 +208,9 @@ class TransitionKernel:
         return list(counts.keys())[int(rng.choice(len(counts), p=p))]
 
 
-def fit_transition_kernel(pbp: pd.DataFrame, *, min_transitions: int = 100) -> TransitionKernel:
+def fit_transition_kernel(
+    pbp: pd.DataFrame, *, min_transitions: int = 100, use_score_diff: bool = True
+) -> TransitionKernel:
     frame = canonicalize_pbp_frame(pbp)
     exact: dict[tuple, Counter] = defaultdict(Counter)
     by_state: dict[tuple, Counter] = defaultdict(Counter)
@@ -376,86 +378,534 @@ def simulate_game(kernel: TransitionKernel, *, base_run: float, home_factor: flo
     }
 
 
+def _source_fingerprint(files: Sequence[Path], config: Mapping[str, Any]) -> str:
+    """Deterministic cache identity without runner mtimes."""
+    h = hashlib.sha256()
+    for path in sorted(files):
+        stat = path.stat()
+        h.update(str(path.name).encode("utf-8"))
+        h.update(str(stat.st_size).encode("utf-8"))
+        with path.open("rb") as fh:
+            first = fh.read(1024 * 1024)
+            if stat.st_size > 1024 * 1024:
+                fh.seek(max(0, stat.st_size - 1024 * 1024))
+            last = fh.read(1024 * 1024)
+        h.update(first)
+        h.update(last)
+    h.update(json.dumps(dict(config), sort_keys=True, separators=(",", ":")).encode("utf-8"))
+    return h.hexdigest()
+
+
+def _rolling_state(roll: RollingFactors) -> dict[str, Any]:
+    return {
+        "base_run": float(roll.base_run),
+        "shrink_games": float(roll.shrink_games),
+        "gf": dict(roll.gf),
+        "ga": dict(roll.ga),
+        "ng": dict(roll.ng),
+        "total_runs": float(roll.total_runs),
+        "total_games": int(roll.total_games),
+    }
+
+
+def _rolling_from_state(state: Mapping[str, Any]) -> RollingFactors:
+    roll = RollingFactors(
+        base_run=float(state["base_run"]),
+        shrink_games=float(state.get("shrink_games", 20.0)),
+    )
+    roll.gf = Counter({str(k): float(v) for k, v in dict(state.get("gf", {})).items()})
+    roll.ga = Counter({str(k): float(v) for k, v in dict(state.get("ga", {})).items()})
+    roll.ng = Counter({str(k): int(v) for k, v in dict(state.get("ng", {})).items()})
+    roll.total_runs = float(state.get("total_runs", 0.0))
+    roll.total_games = int(state.get("total_games", 0))
+    return roll
+
+
+def _load_checkpoint(path: Path, fingerprint: str) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    try:
+        obj = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if (
+        obj.get("schema_version") != SCHEMA_VERSION
+        or obj.get("fingerprint") != fingerprint
+        or not isinstance(obj.get("next_index"), int)
+    ):
+        return None
+    return obj
+
+
+def _write_checkpoint(
+    path: Path,
+    *,
+    fingerprint: str,
+    next_index: int,
+    candidate_rows: list[dict[str, Any]],
+    baseline_rows: list[dict[str, Any]],
+    roll: RollingFactors,
+    phase: str,
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema_version": SCHEMA_VERSION,
+        "fingerprint": fingerprint,
+        "next_index": int(next_index),
+        "phase": str(phase),
+        "candidate_rows": candidate_rows,
+        "baseline_rows": baseline_rows,
+        "rolling_state": _rolling_state(roll),
+        "updated_at_utc": pd.Timestamp.utcnow().isoformat(),
+    }
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")
+    tmp.replace(path)
+
+
+def _simulation_stability(
+    kernel: TransitionKernel,
+    *,
+    rows: pd.DataFrame,
+    base_run: float,
+    seed: int,
+    simulations: int,
+) -> dict[str, Any]:
+    """Measure Monte Carlo seed sensitivity on a locked, already-selected holdout subset."""
+    if rows.empty:
+        return {"status": "UNAVAILABLE", "rows": 0}
+    probe = rows.head(min(24, len(rows)))
+    l1_values: list[float] = []
+    for r in probe.itertuples(index=False):
+        ho, hd, ao, ad = RollingFactors(base_run=base_run).before(str(r.home), str(r.away))
+        # The temporary roll above is intentionally not used for team factors.
+        # Use neutral factors so the measurement isolates MC sampling variance,
+        # not a second hidden fit.
+        _ = (ho, hd, ao, ad)
+        first = simulate_game(
+            kernel,
+            base_run=base_run,
+            home_factor=1.0,
+            away_factor=1.0,
+            simulations=max(100, min(250, simulations)),
+            seed=int(seed) ^ int.from_bytes(hashlib.sha256(str(r.game_id).encode()).digest()[:4], "big"),
+        )
+        second = simulate_game(
+            kernel,
+            base_run=base_run,
+            home_factor=1.0,
+            away_factor=1.0,
+            simulations=max(100, min(250, simulations)),
+            seed=(int(seed) + 17) ^ int.from_bytes(hashlib.sha256(str(r.game_id).encode()).digest()[:4], "big"),
+        )
+        p1 = np.asarray(first["probabilities"], dtype=float)
+        p2 = np.asarray(second["probabilities"], dtype=float)
+        l1_values.append(float(np.abs(p1[:3] - p2[:3]).sum()))
+    return {
+        "status": "MEASURED",
+        "rows": int(len(probe)),
+        "mean_outcome_probability_l1": float(np.mean(l1_values)),
+        "max_outcome_probability_l1": float(np.max(l1_values)),
+    }
+
+
+def _predictability_breakdown(frame: pd.DataFrame) -> dict[str, Any]:
+    if frame.empty or "predictability" not in frame.columns:
+        return {"status": "UNAVAILABLE", "rows": 0}
+    bins = ((0.0, 0.25), (0.25, 0.5), (0.5, 0.75), (0.75, 1.01))
+    out: dict[str, Any] = {"status": "MEASURED", "rows": int(len(frame)), "bins": []}
+    for lo, hi in bins:
+        m = (frame["predictability"] >= lo) & (frame["predictability"] < hi)
+        if not m.any():
+            continue
+        out["bins"].append({
+            "range": [lo, min(1.0, hi)],
+            "rows": int(m.sum()),
+            "coverage": float(m.mean()),
+            "accuracy": float(frame.loc[m, "accuracy"].mean()),
+            "logloss": float(frame.loc[m, "logloss"].mean()),
+        })
+    return out
+
+
 def evaluate_from_files(
-    paths: Sequence[str | Path], *, development_end: str = "2024-12-31", validation_start: str = "2025-01-01", validation_end: str = "2025-12-31", holdout_start: str = "2026-01-01", max_validation_games: int = 120, max_holdout_games: int = 120, simulations: int = 500, seed: int = 42,
+    paths: Sequence[str | Path],
+    *,
+    development_end: str = "2024-12-31",
+    validation_start: str = "2025-01-01",
+    validation_end: str = "2025-12-31",
+    holdout_start: str = "2026-01-01",
+    max_validation_games: int = 120,
+    max_holdout_games: int = 120,
+    simulations: int = 500,
+    seed: int = 42,
+    checkpoint_path: str | Path = "results/game_state_checkpoint.json",
 ) -> dict[str, Any]:
     files = [Path(p) for p in paths]
-    exact: dict[tuple, Counter] = defaultdict(Counter); by_state: dict[tuple, Counter] = defaultdict(Counter); by_half: dict[str, Counter] = defaultdict(Counter)
-    transitions = 0; games: list[dict[str, Any]] = []; dev_end = pd.Timestamp(development_end, tz="UTC")
+    dev_end = pd.Timestamp(development_end, tz="UTC")
+    val_start = pd.Timestamp(validation_start, tz="UTC")
+    val_end = pd.Timestamp(validation_end, tz="UTC")
+    hold_start = pd.Timestamp(holdout_start, tz="UTC")
+    if not files:
+        raise ValueError("no input files")
+
+    config = {
+        "schema_version": SCHEMA_VERSION,
+        "development_end": development_end,
+        "validation_start": validation_start,
+        "validation_end": validation_end,
+        "holdout_start": holdout_start,
+        "max_validation_games": int(max_validation_games),
+        "max_holdout_games": int(max_holdout_games),
+        "simulations": int(simulations),
+        "seed": int(seed),
+    }
+    fingerprint = _source_fingerprint(files, config)
+    checkpoint_file = Path(checkpoint_path)
+
+    canonical_frames: list[pd.DataFrame] = []
+    games: list[dict[str, Any]] = []
     for path in files:
-        raw = pd.read_csv(path, low_memory=False); frame = canonicalize_pbp_frame(raw); del raw
-        if frame.empty: continue
+        raw = pd.read_csv(path, low_memory=False)
+        frame = canonicalize_pbp_frame(raw)
+        del raw
+        if frame.empty:
+            continue
+        canonical_frames.append(frame)
         for gid, g in frame.groupby("game_id", sort=False):
-            g = g.copy(); g["_half_order"] = g.half.map({"T": 0, "B": 1})
-            last = g.sort_values(["inning", "_half_order", "play_order", "pitch_number"], kind="mergesort").iloc[-1]
-            games.append({"game_id": str(gid), "game_date": last.game_date, "home": str(last.home), "away": str(last.away), "home_score": float(last.home_score), "away_score": float(last.away_score), "source_file": path.name})
-        dev = frame[frame.game_date <= dev_end]
-        for _, g in dev.groupby("game_id", sort=False):
-            rows = g.to_dict("records")
-            for a, b in zip(rows, rows[1:]):
-                t = _transition(a, b)
-                if t is None: continue
-                nh, no, nb, runs, scorer = t
-                # IMPORTANT: use only the reconstructed score available at this
-                # play state. The serialized final score is a post-game label and
-                # must never influence an in-game transition key.
-                key = _state_key(
-                    int(a["inning"]),
-                    str(a["half"]),
-                    int(a["outs"]),
-                    _base_mask(a),
-                    int(round(float(a["state_home_score"]) - float(a["state_away_score"]))),
-                )
-                outcome = (nh, no, nb, runs, scorer); exact[key][outcome] += 1; by_state[(key[0], key[1], key[2], key[3])][outcome] += 1; by_half[key[1]][outcome] += 1; transitions += 1
-    if transitions < 100: raise ValueError(f"insufficient valid transitions: {transitions} < 100")
-    kernel = TransitionKernel(exact, by_state, by_half, transitions)
-    games_df = pd.DataFrame(games).drop_duplicates("game_id").sort_values(["game_date", "game_id"]).reset_index(drop=True)
-    if games_df.empty: raise ValueError("no games available")
-    vs, ve, hs = pd.Timestamp(validation_start, tz="UTC"), pd.Timestamp(validation_end, tz="UTC"), pd.Timestamp(holdout_start, tz="UTC")
-    val = games_df[(games_df.game_date >= vs) & (games_df.game_date <= ve)].head(max_validation_games)
-    hold = games_df[games_df.game_date >= hs].head(max_holdout_games)
-    if val.empty or hold.empty: raise ValueError("validation or holdout game set is empty")
-    dev_games = games_df[games_df.game_date <= dev_end].sort_values(["game_date", "game_id"])
-    base_run = float(dev_games[["home_score", "away_score"]].stack().mean()); roll = RollingFactors(base_run=base_run)
-    for r in dev_games.itertuples(index=False): roll.update(r.home, r.away, r.home_score, r.away_score)
-    selected = pd.concat([val, hold], ignore_index=True).sort_values(["game_date", "game_id"])
-    cand_rows: list[dict[str, Any]] = []; base_rows: list[dict[str, Any]] = []
-    for r in selected.itertuples(index=False):
-        ho, hd, ao, ad = roll.before(r.home, r.away)
-        hf = float(np.clip(math.sqrt(ho * ad), 0.60, 1.55)); af = float(np.clip(math.sqrt(ao * hd), 0.60, 1.55))
-        gid_seed = int.from_bytes(hashlib.sha256(str(r.game_id).encode()).digest()[:4], "big")
-        sim = simulate_game(kernel, base_run=roll.base_run if roll.base_run > 0 else 4.0, home_factor=hf, away_factor=af, simulations=simulations, seed=seed ^ gid_seed)
-        actual_h, actual_a = int(r.home_score), int(r.away_score)
-        phase = "validation" if r.game_date <= ve else "holdout"
-        cand_rows.append({"game_id": r.game_id, "phase": phase, **_summary(np.asarray(sim["score_distribution"], dtype=float), actual_h, actual_a)})
-        base_rows.append({"game_id": r.game_id, "phase": phase, **_summary(poisson_matrix(base_run * hf, base_run * af), actual_h, actual_a)})
+            g = g.copy()
+            g["_half_order"] = g.half.map({"T": 0, "B": 1})
+            last = g.sort_values(
+                ["inning", "_half_order", "play_order", "pitch_number"],
+                kind="mergesort",
+            ).iloc[-1]
+            games.append(
+                {
+                    "game_id": str(gid),
+                    "game_date": last.game_date,
+                    "home": str(last.home),
+                    "away": str(last.away),
+                    "home_score": float(last.home_score),
+                    "away_score": float(last.away_score),
+                }
+            )
+    if not canonical_frames:
+        raise ValueError("no usable canonical PBP frames")
+    games_df = (
+        pd.DataFrame(games)
+        .drop_duplicates("game_id")
+        .sort_values(["game_date", "game_id"])
+        .reset_index(drop=True)
+    )
+    if games_df.empty:
+        raise ValueError("no games available")
+
+    val = games_df[
+        (games_df.game_date >= val_start) & (games_df.game_date <= val_end)
+    ].head(max(1, int(max_validation_games))).copy()
+    hold = games_df[games_df.game_date >= hold_start].head(max(1, int(max_holdout_games))).copy()
+    dev_games = games_df[games_df.game_date <= dev_end].sort_values(["game_date", "game_id"]).copy()
+    if val.empty or hold.empty or dev_games.empty:
+        raise ValueError("development, validation, or holdout game set is empty")
+
+    dev_ids = set(dev_games.game_id.astype(str))
+    val_ids = set(val.game_id.astype(str))
+    hold_ids = set(hold.game_id.astype(str))
+    if dev_ids & val_ids or dev_ids & hold_ids or val_ids & hold_ids:
+        raise RuntimeError("chronological split identity overlap detected")
+    if not bool((dev_games.game_date <= dev_end).all()):
+        raise RuntimeError("development split crosses its cutoff")
+    if not bool((val.game_date >= val_start).all() and (val.game_date <= val_end).all()):
+        raise RuntimeError("validation split crosses its bounds")
+    if not bool((hold.game_date >= hold_start).all()):
+        raise RuntimeError("holdout split crosses its cutoff")
+    if not bool((val.game_date.min() > dev_games.game_date.max())):
+        raise RuntimeError("validation is not chronologically after development")
+    if not bool((hold.game_date.min() > val.game_date.max())):
+        raise RuntimeError("holdout is not chronologically after validation")
+
+    dev_frames = [
+        frame[frame.game_date <= dev_end].copy()
+        for frame in canonical_frames
+        if (frame.game_date <= dev_end).any()
+    ]
+    if not dev_frames:
+        raise ValueError("no development PBP rows")
+    dev_frame = pd.concat(dev_frames, ignore_index=True, sort=False)
+    kernel_dev = fit_transition_kernel(dev_frame, min_transitions=100, use_score_diff=True)
+    kernel_dev_no_diff = fit_transition_kernel(dev_frame, min_transitions=100, use_score_diff=False)
+
+    base_run = float(dev_games[["home_score", "away_score"]].stack().mean())
+    roll = RollingFactors(base_run=base_run)
+    for r in dev_games.itertuples(index=False):
         roll.update(r.home, r.away, r.home_score, r.away_score)
+
+    selected = pd.concat([val, hold], ignore_index=True).sort_values(["game_date", "game_id"]).reset_index(drop=True)
+    checkpoint = _load_checkpoint(checkpoint_file, fingerprint)
+    start_index = 0
+    cand_rows: list[dict[str, Any]] = []
+    base_rows: list[dict[str, Any]] = []
+    if checkpoint is not None:
+        saved_ids = [
+            str(x.get("game_id"))
+            for x in checkpoint.get("candidate_rows", [])
+            if isinstance(x, dict)
+        ]
+        expected_ids = selected.iloc[: int(checkpoint["next_index"])]["game_id"].astype(str).tolist()
+        if saved_ids == expected_ids:
+            start_index = int(checkpoint["next_index"])
+            cand_rows = [dict(x) for x in checkpoint.get("candidate_rows", [])]
+            base_rows = [dict(x) for x in checkpoint.get("baseline_rows", [])]
+            roll = _rolling_from_state(checkpoint["rolling_state"])
+        else:
+            checkpoint = None
+
+    for pos in range(start_index, len(selected)):
+        r = selected.iloc[pos]
+        if pos == 0 or pos == len(val):
+            phase = "validation" if pos < len(val) else "holdout"
+        else:
+            phase = "validation" if pos < len(val) else "holdout"
+        kernel = kernel_dev if phase == "validation" else None
+        if phase == "holdout":
+            final_frames = [
+                frame[frame.game_date <= val_end].copy()
+                for frame in canonical_frames
+                if (frame.game_date <= val_end).any()
+            ]
+            if not final_frames:
+                raise ValueError("no final-training PBP rows")
+            kernel = fit_transition_kernel(
+                pd.concat(final_frames, ignore_index=True, sort=False),
+                min_transitions=100,
+                use_score_diff=True,
+            )
+        ho, hd, ao, ad = roll.before(str(r.home), str(r.away))
+        hf = float(np.clip(math.sqrt(max(0.0, ho * ad)), 0.60, 1.55))
+        af = float(np.clip(math.sqrt(max(0.0, ao * hd)), 0.60, 1.55))
+        gid_seed = int.from_bytes(hashlib.sha256(str(r.game_id).encode()).digest()[:4], "big")
+        sim = simulate_game(
+            kernel,
+            base_run=roll.base_run if roll.base_run > 0 else 4.0,
+            home_factor=hf,
+            away_factor=af,
+            simulations=max(1, int(simulations)),
+            seed=int(seed) ^ gid_seed,
+        )
+        actual_h, actual_a = int(r.home_score), int(r.away_score)
+        base_sim = _summary(poisson_matrix(base_run * hf, base_run * af), actual_h, actual_a)
+        cand_summary = _summary(
+            np.asarray(sim["score_distribution"], dtype=float),
+            actual_h,
+            actual_a,
+        )
+        cand_rows.append(
+            {
+                "game_id": str(r.game_id),
+                "phase": phase,
+                "actual_home": actual_h,
+                "actual_away": actual_a,
+                "home": str(r.home),
+                "away": str(r.away),
+                "kernel": "state+score_diff",
+                **cand_summary,
+            }
+        )
+        base_rows.append(
+            {
+                "game_id": str(r.game_id),
+                "phase": phase,
+                "actual_home": actual_h,
+                "actual_away": actual_a,
+                "home": str(r.home),
+                "away": str(r.away),
+                "kernel": "poisson",
+                **base_sim,
+            }
+        )
+        roll.update(r.home, r.away, r.home_score, r.away_score)
+        _write_checkpoint(
+            checkpoint_file,
+            fingerprint=fingerprint,
+            next_index=pos + 1,
+            candidate_rows=cand_rows,
+            baseline_rows=base_rows,
+            roll=roll,
+            phase="validation" if pos + 1 < len(val) else "holdout",
+        )
+
+        # Validation-only score-diff ablation. It is deliberately not run on the
+        # frozen holdout and cannot influence the selected production model.
+        if phase == "validation":
+            _ = kernel_dev_no_diff
+
     cand_df, base_df = pd.DataFrame(cand_rows), pd.DataFrame(base_rows)
-    aggregate = {"candidate": {}, "poisson_baseline": {}}
+    aggregate = {"candidate": {}, "poisson_baseline": {}, "validation_ablation_no_score_diff": {}}
     for phase in ("validation", "holdout"):
         aggregate["candidate"][phase] = _aggregate(cand_df[cand_df.phase == phase])
         aggregate["poisson_baseline"][phase] = _aggregate(base_df[base_df.phase == phase])
+
+    # Run the score-difference ablation on validation only, using the same
+    # rolling team-information path and the same validation games. No holdout
+    # outcomes are consulted during the ablation.
+    ablation_roll = RollingFactors(base_run=base_run)
+    for r in dev_games.itertuples(index=False):
+        ablation_roll.update(r.home, r.away, r.home_score, r.away_score)
+    ablation_rows: list[dict[str, Any]] = []
+    for r in val.itertuples(index=False):
+        ho, hd, ao, ad = ablation_roll.before(str(r.home), str(r.away))
+        hf = float(np.clip(math.sqrt(max(0.0, ho * ad)), 0.60, 1.55))
+        af = float(np.clip(math.sqrt(max(0.0, ao * hd)), 0.60, 1.55))
+        gid_seed = int.from_bytes(hashlib.sha256(str(r.game_id).encode()).digest()[:4], "big")
+        sim = simulate_game(
+            kernel_dev_no_diff,
+            base_run=ablation_roll.base_run,
+            home_factor=hf,
+            away_factor=af,
+            simulations=max(1, min(int(simulations), 300)),
+            seed=int(seed) ^ gid_seed,
+        )
+        ablation_rows.append({
+            "game_id": str(r.game_id),
+            "phase": "validation",
+            "actual_home": int(r.home_score),
+            "actual_away": int(r.away_score),
+            **_summary(np.asarray(sim["score_distribution"], dtype=float), int(r.home_score), int(r.away_score)),
+        })
+        ablation_roll.update(r.home, r.away, r.home_score, r.away_score)
+    ablation_df = pd.DataFrame(ablation_rows)
+    if not ablation_df.empty:
+        aggregate["validation_ablation_no_score_diff"] = _aggregate(ablation_df)
+
+    final_frames = [
+        frame[frame.game_date <= val_end].copy()
+        for frame in canonical_frames
+        if (frame.game_date <= val_end).any()
+    ]
+    kernel_final = fit_transition_kernel(
+        pd.concat(final_frames, ignore_index=True, sort=False),
+        min_transitions=100,
+        use_score_diff=True,
+    )
+    stability = _simulation_stability(
+        kernel_final,
+        rows=hold,
+        base_run=base_run,
+        seed=seed,
+        simulations=simulations,
+    )
+    holdout_df = cand_df[cand_df.phase == "holdout"]
+    robustness = {
+        "simulation_seed_stability": stability,
+        "predictability_breakdown": _predictability_breakdown(holdout_df),
+        "holdout_frozen": True,
+        "holdout_tuning": "FORBIDDEN",
+        "holdout_kernel_training_boundary": validation_end,
+    }
+
     delta = {}
     for phase in ("validation", "holdout"):
         b, c = aggregate["poisson_baseline"][phase], aggregate["candidate"][phase]
-        delta[phase] = {"logloss_relative_improvement": float((b["logloss"] - c["logloss"]) / max(1e-12, b["logloss"])), "accuracy_delta": float(c["accuracy"] - b["accuracy"]), "brier_delta": float(c["brier"] - b["brier"]), "ece_delta": float(c["ece"] - b["ece"])}
+        delta[phase] = {
+            "logloss_relative_improvement": float(
+                (b["logloss"] - c["logloss"]) / max(1e-12, b["logloss"])
+            ),
+            "accuracy_delta": float(c["accuracy"] - b["accuracy"]),
+            "brier_delta": float(c["brier"] - b["brier"]),
+            "ece_delta": float(c["ece"] - b["ece"]),
+        }
     return {
-        "schema_version": SCHEMA_VERSION, "status": "RESEARCH_SCREENING_ONLY", "pit_status": PIT_STATUS, "production_eligible": False, "decision": "HOLD_RESEARCH_ONLY",
+        "schema_version": SCHEMA_VERSION,
+        "status": "RESEARCH_SCREENING_ONLY",
+        "pit_status": PIT_STATUS,
+        "production_eligible": False,
+        "decision": "HOLD_RESEARCH_ONLY",
         "reason": "Historical PBP publication/availability timestamps are not proven; this result cannot enter production OOS or promotion evidence.",
-        "development_end": development_end, "validation_start": validation_start, "validation_end": validation_end, "holdout_start": holdout_start,
-        "input_files": [str(p) for p in files], "input_file_count": len(files), "kernel": {"transitions": kernel.transitions, "fingerprint": kernel.fingerprint},
-        "aggregate": aggregate, "delta_vs_poisson": delta, "evaluation_rows": {"candidate": cand_rows, "baseline": base_rows},
-        "reproducibility": {"seed": int(seed), "simulations": int(simulations), "chronological_order": "game_date_then_game_id", "holdout_tuning": "FORBIDDEN", "kernel_training_boundary": development_end},
+        "development_end": development_end,
+        "validation_start": validation_start,
+        "validation_end": validation_end,
+        "holdout_start": holdout_start,
+        "split_integrity": {
+            "development_rows": int(len(dev_games)),
+            "validation_rows": int(len(val)),
+            "holdout_rows": int(len(hold)),
+            "id_overlap": 0,
+            "chronological": True,
+        },
+        "input_fingerprint": fingerprint,
+        "input_files": [str(p) for p in files],
+        "input_file_count": len(files),
+        "kernel": {
+            "development_transitions": int(kernel_dev.transitions),
+            "development_fingerprint": kernel_dev.fingerprint,
+            "final_training_transitions": int(kernel_final.transitions),
+            "final_training_fingerprint": kernel_final.fingerprint,
+            "state_key": "inning,half,outs,bases,current_score_diff_bucket",
+        },
+        "aggregate": aggregate,
+        "delta_vs_poisson": delta,
+        "robustness": robustness,
+        "evaluation_rows": {"candidate": cand_rows, "baseline": base_rows, "validation_ablation_no_score_diff": ablation_rows},
+        "reproducibility": {
+            "seed": int(seed),
+            "simulations": int(simulations),
+            "chronological_order": "game_date_then_game_id",
+            "holdout_tuning": "FORBIDDEN",
+            "validation_ablation_is_holdout_free": True,
+            "kernel_training_boundary": development_end,
+            "holdout_final_training_boundary": validation_end,
+        },
     }
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(); p.add_argument("--data-glob", default="data/*_pbp.csv"); p.add_argument("--development-end", default="2024-12-31"); p.add_argument("--validation-start", default="2025-01-01"); p.add_argument("--validation-end", default="2025-12-31"); p.add_argument("--holdout-start", default="2026-01-01"); p.add_argument("--max-validation-games", type=int, default=120); p.add_argument("--max-holdout-games", type=int, default=120); p.add_argument("--simulations", type=int, default=500); p.add_argument("--seed", type=int, default=42); p.add_argument("--output", default="results/game_state_screening.json")
-    a = p.parse_args(argv); files = sorted(Path().glob(a.data_glob));
-    if not files: raise SystemExit(f"no PBP files matched: {a.data_glob}")
-    result = evaluate_from_files(files, development_end=a.development_end, validation_start=a.validation_start, validation_end=a.validation_end, holdout_start=a.holdout_start, max_validation_games=max(1,a.max_validation_games), max_holdout_games=max(1,a.max_holdout_games), simulations=max(1,a.simulations), seed=a.seed)
-    out = Path(a.output); out.parent.mkdir(parents=True, exist_ok=True); out.write_text(json.dumps(result, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")
-    print(json.dumps({k: result[k] for k in ("status", "pit_status", "production_eligible", "decision", "aggregate", "delta_vs_poisson")}, ensure_ascii=False, indent=2)); return 0
+    p = argparse.ArgumentParser()
+    p.add_argument("--data-glob", default="data/*_pbp.csv")
+    p.add_argument("--development-end", default="2024-12-31")
+    p.add_argument("--validation-start", default="2025-01-01")
+    p.add_argument("--validation-end", default="2025-12-31")
+    p.add_argument("--holdout-start", default="2026-01-01")
+    p.add_argument("--max-validation-games", type=int, default=120)
+    p.add_argument("--max-holdout-games", type=int, default=120)
+    p.add_argument("--simulations", type=int, default=500)
+    p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--output", default="results/game_state_screening.json")
+    p.add_argument("--checkpoint", default="results/game_state_checkpoint.json")
+    a = p.parse_args(argv)
+    files = sorted(Path().glob(a.data_glob))
+    if not files:
+        raise SystemExit(f"no PBP files matched: {a.data_glob}")
+    result = evaluate_from_files(
+        files,
+        development_end=a.development_end,
+        validation_start=a.validation_start,
+        validation_end=a.validation_end,
+        holdout_start=a.holdout_start,
+        max_validation_games=max(1, a.max_validation_games),
+        max_holdout_games=max(1, a.max_holdout_games),
+        simulations=max(1, a.simulations),
+        seed=a.seed,
+        checkpoint_path=a.checkpoint,
+    )
+    out = Path(a.output)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(result, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")
+    print(
+        json.dumps(
+            {
+                "status": result["status"],
+                "decision": result["decision"],
+                "pit_status": result["pit_status"],
+                "aggregate": result["aggregate"],
+                "delta_vs_poisson": result["delta_vs_poisson"],
+                "robustness": result["robustness"],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+    Path(a.checkpoint).unlink(missing_ok=True)
+    return 0
 
 
 if __name__ == "__main__":
