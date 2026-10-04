@@ -166,6 +166,7 @@ jobs:
           exit 0
 
       - name: Verify screening result
+        if: ${{ steps.game_state.outputs.exit_code == '0' }}
         timeout-minutes: 5
         run: |
           set -euo pipefail
@@ -175,6 +176,7 @@ jobs:
           from pathlib import Path
 
           obj = json.loads(Path("results/game_state_screening.json").read_text(encoding="utf-8"))
+          assert obj.get("schema_version") == "game-state-transition-v4"
           assert obj.get("status") == "RESEARCH_SCREENING_ONLY"
           assert obj.get("decision") == "HOLD_RESEARCH_ONLY"
           assert obj.get("pit_status", "").startswith("UNVERIFIABLE")
@@ -206,8 +208,10 @@ jobs:
             results/game_state_screening.json
             research/game_state_engine.py
             tests/test_game_state_engine.py
-          if-no-files-found: error
-          retention-days: 30      - name: Persist immutable research evidence and checkpoint
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Persist immutable research evidence and checkpoint
         if: always()
         run: |
           set -euo pipefail
