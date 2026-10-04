@@ -11,6 +11,7 @@ The target game itself is never appended to historical training data.
 from __future__ import annotations
 
 from copy import deepcopy
+import hashlib
 import time
 import argparse, json, re, html as html_lib
 import sys
@@ -38,6 +39,7 @@ from research.competition_taxonomy import classify_npb
 ROOT = Path(__file__).resolve().parent
 FEATURE_MANIFEST_VERSION = "feature-contract-v1"
 
+
 def _feature_schema_metadata(columns):
     names = [str(x) for x in columns]
     digest = hashlib.sha256("\n".join(names).encode("utf-8")).hexdigest()
@@ -45,7 +47,10 @@ def _feature_schema_metadata(columns):
         x for x in names
         if x.startswith(("lineup_", "h_lineup_", "a_lineup_", "d_lineup_", "weather_"))
     ]
-    context_mode = "PIT_SAFE_CONTEXT_ACTIVE" if context_features else "BASELINE_NO_PIT_SAFE_CONTEXT"
+    context_mode = (
+        "PIT_SAFE_CONTEXT_ACTIVE" if context_features
+        else "BASELINE_NO_PIT_SAFE_CONTEXT"
+    )
     return {
         "feature_manifest_version": FEATURE_MANIFEST_VERSION,
         "feature_set_id": f"{FEATURE_MANIFEST_VERSION}:{context_mode}:{digest[:16]}",
@@ -1246,11 +1251,6 @@ def predict(
           "competition_metadata_source_field":r.competition_metadata_source_field,
           "competition_metadata_source_value":r.competition_metadata_source_value,
           "starter_evidence_status":r.starter_evidence_status,
-          "feature_manifest_version":feature_schema["feature_manifest_version"],
-          "feature_set_id":feature_schema["feature_set_id"],
-          "feature_count":feature_schema["feature_count"],
-          "feature_schema_hash":feature_schema["feature_schema_hash"],
-          "feature_context_mode":feature_schema["feature_context_mode"],
           "starter_source":r.starter_source,
           "starter_evidence_observed_at_utc":r.starter_evidence_observed_at_utc,
           "prediction_cutoff_utc":r.prediction_cutoff_utc,
