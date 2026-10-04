@@ -18,11 +18,11 @@ _FAMILY_PATTERNS = (
     ("lineup", re.compile(r"^(?:h_|a_|d_)?lineup_")),
     ("weather", re.compile(r"^weather_")),
     ("context", re.compile(r"(?:^|_)context(?:_|$)")),
+    ("interaction", re.compile(r"^(?:matchup_)|_x_|(?:^|_)(?:gap|diff)(?:_|$)")),
     ("starter", re.compile(r"^(?:hs_|as_|starter_)|^starter_(?:known|x_)")),
     ("bullpen", re.compile(r"^(?:h_|a_|d_)?(?:bp(?:_|[0-9])|bullpen_)|^(?:bullpen_|bp_)")),
-    ("offense", re.compile(r"^(?:h_|a_|d_)?(?:bat_|offense_|matchup_)")),
+    ("offense", re.compile(r"^(?:h_|a_|d_)?(?:bat_|offense_)")),
     ("volatility", re.compile(r"(?:sd_20|slope_20)$|^run_(?:volatility|trend)_")),
-    ("interaction", re.compile(r"_x_|(?:^|_)(?:gap|diff)_(?:10|20)$")),
 )
 
 # All variants are explicit. The exact feature schema is still derived from
@@ -46,6 +46,8 @@ VARIANT_FAMILIES: dict[str, frozenset[str]] = {
     "TEAM_PLUS_OFFENSE_POWER": frozenset({"core", "volatility", "offense"}),
     "TEAM_PLUS_STARTER_BULLPEN": frozenset({"core", "volatility", "starter", "bullpen"}),
     "TEAM_PLUS_STARTER_OFFENSE": frozenset({"core", "volatility", "starter", "offense"}),
+    "TEAM_PLUS_STARTER_INTERACTIONS": frozenset({"core", "volatility", "starter", "interaction"}),
+    "TEAM_PLUS_STARTER_OFFENSE_INTERACTIONS": frozenset({"core", "volatility", "starter", "offense", "interaction"}),
     "TEAM_PLUS_STARTER_BULLPEN_OFFENSE_NO_INTERACTIONS": frozenset(
         {"core", "volatility", "starter", "bullpen", "offense"}
     ),
@@ -77,18 +79,7 @@ VARIANT_FAMILIES: dict[str, frozenset[str]] = {
 }
 
 REGISTERED_VARIANTS: tuple[str, ...] = tuple(VARIANT_FAMILIES)
-SCREENING_VARIANTS: tuple[str, ...] = (
-    "BASELINE_TEAM_STATE",
-    "TEAM_PLUS_STARTER",
-    "TEAM_PLUS_BULLPEN",
-    "TEAM_PLUS_OFFENSE",
-    "TEAM_PLUS_STARTER_BULLPEN",
-    "TEAM_PLUS_STARTER_OFFENSE",
-    "TEAM_PLUS_STARTER_BULLPEN_OFFENSE",
-    "TEAM_PLUS_STARTER_BULLPEN_OFFENSE_INTERACTIONS",
-    "FULL_NO_PIT_CONTEXT",
-    "FULL_VALIDATED_ENSEMBLE",
-)
+SCREENING_VARIANTS: tuple[str, ...] = tuple(VARIANT_FAMILIES)
 
 _STABLE_CORE = re.compile(
     r"^(?:home_adv|expected_env|h_(?:venue_|elo$|rest_days$|matches$|bp3$|bp7$)|"
