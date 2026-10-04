@@ -1,0 +1,194 @@
+name: Baseball Feature Variant Screen
+
+on:
+  workflow_dispatch:
+    inputs:
+      league:
+        description: "League to screen"
+        required: true
+        default: "NPB"
+        type: choice
+        options: [NPB, MLB]
+  push:
+    branches: [main]
+    paths:
+      - 'research/feature_set_variants.py'
+      - 'research/feature_variant_screen.py'
+      - 'tests/test_feature_set_variants.py'
+      - 'config/feature_policy.json'
+      - '.github/workflows/baseball_feature_variant_screen.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baseball-feature-variant-screen-${{ github.event.inputs.league || 'NPB' }}
+  cancel-in-progress: false
+
+env:
+  PYTHONPATH: .
+  PYTHONUNBUFFERED: '1'
+  PIP_DISABLE_PIP_VERSION_CHECK: '1'
+  BASEBALL_FAST_OOS: '1'
+  BASEBALL_FAST_MODEL_POOL: 'Logistic,HistGB,RandomForest,ExtraTrees'
+  BASEBALL_HARD_CAP_SEC: '1800'
+  BASEBALL_TIME_BUDGET_SEC: '1500'
+
+jobs:
+  screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        variant:
+          - BASELINE_TEAM_STATE
+          - TEAM_PLUS_STARTER
+          - TEAM_PLUS_BULLPEN
+          - TEAM_PLUS_OFFENSE
+          - TEAM_PLUS_STARTER_BULLPEN_OFFENSE
+          - FULL_VALIDATED_ENSEMBLE
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install --disable-pip-version-check --retries 8 --timeout 120 --prefer-binary -r requirements.txt
+
+      - name: Compile
+        run: python -m compileall -q .
+
+      - name: Resolve league
+        id: league
+        shell: bash
+        run: |
+          set -euo pipefail
+          league="${{ github.event.inputs.league || 'NPB' }}"
+          echo "league=$league" >> "$GITHUB_OUTPUT"
+
+      - name: Stage NPB historical data
+        if: steps.league.outputs.league == 'NPB'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p data
+          for year in 2020 2021 2022 2023 2024 2025 2026; do
+            existing=$(find data -maxdepth 1 -type f -name "${year}-*_pbp.csv" | wc -l | tr -d ' ')
+            if [ "$existing" -gt 0 ]; then continue; fi
+            ok=0
+            for attempt in 1 2 3; do
+              if timeout --signal=TERM --kill-after=15s 180s gh release download pbp \
+                --repo armstjc/Nippon-Baseball-Data-Repository \
+                --pattern "${year}-*_pbp.csv" --dir data --clobber; then
+                ok=1; break; fi
+              [ "$attempt" -lt 3 ] && sleep $((attempt * 5))
+            done
+            [ "$ok" -eq 1 ] || { echo "failed to stage NPB ${year}" >&2; exit 1; }
+          done
+          test "$(find data -maxdepth 1 -name '*_pbp.csv' | wc -l | tr -d ' ')" -ge 7
+
+      - name: Run feature variant screen
+        env:
+          VARIANT: ${{ matrix.variant }}
+          LEAGUE: ${{ steps.league.outputs.league }}
+        run: |
+          set -euo pipefail
+          python -m research.feature_variant_screen \
+            --league "$LEAGUE" \
+            --variant "$VARIANT" \
+            --holdout-fraction 0.20 \
+            --mlb-start 2020 \
+            --mlb-end 2026
+
+      - name: Verify research-only result
+        env:
+          LEAGUE: ${{ steps.league.outputs.league }}
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          set -euo pipefail
+          lower=$(printf '%s' "$LEAGUE" | tr '[:upper:]' '[:lower:]')
+          result="results/feature_variant_screen_${lower}.json"
+          test -s "$result"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          league = os.environ['LEAGUE'].lower()
+          p = Path('results') / f'feature_variant_screen_{league}.json'
+          obj = json.loads(p.read_text(encoding='utf-8'))
+          assert obj['status'] == 'RESEARCH_SCREEN_ONLY'
+          assert obj['decision'] == 'NO_AUTO_ADOPTION'
+          rows = [x for x in obj['variants'] if x['variant'] == os.environ['VARIANT']]
+          assert len(rows) == 1
+          for key in ('Accuracy', 'LogLoss', 'Brier', 'ECE', 'rows'):
+              assert key in rows[0]['holdout_metrics']
+          print(json.dumps(rows[0], ensure_ascii=False, indent=2))
+          PY
+
+      - name: Upload variant result
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: feature-variant-${{ steps.league.outputs.league }}-${{ matrix.variant }}-${{ github.run_id }}
+          path: results/feature_variant_screen_${{ steps.league.outputs.league == 'NPB' && 'npb' || 'mlb' }}.json
+          if-no-files-found: error
+          retention-days: 30
+
+  summarize:
+    needs: screen
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download variant artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: feature-variant-*
+          path: variant-artifacts
+          merge-multiple: false
+
+      - name: Build comparison summary
+        env:
+          LEAGUE: ${{ github.event.inputs.league || 'NPB' }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          league = os.environ['LEAGUE']
+          rows = []
+          for p in sorted(Path('variant-artifacts').glob('**/feature_variant_screen_*.json')):
+              obj = json.loads(p.read_text(encoding='utf-8'))
+              rows.extend(obj.get('variants', []))
+          seen = {}
+          for row in rows: seen[row['variant']] = row
+          ordered = sorted(seen.values(), key=lambda x: (float(x['holdout_metrics']['LogLoss']), float(x['holdout_metrics']['Brier']), -float(x['holdout_metrics']['Accuracy']), x['variant']))
+          payload = {
+              'schema_version': 'baseball-feature-variant-screen-summary-v1',
+              'status': 'RESEARCH_SCREEN_ONLY',
+              'league': league,
+              'decision': 'NO_AUTO_ADOPTION',
+              'ranked_variants': [
+                  {'rank': i + 1, 'variant': x['variant'], 'feature_meta': x['feature_meta'], 'train_rows': x['train_rows'], 'holdout_rows': x['holdout_rows'], 'holdout_metrics': x['holdout_metrics']}
+                  for i, x in enumerate(ordered)
+              ],
+              'next_gate': 'winner -> full chronological WFO/OOS -> calibration -> ablation -> robustness -> frozen holdout -> explicit adoption'
+          }
+          out = Path(f'feature_variant_summary_{league.lower()}.json')
+          out.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          print(json.dumps(payload, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Upload comparison summary
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: feature-variant-summary-${{ github.event.inputs.league || 'NPB' }}-${{ github.run_id }}
+          path: feature_variant_summary_*.json
+          if-no-files-found: error
+          retention-days: 60
