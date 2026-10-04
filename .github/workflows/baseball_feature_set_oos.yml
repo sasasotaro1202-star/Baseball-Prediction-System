@@ -19,26 +19,22 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  compare:
+  compare-npb:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
       fail-fast: false
       max-parallel: 4
       matrix:
-        include:
-          - {league: NPB, variant: BASELINE_TEAM_STATE}
-          - {league: NPB, variant: TEAM_PLUS_STARTER}
-          - {league: NPB, variant: TEAM_PLUS_BULLPEN}
-          - {league: NPB, variant: TEAM_PLUS_STARTER_BULLPEN}
-          - {league: NPB, variant: TEAM_PLUS_LINEUP_PIT_SAFE}
-          - {league: NPB, variant: TEAM_PLUS_STARTER_LINEUP_PIT_SAFE}
-          - {league: NPB, variant: TEAM_PLUS_STARTER_BULLPEN_LINEUP_PIT_SAFE}
-          - {league: NPB, variant: FULL_VALIDATED_ENSEMBLE}
-          - {league: MLB, variant: BASELINE_TEAM_STATE}
-          - {league: MLB, variant: TEAM_PLUS_STARTER}
-          - {league: MLB, variant: TEAM_PLUS_STARTER_BULLPEN}
-          - {league: MLB, variant: FULL_VALIDATED_ENSEMBLE}
+        variant:
+          - BASELINE_TEAM_STATE
+          - TEAM_PLUS_STARTER
+          - TEAM_PLUS_BULLPEN
+          - TEAM_PLUS_STARTER_BULLPEN
+          - TEAM_PLUS_LINEUP_PIT_SAFE
+          - TEAM_PLUS_STARTER_LINEUP_PIT_SAFE
+          - TEAM_PLUS_STARTER_BULLPEN_LINEUP_PIT_SAFE
+          - FULL_VALIDATED_ENSEMBLE
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -62,36 +58,33 @@ jobs:
           python -m pytest -q tests/test_feature_set_router.py tests/test_feature_integrity.py
 
       - name: Stage NPB historical data
-        if: matrix.league == 'NPB'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           mkdir -p data
           for year in 2020 2021 2022 2023 2024 2025 2026; do
-            downloaded=0
             if find data -maxdepth 1 -type f -name "${year}-*_pbp.csv" -print -quit | grep -q .; then
-              downloaded=1
-            else
-              for attempt in 1 2 3; do
-                if timeout --signal=TERM --kill-after=10s 150s gh release download pbp \
-                  --repo armstjc/Nippon-Baseball-Data-Repository \
-                  --pattern "${year}-*_pbp.csv" \
-                  --dir data --clobber; then
-                  downloaded=1
-                  break
-                fi
-                sleep $((attempt * 3))
-              done
+              continue
             fi
-            if [ "$downloaded" -ne 1 ]; then
+            ok=0
+            for attempt in 1 2 3; do
+              if timeout --signal=TERM --kill-after=10s 150s gh release download pbp \
+                --repo armstjc/Nippon-Baseball-Data-Repository \
+                --pattern "${year}-*_pbp.csv" --dir data --clobber; then
+                ok=1
+                break
+              fi
+              sleep $((attempt * 3))
+            done
+            if [ "$ok" -ne 1 ]; then
               echo "failed to stage NPB ${year}" >&2
               exit 1
             fi
           done
-          test "$(find data -maxdepth 1 -name '*_pbp.csv' | wc -l | tr -d ' ')" -ge 7
+          test "$(find data -maxdepth 1 -name "*_pbp.csv" | wc -l | tr -d " ")" -ge 7
 
-      - name: Run identical chronological OOS with selected feature set
+      - name: Run identical chronological OOS
         env:
           PYTHONPATH: .
           PYTHONUNBUFFERED: "1"
@@ -102,56 +95,40 @@ jobs:
           NPB_RETRAIN_EVERY: "250"
           BASEBALL_CATBOOST_DETERMINISTIC: "1"
           BASEBALL_SCORE_FAST_VALIDATION: "1"
-          MLB_ENRICH_STARTERS: "0"
           PIT_SAFE_STARTER_DATA: "0"
         run: |
           set -euo pipefail
-          python -m research.real_data_validation \
-            --league "${{ matrix.league }}" \
-            --mlb-start 2020 \
-            --mlb-end 2026
+          python -m research.real_data_validation --league NPB --mlb-start 2020 --mlb-end 2026
 
-      - name: Validate comparison artifact
+      - name: Validate run status
         run: |
           set -euo pipefail
           test -s results/real_data_validation.json
           python - <<'PY'
 import json
 from pathlib import Path
-p=Path("results/real_data_validation.json")
-d=json.loads(p.read_text(encoding="utf-8"))
-print(json.dumps({
-    "league": "${{ matrix.league }}",
-    "feature_set_variant": "${{ matrix.variant }}",
-    "status": d.get("status"),
-    "execution_status": d.get("execution_status"),
-    "overall_decision": d.get("overall_decision"),
-}, ensure_ascii=False))
+d=json.loads(Path("results/real_data_validation.json").read_text(encoding="utf-8"))
 if d.get("execution_status") == "FAILED":
-    raise SystemExit("feature-set OOS execution failed")
+    raise SystemExit("OOS execution failed")
+print(json.dumps({"variant":"${{ matrix.variant }}","status":d.get("status"),"execution_status":d.get("execution_status")}, ensure_ascii=False))
 PY
 
-      - name: Write feature-set run summary
+      - name: Summary
         if: always()
         run: |
-          {
-            echo "## Feature Set OOS"
-            echo "- League: ${{ matrix.league }}"
-            echo "- Feature set: ${{ matrix.variant }}"
-            if [ -s results/real_data_validation.json ]; then
-              echo '```json'
-              cat results/real_data_validation.json
-              echo '```'
-            else
-              echo "Result: NOT PRODUCED"
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
+          echo "## NPB Feature Set OOS" >> "$GITHUB_STEP_SUMMARY"
+          echo "Variant: ${{ matrix.variant }}" >> "$GITHUB_STEP_SUMMARY"
+          if [ -s results/real_data_validation.json ]; then
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat results/real_data_validation.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
 
-      - name: Upload feature-set evidence
+      - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: baseball-feature-set-oos-${{ matrix.league }}-${{ matrix.variant }}-${{ github.run_id }}
+          name: baseball-feature-set-oos-npb-${{ matrix.variant }}-${{ github.run_id }}
           path: results/**
           if-no-files-found: warn
           retention-days: 30
