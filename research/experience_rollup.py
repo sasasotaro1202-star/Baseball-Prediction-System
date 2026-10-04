@@ -27,6 +27,7 @@ import pandas as pd
 from research.npb_official_results import _fetch_month
 from research import experience_ledger as ledger
 from research.experience_dimensions import add_dimensions
+from research.experience_evidence import build_experience_evidence
 from research.experience_ledger import (
     _horizon_bucket,
     _prediction_target_metrics,
@@ -468,7 +469,7 @@ def rollup() -> dict[str, Any]:
         "competition_classification_status", "home", "away", "home_starter", "away_starter",
         "revision_status", "revision_previous_prediction_id", "revision_l1_pct_points",
         "revision_max_abs_pct_points", "revision_outcome_changed",
-        "regime", "score_regime", "model", "situation_tags",
+        "regime", "score_regime", "model", "model_version", "feature_version", "calibration_version", "git_commit", "situation_tags",
         "home_win_pct", "draw_pct", "away_win_pct", "predicted_outcome",
         "actual_outcome", "outcome_correct", "logloss", "brier",
         "low_pct", "high_pct", "low_high_actual", "low_high_predicted",
@@ -530,6 +531,7 @@ def rollup() -> dict[str, Any]:
     result = {
         "generated_at_utc": _now(),
         "status": "UPDATED",
+        "evidence": build_experience_evidence(scored),
         "prediction_snapshot_rows_total": int(len(pred)),
         "matched_snapshot_rows": int(len(scored)),
         "unique_games_with_results": int(canonical["game_id"].nunique()),
@@ -574,6 +576,7 @@ def rollup() -> dict[str, Any]:
             "dimension_order": ["league", "competition", "phase", "target", "horizon"],
             "generated_at_utc": result["generated_at_utc"],
             "status": result["status"],
+            "evidence": result["evidence"],
             "canonical_cases": int(len(canonical)),
             "all_prediction_snapshots": int(len(scored)),
             "league_competition_phase_target": result["performance_breakdown"],
@@ -587,6 +590,7 @@ def rollup() -> dict[str, Any]:
         json.dumps({
             "generated_at_utc": result["generated_at_utc"],
             "status": result["status"],
+            "evidence": result["evidence"],
             "canonical_experience_cases": int(len(canonical)),
             "all_prediction_snapshots": int(len(scored)),
             "timing_30m": result["timing_30m"],
