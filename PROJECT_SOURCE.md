@@ -998,3 +998,504 @@ experience recordには:
 * predictability
 * regime
 * data quality
+* source state
+* error class
+
+を保存する。
+
+同一gameの大量revisionで学習weightを不当に増やさない。
+
+⸻
+
+45. POSTGAME RECONCILIATION
+
+outcome確定後にPredictionをreconcileする。
+
+確認:
+
+* prediction probability
+* actual outcome
+* target version
+* cutoff
+* source snapshot
+* model version
+* calibration
+* PIT status
+* production state
+* fallback/abstain
+* error type
+
+past artifactとcurrent predictionを混同しない。
+
+⸻
+
+46. FAILURE TAXONOMY
+
+最低限:
+
+DATA_FAILURE
+PIT_FAILURE
+TIMESTAMP_FAILURE
+REVISION_FAILURE
+IDENTITY_FAILURE
+SOURCE_FAILURE
+FEATURE_FAILURE
+STARTER_FAILURE
+MODEL_FAILURE
+CALIBRATION_FAILURE
+ROUTING_FAILURE
+REGIME_FAILURE
+OOD_FAILURE
+UNCERTAINTY_FAILURE
+TIMING_FAILURE
+SCOPE_FAILURE
+AUTOMATION_FAILURE
+RECOVERY_FAILURE
+REPORTING_FAILURE
+
+⸻
+
+47. FAILURE MEMORY
+
+Failure record:
+
+failure_id
+game_id
+component
+failure_type
+severity
+input_state
+prediction
+expected
+observed
+root_cause
+counterfactual
+repair
+verification
+reoccurrence
+
+を保存する。
+
+単なるwrong predictionとsystem failureを区別する。
+
+⸻
+
+48. COUNTERFACTUAL FAILURE ANALYSIS
+
+failureについて、
+
+* earlier information
+* later valid information
+* additional source
+* alternate model
+* alternate calibration
+* alternate routing
+* specialist
+* fallback
+* abstention
+
+で改善した可能性を評価する。
+
+測定済み事実とhypothesisを分離する。
+
+⸻
+
+49. COVERAGE DIGITAL TWIN
+
+coverage dimensions:
+
+* league
+* season
+* phase
+* game
+* team
+* player
+* starter
+* feature
+* source
+* availability metadata
+* horizon
+* regime
+
+coverage gapをCoverage Debtとして管理する。
+
+「5000 candidate factors」等のfeature-space目標はcandidate search breadthを示すものであり、無条件採用件数ではない。
+
+⸻
+
+50. SOURCE VALUE
+
+Source valueを、
+
+ΔLogLoss
+ΔBrier
+ΔAccuracy
+calibration improvement
+uncertainty reduction
+failure avoidance
+OOD detection
+coverage improvement
+latency
+reliability
+cost
+
+で測る。
+
+source数の増加自体を成果としない。
+
+⸻
+
+51. FEATURE RETIREMENT
+
+featureは永続使用ではない。
+
+retirement候補:
+
+* no incremental OOS value
+* unstable across periods
+* high leakage risk
+* poor freshness
+* high missingness
+* redundant
+* high computation
+* source unreliable
+* maintenance burden
+
+feature retirementもmemoryへ保存する。
+
+⸻
+
+52. COMPLEXITY BUDGET
+
+追加complexityについて、
+
+performance gain
++
+robustness gain
++
+information gain
+
+と、
+
+maintenance cost
++
+runtime cost
++
+failure surface
++
+operational risk
+
+を比較する。
+
+小さい改善のために大幅なcomplexity増加を無条件に採用しない。
+
+⸻
+
+53. RESEARCH ROUTER
+
+Research categories:
+
+DIRECT_SEARCH
+METHOD_SEARCH
+FAILURE_SEARCH
+COUNTEREXAMPLE_SEARCH
+IMPLEMENTATION_SEARCH
+BENCHMARK_SEARCH
+NEGATIVE_EVIDENCE
+FRONTIER_SEARCH
+CROSS_DOMAIN_TRANSFER
+UNKNOWN_UNKNOWN_SEARCH
+
+Research portfolio:
+
+* exploit
+* adjacent
+* frontier
+* replication
+* ablation
+* adversarial
+* recovery
+* meta-research
+
+⸻
+
+54. EXTERNAL RESEARCH INGESTION
+
+External method:
+
+DISCOVERED
+→ SOURCE_VERIFIED
+→ METHOD_ABSTRACTED
+→ RELEVANCE_CHECKED
+→ COST_CHECKED
+→ PIT_CHECKED
+→ LOCAL_IMPLEMENTATION
+→ LOCAL_REPRODUCTION
+→ OOS
+→ ROBUSTNESS
+→ HOLDOUT
+→ DECISION
+
+論文/GitHub/AIのperformance claimはproduction evidenceではない。
+
+⸻
+
+55. EVIDENCE LEVEL
+
+E0 = idea
+E1 = external claim
+E2 = external implementation
+E3 = local reproduction
+E4 = local OOS
+E5 = robustness
+E6 = frozen holdout
+E7 = production evidence
+
+Evidenceを過大評価しない。
+
+⸻
+
+56. NEGATIVE KNOWLEDGE
+
+以下を保存:
+
+* rejected method
+* rejected feature
+* rejected source
+* rejected routing
+* rejected calibration
+* rejected competition
+* failure condition
+* PIT issue
+* robustness failure
+* computational cost
+
+同一失敗の再発を防ぐ。
+
+⸻
+
+57. CROSS-PROJECT TRANSFER
+
+他project知見は、
+
+DISCOVER
+→ ABSTRACT_MECHANISM
+→ COMPATIBILITY
+→ ADAPT
+→ LOCAL_PIT
+→ LOCAL_OOS
+→ LOCAL_HOLDOUT
+→ SHADOW
+→ PROMOTE
+
+とする。
+
+他domain成功を直接Baseball productionへ移植しない。
+
+⸻
+
+58. EXPANSION POLICY
+
+新competition、新source、新feature、新model、新horizonは、
+
+Discovery
+→ Metadata
+→ Data feasibility
+→ PIT
+→ Shadow
+→ OOS
+→ Robustness
+→ Holdout
+→ Limited production
+→ Stable production
+
+の順に昇格させる。
+
+⸻
+
+59. ADOPTION GATES
+
+candidate採用には:
+
+* same observations
+* chronological OOS
+* PIT valid
+* leakage audit
+* reproducibility
+* robustness
+* calibration
+* newest holdout
+* sufficient sample
+* operational safety
+
+を要求する。
+
+参考benchmark:
+
+primary relative OOS improvement ≥3%
+auxiliary improvement ≥1%
+≥70% evaluation periods without worsening
+latest holdout no worsening
+calibration not materially degraded
+PIT violations = 0
+
+thresholdは絶対真理ではなく、sample size、variance、confidence interval、game dependence、rare events、cost、riskを考慮する。
+
+⸻
+
+60. STATISTICAL INTEGRITY
+
+必要に応じて:
+
+* paired comparison
+* game-cluster bootstrap
+* block bootstrap
+* confidence interval
+* permutation
+* forecast comparison tests
+* multiple-comparison correction
+
+を使用する。
+
+単一metric差や単一foldだけでsuperiorityを断定しない。
+
+⸻
+
+61. FROZEN HOLDOUT FIREWALL
+
+Holdoutはconfig freeze後のfinal evidence専用。
+
+禁止:
+
+* repeated holdout tuning
+* feature tuning
+* model tuning
+* calibration tuning
+* threshold tuning
+* routing tuning
+* source selection
+* scope selection
+
+holdout contaminationが疑われた場合はholdoutのstatusをinvalidateし、再freeze/rebuildする。
+
+⸻
+
+62. ADVERSARIAL VALIDATION
+
+定期的に:
+
+* future timestamp injection
+* postgame field injection
+* future starter injection
+* future standings
+* later revision
+* source removal
+* feature deletion
+* missingness
+* time shift
+* distribution shift
+* regime transition
+* unseen team/player
+* stale source
+
+を攻撃試験する。
+
+⸻
+
+63. ROBUSTNESS
+
+Candidateは平均OOSだけで判断しない。
+
+subset:
+
+* latest period
+* recent season
+* NPB
+* MLB
+* phase
+* starter-known
+* starter-unknown
+* high uncertainty
+* high disagreement
+* high variance
+* missing data
+* OOD
+* new teams/players
+* source outage
+
+を確認する。
+
+⸻
+
+64. PRODUCTION MODEL REGISTRY
+
+Production modelに:
+
+* model_id
+* version
+* target_version
+* feature_version
+* calibration_version
+* training scope
+* routing
+* data snapshot
+* OOS
+* robustness
+* holdout
+* release timestamp
+* rollback pointer
+
+を保存する。
+
+⸻
+
+65. PRODUCTION FAIL-CLOSED
+
+以下はproduction predictionを無理に生成しない条件:
+
+* model missing
+* corrupted artifact
+* critical source failure
+* stale required data
+* PIT unknown
+* identity mismatch
+* target mismatch
+* feature contract failure
+* invalid calibration
+
+fallback/abstain/deferredへ移行する。
+
+⸻
+
+66. FALLBACK CHAIN
+
+基本:
+
+Champion
+→ Validated Specialist
+→ Generalist
+→ Baseline
+→ Abstain
+
+fallback使用をprediction logに保存する。
+
+fallback resultをChampion resultと同等と表現しない。
+
+⸻
+
+67. AUTOMATION
+
+GitHub Actionsは:
+
+* checkpoint
+* resume
+* idempotency
+* retry
+* backoff
+* watchdog
+* heartbeat
+* stale-run handling
+* deterministic writes
+* artifact preservation
+* concurrency
+No readable content was found in this file for the requested mode.
