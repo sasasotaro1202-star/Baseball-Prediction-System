@@ -203,7 +203,7 @@ Examples of legitimate variants:
 - SCORE_MODEL_FEATURE_SET
 - RESEARCH_STATCAST_SET
 
-These names are illustrative registry labels, not proof that every variant is currently implemented or production-eligible.
+These variants are implemented in `research/feature_set_variants.py`; implementation does not imply production eligibility.
 
 Research may compare many feature sets, but each candidate must be separately labeled and evaluated. Adding more features is not inherently better. A smaller feature set with stronger temporal stability, lower missingness and better OOS calibration may be preferred.
 
