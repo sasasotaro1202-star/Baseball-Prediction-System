@@ -35,6 +35,31 @@ REQUIRED_PIT = (
 )
 
 
+def _expected_run_commit() -> str | None:
+    """Return the immutable commit expected for this governance execution."""
+    value = __import__("os").environ.get("GITHUB_SHA", "").strip()
+    return value or None
+
+
+def _artifact_commit_blocker(
+    obj: object,
+    *,
+    expected_commit: str | None,
+    artifact: str,
+) -> str | None:
+    """Reject evidence generated from a different run snapshot."""
+    if expected_commit is None:
+        return None
+    if not isinstance(obj, dict):
+        return f"{artifact}_not_object"
+    actual = str(obj.get("git_commit") or "").strip()
+    if not actual:
+        return f"{artifact}_git_commit_missing"
+    if actual != expected_commit:
+        return f"{artifact}_git_commit_mismatch:{actual}!={expected_commit}"
+    return None
+
+
 def _nonempty(path: str | Path) -> bool:
     p = Path(path)
     return p.exists() and p.is_file() and p.stat().st_size > 0
@@ -105,7 +130,7 @@ def pit_stage() -> Stage:
     return Stage("PIT", "READY" if not blockers else "BLOCKED", tuple(blockers))
 
 
-def calibration_stage(calibration_artifact: str | Path = "results/calibration.json") -> Stage:
+def calibration_stage(calibration_artifact: str | Path = "results/calibration.json", expected_commit: str | None = None) -> Stage:
     """Validate the current calibration schema without assuming a global scalar.
 
     Production calibration is stored per league because NPB and MLB have
@@ -119,6 +144,9 @@ def calibration_stage(calibration_artifact: str | Path = "results/calibration.js
         obj = json.loads(Path(calibration_artifact).read_text(encoding="utf-8"))
         if not isinstance(obj, dict):
             raise ValueError("calibration artifact must be an object")
+        commit_blocker = _artifact_commit_blocker(obj, expected_commit=expected_commit, artifact="calibration")
+        if commit_blocker:
+            return Stage("Calibration", "BLOCKED", (commit_blocker,))
         if "temperature" in obj:
             temperatures = {"global": obj["temperature"]}
         else:
@@ -150,14 +178,21 @@ def _validate_league_artifact(path: str | Path, required_leagues: set[str]) -> t
         return False, (f"invalid_json:{type(exc).__name__}",)
 
 
-def oos_stage(oos_artifact: str | Path = "results/development_oos.json") -> Stage:
+def oos_stage(oos_artifact: str | Path = "results/development_oos.json", expected_commit: str | None = None) -> Stage:
     if not _nonempty(oos_artifact):
         return Stage("Development OOS", "BLOCKED", ("development_oos_missing",))
+    try:
+        obj = json.loads(Path(oos_artifact).read_text(encoding="utf-8"))
+    except Exception as exc:
+        return Stage("Development OOS", "BLOCKED", (f"invalid_json:{type(exc).__name__}",))
+    commit_blocker = _artifact_commit_blocker(obj, expected_commit=expected_commit, artifact="development_oos")
+    if commit_blocker:
+        return Stage("Development OOS", "BLOCKED", (commit_blocker,))
     ok, blockers = _validate_league_artifact(oos_artifact, {"NPB", "MLB"})
     return Stage("Development OOS", "READY" if ok else "BLOCKED", blockers)
 
 
-def holdout_stage(holdout_artifact: str | Path = "results/independent_holdout.json") -> Stage:
+def holdout_stage(holdout_artifact: str | Path = "results/independent_holdout.json", expected_commit: str | None = None) -> Stage:
     if not _nonempty(holdout_artifact):
         return Stage("Independent Holdout", "BLOCKED", ("independent_holdout_missing",))
     try:
@@ -165,6 +200,9 @@ def holdout_stage(holdout_artifact: str | Path = "results/independent_holdout.js
         if not isinstance(obj, dict):
             raise ValueError("holdout artifact must be an object")
         blockers: list[str] = []
+        commit_blocker = _artifact_commit_blocker(obj, expected_commit=expected_commit, artifact="independent_holdout")
+        if commit_blocker:
+            blockers.append(commit_blocker)
         for league in ("NPB", "MLB"):
             payload = obj.get(league)
             if not isinstance(payload, dict):
@@ -233,20 +271,34 @@ def holdout_stage(holdout_artifact: str | Path = "results/independent_holdout.js
         return Stage("Independent Holdout", "BLOCKED", (f"invalid_holdout:{type(exc).__name__}",))
 
 
-def result_stage(result_artifact: str | Path = "results/result_audit.json") -> Stage:
+def result_stage(result_artifact: str | Path = "results/result_audit.json", expected_commit: str | None = None) -> Stage:
     if not _nonempty(result_artifact):
         return Stage("Result Collection", "BLOCKED", ("result_audit_missing",))
+    try:
+        obj = json.loads(Path(result_artifact).read_text(encoding="utf-8"))
+    except Exception as exc:
+        return Stage("Result Collection", "BLOCKED", (f"invalid_json:{type(exc).__name__}",))
+    commit_blocker = _artifact_commit_blocker(obj, expected_commit=expected_commit, artifact="result_audit")
+    if commit_blocker:
+        return Stage("Result Collection", "BLOCKED", (commit_blocker,))
     ok, blockers = _validate_league_artifact(result_artifact, {"NPB", "MLB"})
     return Stage("Result Collection", "READY" if ok else "BLOCKED", blockers)
 
 
-def weakness_stage(weakness_artifact: str | Path = "results/weakness_report.json") -> Stage:
+def weakness_stage(weakness_artifact: str | Path = "results/weakness_report.json", expected_commit: str | None = None) -> Stage:
     if not _nonempty(weakness_artifact):
         return Stage("Weakness Discovery", "BLOCKED", ("weakness_report_missing",))
+    try:
+        obj = json.loads(Path(weakness_artifact).read_text(encoding="utf-8"))
+    except Exception as exc:
+        return Stage("Weakness Discovery", "BLOCKED", (f"invalid_json:{type(exc).__name__}",))
+    commit_blocker = _artifact_commit_blocker(obj, expected_commit=expected_commit, artifact="weakness_report")
+    if commit_blocker:
+        return Stage("Weakness Discovery", "BLOCKED", (commit_blocker,))
     return Stage("Weakness Discovery", "READY")
 
 
-def candidate_stage(candidate_artifact: str | Path = "results/candidate_validation.json") -> Stage:
+def candidate_stage(candidate_artifact: str | Path = "results/candidate_validation.json", expected_commit: str | None = None) -> Stage:
     """Validate candidate decisions before lifecycle promotion.
 
     A present file is not evidence of a completed candidate evaluation. Both
@@ -260,6 +312,9 @@ def candidate_stage(candidate_artifact: str | Path = "results/candidate_validati
         if not isinstance(obj, dict):
             raise ValueError("candidate validation artifact must be an object")
         blockers: list[str] = []
+        commit_blocker = _artifact_commit_blocker(obj, expected_commit=expected_commit, artifact="candidate_validation")
+        if commit_blocker:
+            blockers.append(commit_blocker)
         for league in ("NPB", "MLB"):
             payload = obj.get(league)
             if not isinstance(payload, dict):
@@ -295,14 +350,15 @@ def candidate_stage(candidate_artifact: str | Path = "results/candidate_validati
 
 
 def lifecycle_report() -> dict[str, Any]:
+    expected_commit = _expected_run_commit()
     stages = [
         pit_stage(),
-        calibration_stage(),
-        oos_stage(),
-        holdout_stage(),
-        result_stage(),
-        weakness_stage(),
-        candidate_stage(),
+        calibration_stage(expected_commit=expected_commit),
+        oos_stage(expected_commit=expected_commit),
+        holdout_stage(expected_commit=expected_commit),
+        result_stage(expected_commit=expected_commit),
+        weakness_stage(expected_commit=expected_commit),
+        candidate_stage(expected_commit=expected_commit),
     ]
     ready = not any(s.status == "BLOCKED" for s in stages)
     report = {
