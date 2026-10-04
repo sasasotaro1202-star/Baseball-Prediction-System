@@ -34,6 +34,9 @@ _VARIANTS = (
     "TEAM_PLUS_LINEUP_PIT_SAFE",
     "TEAM_PLUS_WEATHER_PIT_SAFE",
     "FULL_VALIDATED_ENSEMBLE",
+    "TEAM_PLUS_STARTER_BULLPEN",
+    "TEAM_PLUS_STARTER_LINEUP_PIT_SAFE",
+    "TEAM_PLUS_STARTER_BULLPEN_LINEUP_PIT_SAFE",
     "SCORE_MODEL_FEATURE_SET",
     "RESEARCH_STATCAST_SET",
 )
@@ -115,6 +118,12 @@ def _family_columns(columns: Sequence[str], variant: str) -> set[str]:
         return base | lineup
     if variant == "TEAM_PLUS_WEATHER_PIT_SAFE":
         return base | weather
+    if variant == "TEAM_PLUS_STARTER_BULLPEN":
+        return base | starter | bullpen
+    if variant == "TEAM_PLUS_STARTER_LINEUP_PIT_SAFE":
+        return base | starter | lineup
+    if variant == "TEAM_PLUS_STARTER_BULLPEN_LINEUP_PIT_SAFE":
+        return base | starter | bullpen | lineup
     if variant == "FULL_VALIDATED_ENSEMBLE":
         return set(columns)
     if variant == "SCORE_MODEL_FEATURE_SET":
