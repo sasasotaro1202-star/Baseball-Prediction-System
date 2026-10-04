@@ -1,0 +1,329 @@
+#!/usr/bin/env python3
+"""Deterministic GitHub control-plane governance for the Baseball Prediction System.
+
+This module is deliberately lightweight. It does not train models, change
+production state, or interpret a green Action as performance evidence.
+It verifies the repository contract and, in Action mode, inspects recent
+GitHub Actions health. Any unresolved contract violation is a real failure.
+"""
+from __future__ import annotations
+
+import argparse
+from datetime import datetime, timezone
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+
+REQUIRED_FILES = (
+    "PROJECT_SOURCE.md",
+    "PROJECT_INSTRUCTIONS.md",
+    "BASEBALL_SYSTEM_SPEC.md",
+    "config/current_production_runtime.json",
+    "docs/FEATURE_MANIFEST.md",
+    "research/action_preflight.py",
+    "research/closed_loop_governance.py",
+)
+
+WORKFLOW_CONTRACTS: dict[str, dict[str, Any]] = {
+    ".github/workflows/baseball_closed_loop.yml": {
+        "monitor": True,
+        "max_age_hours": 10,
+        "required": ("schedule:", "cancel-in-progress: false", "research.closed_loop_execute"),
+    },
+    ".github/workflows/baseball_24h_supervisor.yml": {
+        "monitor": True,
+        "max_age_hours": 2,
+        "required": ("schedule:", "cron: '*/15 * * * *'", "actions: write"),
+    },
+    ".github/workflows/baseball_candidate_oos_watchdog.yml": {
+        "monitor": True,
+        "max_age_hours": 2,
+        "required": ("schedule:", "cron: '*/15 * * * *'", "actions: write", "baseball_candidate_oos.yml"),
+    },
+    ".github/workflows/baseball_candidate_oos.yml": {
+        "monitor": False,
+        "max_age_hours": 0,
+        "required": ("schedule:", "cancel-in-progress: false"),
+    },
+    ".github/workflows/baseball-production-runtime-health.yml": {
+        "monitor": True,
+        "max_age_hours": 2,
+        "required": ("schedule:", "actions: read"),
+    },
+    ".github/workflows/npb-production.yml": {
+        "monitor": True,
+        "max_age_hours": 10,
+        "required": ("schedule:", "production_npb.py"),
+    },
+    ".github/workflows/baseball_24h_research_autopilot.yml": {
+        "monitor": True,
+        "max_age_hours": 30,
+        "required": ("schedule:", "workflow_dispatch:"),
+    },
+    ".github/workflows/baseball_actions_recovery.yml": {
+        "monitor": False,
+        "max_age_hours": 0,
+        "required": ("workflow_run:", "actions: write", "Re-run failed jobs with bounded recovery"),
+    },
+}
+
+REQUIRED_SOURCE_PHRASES = (
+    "available_at <= prediction_cutoff",
+    "retrieved_at ≠ published_at ≠ available_at",
+    "HOME\nDRAW\nAWAY",
+    "HOME\nAWAY",
+    "LOW = total runs <= 6",
+    "HIGH = total runs >= 7",
+    "random split禁止",
+    "PIT violations = 0",
+    "NO-FAKE-SUCCESS",
+    "Future Generalization",
+    "Case-Level Correctness",
+    "Calibration",
+    "Uncertainty Quality",
+    "Safe Degradation > False Prediction",
+)
+
+SECTION_RE = re.compile(r"(?m)^\s*(\d+)\.\s+(.+?)\s*$")
+
+
+def _read(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def source_contract_errors(text: str) -> list[str]:
+    errors: list[str] = []
+    matches = SECTION_RE.findall(text)
+    numbers = [int(n) for n, _ in matches]
+    expected = list(range(1, 86))
+    if numbers[:85] != expected:
+        missing = [n for n in expected if n not in numbers]
+        errors.append(f"project_source_sections_invalid:missing={missing[:20]}")
+    for phrase in REQUIRED_SOURCE_PHRASES:
+        if phrase not in text:
+            errors.append(f"project_source_required_text_missing:{phrase!r}")
+    return errors
+
+
+def runtime_policy_errors(payload: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    policy = payload.get("policy")
+    if not isinstance(policy, dict):
+        return ["production_runtime_policy_missing"]
+    if policy.get("fail_closed") is not True:
+        errors.append("production_runtime_fail_closed_must_be_true")
+    if policy.get("auto_promotion") is not False:
+        errors.append("production_runtime_auto_promotion_must_be_false")
+    if policy.get("research_fallback") is not False:
+        errors.append("production_runtime_research_fallback_must_be_false")
+    if policy.get("runtime_identity_is_recorded") is not True:
+        errors.append("production_runtime_identity_recording_must_be_true")
+    if not isinstance(payload.get("runtimes"), dict):
+        errors.append("production_runtime_runtimes_missing")
+    return errors
+
+
+def workflow_contract_errors(text: str, path: Path) -> list[str]:
+    errors: list[str] = []
+    if not re.search(r"^permissions:\s*$", text, re.MULTILINE):
+        errors.append(f"workflow_permissions_missing:{path}")
+    if "runs-on:" not in text:
+        errors.append(f"workflow_runner_missing:{path}")
+    if not re.search(r"^  [A-Za-z0-9_-]+:\s*$", text, re.MULTILINE):
+        errors.append(f"workflow_jobs_missing:{path}")
+    if not re.search(r"^    timeout-minutes:\s*\d+\s*$", text, re.MULTILINE):
+        errors.append(f"workflow_job_timeout_missing:{path}")
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            continue
+        if "continue-on-error: true" in stripped:
+            errors.append(f"workflow_failure_masking:{path}")
+        if "|| true" in stripped:
+            errors.append(f"workflow_failure_masking_or_true:{path}")
+        if re.match(r"^uses:\s+", stripped):
+            ref = stripped.rsplit("@", 1)[-1]
+            if not re.fullmatch(r"[0-9a-fA-F]{40}", ref):
+                errors.append(f"workflow_unpinned_action:{path}:{stripped}")
+    return errors
+
+
+def repository_static_errors(root: Path = ROOT) -> list[str]:
+    errors: list[str] = []
+    for rel in REQUIRED_FILES:
+        path = root / rel
+        if not path.is_file() or path.stat().st_size <= 0:
+            errors.append(f"required_file_missing:{rel}")
+
+    source = root / "PROJECT_SOURCE.md"
+    if source.is_file():
+        errors.extend(source_contract_errors(_read(source)))
+
+    runtime = root / "config/current_production_runtime.json"
+    if runtime.is_file():
+        try:
+            payload = json.loads(_read(runtime))
+        except Exception as exc:
+            errors.append(f"production_runtime_invalid_json:{type(exc).__name__}")
+        else:
+            errors.extend(runtime_policy_errors(payload))
+
+    for rel, contract in WORKFLOW_CONTRACTS.items():
+        path = root / rel
+        if not path.is_file():
+            continue
+        text = _read(path)
+        errors.extend(workflow_contract_errors(text, path))
+        for required in contract["required"]:
+            if required not in text:
+                errors.append(f"critical_workflow_contract_missing:{rel}:{required}")
+    return errors
+
+
+def _gh_json(args: list[str]) -> Any:
+    result = subprocess.run(
+        ["gh", "api", *args],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=os.environ.copy(),
+        timeout=30,
+    )
+    return json.loads(result.stdout)
+
+
+def _parse_time(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def action_health(repo: str, now: datetime | None = None) -> dict[str, Any]:
+    now = now or datetime.now(timezone.utc)
+    payload = _gh_json([f"repos/{repo}/actions/runs?per_page=100&branch=main"])
+    runs = payload.get("workflow_runs", [])
+    report: dict[str, Any] = {
+        "checked_at": now.isoformat(),
+        "repository": repo,
+        "workflows": {},
+        "blockers": [],
+    }
+
+    for workflow_path, contract in WORKFLOW_CONTRACTS.items():
+        if not contract["monitor"]:
+            continue
+        matching = [r for r in runs if str(r.get("path", "")).lstrip("/") == workflow_path]
+        matching.sort(key=lambda r: r.get("created_at", ""), reverse=True)
+        if not matching:
+            report["workflows"][workflow_path] = {"state": "NO_RUN"}
+            report["blockers"].append(f"actions_no_recent_run:{workflow_path}")
+            continue
+
+        latest = matching[0]
+        created = _parse_time(latest["created_at"])
+        age_hours = max(0.0, (now - created).total_seconds() / 3600.0)
+        status = latest.get("status")
+        conclusion = latest.get("conclusion")
+        head_sha = latest.get("head_sha")
+        current_sha = os.environ.get("GITHUB_SHA", "").strip() or None
+
+        state = "HEALTHY"
+        reasons: list[str] = []
+        if age_hours > float(contract["max_age_hours"]):
+            state = "STALE"
+            reasons.append(f"age_hours={age_hours:.2f}>{contract['max_age_hours']}")
+        if status not in {"queued", "in_progress"} and conclusion != "success":
+            state = "FAILED"
+            reasons.append(f"conclusion={conclusion}")
+        if state != "HEALTHY":
+            report["blockers"].append(f"actions_{state.lower()}:{workflow_path}")
+
+        report["workflows"][workflow_path] = {
+            "state": state,
+            "run_id": latest.get("id"),
+            "run_number": latest.get("run_number"),
+            "status": status,
+            "conclusion": conclusion,
+            "created_at": latest.get("created_at"),
+            "updated_at": latest.get("updated_at"),
+            "head_sha": head_sha,
+            "current_sha": current_sha,
+            "sha_relation": (
+                "CURRENT" if current_sha and head_sha == current_sha
+                else "OLDER_OR_UNKNOWN"
+            ),
+            "age_hours": round(age_hours, 3),
+            "reasons": reasons,
+        }
+    return report
+
+
+def build_report(*, with_actions: bool, now: datetime | None = None) -> dict[str, Any]:
+    now = now or datetime.now(timezone.utc)
+    static_errors = repository_static_errors(ROOT)
+    report: dict[str, Any] = {
+        "schema_version": 1,
+        "generated_at": now.isoformat(),
+        "git_commit": os.environ.get("GITHUB_SHA") or None,
+        "static": {
+            "status": "READY" if not static_errors else "BLOCKED",
+            "blockers": static_errors,
+            "source_sha256": None,
+        },
+        "actions": None,
+        "overall_status": "BLOCKED" if static_errors else "READY",
+    }
+    source = ROOT / "PROJECT_SOURCE.md"
+    if source.is_file():
+        report["static"]["source_sha256"] = hashlib.sha256(source.read_bytes()).hexdigest()
+
+    if with_actions:
+        repo = os.environ.get("GITHUB_REPOSITORY", "").strip()
+        if not repo:
+            report["actions"] = {
+                "status": "UNVERIFIABLE",
+                "blockers": ["GITHUB_REPOSITORY_missing"],
+            }
+            report["overall_status"] = "BLOCKED"
+        else:
+            try:
+                actions = action_health(repo, now)
+            except Exception as exc:
+                report["actions"] = {
+                    "status": "UNVERIFIABLE",
+                    "blockers": [f"actions_inspection_failed:{type(exc).__name__}:{exc}"],
+                }
+                report["overall_status"] = "BLOCKED"
+            else:
+                report["actions"] = {
+                    "status": "READY" if not actions["blockers"] else "BLOCKED",
+                    **actions,
+                }
+                if actions["blockers"]:
+                    report["overall_status"] = "BLOCKED"
+
+    canonical = json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2).encode("utf-8")
+    report["report_sha256"] = hashlib.sha256(canonical).hexdigest()
+    return report
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--actions", action="store_true")
+    parser.add_argument("--output", default="results/governance/project_governance.json")
+    args = parser.parse_args()
+
+    report = build_report(with_actions=args.actions)
+    output = ROOT / args.output
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    return 0 if report["overall_status"] == "READY" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -17,6 +17,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 REQUIRED_MODULES = (
+    "research.project_governance",
     "baseball_backtest",
     "production_npb",
     "production_pit_gate",
@@ -38,6 +39,7 @@ REQUIRED_MODULES = (
 )
 
 REQUIRED_FILES = (
+    Path("PROJECT_SOURCE.md"),
     Path("requirements.txt"),
     Path("requirements-ci.txt"),
     Path("requirements-pit.txt"),
@@ -151,6 +153,10 @@ def main() -> int:
         importlib.import_module(name)
         print(f"OK: {name}")
     _workflow_reliability_checks()
+    from research.project_governance import repository_static_errors
+    governance_errors = repository_static_errors(ROOT)
+    if governance_errors:
+        raise SystemExit("\n".join(governance_errors))
     print("Baseball Action preflight OK")
     return 0
 

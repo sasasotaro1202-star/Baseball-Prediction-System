@@ -1,5 +1,10 @@
 # PROJECT_INSTRUCTIONS — Baseball-Prediction-System
 
+## Canonical detailed project source and governance automation
+The checked-in PROJECT_SOURCE.md is the detailed Project Source for this repository. It must remain traceable to the project source used for this project and is treated as the detailed technical/operational specification under these instructions.
+
+The lightweight research/project_governance.py contract is part of the automation control plane. GitHub Actions executes it on a fixed schedule and on relevant repository changes to verify source integrity, fail-closed production policy, critical workflow wiring, and recent automation health. A governance failure is a real failure signal; it must not be converted to success or used to bypass PIT/OOS/holdout/release gates.
+
 ## Mission
 Maximize future-game generalization, case-level correctness, calibration, predictability awareness, uncertainty quality, robustness, PIT integrity and operational reliability for NPB/MLB and other validated baseball competitions.
 

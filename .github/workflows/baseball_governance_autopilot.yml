@@ -1,0 +1,102 @@
+name: Baseball Governance Autopilot
+
+"on":
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - "PROJECT_SOURCE.md"
+      - "PROJECT_INSTRUCTIONS.md"
+      - "BASEBALL_SYSTEM_SPEC.md"
+      - "config/current_production_runtime.json"
+      - "research/project_governance.py"
+      - "research/action_preflight.py"
+      - "tests/test_project_governance.py"
+      - ".github/workflows/**"
+  schedule:
+    - cron: "13 */6 * * *"
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: baseball-governance-autopilot
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+
+      - name: Install focused test dependency
+        run: python -m pip install --disable-pip-version-check --retries 5 --timeout 60 pytest
+
+      - name: Compile governance sources
+        run: |
+          set -euo pipefail
+          python -m py_compile research/project_governance.py research/action_preflight.py tests/test_project_governance.py
+
+      - name: Run governance unit tests
+        run: python -m pytest -q tests/test_project_governance.py tests/test_action_preflight.py
+
+      - name: Run static governance contract
+        run: |
+          set -euo pipefail
+          python -m research.project_governance --output results/governance/project_governance_static.json
+
+      - name: Run live GitHub Actions governance
+        env:
+          GH_TOKEN: \${{ github.token }}
+          GITHUB_REPOSITORY: \${{ github.repository }}
+          GITHUB_SHA: \${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python -m research.project_governance --actions --output results/governance/project_governance.json
+
+      - name: Publish governance summary
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ -s results/governance/project_governance.json ]; then
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path("results/governance/project_governance.json")
+          d=json.loads(p.read_text(encoding="utf-8"))
+          with open(r"\${{ github.step_summary }}", "a", encoding="utf-8") as out:
+              out.write("## Baseball Governance Autopilot\n")
+              out.write(f"- status: {d.get('overall_status')}\n")
+              out.write(f"- git_commit: {d.get('git_commit')}\n")
+              out.write(f"- source_sha256: {d.get('static',{}).get('source_sha256')}\n")
+              out.write(f"- static_blockers: {len(d.get('static',{}).get('blockers',[]))}\n")
+              actions=d.get("actions") or {}
+              out.write(f"- actions_status: {actions.get('status')}\n")
+              out.write(f"- action_blockers: {len(actions.get('blockers',[]))}\n")
+          PY
+          else
+            echo "Governance report missing" >&2
+            exit 1
+          fi
+
+      - name: Upload governance evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: baseball-governance-\${{ github.run_id }}
+          path: results/governance/
+          if-no-files-found: error
+          retention-days: 14
