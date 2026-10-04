@@ -134,3 +134,47 @@ def test_current_production_never_uses_research_fallback(monkeypatch):
     result = cp.predict_current(league="MLB", target_date="2026-09-24")
     assert result["execution_status"] == "BLOCKED_NO_CURRENT_PRODUCTION_RUNTIME"
     assert result["predictions"] == []
+
+
+def test_run_prediction_preserves_full_competition_metadata(monkeypatch):
+    import prediction.runner as runner
+
+    captured = []
+    monkeypatch.setattr(runner, "append_prediction", lambda record, path: captured.append(record))
+
+    result = runner.run_prediction(
+        row={
+            "required_data_ok": True,
+            "feature_complete": True,
+            "model_available": True,
+            "calibration_available": True,
+            "competition_key": "NPB:npb_regular:regular_season",
+            "competition_stage": "regular_season",
+            "season_type": "regular_season",
+            "game_class": "official",
+            "competition_classification_status": "classified",
+            "competition_metadata_source": "https://npb.jp/bis/eng/2026/games/gm20261004.html",
+            "competition_metadata_source_field": "npb_daily_schedule_heading",
+            "competition_metadata_source_value": "公式戦【試合予定】",
+        },
+        availability=availability("NPB"),
+        probability_fn=lambda row: {"home": 0.5, "draw": 0.2, "away": 0.3},
+        model_version="test-model",
+        feature_version="test-features",
+        calibration_version="test-calibration",
+        git_commit="test-commit",
+        data_snapshot_id="test-snapshot",
+        log_path="/tmp/unused.jsonl",
+    )
+
+    assert result["eligible"] is True
+    assert len(captured) == 1
+    record = captured[0]
+    assert record.competition_key == "NPB:npb_regular:regular_season"
+    assert record.competition_stage == "regular_season"
+    assert record.season_type == "regular_season"
+    assert record.game_class == "official"
+    assert record.competition_classification_status == "classified"
+    assert record.competition_metadata_source == "https://npb.jp/bis/eng/2026/games/gm20261004.html"
+    assert record.competition_metadata_source_field == "npb_daily_schedule_heading"
+    assert record.competition_metadata_source_value == "公式戦【試合予定】"
