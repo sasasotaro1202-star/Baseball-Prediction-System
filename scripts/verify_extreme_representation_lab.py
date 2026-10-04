@@ -9,6 +9,7 @@ from research.extreme_representation_lab import (
 
 def validate(path: str) -> dict:
     obj=json.loads(Path(path).read_text(encoding="utf-8"))
+    if obj.get("research_contract_id") != "extreme-representation-v1": raise RuntimeError("extreme representation research contract mismatch")
     if obj.get("status") != "RESEARCH_ONLY": raise RuntimeError("artifact is not research-only")
     if obj.get("decision") != "NO_AUTO_ADOPTION": raise RuntimeError("artifact permits auto-adoption")
     sha=str(obj.get("git_commit_sha",""))

@@ -34,7 +34,7 @@ def test_ratio_bases_are_name_gated():
 
 def _artifact():
     return {
-      "status":"RESEARCH_ONLY","decision":"NO_AUTO_ADOPTION",
+      "status":"RESEARCH_ONLY","research_contract_id":"extreme-representation-v1","decision":"NO_AUTO_ADOPTION",
       "git_commit_sha":"0123456789abcdef0123456789abcdef01234567",
       "locked_holdout_rows":10,
       "stage_counts":{"stage_a_requested":128,"stage_a_successful":128,"stage_a_failed":0,"stage_b_requested":180,"stage_b_successful":180,"stage_b_failed":0,"stage_c_requested":4,"stage_c_successful":4,"stage_c_failed":0},

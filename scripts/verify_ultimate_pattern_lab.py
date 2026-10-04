@@ -19,6 +19,7 @@ def validate(path: str) -> dict:
     sha = str(obj.get("git_commit_sha", ""))
     if len(sha) != 40 or any(ch not in "0123456789abcdef" for ch in sha.lower()):
         raise RuntimeError("artifact Git snapshot SHA is missing or invalid")
+    if obj.get("research_contract_id") != "ultimate-family-v1": raise RuntimeError("ultimate research contract mismatch")
     if obj.get("status") != "RESEARCH_ONLY":
         raise RuntimeError("artifact is not research-only")
     if obj.get("decision") != "NO_AUTO_ADOPTION":

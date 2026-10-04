@@ -315,6 +315,7 @@ def run(*, league: str, data_dir: str = "data", holdout_fraction: float = 0.20, 
     return {
         "schema_version": "baseball-extreme-representation-lab-v1",
         "status": "RESEARCH_ONLY",
+        "research_contract_id": "extreme-representation-v1",
         "decision": "NO_AUTO_ADOPTION",
         "selection_basis": "disjoint chronological Stage A -> B -> C OOS; frozen holdout after winner lock",
         "league": league,
