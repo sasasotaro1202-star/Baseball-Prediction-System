@@ -7,12 +7,16 @@ on:
       - "core/mlb_pit_policy.py"
       - "tests/test_mlb_pit_policy.py"
       - "data/pit_acquisition.py"
+      - "data/availability.py"
+      - "tests/test_mlb_starter_pit_provenance.py"
       - ".github/workflows/mlb_pit_policy.yml"
   pull_request:
     paths:
       - "core/mlb_pit_policy.py"
       - "tests/test_mlb_pit_policy.py"
       - "data/pit_acquisition.py"
+      - "data/availability.py"
+      - "tests/test_mlb_starter_pit_provenance.py"
       - ".github/workflows/mlb_pit_policy.yml"
   workflow_dispatch:
 
@@ -35,4 +39,4 @@ jobs:
       - name: Run policy tests
         run: |
           python -m pip install --disable-pip-version-check pytest requests
-          python -m pytest -q tests/test_mlb_pit_policy.py
+          python -m pytest -q tests/test_mlb_pit_policy.py tests/test_mlb_starter_pit_provenance.py
