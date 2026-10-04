@@ -24,7 +24,9 @@ def test_fast_npb_wrapper_defers_only_observation_context():
     assert "StringIO()" in source
     assert "sys.stderr.write(captured)" in source
     assert "BASEBALL_FAST_MODEL_POOL_NPB" in source
+    assert "BASEBALL_FAST_SCORE_MODEL_POOL_NPB" in source
     assert "BASEBALL_SCORE_REGRESSION_MAX_ITER" in source
+    assert "BASEBALL_FAST_SCORE_MODEL_POOL" in predictor
 
     # Fast mode must call the canonical predictor rather than create a second
     # probability implementation.
