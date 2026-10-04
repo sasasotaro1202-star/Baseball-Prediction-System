@@ -75,3 +75,16 @@ The watchdog never retries deterministic failures indefinitely and never changes
 ## Promotion
 
 Passing tests or a successful Actions run does not imply adoption. Promotion requires the project-wide chronological OOS, calibration, PIT, robustness, reproducibility, and frozen-holdout gates against the incumbent. Until those gates are satisfied, v4 remains a Challenger Research artifact.
+
+
+## Incremental current-season refresh
+
+The daily workflow separates PBP provenance into:
+
+- validation source fingerprint for 2022-2025 historical WFO inputs;
+- current-context fingerprint for 2026 season inputs;
+- relevant Game-Script code fingerprint.
+
+When only the current-context fingerprint changes and the code plus historical validation fingerprint remain unchanged, the workflow does not repeat historical Monte Carlo WFO. It restores a compatible complete validation checkpoint, rebuilds the full validation state, warms the kernel and team-strength state through the latest pre-shadow 2026 games, and refreshes the current-month frozen shadow only.
+
+A code or historical-validation change invalidates the checkpoint and forces a fresh chronological WFO. This prevents stale metrics or model state from being silently reused after logic/data changes.
