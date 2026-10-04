@@ -61,6 +61,16 @@ def validate(path: str) -> dict:
     winner = obj.get("winner")
     if not isinstance(winner, dict) or not str(winner.get("candidate_id", "")).strip():
         raise RuntimeError("winner missing")
+    stage_c = obj.get("stage_c_all", [])
+    stage_c_ids = {str(row.get("candidate_id", "")) for row in stage_c if isinstance(row, dict)}
+    if str(winner["candidate_id"]) not in stage_c_ids:
+        raise RuntimeError("winner is not present in Stage C evidence")
+    winner_meta = winner.get("feature_meta", {})
+    holdout_meta = obj.get("locked_holdout", {}).get("feature_meta", {})
+    if winner_meta.get("feature_schema_hash") and holdout_meta.get("feature_schema_hash") != winner_meta.get("feature_schema_hash"):
+        raise RuntimeError("holdout feature schema does not match the selected winner")
+    if int(obj.get("locked_holdout", {}).get("metrics", {}).get("rows", 0)) != int(obj.get("locked_holdout_rows", 0)):
+        raise RuntimeError("holdout row count does not reconcile with locked_holdout_rows")
     for name in ("screen", "confirm", "deep"):
         fold = obj.get("folds", {}).get(name, {})
         if int(fold.get("end_row", 0)) <= int(fold.get("start_row", 0)):
