@@ -1,0 +1,46 @@
+name: NPB Game-State Monte Carlo Research
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "research/game_state_engine.py"
+      - "tests/test_game_state_engine.py"
+      - ".github/workflows/npb_game_state_research.yml"
+  workflow_dispatch:
+    inputs:
+      simulations:
+        description: "Monte Carlo simulations per game"
+        required: false
+        default: "500"
+        type: string
+      max_validation_games:
+        description: "Maximum chronological validation games"
+        required: false
+        default: "120"
+        type: string
+      max_holdout_games:
+        description: "Maximum frozen holdout games"
+        required: false
+        default: "120"
+        type: string
+  schedule:
+    - cron: "17 4 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npb-game-state-monte-carlo-research
+  cancel-in-progress: false
+
+env:
+  PYTHONPATH: .
+  PYTHONUNBUFFERED: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
