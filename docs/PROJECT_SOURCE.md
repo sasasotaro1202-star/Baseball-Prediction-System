@@ -2207,3 +2207,19 @@ A green Candidate OOS run from an older commit must not be reused as evidence fo
 
 ### Long-running OOS versus non-runtime continuity commits
 An already-running Candidate OOS replay may tolerate a main-branch commit only when the complete diff is limited to non-runtime continuity files: `data/experience/**`, `tests/**`, or `.github/workflows/baseball_candidate_oos_watchdog.yml`. Experience files are append-only historical postgame reconciliation outputs; tests and the candidate-OOS watchdog are verification/control-plane files and are not runtime inputs to candidate selection or scoring. Candidate runtime code, configuration, PIT inputs, evaluation logic, the candidate workflow itself, or other data remain evidence-affecting and must fail closed. The watchdog is control-plane orchestration only; it must not be treated as candidate runtime evidence.
+
+⸻
+
+94. MANDATORY GITHUB-BACKED NPB PREDICTION POLICY
+
+ユーザーがNPB予想、今日のNPB予想、日次NPB予想、またはNPBの試合予想を要求した場合、必ず現行GitHub repository `sasasotaro1202-star/Baseball-Prediction-System` が生成した予想を主要予想源として使用する。
+
+要求ごとに、現行default branch / HEADと、要求対象JST日付のproduction prediction pathおよび利用可能なprediction artifact/outputを再確認する。GitHub由来のhome/draw/away確率、最終選択、Top-4 exact scores、Low/Highは、その出力がBLOCKED、UNKNOWN、UNVERIFIABLE、FALLBACK、ABSTAIN、INVALIDATED等の状態でない限り、そのNPB予想のauthoritative predictionとして扱う。
+
+外部Web等から取得した試合日程、先発、天候、直前ニュース、その他current contextは、GitHub予想とは別のverification/context layerとしてのみ使用する。外部情報でGitHub予想を無言で置換・上書きしてはならない。
+
+有効なGitHub prediction artifact/outputを確認または生成できない場合、独立に生成した予想を「GitHub予想」と表示してはならない。その場合はGitHub prediction statusをUNAVAILABLE/UNVERIFIABLEとして明示し、repository evidenceとexternal inferenceを分離する。
+
+NPB予想の回答では、可能な範囲で、GitHub commit SHA、model version、feature/calibration version、prediction timestamp/cutoff、data snapshotまたはartifact identifier、production/fallback statusを保持・表示し、どの値がGitHub production output由来かを追跡可能にする。
+
+このルールはprediction requestごとに適用し、前回取得したGitHub予想を現在の要求へ無検証で再利用してはならない。current-date predictionではstale prior-date artifactを黙って使用せず、request-time/current-production contractに従う。
