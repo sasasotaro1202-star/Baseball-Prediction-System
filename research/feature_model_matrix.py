@@ -252,9 +252,16 @@ def run(
                 bt=bt, X=X, y=y, meta=meta, league=league, config=config, folds=folds
             ))
         except Exception as exc:
+            message = f"{type(exc).__name__}: {exc}"
+            failure_type = (
+                "BLOCKED_PIT_CONTEXT"
+                if "requires unavailable PIT-safe feature families" in message
+                else "FAILED"
+            )
             failures.append({
                 "config_id": config.id,
-                "error": f"{type(exc).__name__}: {exc}",
+                "failure_type": failure_type,
+                "error": message,
             })
 
     winner = _select(results)
@@ -312,9 +319,14 @@ def run(
             for a, b in folds
         ],
         "matrix_size_requested": int(len(chosen_variants) * len(chosen_hl) * len(chosen_pools)),
+        "variants_requested": list(chosen_variants),
+        "half_lives_requested": [int(x) for x in chosen_hl],
+        "model_pools_requested": list(chosen_pools),
         "matrix_size_executed": int(len(results) + len(failures)),
         "successful_configs": int(len(results)),
         "failed_configs": int(len(failures)),
+        "blocked_pit_context_configs": int(sum(f.get("failure_type") == "BLOCKED_PIT_CONTEXT" for f in failures)),
+        "execution_failed_configs": int(sum(f.get("failure_type") == "FAILED" for f in failures)),
         "candidate_results": sorted(
             results,
             key=lambda r: (
