@@ -1289,7 +1289,7 @@ def predict(
             "historical_score_mean_total":round(hist_score_mean,6),
             "historical_score_zero_rate":round(hist_score_zero_rate,6),
             "feature_manifest_version":feature_schema["feature_manifest_version"],
-"            "feature_set_id":feature_schema["feature_set_id"],
+            "feature_set_id":feature_schema["feature_set_id"],
             "feature_count":feature_schema["feature_count"],
             "feature_schema_hash":feature_schema["feature_schema_hash"],
             "feature_context_mode":feature_schema["feature_context_mode"],
