@@ -1498,6 +1498,15 @@ GitHub Actionsは:
 * deterministic writes
 * artifact preservation
 * concurrency
+* recovery
+* rollback
+
+を満たすことを優先する。
+
+長時間処理を一発jobだけに依存しない。
+
+⸻
+
 68. SINGLE-WRITER
 
 critical state:
