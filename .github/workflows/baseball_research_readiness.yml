@@ -7,6 +7,7 @@ on:
       - 'data/pit/**'
       - 'prediction_requests/**'
       - '.github/workflows/**'
+      - 'tests/**'
   pull_request:
     branches: [main]
   workflow_dispatch:

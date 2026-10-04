@@ -419,3 +419,18 @@ def test_24h_autopilot_targeted_test_paths_exist():
     assert paths, "expected at least one targeted test path in the 24h autopilot"
     missing = [path for path in paths if not (ROOT / path).is_file()]
     assert not missing, f"24h autopilot references missing test files: {missing}"
+
+
+def test_gate_workflows_skip_test_only_pushes_to_reduce_duplicate_ci():
+    workflow_root = ROOT / ".github" / "workflows"
+    for filename in (
+        "baseball_research_preflight.yml",
+        "baseball_research_readiness.yml",
+        "baseball_hardening_fast_gate.yml",
+    ):
+        text = (workflow_root / filename).read_text(encoding="utf-8")
+        trigger = text.split("permissions:", 1)[0]
+        assert "paths-ignore:" in trigger
+        assert "      - 'tests/**'" in trigger
+        assert "push:" in trigger
+
