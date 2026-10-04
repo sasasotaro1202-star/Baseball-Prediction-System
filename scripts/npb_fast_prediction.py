@@ -88,6 +88,14 @@ def main() -> int:
     os.environ.setdefault("BASEBALL_LGBM_ESTIMATORS", "140")
     os.environ.setdefault("BASEBALL_XGB_ESTIMATORS", "100")
     os.environ.setdefault("BASEBALL_CATBOOST_ITERATIONS", "100")
+    # Keep the user-facing shadow portfolio bounded. These models remain
+    # challengers only; no production/adoption state is changed by this lane.
+    os.environ.setdefault(
+        "BASEBALL_FAST_MODEL_POOL_NPB",
+        "HistGB,RandomForest,ExtraTrees,HierarchicalDrawResult,LightGBM,XGBoost,CatBoost",
+    )
+    os.environ.setdefault("BASEBALL_LOGISTIC_MAX_ITER", "600")
+    os.environ.setdefault("BASEBALL_SCORE_REGRESSION_MAX_ITER", "300")
     # These collectors are explicitly observation/evidence-only in the current
     # NPB production feature contract. Replace them only for this user-facing
     # fast lane; the feature/model/PIT computation itself remains canonical.
