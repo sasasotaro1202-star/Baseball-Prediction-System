@@ -7,6 +7,7 @@ from research.game_state_engine import (
     PIT_STATUS,
     TransitionKernel,
     _transition,
+    _transition_state_key,
     canonicalize_pbp_frame,
     fit_transition_kernel,
     simulate_game,
@@ -134,3 +135,19 @@ def test_sampling_keeps_observed_support():
 
 def test_pit_status_is_not_production_eligible():
     assert PIT_STATUS.startswith("UNVERIFIABLE")
+def test_transition_key_never_uses_terminal_score_label():
+    base = {
+        "inning": 5,
+        "half": "T",
+        "outs": 1,
+        "state_home_score": 2,
+        "state_away_score": 1,
+        "home_score": 2,
+        "away_score": 99,
+        "on_1b": 0,
+        "on_2b": 1,
+        "on_3b": 0,
+    }
+    changed_terminal = {**base, "home_score": 88, "away_score": 3}
+    assert _transition_state_key(base) == _transition_state_key(changed_terminal)
+    assert _transition_state_key(base, use_score_diff=False) == (5, "T", 1, 2, 0)
