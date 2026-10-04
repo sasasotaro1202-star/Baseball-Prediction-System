@@ -52,6 +52,7 @@ def test_validate_rejects_incomplete_matrix(tmp_path):
 def test_validate_rejects_execution_failure(tmp_path):
     obj = _payload()
     obj["execution_failed_configs"] = 1
+    obj["successful_configs"] = 149
     obj["failed_configs"] = obj["blocked_pit_context_configs"] + obj["execution_failed_configs"]
     p = tmp_path / "matrix.json"
     p.write_text(json.dumps(obj), encoding="utf-8")
