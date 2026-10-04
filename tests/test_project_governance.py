@@ -8,7 +8,7 @@ from research.project_governance import (
 
 
 def test_source_contract_accepts_all_85_sections():
-    text = "\n".join(f"{i}. Section {i}" for i in range(1, 86))
+    text = "\n".join(f"\n{i}. SECTION {i}" for i in range(1, 86))
     text += "\n" + "\n".join(
         [
             "available_at <= prediction_cutoff",
@@ -86,3 +86,9 @@ def test_source_file_is_present():
     source = Path("PROJECT_SOURCE.md")
     assert source.is_file()
     assert source.stat().st_size > 0
+
+
+def test_source_section_parser_ignores_numbered_lists():
+    from research.project_governance import SECTION_RE
+    text = "71. COST FIREWALL\n\n1. verified free\n2. free quota\n3. OSS/local\n\n⸻\n\n72. SECURITY / DATA GOVERNANCE\n"
+    assert [int(m[0]) for m in SECTION_RE.findall(text)] == [71, 72]

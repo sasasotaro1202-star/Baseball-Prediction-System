@@ -81,6 +81,7 @@ REQUIRED_SOURCE_PHRASES = (
     "LOW = total runs <= 6",
     "HIGH = total runs >= 7",
     "random split禁止",
+    "PIT Integrity",
     "PIT violations = 0",
     "NO-FAKE-SUCCESS",
     "Future Generalization",
@@ -90,7 +91,7 @@ REQUIRED_SOURCE_PHRASES = (
     "Safe Degradation > False Prediction",
 )
 
-SECTION_RE = re.compile(r"(?m)^\s*(\d+)\.\s+(.+?)\s*$")
+SECTION_RE = re.compile(r"(?m)^(?:⸻\n\n)?\s*(\d+)\.\s+([A-Z0-9][A-Z0-9 /_&/-]+)\s*$")
 
 
 def _read(path: Path) -> str:
@@ -102,9 +103,10 @@ def source_contract_errors(text: str) -> list[str]:
     matches = SECTION_RE.findall(text)
     numbers = [int(n) for n, _ in matches]
     expected = list(range(1, 86))
-    if numbers[:85] != expected:
+    if numbers != expected:
         missing = [n for n in expected if n not in numbers]
-        errors.append(f"project_source_sections_invalid:missing={missing[:20]}")
+        unexpected = [n for n in numbers if n not in expected]
+        errors.append(f"project_source_sections_invalid:missing={missing[:20]}:unexpected={unexpected[:20]}:count={len(numbers)}")
     for phrase in REQUIRED_SOURCE_PHRASES:
         if phrase not in text:
             errors.append(f"project_source_required_text_missing:{phrase!r}")
