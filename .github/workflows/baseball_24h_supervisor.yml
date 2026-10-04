@@ -219,7 +219,7 @@ jobs:
                    | select(.head_branch == "main")
                    | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")]
                   | length')"
-              echo "Pregame dispatch verification ${attempt}/5: active=${pregame_active_after} new_run_id=${new_pregame_run_id:-<none>}"
+              echo "Pregame recovery verification ${attempt}/5: active=${pregame_active_after} new_run_id=${new_pregame_run_id:-<none>}"
               if [ -n "${new_pregame_run_id}" ] || [ "${pregame_active_after}" -gt 0 ]; then
                 verified_pregame=1
                 break
