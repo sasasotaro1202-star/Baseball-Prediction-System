@@ -12,7 +12,9 @@ permissions:
 
 concurrency:
   group: baseball-chat-async-dispatch
-  cancel-in-progress: false
+  # A newer explicit user command supersedes an older dispatcher waiting on
+  # the runner queue. This prevents stale requests from blocking prediction.
+  cancel-in-progress: true
 
 jobs:
   dispatch:
