@@ -67,19 +67,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p results/control_plane
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          Path("results/control_plane/test_failure.json").write_text(
-              json.dumps({
-                  "schema_version": 1,
-                  "status": "FAILED",
-                  "reason": "control_plane_unit_tests_failed",
-                  "git_commit": "${{ github.sha }}",
-              }, ensure_ascii=False, indent=2) + "\n",
-              encoding="utf-8",
-          )
-          PY
+          python -c 'import json, os; from pathlib import Path; Path("results/control_plane/test_failure.json").write_text(json.dumps({"schema_version": 1, "status": "FAILED", "reason": "control_plane_unit_tests_failed", "git_commit": os.environ["GITHUB_SHA"]}, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")'
 
       - name: Execute bounded autonomous control plane
         env:
@@ -97,18 +85,7 @@ jobs:
           set -euo pipefail
           report="results/control_plane/autonomous_control_plane.json"
           if [ -s "$report" ]; then
-            python - <<'PY'
-            import json
-            from pathlib import Path
-            d=json.loads(Path("results/control_plane/autonomous_control_plane.json").read_text(encoding="utf-8"))
-            with open(r"${{ github.step_summary }}", "a", encoding="utf-8") as out:
-                out.write("## Baseball Autonomous Control Plane\n")
-                out.write(f"- status: {d.get('control_plane_status')}\n")
-                out.write(f"- dispatches: {d.get('cycle_dispatch_count')}\n")
-                out.write(f"- heavy_dispatches: {d.get('cycle_heavy_dispatch_count')}\n")
-                for x in d.get('targets', []):
-                    out.write(f"- {x.get('workflow')}: {x.get('decision')} ({x.get('reason')})\n")
-            PY
+            python -c 'import json, os; d=json.load(open("results/control_plane/autonomous_control_plane.json", encoding="utf-8")); out=open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8"); out.write("## Baseball Autonomous Control Plane\n"); out.write("- status: " + str(d.get("control_plane_status")) + "\n"); out.write("- dispatches: " + str(d.get("cycle_dispatch_count")) + "\n"); out.write("- heavy_dispatches: " + str(d.get("cycle_heavy_dispatch_count")) + "\n"); [out.write("- " + str(x.get("workflow")) + ": " + str(x.get("decision")) + " (" + str(x.get("reason")) + ")\n") for x in d.get("targets", [])]; out.close()'
           else
             echo "## Baseball Autonomous Control Plane" >> "$GITHUB_STEP_SUMMARY"
             echo "- status: FAILED_BEFORE_EXECUTION" >> "$GITHUB_STEP_SUMMARY"
