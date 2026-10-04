@@ -61,9 +61,9 @@ jobs:
 
       - name: Run live GitHub Actions governance
         env:
-          GH_TOKEN: \${{ github.token }}
-          GITHUB_REPOSITORY: \${{ github.repository }}
-          GITHUB_SHA: \${{ github.sha }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           python -m research.project_governance --actions --output results/governance/project_governance.json
@@ -78,7 +78,7 @@ jobs:
           from pathlib import Path
           p=Path("results/governance/project_governance.json")
           d=json.loads(p.read_text(encoding="utf-8"))
-          with open(r"\${{ github.step_summary }}", "a", encoding="utf-8") as out:
+          with open(r"${{ github.step_summary }}", "a", encoding="utf-8") as out:
               out.write("## Baseball Governance Autopilot\n")
               out.write(f"- status: {d.get('overall_status')}\n")
               out.write(f"- git_commit: {d.get('git_commit')}\n")
@@ -97,7 +97,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: baseball-governance-\${{ github.run_id }}
+          name: baseball-governance-${{ github.run_id }}
           path: results/governance/
           if-no-files-found: error
           retention-days: 14
