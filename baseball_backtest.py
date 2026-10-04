@@ -2300,9 +2300,10 @@ class BaseballBacktest:
             f"BASEBALL_FAST_SCORE_MODEL_POOL_{league}",
             os.getenv("BASEBALL_FAST_SCORE_MODEL_POOL", ""),
         ).strip()
-        if score_fast_validation and not score_pool_raw:
-            # Keep the bounded research profile deterministic even when callers
-            # do not provide a per-league pool override.
+        if score_fast_validation and not score_pool_raw and league == "NPB":
+            # Keep the bounded NPB research profile deterministic even when callers
+            # do not provide a per-league pool override. MLB keeps its existing
+            # lightweight multi-model pool unless a caller narrows it explicitly.
             score_pool_raw = "Poisson,HistPoisson"
         if fast and score_pool_raw:
             requested_scores = [name.strip() for name in score_pool_raw.split(",") if name.strip()]
