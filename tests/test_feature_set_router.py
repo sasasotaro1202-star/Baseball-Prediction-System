@@ -40,12 +40,19 @@ def sample_frame() -> pd.DataFrame:
 
 
 def test_variants_registered():
-    assert "BASELINE_TEAM_STATE" in available_variants()
-    assert "TEAM_PLUS_STARTER" in available_variants()
-    assert "TEAM_PLUS_BULLPEN" in available_variants()
-    assert "TEAM_PLUS_LINEUP_PIT_SAFE" in available_variants()
-    assert "TEAM_PLUS_WEATHER_PIT_SAFE" in available_variants()
-    assert "FULL_VALIDATED_ENSEMBLE" in available_variants()
+    variants = set(available_variants())
+    for expected in {
+        "BASELINE_TEAM_STATE",
+        "TEAM_PLUS_STARTER",
+        "TEAM_PLUS_BULLPEN",
+        "TEAM_PLUS_LINEUP_PIT_SAFE",
+        "TEAM_PLUS_WEATHER_PIT_SAFE",
+        "TEAM_PLUS_STARTER_BULLPEN",
+        "TEAM_PLUS_STARTER_LINEUP_PIT_SAFE",
+        "TEAM_PLUS_STARTER_BULLPEN_LINEUP_PIT_SAFE",
+        "FULL_VALIDATED_ENSEMBLE",
+    }:
+        assert expected in variants
 
 
 def test_baseline_excludes_conditional_and_unrelated():
@@ -97,3 +104,16 @@ def test_summaries_are_reproducible():
     first = summarize_sets(source)
     second = summarize_sets(source)
     assert first == second
+
+def test_combined_variants_are_monotonic_supersets():
+    baseline, _ = select_features(sample_frame(), "BASELINE_TEAM_STATE")
+    starter_bp, _ = select_features(sample_frame(), "TEAM_PLUS_STARTER_BULLPEN")
+    starter_lineup, _ = select_features(sample_frame(), "TEAM_PLUS_STARTER_LINEUP_PIT_SAFE")
+    starter_bp_lineup, _ = select_features(
+        sample_frame(), "TEAM_PLUS_STARTER_BULLPEN_LINEUP_PIT_SAFE"
+    )
+    assert set(baseline.columns) <= set(starter_bp.columns)
+    assert set(baseline.columns) <= set(starter_lineup.columns)
+    assert set(starter_bp.columns) <= set(starter_bp_lineup.columns)
+    assert set(starter_lineup.columns) <= set(starter_bp_lineup.columns)
+
