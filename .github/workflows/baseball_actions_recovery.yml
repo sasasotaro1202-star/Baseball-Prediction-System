@@ -23,6 +23,12 @@ on:
       - Baseball 60m Pregame Auto Prediction
       - .github/workflows/baseball_60m_pregame_auto.yml
     types: [completed]
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
   queue-cleanup:
     # Preserve runner capacity for user-facing predictions by cancelling only
     # stale queued validation/research jobs. Manual Prediction and Dispatcher
@@ -66,7 +72,6 @@ on:
             fi
           done < <(printf '%s' "${runs_json}" | jq -c '.[]')
           echo "stale_queue_runs_cancelled=${cancelled}" >> "${GITHUB_STEP_SUMMARY}"
-
 
   recover:
     # Recover only transient infrastructure/data-acquisition failures.
