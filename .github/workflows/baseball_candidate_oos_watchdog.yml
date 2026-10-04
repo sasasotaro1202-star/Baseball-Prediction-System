@@ -134,9 +134,10 @@ jobs:
           active_count="$(jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length' <<<"${runs}")"
           echo "active_count_after_pending_recovery=${active_count}"
 
-          # Recover a runner that stayed in-progress after the candidate job timeout.
-          # Only the current main SHA is eligible, and the grace period is 360m
-          # versus the candidate workflow timeout of 260m.
+          # Recover a runner that stayed in-progress well beyond the candidate
+          # workflow timeout. A run this old is operationally stale regardless of
+          # whether main advanced through continuity-only or evidence-affecting
+          # commits. The next replay must use the current main snapshot.
           stale_in_progress=0
           now_epoch="$(date +%s)"
           while IFS= read -r row; do
@@ -145,11 +146,15 @@ jobs:
             status="$(jq -r '.status' <<<"${row}")"
             sha="$(jq -r '.headSha // empty' <<<"${row}")"
             created="$(jq -r '.createdAt // empty' <<<"${row}")"
-            if [[ "${status}" == "in_progress" ]] && [[ "${sha}" == "${current_sha}" ]] && [[ -n "${created}" ]]; then
+            if [[ "${status}" == "in_progress" ]] && [[ -n "${created}" ]]; then
               created_epoch="$(date -d "${created}" +%s)"
               age_minutes=$(( (now_epoch - created_epoch) / 60 ))
               if [[ "${age_minutes}" -ge 360 ]]; then
-                echo "Cancelling stale same-SHA in-progress candidate run ${id} after ${age_minutes}m."
+                if [[ "${sha}" == "${current_sha}" ]]; then
+                  echo "Cancelling stale same-SHA in-progress candidate run ${id} after ${age_minutes}m."
+                else
+                  echo "Cancelling stale superseded-SHA in-progress candidate run ${id} after ${age_minutes}m (${sha} -> ${current_sha})."
+                fi
                 if ! gh run cancel "${id}" --repo "${GH_REPO}"; then
                   echo "Failed to cancel stale in-progress candidate run ${id}; refusing to dispatch a duplicate." >&2
                   exit 1
@@ -158,11 +163,6 @@ jobs:
               fi
             fi
           done < <(jq -c '.[]' <<<"${runs}")
-
-          if [[ "${stale_in_progress}" -eq 1 ]]; then
-            sleep 3
-            runs="$(gh run list --repo "${GH_REPO}" --workflow "${CANDIDATE_WORKFLOW}" --limit 50 --json databaseId,status,conclusion,createdAt,headSha,number)"
-          fi
           in_progress_count="$(jq '[.[] | select(.status == "in_progress")] | length' <<<"${runs}")"
           if [[ "${in_progress_count}" -gt 0 ]]; then
             echo "Candidate OOS has in-progress work; do not interrupt expensive research."
