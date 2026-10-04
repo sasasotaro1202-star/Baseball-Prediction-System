@@ -53,7 +53,7 @@ jobs:
         id: result-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
-          path: results
+          path: results/ultimate_pattern_lab_${{ matrix.league }}.json
           key: baseball-ultimate-pattern-v1-${{ matrix.league }}-${{ github.sha }}
       - name: Verify main snapshot before evidence generation
         env:
