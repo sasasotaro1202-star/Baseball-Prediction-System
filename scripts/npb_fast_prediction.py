@@ -12,6 +12,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 from typing import Any
 
@@ -94,13 +97,23 @@ def main() -> int:
     predictor.collect_npb_team_player_context = _deferred_team_context
     predictor.collect_npb_pregame_context = _deferred_pregame_context
 
-    result = predictor.predict(
-        args.date,
-        args.data_dir,
-        research_shadow=True,
-        minimum_lead_minutes=float(args.minimum_lead_minutes),
-        preferred_lead_minutes=30.0,
-    )
+    # The canonical predictor emits diagnostic progress to stdout while fitting
+    # models and loading PIT-safe history. The user-facing lane reserves stdout
+    # for one machine-readable JSON document, so redirect diagnostics to stderr.
+    diagnostics = StringIO()
+    with redirect_stdout(diagnostics):
+        result = predictor.predict(
+            args.date,
+            args.data_dir,
+            research_shadow=True,
+            minimum_lead_minutes=float(args.minimum_lead_minutes),
+            preferred_lead_minutes=30.0,
+        )
+    captured = diagnostics.getvalue()
+    if captured:
+        sys.stderr.write(captured)
+        if not captured.endswith("\n"):
+            sys.stderr.write("\n")
 
     if not isinstance(result, dict):
         raise RuntimeError("NPB fast prediction returned a non-object result")
