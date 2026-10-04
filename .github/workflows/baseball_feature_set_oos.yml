@@ -9,9 +9,11 @@ on:
       - "research/feature_set_variants.py"
       - "research/feature_set_router.py"
       - "research/feature_model_matrix.py"
+      - "config/feature_model_matrix.json"
       - "evaluation/**"
       - "core/**"
       - "tests/test_feature_set_router.py"
+      - "tests/test_feature_set_variants.py"
       - ".github/workflows/baseball_feature_set_oos.yml"
 
 permissions:
@@ -54,7 +56,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m py_compile baseball_backtest.py production_npb.py             research/feature_set_variants.py research/feature_set_router.py             research/feature_model_matrix.py
-          python -m pytest -q tests/test_feature_set_router.py tests/test_feature_integrity.py
+          python -m pytest -q tests/test_feature_set_router.py tests/test_feature_set_variants.py tests/test_feature_integrity.py
 
       - name: Stage NPB historical data
         if: matrix.league == 'NPB'
@@ -98,7 +100,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ matrix.league }}" = "NPB" ]; then
-            python -m research.feature_model_matrix               --league NPB               --half-life 600 --half-life 900 --half-life 1800 --half-life 3600 --half-life 7200               --model-pool ${{ matrix.model_pool }}               --max-configs 150
+            python -m research.feature_model_matrix               --league NPB               --half-life 600 --half-life 900 --half-life 1800 --half-life 3600 --half-life 7200               --model-pool ${{ matrix.model_pool }}               --max-configs 165
           else
             python -m research.feature_model_matrix               --league MLB               --half-life 600 --half-life 900 --half-life 1800 --half-life 3600 --half-life 7200               --model-pool ${{ matrix.model_pool }}               --max-configs 150               --mlb-start 2020 --mlb-end 2026
           fi
