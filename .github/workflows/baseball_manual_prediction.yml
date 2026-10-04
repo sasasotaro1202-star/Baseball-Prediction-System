@@ -250,6 +250,34 @@ jobs:
                   raise SystemExit("manual prediction is not PIT PASS")
               if "prediction_target_lead_minutes" not in pred:
                   raise SystemExit("manual prediction is missing target lead metadata")
+              # The canonical NPB runtime emits probabilities under the
+              # home_win_pct/draw_pct/away_win_pct + low_pct/high_pct schema.
+              # Fail closed when any probability or ranked exact-score output
+              # is missing; a successful process without usable predictions is
+              # not a successful prediction result.
+              required_numeric = (
+                  "home_win_pct", "draw_pct", "away_win_pct",
+                  "low_pct", "high_pct", "lambda_home", "lambda_away",
+              )
+              for key in required_numeric:
+                  try:
+                      value = float(pred[key])
+                  except (KeyError, TypeError, ValueError) as exc:
+                      raise SystemExit(f"manual prediction missing numeric field: {key}") from exc
+                  if not (0.0 <= value <= 100.0 if key.endswith("_pct") else value >= 0.0):
+                      raise SystemExit(f"manual prediction has invalid numeric field: {key}")
+              top4 = pred.get("top4_exact_scores")
+              if not isinstance(top4, list) or len(top4) != 4:
+                  raise SystemExit("manual prediction is missing exactly four exact-score candidates")
+              for candidate in top4:
+                  if not isinstance(candidate, dict) or not str(candidate.get("score", "")).strip():
+                      raise SystemExit("manual prediction contains an invalid exact-score candidate")
+              probs = [float(pred["home_win_pct"]), float(pred["draw_pct"]), float(pred["away_win_pct"])]
+              if abs(sum(probs) - 100.0) > 0.15:
+                  raise SystemExit("manual NPB class probabilities do not sum to 100%")
+              hilo = [float(pred["low_pct"]), float(pred["high_pct"])]
+              if abs(sum(hilo) - 100.0) > 0.15:
+                  raise SystemExit("manual NPB low/high probabilities do not sum to 100%")
           print("Manual on-demand PIT/metadata validation passed.")
           PY
 
