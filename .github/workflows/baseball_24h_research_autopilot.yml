@@ -390,6 +390,7 @@ jobs:
               'max_execution_minutes':1440,
               'status':'COMPLETED' if all(v == 'success' for v in lane_results.values()) and not stale_run else 'PARTIAL_OR_BLOCKED',
               'lane_results':lane_results,
+              'stale_run':stale_run,
               'evidence_file_count':len(files),
               'evidence_files':files[:2000],
               'research_only':True,
