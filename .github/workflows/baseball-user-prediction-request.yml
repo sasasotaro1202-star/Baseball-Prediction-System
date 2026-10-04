@@ -35,10 +35,67 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"
+          cache: pip
 
       - name: Install repository prediction dependencies
         run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
 
+      - name: Resolve NPB historical source snapshot for cache
+        id: npb-history-cache-key
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUEST_FILE: ${{ github.event.inputs.request_file || 'prediction_requests/inbox/active.json' }}
+        run: |
+          set -euo pipefail
+          competition="$(python - "$REQUEST_FILE" <<'PY'
+          import json, sys
+          with open(sys.argv[1], encoding="utf-8") as fh:
+              obj = json.load(fh)
+          print(str(obj.get("competition_id") or obj.get("league") or "").strip().upper())
+          PY
+          )"
+          echo "competition=$competition" >> "$GITHUB_OUTPUT"
+          if [ "$competition" != "NPB" ]; then
+            exit 0
+          fi
+          target="$(python - "$REQUEST_FILE" <<'PY'
+          import json, sys
+          from datetime import datetime, timezone
+          from zoneinfo import ZoneInfo
+          with open(sys.argv[1], encoding="utf-8") as fh:
+              obj = json.load(fh)
+          value = str(obj.get("target_date") or "").strip().lower()
+          if not value or value == "today":
+              value = datetime.now(timezone.utc).astimezone(ZoneInfo("Asia/Tokyo")).strftime("%Y-%m-%d")
+          print(value)
+          PY
+          )"
+          year="$(printf '%s' "$target" | cut -d- -f1)"
+          month="$(printf '%s' "$target" | cut -d- -f2)"
+          month_num=$((10#$month))
+          if [ "$month_num" -gt 2 ]; then
+            history_until="$(printf '%04d-%02d' "$year" $((month_num - 1)))"
+          else
+            history_until="$(printf '%04d-%02d' "$year" 1)"
+          fi
+          tag_sha="$(gh api repos/armstjc/Nippon-Baseball-Data-Repository/git/ref/tags/pbp --jq '.object.sha')"
+          test -n "$tag_sha"
+          echo "target=$target" >> "$GITHUB_OUTPUT"
+          echo "history_until=$history_until" >> "$GITHUB_OUTPUT"
+          echo "source_tag_sha=$tag_sha" >> "$GITHUB_OUTPUT"
+          echo "NPB PBP cache source=$tag_sha history_until=$history_until" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Restore NPB historical PBP cache
+        if: steps.npb-history-cache-key.outputs.competition == 'NPB'
+        id: npb-history-cache
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809
+        with:
+          path: data/*_pbp.csv
+          key: ${{ runner.os }}-npb-pbp-${{ steps.npb-history-cache-key.outputs.source_tag_sha }}-${{ steps.npb-history-cache-key.outputs.history_until }}
+          restore-keys: |
+            ${{ runner.os }}-npb-pbp-${{ steps.npb-history-cache-key.outputs.source_tag_sha }}-
+          
       - name: Stage PIT-safe NPB history for prediction router
         shell: bash
         env:
@@ -93,7 +150,7 @@ jobs:
             echo "PIT-safe NPB history staging produced no readable PBP file." >&2
             exit 1
           fi
-          echo "PIT-safe NPB history staged: $count monthly PBP file(s) for target=$target." >> "$GITHUB_STEP_SUMMARY"
+          echo "PIT-safe NPB history staged: $count monthly PBP file(s) for target=$target. cache_hit=${{ steps.npb-history-cache.outputs.cache-hit }}" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Generate requested prediction through repository router
         id: generate
