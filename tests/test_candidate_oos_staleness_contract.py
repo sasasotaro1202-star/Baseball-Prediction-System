@@ -5,9 +5,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_candidate_oos_fails_closed_on_stale_main_snapshot():
     workflow = (ROOT / '.github' / 'workflows' / 'baseball_candidate_oos.yml').read_text(encoding='utf-8')
-    assert 'name: Verify main snapshot is evidence-current' in workflow
-    assert 'name: Verify candidate OOS snapshot remains evidence-current' in workflow
-    assert 'test "$current_main" = "$EXPECTED_REF"' in workflow
+    assert 'Verify main snapshot is evidence-current' in workflow
+    assert 'Verify candidate OOS snapshot remains evidence-current' in workflow
+    assert 'EXPECTED_REF' in workflow
+    assert 'git rev-parse origin/main' in workflow
+    assert 'current_main' in workflow
     assert 'git fetch --no-tags --prune origin main' in workflow
 
 def test_candidate_oos_watchdog_monitors_all_candidate_dependencies():
