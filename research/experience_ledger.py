@@ -22,6 +22,7 @@ import pandas as pd
 
 from research.npb_official_results import _fetch_month
 from research.experience_dimensions import add_dimensions
+from research.experience_evidence import build_experience_evidence
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPERIENCE = ROOT / "data" / "experience"
@@ -904,7 +905,7 @@ def reconcile() -> dict[str, Any]:
         "competition_classification_status", "competition_metadata_source",
         "competition_metadata_source_field", "competition_metadata_source_value",
         "game_type", "series_description",
-        "regime", "score_regime", "model", "situation_tags",
+        "regime", "score_regime", "model", "model_version", "feature_version", "calibration_version", "git_commit", "situation_tags",
         "home_win_pct", "draw_pct", "away_win_pct", "predicted_outcome",
         "actual_outcome", "outcome_correct", "logloss", "brier",
         "home_probability_error", "draw_probability_error", "away_probability_error",
@@ -982,6 +983,7 @@ def reconcile() -> dict[str, Any]:
 
     summary: dict[str, Any] = {
         "generated_at_utc": _utc_now(),
+        "evidence": build_experience_evidence(experience),
         "status": "UPDATED",
         "prediction_rows": int(len(pred)),
         "matched_rows_total": int(len(experience)),
