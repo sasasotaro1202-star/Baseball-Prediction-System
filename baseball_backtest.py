@@ -71,6 +71,7 @@ from research.correlated_score import estimate_shared_lambda, low_high as correl
 from evaluation.calibration import fit_temperature, TemperatureCalibration
 from evaluation.metrics import expected_calibration_error
 from core.atomic_io import atomic_write_text
+from research.feature_set_router import select_features
 
 RANDOM_STATE = 42
 ROOT = Path(__file__).resolve().parent
@@ -278,6 +279,8 @@ class BaseballBacktest:
             digest.update(fingerprint_path.read_bytes())
         self.checkpoint_code_fingerprint = digest.hexdigest()
         self._last_temperature = 1.0
+        self.feature_set_variant = os.getenv("BASEBALL_FEATURE_SET_VARIANT", "FULL_VALIDATED_ENSEMBLE").strip().upper() or "FULL_VALIDATED_ENSEMBLE"
+        self.feature_set_metadata = None
         self._ensemble_weight_power = 1.0
         self._model_temperatures = {}
         self._calibration_mode = "ensemble"
@@ -1155,6 +1158,36 @@ class BaseballBacktest:
                 self.update_after_game(row)
 
         X = pd.DataFrame(Xrows).replace([np.inf, -np.inf], np.nan)
+        try:
+            X, feature_meta = select_features(
+                X,
+                self.feature_set_variant,
+                feature_manifest_version="feature-contract-v1",
+            )
+        except Exception as exc:
+            self.audit.append({
+                "type": "feature_set_selection_error",
+                "variant": self.feature_set_variant,
+                "error": f"{type(exc).__name__}: {exc}",
+            })
+            raise
+        self.feature_set_metadata = {
+            "feature_set_id": feature_meta.feature_set_id,
+            "variant": feature_meta.variant,
+            "feature_manifest_version": feature_meta.feature_manifest_version,
+            "feature_count": feature_meta.feature_count,
+            "feature_schema_hash": feature_meta.feature_schema_hash,
+            "excluded_count": len(feature_meta.excluded_columns),
+        }
+        self.audit.append({
+            "type": "feature_set_selection",
+            "feature_set_id": feature_meta.feature_set_id,
+            "variant": feature_meta.variant,
+            "feature_manifest_version": feature_meta.feature_manifest_version,
+            "feature_count": feature_meta.feature_count,
+            "feature_schema_hash": feature_meta.feature_schema_hash,
+            "excluded_count": len(feature_meta.excluded_columns),
+        })
         missing = X.isna().sum()
         missing = missing[missing > 0].sort_values(ascending=False)
         if not missing.empty:
@@ -2638,6 +2671,9 @@ class BaseballBacktest:
             return
         df.to_csv(RESULTS / f"{league.lower()}_backtest_results.csv", index=False)
         summary = pd.DataFrame([self.evaluate(df, league)])
+        if self.feature_set_metadata:
+            for key, value in self.feature_set_metadata.items():
+                summary.loc[0, key] = value
         summary.to_csv(RESULTS / f"{league.lower()}_backtest_summary.csv", index=False)
         model = df.groupby("model").agg(
             Predictions=("correct", "size"),
