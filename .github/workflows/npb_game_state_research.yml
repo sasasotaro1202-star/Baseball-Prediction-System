@@ -26,9 +26,10 @@ on:
         type: string
   schedule:
     - cron: "17 4 * * 1"
+    - cron: "17 4 * * 4"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: npb-game-state-monte-carlo-research
@@ -42,11 +43,14 @@ env:
 jobs:
   screen:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 150
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         timeout-minutes: 5
+        with:
+          persist-credentials: true
+          fetch-depth: 1
 
       - name: Verify evidence snapshot
         run: |
@@ -136,14 +140,30 @@ jobs:
           echo "pbp_file_count=$count"
 
       - name: Run chronological Game-State screening
-        timeout-minutes: 55
+        id: game_state
+        continue-on-error: true
+        timeout-minutes: 75
         env:
           SIMULATIONS: ${{ inputs.simulations || '500' }}
           MAX_VALIDATION_GAMES: ${{ inputs.max_validation_games || '120' }}
           MAX_HOLDOUT_GAMES: ${{ inputs.max_holdout_games || '120' }}
         run: |
-          set -euo pipefail
-          python -m research.game_state_engine             --data-glob 'data/*_pbp.csv'             --development-end 2024-12-31             --validation-start 2025-01-01             --validation-end 2025-12-31             --holdout-start 2026-01-01             --max-validation-games "$MAX_VALIDATION_GAMES"             --max-holdout-games "$MAX_HOLDOUT_GAMES"             --simulations "$SIMULATIONS"             --seed 42             --output results/game_state_screening.json
+          set +e
+          python -m research.game_state_engine \
+            --data-glob 'data/*_pbp.csv' \
+            --development-end 2024-12-31 \
+            --validation-start 2025-01-01 \
+            --validation-end 2025-12-31 \
+            --holdout-start 2026-01-01 \
+            --max-validation-games "$MAX_VALIDATION_GAMES" \
+            --max-holdout-games "$MAX_HOLDOUT_GAMES" \
+            --simulations "$SIMULATIONS" \
+            --seed 42 \
+            --output results/game_state_screening.json \
+            --checkpoint results/game_state_checkpoint.json
+          rc=$?
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          exit 0
 
       - name: Verify screening result
         timeout-minutes: 5
@@ -187,4 +207,42 @@ jobs:
             research/game_state_engine.py
             tests/test_game_state_engine.py
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 30      - name: Persist immutable research evidence and checkpoint
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p results/game_state_history
+          if [ -s results/game_state_screening.json ]; then
+            cp results/game_state_screening.json "results/game_state_history/run-${GITHUB_RUN_ID}.json"
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add results/game_state_history/ results/game_state_checkpoint.json
+          if git diff --cached --quiet; then
+            echo "No durable Game-State evidence/checkpoint to persist."
+            exit 0
+          fi
+
+          if [ -s results/game_state_checkpoint.json ]; then
+            commit_message="chore(research): checkpoint Game-State loop"
+          else
+            commit_message="research: persist Game-State evidence"
+          fi
+          git commit -m "$commit_message"
+
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            git fetch origin main
+            git rebase origin/main
+          done
+          echo "Unable to persist Game-State evidence after retries." >&2
+          exit 1
+
+      - name: Fail closed on research execution failure
+        if: ${{ steps.game_state.outputs.exit_code != '0' }}
+        run: |
+          echo "Game-State research did not complete successfully; preserved checkpoint/evidence where available." >&2
+          exit 1
