@@ -602,6 +602,7 @@ def evaluate_from_files(
     simulations: int = 500,
     seed: int = 42,
     checkpoint_path: str | Path = "results/game_state_checkpoint.json",
+    latest_path: str | Path = "results/game_state_latest.json",
 ) -> dict[str, Any]:
     files = [Path(p) for p in paths]
     dev_end = pd.Timestamp(development_end, tz="UTC")
@@ -624,6 +625,25 @@ def evaluate_from_files(
     }
     fingerprint = _source_fingerprint(files, config)
     checkpoint_file = Path(checkpoint_path)
+    latest_file = Path(latest_path)
+
+    # Same input/config fingerprint is already completed: do not spend compute
+    # again. Immutable historical evidence remains under game_state_history/.
+    if latest_file.exists():
+        try:
+            latest = json.loads(latest_file.read_text(encoding="utf-8"))
+        except Exception:
+            latest = None
+        if (
+            isinstance(latest, dict)
+            and latest.get("schema_version") == SCHEMA_VERSION
+            and latest.get("input_fingerprint") == fingerprint
+            and latest.get("decision") == "HOLD_RESEARCH_ONLY"
+        ):
+            reused = dict(latest)
+            reused["execution_status"] = "SKIPPED_SAME_FINGERPRINT"
+            reused["reused_from"] = str(latest_file)
+            return reused
 
     canonical_frames: list[pd.DataFrame] = []
     games: list[dict[str, Any]] = []
@@ -948,6 +968,7 @@ def main(argv: list[str] | None = None) -> int:
         simulations=max(1, a.simulations),
         seed=a.seed,
         checkpoint_path=a.checkpoint,
+        latest_path="results/game_state_latest.json",
     )
     out = Path(a.output)
     out.parent.mkdir(parents=True, exist_ok=True)
