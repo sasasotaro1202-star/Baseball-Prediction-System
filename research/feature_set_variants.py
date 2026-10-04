@@ -1,7 +1,8 @@
-"""Deterministic feature-set variants for baseball research and production traceability.
+"""Canonical deterministic feature-set registry.
 
-Only selects already-constructed PIT-safe columns. It never creates information,
-performs imputation, or changes target semantics.
+The registry defines *research variants*. Selection only drops columns already
+constructed by the PIT-safe feature builder; it never creates information,
+imputes missing values, or changes targets.
 """
 from __future__ import annotations
 
@@ -24,25 +25,51 @@ _FAMILY_PATTERNS = (
     ("interaction", re.compile(r"_x_|(?:^|_)(?:gap|diff)_(?:10|20)$")),
 )
 
+# All variants are explicit. The exact feature schema is still derived from
+# the actual frame, so changes to upstream feature construction cannot silently
+# masquerade as the same schema.
 VARIANT_FAMILIES: dict[str, frozenset[str]] = {
     "BASELINE_TEAM_STATE": frozenset({"core", "volatility"}),
+    "TEAM_CORE_SHORT_HORIZON": frozenset({"core"}),
+    "TEAM_CORE_MEDIUM_HORIZON": frozenset({"core"}),
+    "TEAM_CORE_LONG_HORIZON": frozenset({"core"}),
+    "TEAM_CORE_NO_SHRINK": frozenset({"core"}),
+    "TEAM_CORE_SHRINK_ONLY": frozenset({"core"}),
+    "TEAM_CORE_NO_VOLATILITY": frozenset({"core"}),
     "TEAM_PLUS_STARTER": frozenset({"core", "volatility", "starter"}),
+    "TEAM_PLUS_STARTER_RECENT": frozenset({"core", "volatility", "starter"}),
     "TEAM_PLUS_BULLPEN": frozenset({"core", "volatility", "bullpen"}),
+    "TEAM_PLUS_BULLPEN_WORKLOAD": frozenset({"core", "volatility", "bullpen"}),
+    "TEAM_PLUS_BULLPEN_QUALITY": frozenset({"core", "volatility", "bullpen"}),
     "TEAM_PLUS_OFFENSE": frozenset({"core", "volatility", "offense"}),
-    "TEAM_PLUS_LINEUP_PIT_SAFE": frozenset({"core", "volatility", "lineup"}),
-    "TEAM_PLUS_WEATHER_PIT_SAFE": frozenset({"core", "volatility", "weather"}),
+    "TEAM_PLUS_OFFENSE_RATE": frozenset({"core", "volatility", "offense"}),
+    "TEAM_PLUS_OFFENSE_POWER": frozenset({"core", "volatility", "offense"}),
     "TEAM_PLUS_STARTER_BULLPEN": frozenset({"core", "volatility", "starter", "bullpen"}),
     "TEAM_PLUS_STARTER_OFFENSE": frozenset({"core", "volatility", "starter", "offense"}),
+    "TEAM_PLUS_STARTER_BULLPEN_OFFENSE_NO_INTERACTIONS": frozenset(
+        {"core", "volatility", "starter", "bullpen", "offense"}
+    ),
+    "TEAM_PLUS_STARTER_BULLPEN_OFFENSE_INTERACTIONS": frozenset(
+        {"core", "volatility", "starter", "bullpen", "offense", "interaction"}
+    ),
+    "TEAM_PLUS_LINEUP_PIT_SAFE": frozenset({"core", "volatility", "lineup"}),
     "TEAM_PLUS_STARTER_LINEUP_PIT_SAFE": frozenset({"core", "volatility", "starter", "lineup"}),
     "TEAM_PLUS_STARTER_BULLPEN_LINEUP_PIT_SAFE": frozenset(
         {"core", "volatility", "starter", "bullpen", "lineup"}
     ),
-    "TEAM_PLUS_STARTER_BULLPEN_OFFENSE": frozenset({"core", "volatility", "starter", "bullpen", "offense"}),
-    "TEAM_PLUS_STARTER_BULLPEN_OFFENSE_INTERACTIONS": frozenset(
-        {"core", "volatility", "starter", "bullpen", "offense", "interaction"}
-    ),
+    "TEAM_PLUS_WEATHER_PIT_SAFE": frozenset({"core", "volatility", "weather"}),
+    "FULL_NO_STARTER": frozenset({"core", "volatility", "bullpen", "offense", "interaction"}),
+    "FULL_NO_BULLPEN": frozenset({"core", "volatility", "starter", "offense", "interaction"}),
+    "FULL_NO_OFFENSE": frozenset({"core", "volatility", "starter", "bullpen", "interaction"}),
+    "FULL_NO_INTERACTIONS": frozenset({"core", "volatility", "starter", "bullpen", "offense"}),
     "FULL_NO_PIT_CONTEXT": frozenset(
         {"core", "volatility", "starter", "bullpen", "offense", "interaction"}
+    ),
+    "FULL_PIT_LINEUP_ONLY": frozenset(
+        {"core", "volatility", "starter", "bullpen", "offense", "interaction", "lineup"}
+    ),
+    "FULL_PIT_WEATHER_ONLY": frozenset(
+        {"core", "volatility", "starter", "bullpen", "offense", "interaction", "weather"}
     ),
     "FULL_VALIDATED_ENSEMBLE": frozenset(
         {"core", "volatility", "starter", "bullpen", "offense", "interaction", "lineup", "weather", "context"}
@@ -50,6 +77,27 @@ VARIANT_FAMILIES: dict[str, frozenset[str]] = {
 }
 
 SCREENING_VARIANTS: tuple[str, ...] = tuple(VARIANT_FAMILIES)
+
+_STABLE_CORE = re.compile(
+    r"^(?:home_adv|expected_env|h_(?:venue_|elo$|rest_days$|matches$|bp3$|bp7$)|"
+    r"a_(?:venue_|elo$|rest_days$|matches$|bp3$|bp7$)|"
+    r"d_(?:venue_|elo$|rest_days$|matches$|bp3$|bp7$))$"
+)
+_ANY_WINDOW = re.compile(r"_(?:3|5|10|20|30|45|60)$")
+
+_VARIANT_EXCLUDES: dict[str, re.Pattern[str]] = {
+    "TEAM_CORE_SHORT_HORIZON": re.compile(r"_(?:20|30|45|60)$"),
+    "TEAM_CORE_MEDIUM_HORIZON": re.compile(r"_(?:3|30|45|60)$"),
+    "TEAM_CORE_LONG_HORIZON": re.compile(r"_(?:3|5)$"),
+    "TEAM_CORE_NO_SHRINK": re.compile(r"_shrunk_"),
+    "TEAM_CORE_SHRINK_ONLY": re.compile(r"^(?!.*_shrunk_).*"),
+    "TEAM_CORE_NO_VOLATILITY": re.compile(r"(?:sd_20|slope_20)$"),
+    "TEAM_PLUS_STARTER_RECENT": re.compile(r"^(?:hs_|as_)(?!(?:recent_|starts$))"),
+    "TEAM_PLUS_BULLPEN_WORKLOAD": re.compile(r"^(?:h_|a_|d_)?(?:bp_(?:era|whip|k9|bb9|hr9|actual_coverage)|bullpen_)"),
+    "TEAM_PLUS_BULLPEN_QUALITY": re.compile(r"^(?:h_|a_|d_)?(?:bp(?:3|7|_app_10|_er_10|_runs_10)$|bullpen_)"),
+    "TEAM_PLUS_OFFENSE_RATE": re.compile(r"^(?:h_|a_|d_)?(?:bat_(?:ab|hr|so|bb|xbh)_|matchup_)"),
+    "TEAM_PLUS_OFFENSE_POWER": re.compile(r"^(?:h_|a_|d_)?(?:bat_(?!(?:hr|hr_rate|xbh|iso_proxy|extra_base_rate)_))"),
+}
 
 
 def feature_family(column: str) -> str:
@@ -62,6 +110,22 @@ def feature_family(column: str) -> str:
     return "core"
 
 
+def _keep_variant_specific(name: str, variant: str) -> bool:
+    chosen = str(variant).strip().upper()
+    if chosen not in _VARIANT_EXCLUDES:
+        return True
+    pattern = _VARIANT_EXCLUDES[chosen]
+    if chosen == "TEAM_CORE_SHRINK_ONLY":
+        return bool(_STABLE_CORE.search(name) or "_shrunk_" in name)
+    if chosen == "TEAM_CORE_SHORT_HORIZON":
+        return bool(_STABLE_CORE.search(name) or (feature_family(name) == "core" and _ANY_WINDOW.search(name)))
+    if chosen == "TEAM_CORE_MEDIUM_HORIZON":
+        return bool(_STABLE_CORE.search(name) or (feature_family(name) == "core" and _ANY_WINDOW.search(name)))
+    if chosen == "TEAM_CORE_LONG_HORIZON":
+        return bool(_STABLE_CORE.search(name) or (feature_family(name) == "core" and _ANY_WINDOW.search(name)))
+    return not bool(pattern.search(name))
+
+
 def selected_columns(columns: Iterable[str], variant: str) -> list[str]:
     chosen = str(variant).strip().upper()
     if chosen not in VARIANT_FAMILIES:
@@ -69,7 +133,11 @@ def selected_columns(columns: Iterable[str], variant: str) -> list[str]:
             f"unknown feature-set variant {chosen!r}; allowed={','.join(SCREENING_VARIANTS)}"
         )
     families = VARIANT_FAMILIES[chosen]
-    selected = [str(c) for c in columns if feature_family(str(c)) in families]
+    selected = [
+        str(c)
+        for c in columns
+        if feature_family(str(c)) in families and _keep_variant_specific(str(c), chosen)
+    ]
     if not selected:
         raise ValueError(f"feature-set variant {chosen} selected zero columns")
     return selected
