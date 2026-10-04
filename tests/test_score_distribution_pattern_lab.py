@@ -58,6 +58,7 @@ def _artifact():
             "variant_count": 210,
         },
         "development_top": [{"variant_id": "x"}],
+        "rank_stability": {"eligible": True, "best_variant": "x", "best_rank": 1, "finite_variant_count": 210, "primary_spread": 0.5},
         "folds": {
             "screen": {"start_row": 500, "end_row": 600},
             "confirm": {"start_row": 600, "end_row": 700},
@@ -99,4 +100,12 @@ def test_verifier_rejects_holdout_winner_mismatch(tmp_path):
     p = tmp_path / "score.json"
     p.write_text(json.dumps(obj), encoding="utf-8")
     with pytest.raises(RuntimeError, match="holdout variant differs"):
+        validate(str(p))
+
+def test_verifier_rejects_missing_rank_stability(tmp_path):
+    obj = _artifact()
+    obj.pop("rank_stability")
+    p = tmp_path / "score.json"
+    p.write_text(json.dumps(obj), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="rank-stability evidence"):
         validate(str(p))
