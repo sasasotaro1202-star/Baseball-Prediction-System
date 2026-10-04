@@ -494,11 +494,8 @@ def _simulation_stability(
     probe = rows.head(min(24, len(rows)))
     l1_values: list[float] = []
     for r in probe.itertuples(index=False):
-        ho, hd, ao, ad = RollingFactors(base_run=base_run).before(str(r.home), str(r.away))
-        # The temporary roll above is intentionally not used for team factors.
-        # Use neutral factors so the measurement isolates MC sampling variance,
-        # not a second hidden fit.
-        _ = (ho, hd, ao, ad)
+        # Use neutral team factors so this audit isolates Monte Carlo sampling
+        # variance rather than introducing another feature/model fit.
         first = simulate_game(
             kernel,
             base_run=base_run,
