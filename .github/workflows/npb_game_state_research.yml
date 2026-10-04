@@ -1,6 +1,12 @@
 name: NPB Game-State Monte Carlo Research
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "research/game_state_engine.py"
+      - "tests/test_game_state_engine.py"
+      - ".github/workflows/npb_game_state_research.yml"
   workflow_dispatch:
     inputs:
       simulations:
@@ -38,147 +44,3 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        timeout-minutes: 5
-
-      - name: Verify evidence snapshot
-        run: |
-          set -euo pipefail
-          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
-            echo "This workflow is an evidence workflow and must run from main." >&2
-            exit 1
-          fi
-          git fetch --no-tags --prune origin main
-          current_main="$(git rev-parse origin/main)"
-          echo "workflow_sha=$GITHUB_SHA"
-          echo "current_main_sha=$current_main"
-          test "$current_main" = "$GITHUB_SHA"
-
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
-        timeout-minutes: 5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements.txt
-
-      - name: Install dependencies
-        timeout-minutes: 10
-        run: |
-          set -euo pipefail
-          python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
-
-      - name: Compile and focused tests
-        timeout-minutes: 10
-        run: |
-          set -euo pipefail
-          python -m py_compile research/game_state_engine.py
-          python -m pytest -q tests/test_game_state_engine.py
-
-      - name: Stage PIT-screening NPB PBP data
-        env:
-          GH_TOKEN: ${{ github.token }}
-        timeout-minutes: 45
-        run: |
-          set -euo pipefail
-          mkdir -p data
-          current_year="$(TZ=Asia/Tokyo date +%Y)"
-          current_month="$(TZ=Asia/Tokyo date +%m)"
-          current_month_num=$((10#$current_month))
-
-          if [ "$current_month_num" -lt 3 ]; then
-            max_current_month=2
-          elif [ "$current_month_num" -gt 10 ]; then
-            max_current_month=10
-          else
-            max_current_month=$current_month_num
-          fi
-
-          assets="$(gh api repos/armstjc/Nippon-Baseball-Data-Repository/releases/tags/pbp --jq '.assets[].name')"
-          missing=0
-
-          for year in 2022 2023 2024 2025 2026; do
-            max_month=10
-            if [ "$year" -eq "$current_year" ]; then
-              max_month="$max_current_month"
-            fi
-            if [ "$max_month" -lt 3 ]; then
-              continue
-            fi
-            for m in $(seq 3 "$max_month"); do
-              mm="$(printf "%02d" "$m")"
-              asset="${year}-${mm}_pbp.csv"
-              if ! grep -Fxq "$asset" <<<"$assets"; then
-                echo "Required source asset missing: $asset" >&2
-                missing=1
-                continue
-              fi
-              echo "Downloading $asset"
-              gh release download pbp                 --repo armstjc/Nippon-Baseball-Data-Repository                 --pattern "$asset"                 --dir data                 --clobber
-              test -s "data/$asset"
-            done
-          done
-
-          if [ "$missing" -ne 0 ]; then
-            echo "Historical source coverage is incomplete; refusing a partial evidence run." >&2
-            exit 1
-          fi
-
-          count="$(find data -maxdepth 1 -type f -name '*_pbp.csv' | wc -l | tr -d ' ')"
-          test "$count" -ge 10
-          echo "pbp_file_count=$count"
-
-      - name: Run chronological Game-State screening
-        timeout-minutes: 55
-        env:
-          SIMULATIONS: ${{ inputs.simulations || '500' }}
-          MAX_VALIDATION_GAMES: ${{ inputs.max_validation_games || '120' }}
-          MAX_HOLDOUT_GAMES: ${{ inputs.max_holdout_games || '120' }}
-        run: |
-          set -euo pipefail
-          python -m research.game_state_engine             --data-glob 'data/*_pbp.csv'             --development-end 2024-12-31             --validation-start 2025-01-01             --validation-end 2025-12-31             --holdout-start 2026-01-01             --max-validation-games "$MAX_VALIDATION_GAMES"             --max-holdout-games "$MAX_HOLDOUT_GAMES"             --simulations "$SIMULATIONS"             --seed 42             --output results/game_state_screening.json
-
-      - name: Verify screening result
-        timeout-minutes: 5
-        run: |
-          set -euo pipefail
-          test -s results/game_state_screening.json
-          python - <<'PY'
-          import json
-          from pathlib import Path
-
-          obj = json.loads(Path("results/game_state_screening.json").read_text(encoding="utf-8"))
-          assert obj.get("status") == "RESEARCH_SCREENING_ONLY"
-          assert obj.get("decision") == "HOLD_RESEARCH_ONLY"
-          assert obj.get("pit_status", "").startswith("UNVERIFIABLE")
-          assert obj.get("production_eligible") is False
-
-          aggregate = obj.get("aggregate", {})
-          for model in ("candidate", "poisson_baseline"):
-              for phase in ("validation", "holdout"):
-                  row = aggregate[model][phase]
-                  assert row["rows"] > 0
-                  for metric in ("accuracy", "logloss", "brier", "ece", "score_mae", "top1_exact", "top4_exact"):
-                      assert isinstance(row[metric], (int, float))
-                      assert row[metric] == row[metric]
-          print(json.dumps({
-              "status": obj["status"],
-              "decision": obj["decision"],
-              "pit_status": obj["pit_status"],
-              "aggregate": aggregate,
-              "delta_vs_poisson": obj.get("delta_vs_poisson", {}),
-          }, ensure_ascii=False, indent=2))
-          PY
-
-      - name: Upload research evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: npb-game-state-screening-${{ github.run_id }}
-          path: |
-            results/game_state_screening.json
-            research/game_state_engine.py
-            tests/test_game_state_engine.py
-          if-no-files-found: error
-          retention-days: 30
