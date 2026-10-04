@@ -57,7 +57,14 @@ def _parse_observation_time(row: Mapping[str, object]) -> datetime | None:
             retrieval = datetime.fromisoformat(str(retrieval_value).replace("Z", "+00:00"))
         except ValueError:
             retrieval = None
-    for key in ("available_at", "observed_at", "retrieved_at"):
+
+    # Prefer explicit availability/observation timestamps. If one is present
+    # but malformed or later than retrieval, do not silently substitute the
+    # retrieval instant; that would fabricate a PIT boundary from invalid data.
+    has_explicit_boundary = any(
+        row.get(key) not in (None, "") for key in ("available_at", "observed_at")
+    )
+    for key in ("available_at", "observed_at"):
         value = row.get(key)
         if value in (None, ""):
             continue
@@ -68,11 +75,13 @@ def _parse_observation_time(row: Mapping[str, object]) -> datetime | None:
         if ts.tzinfo is None:
             continue
         if retrieval is not None and retrieval.tzinfo is not None and ts > retrieval:
-            # A source cannot have been available/observed after the response
-            # that supposedly recorded it. Skip the malformed timestamp rather
-            # than letting it fabricate an earlier/later first-observed boundary.
             continue
         return ts
+
+    if has_explicit_boundary:
+        return None
+    if retrieval is not None and retrieval.tzinfo is not None:
+        return retrieval
     return None
 
 
