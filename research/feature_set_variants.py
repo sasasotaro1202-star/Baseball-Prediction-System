@@ -18,7 +18,7 @@ _FAMILY_PATTERNS = (
     ("weather", re.compile(r"^weather_")),
     ("context", re.compile(r"(?:^|_)context(?:_|$)")),
     ("starter", re.compile(r"^(?:hs_|as_|starter_)|^starter_(?:known|x_)")),
-    ("bullpen", re.compile(r"^(?:h_|a_|d_)?(?:bp_|bullpen_)|^(?:bullpen_|bp_)")),
+    ("bullpen", re.compile(r"^(?:h_|a_|d_)?(?:bp(?:_|[0-9])|bullpen_)|^(?:bullpen_|bp_)")),
     ("offense", re.compile(r"^(?:h_|a_|d_)?(?:bat_|offense_|matchup_)")),
     ("volatility", re.compile(r"(?:sd_20|slope_20)$|^run_(?:volatility|trend)_")),
     ("interaction", re.compile(r"_x_|(?:^|_)(?:gap|diff)_(?:10|20)$")),
