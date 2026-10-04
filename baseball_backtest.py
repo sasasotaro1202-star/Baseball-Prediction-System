@@ -2292,6 +2292,24 @@ class BaseballBacktest:
             ("RFReg", lambda: RandomForestRegressor(n_estimators=score_tree_estimators, min_samples_leaf=5, max_features=0.75, random_state=42, n_jobs=self.inner_jobs)),
             ("ExtraTreesReg", lambda: ExtraTreesRegressor(n_estimators=score_tree_estimators, min_samples_leaf=4, max_features=0.8, random_state=42, n_jobs=self.inner_jobs)),
         ]
+        score_pool_raw = os.getenv(
+            f"BASEBALL_FAST_SCORE_MODEL_POOL_{league}",
+            os.getenv("BASEBALL_FAST_SCORE_MODEL_POOL", ""),
+        ).strip()
+        if fast and score_pool_raw:
+            requested_scores = [name.strip() for name in score_pool_raw.split(",") if name.strip()]
+            known_scores = {name for name, _factory in specs}
+            unknown_scores = [name for name in requested_scores if name not in known_scores]
+            if unknown_scores:
+                raise ValueError(
+                    "BASEBALL_FAST_SCORE_MODEL_POOL contains unknown models: "
+                    + ", ".join(sorted(set(unknown_scores)))
+                )
+            if not requested_scores:
+                raise ValueError("BASEBALL_FAST_SCORE_MODEL_POOL must not be empty")
+            specs = [item for item in specs if item[0] in requested_scores]
+            if not specs:
+                raise ValueError("BASEBALL_FAST_SCORE_MODEL_POOL selected no available models")
         scored=[]
         residuals_by_model={}
         for name, factory in specs:
