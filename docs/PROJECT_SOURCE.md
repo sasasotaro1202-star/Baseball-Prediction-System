@@ -2210,16 +2210,77 @@ An already-running Candidate OOS replay may tolerate a main-branch commit only w
 
 ⸻
 
-94. MANDATORY GITHUB-BACKED NPB PREDICTION POLICY
+94. GLOBAL GITHUB-BACKED BASEBALL PREDICTION REQUEST POLICY
 
-ユーザーがNPB予想、今日のNPB予想、日次NPB予想、またはNPBの試合予想を要求した場合、必ず現行GitHub repository `sasasotaro1202-star/Baseball-Prediction-System` が生成した予想を主要予想源として使用する。
+ユーザーが「試合予想して」「今日の試合を予想して」「NPB予想」「MLB予想」「大会の試合を予想して」など、野球の試合予想を要求した場合、NPBだけでなく、現行repositoryのcompetition registryに登録された全野球競技を対象として、`sasasotaro1202-star/Baseball-Prediction-System` のGitHub生成物を主要予想源とする。
 
-要求ごとに、現行default branch / HEADと、要求対象JST日付のproduction prediction pathおよび利用可能なprediction artifact/outputを再確認する。GitHub由来のhome/draw/away確率、最終選択、Top-4 exact scores、Low/Highは、その出力がBLOCKED、UNKNOWN、UNVERIFIABLE、FALLBACK、ABSTAIN、INVALIDATED等の状態でない限り、そのNPB予想のauthoritative predictionとして扱う。
+対象は、NPB、MLB、国際シニア大会、U18/U23等のユース大会、高校野球、大学野球、その他registryに登録されたcompetitionを含む。competition registryに存在すること自体は予想実行可能性やproduction eligibilityを意味しない。
 
-外部Web等から取得した試合日程、先発、天候、直前ニュース、その他current contextは、GitHub予想とは別のverification/context layerとしてのみ使用する。外部情報でGitHub予想を無言で置換・上書きしてはならない。
+Prediction requestの標準flow:
 
-有効なGitHub prediction artifact/outputを確認または生成できない場合、独立に生成した予想を「GitHub予想」と表示してはならない。その場合はGitHub prediction statusをUNAVAILABLE/UNVERIFIABLEとして明示し、repository evidenceとexternal inferenceを分離する。
+REQUEST
+→ CURRENT GITHUB HEAD/DEFAULT BRANCH RECHECK
+→ EXACT COMPETITION/GAME/DATE RESOLUTION
+→ EXISTING VERIFIED GITHUB OUTPUT CHECK
+→ GENERATION WHEN MISSING
+→ OUTPUT VALIDATION
+→ PIT/ELIGIBILITY VALIDATION
+→ USER RESPONSE
 
-NPB予想の回答では、可能な範囲で、GitHub commit SHA、model version、feature/calibration version、prediction timestamp/cutoff、data snapshotまたはartifact identifier、production/fallback statusを保持・表示し、どの値がGitHub production output由来かを追跡可能にする。
+既存の当該requestに対するverified outputが存在しない場合、「artifactが無い」だけで処理を終了してはならない。repositoryの `prediction_requests/inbox/active.json` にrequestを登録し、GitHub Actionsの `baseball-user-prediction-request.yml` を起動するか、direct workflow-dispatch capabilityが利用可能なら同等のrequest generation workflowをdispatchする。
 
-このルールはprediction requestごとに適用し、前回取得したGitHub予想を現在の要求へ無検証で再利用してはならない。current-date predictionではstale prior-date artifactを黙って使用せず、request-time/current-production contractに従う。
+Generation laneは次の優先順位を使う:
+
+CURRENT_PRODUCTION_RUNTIME
+→ VALIDATED_RESEARCH_SHADOW
+→ COMPETITION_SPECIFIC_RESEARCH_RUNTIME
+→ BLOCKED / UNAVAILABLE
+
+CURRENT_PRODUCTION_RUNTIMEはcurrent production registryが明示的にCURRENT_PRODUCTIONを示し、entrypoint/model/contractが揃っている場合だけ使用する。
+
+VALIDATED_RESEARCH_SHADOWは、対象competitionについてrepository側に明示的に登録されたPIT-safe research laneが存在する場合だけ使用する。research outputはuser-requested predictionとして表示可能でも、PRODUCTION/Champion/Adoptedとは表現しない。
+
+COMPETITION_SPECIFIC_RESEARCH_RUNTIMEは、対象competition専用のresearch adapter/runtimeがpolicyへ明示登録され、PIT/eligibility contractを満たす場合だけ使用する。
+
+上記いずれにも該当しないcompetitionはBLOCKED / UNAVAILABLEとする。外部Webから独立に作った予想で穴埋めし、それをGitHub予想として表示してはならない。
+
+同一request fingerprintにverified prediction resultが既に存在する場合は、再計算よりcache reuseを優先する。ただしcurrent/live informationが変化してpredictionがstale、invalidated、shock、requires_recalc等になっている場合は再生成を許可する。同一gameのrevisionを重複してexperience learningへ無制限に投入しない。
+
+Prediction request resultはrequest_id、request_fingerprint、target_date、competition_id、source_repository、source_commit、generation_lane、generation_status、generation time、prediction outputを追跡可能にする。prediction outputには可能な範囲でmodel version、feature version、calibration version、prediction cutoff、data/source snapshot、PIT state、uncertainty、predictability、fallback/research stateを保持する。
+
+生成完了の判定はworkflowのgreenだけでは行わない。少なくとも、JSON schema/contract、competition identity、prediction count、probability validity、PIT status、critical starter/personnel gate、artifact integrityを検証する。PIT/eligibilityがUNKNOWN/UNVERIFIABLEの場合はproduction-quality predictionとして扱わず、該当statusをそのまま保持する。
+
+External web/current informationは、GitHub predictionを補助するverification/context layerとしてのみ使用する。schedule、starter、lineup、weather、source health等は現在値の確認に使えるが、GitHub generated predictionを無言で置換・上書きしない。外部推論を併記する場合はGitHub outputと明確に別レイヤーとして表示する。
+
+Target semanticsはcompetition-specific contractを厳守する。NPBのHOME/DRAW/AWAY、MLBのHOME/AWAY、その他competitionのCOMPETITION_DEFINED contractを混在させない。score Top-4、Low/High、market-line、prediction setは勝敗targetとは独立したcontract/versionとして扱う。
+
+Prediction request generationはrelease/promotion mechanismではない。request generationによってChampion、Production、Adoption、Holdout、historical evidenceを変更してはならない。research outputが生成されたことだけを根拠にproduction promotionしてはならない。
+
+PIT原則:
+
+retrieved_at ≠ published_at ≠ available_at
+
+を維持し、prediction cutoff以前の利用可能性を証明できないsourceはUNKNOWN/UNVERIFIABLEとする。future outcome、postgame statistic、later correction、future starter confirmation、future roster state、future market informationをprediction snapshotへ逆流させない。
+
+request workflowはcost firewallにも従い、verified free/OSS/local/cacheを優先する。paid-only、billing-risk、unknown-cost依存を自動追加・自動実行しない。
+
+⸻
+
+95. GITHUB REQUEST GENERATION ARTIFACT INTEGRITY
+
+`prediction_requests/results/<request_id>.json` はimmutable request resultとして扱う。結果にはrequest metadataとgenerated prediction outputを分離して保存し、source commitとgeneration laneを明示する。
+
+GitHub Actionsはrequest generationについて、
+
+* triggering request commitのsnapshotを処理する
+* concurrencyをserialized/queue semanticsで扱う
+* bounded runtimeを設定する
+* timeout/failureをsuccessへ変換しない
+* result artifactを保存する
+* valid resultのみcache reuse候補とする
+* result commitとrequest commitを混同しない
+* generation failure時に外部forecastへsilent fallbackしない
+
+を満たす。
+
+Generation artifactが確認できない場合、assistantはGitHub resultを「生成済み」と断定しない。prediction request statusはUNAVAILABLE、UNVERIFIABLE、BLOCKED、FAILED等、実際の状態を表示する。
