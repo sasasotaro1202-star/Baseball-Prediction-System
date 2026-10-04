@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_fast_npb_wrapper_defers_only_observation_context():
     source = (ROOT / "scripts/npb_fast_prediction.py").read_text(encoding="utf-8")
     predictor = (ROOT / "production_npb.py").read_text(encoding="utf-8")
+    backtest = (ROOT / "baseball_backtest.py").read_text(encoding="utf-8")
 
     assert "collect_npb_player_context" in source
     assert "collect_npb_roster_context" in source
@@ -26,7 +27,7 @@ def test_fast_npb_wrapper_defers_only_observation_context():
     assert "BASEBALL_FAST_MODEL_POOL_NPB" in source
     assert "BASEBALL_FAST_SCORE_MODEL_POOL_NPB" in source
     assert "BASEBALL_SCORE_REGRESSION_MAX_ITER" in source
-    assert "BASEBALL_FAST_SCORE_MODEL_POOL" in predictor
+    assert "BASEBALL_FAST_SCORE_MODEL_POOL" in backtest
 
     # Fast mode must call the canonical predictor rather than create a second
     # probability implementation.
@@ -53,7 +54,7 @@ def test_fast_lane_does_not_enable_production():
 
 def test_user_prediction_workflow_has_bounded_cache():
     workflow = (
-        ROOT / ".github/workflows/baseball-user-prediction-request.yml"
+        ROOT / ".github/workflows/baseball_manual_prediction.yml"
     ).read_text(encoding="utf-8")
     assert "cache: pip" in workflow
     assert "actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809" in workflow
