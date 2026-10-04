@@ -76,3 +76,12 @@ The current default model matrix is expected to contain 482 NPB features and 470
 Lineup/weather context is not production-active by default. It requires explicit PIT-safe configuration and cutoff-valid availability evidence. Observation-only player/roster/standings/context snapshots must not silently alter production probabilities.
 
 Any feature change capable of changing prediction values is evidence-affecting and requires the normal TEST → PIT → chronological OOS/WFO → calibration → ablation → robustness → frozen holdout → release gate before adoption.
+
+## Multiple feature-set variants
+Feature sets are first-class versioned objects. Never assume a single universal feature list or that a larger feature set is better.
+
+A prediction may use a variant selected from validated families such as BASELINE_TEAM_STATE, TEAM_PLUS_STARTER, TEAM_PLUS_BULLPEN, TEAM_PLUS_LINEUP_PIT_SAFE, TEAM_PLUS_WEATHER_PIT_SAFE, FULL_VALIDATED_ENSEMBLE, SCORE_MODEL_FEATURE_SET, or RESEARCH_STATCAST_SET. These labels are registry concepts; actual implementation and production eligibility must be verified from current code/config.
+
+The exact features consumed by a prediction are identified by feature_set_id + ordered feature_schema_hash + feature_manifest_version + context mode. Production output must expose these fields. A feature-family snapshot, research candidate list, or collector output is not evidence of production consumption.
+
+Feature-set selection must be chronological-OOS/PIT/calibration/robustness/holdout driven and may prefer a smaller, more stable set over a larger one.
