@@ -368,6 +368,26 @@ def test_24h_supervisor_recovers_only_latest_zero_job_pregame_failures_with_dail
 
 
 
+
+def test_research_lab_caches_are_snapshot_verified_and_file_scoped():
+    """Research caches must contain only the verified evidence for their exact SHA."""
+    contracts = (
+        ("baseball_ultimate_pattern_lab.yml", "ultimate_pattern_lab_${{ matrix.league }}.json", "baseball-ultimate-pattern-v1"),
+        ("baseball_extreme_representation_lab.yml", "extreme_representation_lab_${{ matrix.league }}.json", "baseball-extreme-representation-v1"),
+        ("baseball_score_distribution_pattern_lab.yml", "score_distribution_pattern_lab_${{ matrix.league }}.json", "baseball-score-distribution-v1"),
+    )
+    workflow_root = ROOT / ".github" / "workflows"
+    for filename, artifact_name, cache_key_prefix in contracts:
+        text = (workflow_root / filename).read_text(encoding="utf-8")
+        _assert_official_actions_are_immutable(text)
+        verify_pos = text.index("- name: Verify main snapshot after evidence generation")
+        save_pos = text.index("- name: Save exact")
+        assert verify_pos < save_pos, f"{filename} must snapshot-verify before cache save"
+        save_block = text[save_pos:text.find("- name: Upload", save_pos)]
+        assert f"path: results/{artifact_name}" in save_block
+        assert "path: results\n" not in save_block
+        assert f"key: {cache_key_prefix}-${{ matrix.league }}-${{ github.sha }}" in save_block
+
 def test_phase1_candidate_gate_stages_npb_data_before_real_validation():
     text = (ROOT / ".github" / "workflows" / "baseball_phase1_gate.yml").read_text(encoding="utf-8")
     _assert_official_actions_are_immutable(text)
