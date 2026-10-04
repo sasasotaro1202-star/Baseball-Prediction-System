@@ -7,7 +7,6 @@ on:
       - '**.py'
       - 'requirements.txt'
       - 'tests/**'
-      - '.github/workflows/**'
   push:
     branches: [main]
     paths:
