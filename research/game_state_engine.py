@@ -176,36 +176,78 @@ def _kernel_fingerprint(exact: Mapping[tuple, Counter]) -> str:
 
 
 class TransitionKernel:
-    def __init__(self, exact: Mapping[tuple, Counter], by_state: Mapping[tuple, Counter], by_half: Mapping[str, Counter], transitions: int):
+    def __init__(
+        self,
+        exact: Mapping[tuple, Counter],
+        by_state: Mapping[tuple, Counter],
+        by_half: Mapping[str, Counter],
+        transitions: int,
+    ):
         self.exact = {k: Counter(v) for k, v in exact.items()}
         self.by_state = {k: Counter(v) for k, v in by_state.items()}
         self.by_half = {k: Counter(v) for k, v in by_half.items()}
         self.transitions = int(transitions)
         self.fingerprint = _kernel_fingerprint(self.exact)
 
-    def _lookup(self, key: tuple[int, str, int, int, int]) -> Counter | None:
-        inning, half, outs, bases, _ = key
-        for candidate in (self.exact.get(key), self.by_state.get((inning, half, outs, bases)), self.by_state.get((12, half, outs, bases)), self.by_half.get(half)):
-            if candidate:
-                return candidate
-        return None
+    @staticmethod
+    def _blend_layers(layers: Sequence[tuple[Counter, float, float]]) -> Counter:
+        """Shrink sparse exact states toward broader empirical transition priors."""
+        merged: Counter = Counter()
+        total_weight = 0.0
+        for counter, prior_weight, reliability_n in layers:
+            if not counter:
+                continue
+            total = float(sum(counter.values()))
+            if total <= 0:
+                continue
+            reliability = min(1.0, total / max(1.0, reliability_n))
+            weight = float(prior_weight) * reliability
+            if weight <= 0:
+                continue
+            for outcome, count in counter.items():
+                merged[outcome] += weight * float(count) / total
+            total_weight += weight
+        if total_weight <= 0:
+            return Counter()
+        return Counter({outcome: weight / total_weight for outcome, weight in merged.items()})
 
-    def sample(self, key: tuple[int, str, int, int, int], rng: np.random.Generator, scoring_factors: Mapping[str, float]) -> tuple[str, int, int, int, str] | None:
+    def _lookup(self, key: tuple[int, str, int, int, int]) -> Counter:
+        inning, half, outs, bases, score_diff = key
+        exact = self.exact.get(key, Counter())
+        coarse = self.by_state.get((inning, half, outs, bases), Counter())
+        inning_neutral = self.by_state.get((12, half, outs, bases), Counter())
+        half_prior = self.by_half.get(half, Counter())
+        return self._blend_layers(
+            (
+                (exact, 0.68, 24.0),
+                (coarse, 0.20, 80.0),
+                (inning_neutral, 0.07, 120.0),
+                (half_prior, 0.05, 240.0),
+            )
+        )
+
+    def sample(
+        self,
+        key: tuple[int, str, int, int, int],
+        rng: np.random.Generator,
+        scoring_factors: Mapping[str, float],
+    ) -> tuple[str, int, int, int, str] | None:
         counts = self._lookup(key)
         if not counts:
             return None
+        outcomes = list(counts.keys())
         weights = []
-        for outcome, count in counts.items():
+        for outcome in outcomes:
             scorer = outcome[-1]
             runs = int(outcome[-2])
+            base_probability = float(counts[outcome])
             factor = float(np.clip(scoring_factors.get(scorer, 1.0), 0.55, 1.45))
-            weight = float(count) * (factor ** runs if scorer in {"H", "A"} and runs else 1.0)
-            weights.append(weight)
+            weights.append(base_probability * (factor ** runs if scorer in {"H", "A"} and runs else 1.0))
         p = np.asarray(weights, dtype=float)
         if not np.isfinite(p).all() or p.sum() <= 0:
             return None
         p /= p.sum()
-        return list(counts.keys())[int(rng.choice(len(counts), p=p))]
+        return outcomes[int(rng.choice(len(outcomes), p=p))]
 
 
 def _transition_state_key(row: Mapping[str, Any], *, use_score_diff: bool = True) -> tuple[int, str, int, int, int]:
