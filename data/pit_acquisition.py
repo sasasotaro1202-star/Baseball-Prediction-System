@@ -175,6 +175,14 @@ def _starter_name(side: dict[str, Any]) -> str | None:
         return str(p.get("fullName") or p.get("full_name") or p.get("name") or "") or None
     return None
 
+def _starter_id(side: dict[str, Any]) -> str | None:
+    """Extract stable probable-pitcher identity when the source provides it."""
+    p = side.get("probablePitcher") or side.get("probable_pitcher")
+    if not isinstance(p, dict):
+        return None
+    value = p.get("id") or p.get("playerId") or p.get("player_id")
+    return str(value) if value not in (None, "") else None
+
 
 def _explicit_announcement(g: dict[str, Any], side: str) -> str | None:
     names = {
