@@ -53,6 +53,7 @@ def test_select_pattern_fails_closed_for_missing_family():
 def _artifact():
     return {
         "status": "RESEARCH_ONLY",
+        "research_contract_id": "ultimate-family-v1",
         "git_commit_sha": "0123456789abcdef0123456789abcdef01234567",
         "decision": "NO_AUTO_ADOPTION",
         "locked_holdout_rows": 100,
