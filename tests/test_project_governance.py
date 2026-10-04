@@ -148,3 +148,31 @@ def test_governance_workflow_expressions_are_not_backslash_escaped():
     assert expression + " github.token }}" in workflow
     assert expression + " github.repository }}" in workflow
     assert expression + " github.sha }}" in workflow
+
+
+def test_pending_actions_status_is_treated_as_active(monkeypatch):
+    from research import project_governance as governance
+
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+    monkeypatch.setenv("GITHUB_SHA", "current")
+    class Fake:
+        pass
+
+    def fake_gh_json(args):
+        return {
+            "workflow_runs": [{
+                "path": ".github/workflows/baseball_governance_autopilot.yml",
+                "status": "pending",
+                "conclusion": None,
+                "created_at": "2026-10-04T09:00:00Z",
+                "updated_at": "2026-10-04T09:00:00Z",
+                "head_sha": "current",
+                "id": 1,
+                "run_number": 1,
+            }]
+        }
+
+    monkeypatch.setattr(governance, "_gh_json", fake_gh_json)
+    from datetime import datetime, timezone
+    report = governance.action_health("owner/repo", datetime(2026, 10, 4, 9, 30, tzinfo=timezone.utc))
+    assert report["workflows"][".github/workflows/baseball_governance_autopilot.yml"]["state"] == "HEALTHY"
