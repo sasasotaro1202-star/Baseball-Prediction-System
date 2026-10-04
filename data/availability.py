@@ -132,6 +132,11 @@ def from_mapping(row: Mapping[str, Any]) -> AvailabilityRecord:
         source=str(row.get("source", "UNVERIFIABLE")),
         retrieved_at=str(row["retrieved_at"]), prediction_cutoff=str(row["prediction_cutoff"]),
         event_start_at=row.get("event_start_at"),
+        home_starter_published_at=row.get("home_starter_published_at"),
+        away_starter_published_at=row.get("away_starter_published_at"),
+        home_starter_available_at=row.get("home_starter_available_at"),
+        away_starter_available_at=row.get("away_starter_available_at"),
+        revision_time=row.get("revision_time"),
     )
     record.validate()
     return record
