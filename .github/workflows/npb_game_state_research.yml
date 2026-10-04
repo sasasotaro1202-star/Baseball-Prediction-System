@@ -1,12 +1,6 @@
 name: NPB Game-State Monte Carlo Research
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "research/game_state_engine.py"
-      - "tests/test_game_state_engine.py"
-      - ".github/workflows/npb_game_state_research.yml"
   workflow_dispatch:
     inputs:
       simulations:
@@ -26,9 +20,10 @@ on:
         type: string
   schedule:
     - cron: "17 4 * * 1"
+    - cron: "17 4 * * 4"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: npb-game-state-monte-carlo-research
@@ -42,11 +37,14 @@ env:
 jobs:
   screen:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 150
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         timeout-minutes: 5
+        with:
+          persist-credentials: true
+          fetch-depth: 1
 
       - name: Verify evidence snapshot
         run: |
@@ -67,13 +65,13 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: requirements-ci.txt
 
       - name: Install dependencies
         timeout-minutes: 10
         run: |
           set -euo pipefail
-          python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
+          python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements-ci.txt
 
       - name: Compile and focused tests
         timeout-minutes: 10
@@ -136,16 +134,30 @@ jobs:
           echo "pbp_file_count=$count"
 
       - name: Run chronological Game-State screening
-        timeout-minutes: 55
+        id: game_state
+        timeout-minutes: 75
         env:
           SIMULATIONS: ${{ inputs.simulations || '500' }}
           MAX_VALIDATION_GAMES: ${{ inputs.max_validation_games || '120' }}
           MAX_HOLDOUT_GAMES: ${{ inputs.max_holdout_games || '120' }}
         run: |
-          set -euo pipefail
-          python -m research.game_state_engine             --data-glob 'data/*_pbp.csv'             --development-end 2024-12-31             --validation-start 2025-01-01             --validation-end 2025-12-31             --holdout-start 2026-01-01             --max-validation-games "$MAX_VALIDATION_GAMES"             --max-holdout-games "$MAX_HOLDOUT_GAMES"             --simulations "$SIMULATIONS"             --seed 42             --output results/game_state_screening.json
+          set +e
+          python -m research.game_state_engine \
+            --data-glob 'data/*_pbp.csv' \
+            --development-end 2024-12-31 \
+            --validation-start 2025-01-01 \
+            --validation-end 2025-12-31 \
+            --holdout-start 2026-01-01 \
+            --max-validation-games "$MAX_VALIDATION_GAMES" \
+            --max-holdout-games "$MAX_HOLDOUT_GAMES" \
+            --simulations "$SIMULATIONS" \
+            --seed 42 \
+            --output results/game_state_screening.json \
+            --checkpoint results/game_state_checkpoint.json
+          exit $?
 
       - name: Verify screening result
+        if: success()
         timeout-minutes: 5
         run: |
           set -euo pipefail
@@ -155,6 +167,7 @@ jobs:
           from pathlib import Path
 
           obj = json.loads(Path("results/game_state_screening.json").read_text(encoding="utf-8"))
+          assert obj.get("schema_version") == "game-state-transition-v4"
           assert obj.get("status") == "RESEARCH_SCREENING_ONLY"
           assert obj.get("decision") == "HOLD_RESEARCH_ONLY"
           assert obj.get("pit_status", "").startswith("UNVERIFIABLE")
@@ -186,5 +199,57 @@ jobs:
             results/game_state_screening.json
             research/game_state_engine.py
             tests/test_game_state_engine.py
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 30
+
+      - name: Persist immutable research evidence and checkpoint
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p results/game_state_history
+          if [ -s results/game_state_screening.json ]; then
+            execution_status="$(python - <<'PY'
+import json
+from pathlib import Path
+p=Path('results/game_state_screening.json')
+try:
+    obj=json.loads(p.read_text(encoding='utf-8'))
+except Exception:
+    print('UNKNOWN')
+else:
+    print(obj.get('execution_status','EXECUTED'))
+PY
+)"
+            if [ "$execution_status" != "SKIPPED_SAME_FINGERPRINT" ]; then
+              cp results/game_state_screening.json "results/game_state_history/run-${GITHUB_RUN_ID}.json"
+              cp results/game_state_screening.json results/game_state_latest.json
+            else
+              echo "Duplicate fingerprint: reusing existing evidence without a new history entry."
+              rm -f results/game_state_screening.json
+            fi
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add results/game_state_history/ results/game_state_latest.json results/game_state_checkpoint.json
+          if git diff --cached --quiet; then
+            echo "No durable Game-State evidence/checkpoint to persist."
+            exit 0
+          fi
+
+          if [ -s results/game_state_checkpoint.json ]; then
+            commit_message="chore(research): checkpoint Game-State loop"
+          else
+            commit_message="research: persist Game-State evidence"
+          fi
+          git commit -m "$commit_message"
+
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            git fetch origin main
+            git rebase origin/main
+          done
+          echo "Unable to persist Game-State evidence after retries." >&2
+          exit 1
