@@ -179,11 +179,15 @@ def test_rollup_preserves_multiple_pregame_snapshots(tmp_path, monkeypatch):
         (exp / "performance_breakdown.json").read_text(encoding="utf-8")
     )
     assert breakdown["schema_version"] == 4
+    assert breakdown["evidence"]["scope"] == "HISTORICAL_POSTGAME_EXPERIENCE"
+    assert breakdown["evidence"]["performance_status"] == "HISTORICAL_ONLY_NOT_CURRENT_MODEL_VERIFICATION"
     assert breakdown["dimension_order"] == [
         "league", "competition", "phase", "target", "horizon"
     ]
     assert "by_horizon" in breakdown["league_competition_phase_target"]["NPB"]
     assert "3_TO_6H" in breakdown["league_competition_phase_target"]["NPB"]["by_horizon"]
+    training = json.loads((exp / "experience_training_index.json").read_text(encoding="utf-8"))
+    assert training["evidence"]["comparison_to_current_production"]["status"] == "UNVERIFIED"
 
 
 def test_rollup_rejects_post_start_prediction(tmp_path, monkeypatch):
