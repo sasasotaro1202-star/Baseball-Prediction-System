@@ -176,3 +176,45 @@ These do not automatically change production probabilities.
 - Target-game/postgame information cannot enter pregame features.
 - Missing, unavailable, delayed, unknown and source-failed are distinct states.
 - Adding a feature is not a success claim without chronological OOS, robustness and holdout evidence.
+
+## Feature-set variants are first-class
+
+The system must not treat the 482/470 base column counts as a universal fixed feature set. They are the current `match_features()` contract for the examined base path, and can change when the runtime, league, context gate, data availability, or validated experiment changes.
+
+A feature set is identified by:
+- league
+- competition
+- target contract/version
+- runtime/model lane
+- PIT-safe context mode
+- feature-family allow-list
+- feature version
+- ordered feature-schema hash
+- data/source snapshot identifiers
+
+Examples of legitimate variants:
+- BASELINE_TEAM_STATE
+- TEAM_FORM_PLUS_ELO
+- TEAM_PLUS_STARTER
+- TEAM_PLUS_BULLPEN
+- TEAM_PLUS_LINEUP_PIT_SAFE
+- TEAM_PLUS_WEATHER_PIT_SAFE
+- FULL_VALIDATED_ENSEMBLE
+- SCORE_MODEL_FEATURE_SET
+- RESEARCH_STATCAST_SET
+
+These names are illustrative registry labels, not proof that every variant is currently implemented or production-eligible.
+
+Research may compare many feature sets, but each candidate must be separately labeled and evaluated. Adding more features is not inherently better. A smaller feature set with stronger temporal stability, lower missingness and better OOS calibration may be preferred.
+
+For every generated prediction, the artifact should record at minimum:
+- feature_set_id
+- feature_manifest_version
+- feature_count
+- feature_schema_hash
+- feature_context_mode
+- feature_data_quality/status
+- source/data snapshot identifiers
+
+The actual runtime artifact, not this document, is the authoritative record of the exact feature columns consumed for that prediction.
+
