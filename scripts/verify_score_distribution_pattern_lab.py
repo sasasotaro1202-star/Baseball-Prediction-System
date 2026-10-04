@@ -41,6 +41,11 @@ def validate(path: str) -> dict:
     rows = obj.get("development_top", [])
     if not rows:
         raise RuntimeError("development score-pattern evidence is empty")
+    stability = obj.get("rank_stability", {})
+    if stability.get("eligible") is not True:
+        raise RuntimeError("score rank-stability evidence is missing")
+    if not str(stability.get("best_variant", "")).strip():
+        raise RuntimeError("score rank-stability best variant is missing")
 
     holdout = obj.get("locked_holdout", {})
     if holdout.get("winner_only") is not True:
@@ -88,6 +93,7 @@ def validate(path: str) -> dict:
         "status": obj.get("status"),
         "variant_count": catalog.get("variant_count"),
         "winner": winner.get("variant_id"),
+        "rank_stability": stability,
         "holdout_rows": obj.get("locked_holdout_rows"),
         "holdout": metrics,
     }
