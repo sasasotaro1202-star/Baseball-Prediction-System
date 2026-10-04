@@ -78,3 +78,4 @@ jobs:
             echo "- bytes: ${bytes}"
             echo "- lines: ${lines}"
           } >> "${GITHUB_STEP_SUMMARY}"
+# Independent audit: provenance checksum is computed on the runner, not inferred by the controller.
