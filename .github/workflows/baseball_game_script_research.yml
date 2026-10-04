@@ -1,0 +1,229 @@
+name: Baseball Game Script Research Loop
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Research depth."
+        required: false
+        default: "recent"
+        type: choice
+        options:
+          - recent
+          - deep
+  schedule:
+    # Daily recent-state research: 03:10 JST.
+    - cron: "10 18 * * *"
+    # Weekly deeper chronology: Sunday 12:35 JST.
+    - cron: "35 3 * * 0"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: baseball-game-script-research
+  cancel-in-progress: false
+
+env:
+  PYTHONPATH: .
+  PYTHONUNBUFFERED: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+
+    steps:
+      - name: Checkout live main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install research dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
+
+      - name: Run Game Script unit tests
+        run: |
+          set -euo pipefail
+          python -m py_compile research/game_script_model.py tests/test_game_script_model.py
+          python -m pytest -q tests/test_game_script_model.py
+
+      - name: Resolve research mode
+        id: mode
+        env:
+          MANUAL_MODE: ${{ inputs.mode }}
+          SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          set -euo pipefail
+          mode="recent"
+          if [ -n "${MANUAL_MODE}" ]; then
+            mode="${MANUAL_MODE}"
+          elif [ "${SCHEDULE}" = "35 3 * * 0" ]; then
+            mode="deep"
+          fi
+          echo "mode=${mode}" >> "${GITHUB_OUTPUT}"
+
+      - name: Stage free NPB PBP inputs
+        env:
+          MODE: ${{ steps.mode.outputs.mode }}
+        run: |
+          set -euo pipefail
+          mkdir -p data
+          years=(2024 2025 2026)
+          if [ "${MODE}" = "deep" ]; then
+            years=(2020 2021 2022 2023 2024 2025 2026)
+          fi
+
+          for year in "${years[@]}"; do
+            if find data -maxdepth 1 -type f -name "${year}-*_pbp.csv" | grep -q .; then
+              echo "NPB ${year}: cached"
+              continue
+            fi
+            downloaded=0
+            for attempt in 1 2 3; do
+              echo "NPB ${year}: download attempt ${attempt}"
+              if timeout --signal=TERM --kill-after=15s 180s                 gh release download pbp                 --repo armstjc/Nippon-Baseball-Data-Repository                 --pattern "${year}-*_pbp.csv"                 --dir data                 --clobber; then
+                downloaded=1
+                break
+              fi
+              if [ "${attempt}" -lt 3 ]; then
+                sleep $((attempt * 5))
+              fi
+            done
+            if [ "${downloaded}" -ne 1 ]; then
+              echo "PBP source acquisition failed for ${year}" >&2
+              exit 1
+            fi
+          done
+
+          test "$(find data -maxdepth 1 -name '*_pbp.csv' | wc -l | tr -d ' ')" -ge "${#years[@]}"
+
+      - name: Run Game Script chronological research
+        id: research
+        env:
+          MODE: ${{ steps.mode.outputs.mode }}
+          GITHUB_SHA: ${{ github.sha }}
+          BASEBALL_GAME_SCRIPT_TIME_BUDGET_SEC: "2400"
+        run: |
+          set +e
+          python -m research.game_script_model             --data-dir data             --output-dir results/game_script             --mode "${MODE}"             --max-sims 2500             --recent-games 900             --min-train-games 150             --checkpoint-every 50             --time-budget-sec "${BASEBALL_GAME_SCRIPT_TIME_BUDGET_SEC}"             --seed 42817
+          rc=$?
+          set -e
+          echo "game_script_exit_code=${rc}" >> "${GITHUB_OUTPUT}"
+          if [ "${rc}" -ne 0 ]; then
+            echo "Game Script research did not complete; checkpoint/failure evidence will be preserved." >&2
+            exit "${rc}"
+          fi
+
+      - name: Validate research evidence
+        if: ${{ steps.research.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          test -s results/game_script/latest.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          p = Path("results/game_script/latest.json")
+          obj = json.loads(p.read_text(encoding="utf-8"))
+          if obj.get("schema_version") != "game-script-research-v1":
+              raise SystemExit("unexpected Game Script schema")
+          if obj.get("status") != "EXECUTED":
+              raise SystemExit(f"unexpected execution status: {obj.get('status')}")
+          if obj.get("evidence_status") != "RESEARCH_ONLY_HOLD":
+              raise SystemExit("Game Script research cannot self-upgrade evidence status")
+          if obj.get("decision") != "HOLD_RESEARCH_ONLY":
+              raise SystemExit("Game Script research cannot self-promote")
+          if obj.get("pit_status") != "UNVERIFIABLE":
+              raise SystemExit("public PBP availability evidence must remain UNVERIFIABLE")
+          if obj.get("production_eligible") is not False:
+              raise SystemExit("Game Script research must remain production-ineligible")
+          for scope in ("candidate", "research_baseline"):
+              metrics = obj[scope]["outcome"]
+              for key in ("accuracy", "logloss", "brier", "ece"):
+                  value = float(metrics[key])
+                  if value != value or value in (float("inf"), float("-inf")):
+                      raise SystemExit(f"non-finite metric: {scope}.{key}")
+          print(json.dumps(obj, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Upload research evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: baseball-game-script-${{ github.run_id }}
+          path: |
+            results/game_script/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Persist research state and evidence
+        if: always()
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add results/game_script/
+          if git diff --cached --quiet; then
+            echo "No Game Script state/evidence changes to commit."
+            exit 0
+          fi
+
+          if [ -f results/game_script/checkpoint.json ]; then
+            msg="chore(research): checkpoint Game Script loop"
+          else
+            msg="research: record Game Script evidence"
+          fi
+          git commit -m "${msg}"
+
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            git fetch origin main
+            git rebase origin/main
+          done
+          echo "Unable to persist Game Script state after retries." >&2
+          exit 1
+
+      - name: Publish research summary
+        if: always()
+        run: |
+          set -euo pipefail
+          {
+            echo "## Baseball Game Script Research"
+            echo "- mode: ${{ steps.mode.outputs.mode }}"
+            echo "- exit_code: ${{ steps.research.outputs.game_script_exit_code || 'not_started' }}"
+            if [ -s results/game_script/latest.json ]; then
+              python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path("results/game_script/latest.json").read_text(encoding="utf-8"))
+          print("- status:", d.get("status"))
+          print("- decision:", d.get("decision"))
+          print("- PIT:", d.get("pit_status"))
+          print("- rows:", d.get("rows"))
+          print("- candidate LogLoss:", d.get("candidate",{}).get("outcome",{}).get("logloss"))
+          print("- baseline LogLoss:", d.get("research_baseline",{}).get("outcome",{}).get("logloss"))
+          print("- candidate Score MAE:", d.get("candidate",{}).get("score",{}).get("score_mae"))
+          print("- baseline Score MAE:", d.get("research_baseline",{}).get("score",{}).get("score_mae"))
+          PY
+            elif [ -s results/game_script/checkpoint.json ]; then
+              echo "- state: CHECKPOINTED"
+            else
+              echo "- state: NO_EVIDENCE"
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
