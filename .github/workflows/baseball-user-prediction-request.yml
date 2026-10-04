@@ -17,7 +17,8 @@ permissions:
   contents: write
 
 concurrency:
-  group: baseball-user-prediction-request
+  # Serialize only identical request commits; do not let an older stuck run block a newer request.
+  group: baseball-user-prediction-request-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
