@@ -25,11 +25,10 @@ permissions:
 
 concurrency:
   group: baseball-feature-model-matrix
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   matrix:
-    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[fast-prediction]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
     strategy:
