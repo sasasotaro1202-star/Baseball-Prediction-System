@@ -169,6 +169,8 @@ def test_first_observed_does_not_backdate_changed_starter_or_accept_third_party(
 def test_mlb_pit_policy_workflow_covers_acquisition_dependency():
     workflow = (ROOT / ".github" / "workflows" / "mlb_pit_policy.yml").read_text(encoding="utf-8")
     assert '      - "data/pit_acquisition.py"' in workflow
+    pull_request = workflow.split("  pull_request:", 1)[1].split("  workflow_dispatch:", 1)[0]
+    assert '      - "data/pit_acquisition.py"' in pull_request
 
 
 def test_mlb_pit_policy_workflow_is_ref_scoped():
