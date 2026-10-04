@@ -124,3 +124,14 @@ Knowledge from other prediction repositories may be discovered and abstracted, b
 
 ## Manual pregame request contract
 Manual user-facing requests are on-demand prediction calls. They are not constrained to the automatic scheduler's 30/60-minute slot and may be requested at an earlier pregame horizon, including several hours before first pitch. The request-time snapshot is authoritative for that prediction. Lead time alone never makes a prediction eligible: the call still requires a valid current production runtime plus the applicable PIT, starter/personnel, data, feature, model, and calibration gates. Historical or stale target dates are rejected by the current-production path rather than silently reused.
+
+## Global user-requested prediction generation
+
+For any user-requested baseball game prediction, the current GitHub repository `sasasotaro1202-star/Baseball-Prediction-System` is the authoritative prediction-generation source. This applies to NPB, MLB, international senior/youth competitions, Japanese high-school baseball, university baseball, and every other explicitly registered competition.
+
+The request path is: current HEAD/default-branch recheck -> exact competition/date/game resolution -> verified-output lookup -> repository generation when missing -> output/PIT/eligibility validation -> response. A missing artifact is not by itself a terminal condition. The repository may register a request in `prediction_requests/inbox/active.json` to trigger the GitHub Actions request-generation workflow.
+
+Generation precedence is CURRENT_PRODUCTION_RUNTIME -> VALIDATED_RESEARCH_SHADOW -> COMPETITION_SPECIFIC_RESEARCH_RUNTIME -> BLOCKED/UNAVAILABLE. Research output is never silently promoted to production or Champion. Unknown competition, missing runtime, failed generation, unverifiable PIT, invalid starter/personnel evidence, or invalid output remains explicitly blocked/unavailable.
+
+External current information may verify context, but it must not silently replace the GitHub-generated prediction. Prediction request results are tracked by request_id/fingerprint, source commit, lane, generation status and output artifact. Valid verified results may be reused by fingerprint; stale or invalidated results must be regenerated.
+
