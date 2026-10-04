@@ -217,6 +217,27 @@ def test_candidate_oos_watchdog_allows_validated_autonomous_control_plane_contin
     assert "Never interrupt an already-running OOS lifecycle for those control-plane-only changes." in text
 
 
+def test_control_plane_and_v44_triggers_do_not_react_to_unrelated_main_commits():
+    control = (ROOT / ".github" / "workflows" / "baseball_autonomous_control_plane.yml").read_text(encoding="utf-8")
+    v44 = (ROOT / ".github" / "workflows" / "baseball_v44_compatibility.yml").read_text(encoding="utf-8")
+    control_trigger = control.split("permissions:", 1)[0]
+    v44_trigger = v44.split("permissions:", 1)[0]
+
+    # Control-plane heartbeat is schedule/manual driven. Broad main pushes create
+    # recursive orchestration pressure and are intentionally excluded.
+    assert "push:" not in control_trigger
+    assert "schedule:" in control_trigger
+    assert "workflow_dispatch:" in control_trigger
+
+    # v4.4 compatibility remains automatic for code/test changes, but excludes
+    # append-only experience/data churn and unrelated documentation updates.
+    assert "push:" in v44_trigger
+    assert "paths:" in v44_trigger
+    assert "'**.py'" in v44_trigger
+    assert "'tests/**'" in v44_trigger
+    assert "data/experience" not in v44_trigger
+
+
 def test_npb_production_never_scores_started_games_and_accepts_empty_future_state():
     production = (ROOT / ".github" / "workflows" / "npb-production.yml").read_text(encoding="utf-8")
     source = (ROOT / "production_npb.py").read_text(encoding="utf-8")
