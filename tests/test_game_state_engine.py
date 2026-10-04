@@ -35,6 +35,10 @@ def _frame(n_games: int = 6) -> pd.DataFrame:
                             "away_team_name": "A",
                             "home_total_runs": home_score,
                             "away_total_runs": away_score,
+                            "addedRuns": int(
+                                (inning == 2 and half == "T" and outs == 2)
+                                or (inning == 3 and half == "B" and outs == 1)
+                            ),
                             "outs_when_up": outs,
                             "on_1b": 0,
                             "on_2b": 0,
@@ -57,6 +61,16 @@ def test_top_before_bottom():
     assert inning_one[-1] == "B"
 
 
+def test_reconstructed_state_score_ignores_final_score_label():
+    raw = _frame(1)
+    raw["home_total_runs"] = 9
+    raw["away_total_runs"] = 8
+    normalized = canonicalize_pbp_frame(raw)
+    assert not normalized.empty
+    first = normalized.iloc[0]
+    assert int(first["state_home_score"]) == 0
+    assert int(first["state_away_score"]) == 0
+
 def test_score_reversal_is_rejected():
     current = {
         "inning": 1,
@@ -64,6 +78,8 @@ def test_score_reversal_is_rejected():
         "outs": 1,
         "home_score": 1,
         "away_score": 0,
+        "state_home_score": 1,
+        "state_away_score": 0,
         "on_1b": 0,
         "on_2b": 0,
         "on_3b": 0,
