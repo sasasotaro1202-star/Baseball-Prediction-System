@@ -42,11 +42,14 @@ def _feature_schema_metadata(columns):
     names = [str(x) for x in columns]
     digest = hashlib.sha256("\n".join(names).encode("utf-8")).hexdigest()
     context_features = [x for x in names if x.startswith("lineup_") or x.startswith("h_lineup_") or x.startswith("a_lineup_") or x.startswith("d_lineup_") or x.startswith("weather_")]
+    context_mode = "PIT_SAFE_CONTEXT_ACTIVE" if context_features else "BASELINE_NO_PIT_SAFE_CONTEXT"
+    feature_set_id = f"{FEATURE_MANIFEST_VERSION}:{context_mode}:{digest[:16]}"
     return {
         "feature_manifest_version": FEATURE_MANIFEST_VERSION,
         "feature_count": len(names),
         "feature_schema_hash": digest,
-        "feature_context_mode": "PIT_SAFE_CONTEXT_ACTIVE" if context_features else "BASELINE_NO_PIT_SAFE_CONTEXT",
+        "feature_context_mode": context_mode,
+        "feature_set_id": feature_set_id,
     }
 
 
@@ -1242,6 +1245,7 @@ def predict(
           "competition_metadata_source_value":r.competition_metadata_source_value,
           "starter_evidence_status":r.starter_evidence_status,
           "feature_manifest_version":feature_schema["feature_manifest_version"],
+"feature_set_id":feature_schema["feature_set_id"],
           "feature_count":feature_schema["feature_count"],
           "feature_schema_hash":feature_schema["feature_schema_hash"],
           "feature_context_mode":feature_schema["feature_context_mode"],
@@ -1285,6 +1289,7 @@ def predict(
             "historical_score_mean_total":round(hist_score_mean,6),
             "historical_score_zero_rate":round(hist_score_zero_rate,6),
             "feature_manifest_version":feature_schema["feature_manifest_version"],
+"            "feature_set_id":feature_schema["feature_set_id"],
             "feature_count":feature_schema["feature_count"],
             "feature_schema_hash":feature_schema["feature_schema_hash"],
             "feature_context_mode":feature_schema["feature_context_mode"],
