@@ -71,6 +71,7 @@ from research.correlated_score import estimate_shared_lambda, low_high as correl
 from evaluation.calibration import fit_temperature, TemperatureCalibration
 from evaluation.metrics import expected_calibration_error
 from core.atomic_io import atomic_write_text
+from research.feature_set_variants import select_feature_set
 from research.feature_set_router import select_features
 
 RANDOM_STATE = 42
@@ -1201,7 +1202,12 @@ class BaseballBacktest:
                 + ", ".join(f"{k}={v}" for k, v in missing.items())
             )
         X = X.astype(float)
-        self._validate_feature_matrix(X, str(games["league"].iloc[0]) if len(games) else "UNKNOWN")
+        league = str(games["league"].iloc[0]) if len(games) else "UNKNOWN"
+        feature_variant = os.getenv("BASEBALL_FEATURE_SET_VARIANT", "FULL_VALIDATED_ENSEMBLE")
+        X, feature_meta = select_feature_set(X, league, variant=feature_variant)
+        self._feature_set_metadata = dict(feature_meta)
+        self.audit.append({"type": "feature_set_selection", **feature_meta})
+        self._validate_feature_matrix(X, league)
         return X, np.asarray(y, dtype=int), pd.DataFrame(meta)
 
     def update_after_game(self, row: pd.Series):
