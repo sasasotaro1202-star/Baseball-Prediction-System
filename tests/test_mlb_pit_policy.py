@@ -166,6 +166,17 @@ def test_first_observed_does_not_backdate_changed_starter_or_accept_third_party(
     assert pit_available_by(evidence, cutoff)
 
 
+def test_mlb_pit_policy_workflow_covers_shared_pit_dependencies():
+    workflow = (ROOT / ".github" / "workflows" / "mlb_pit_policy.yml").read_text(encoding="utf-8")
+    for path in (
+        "data/pit_acquisition.py",
+        "data/availability.py",
+        "tests/test_mlb_starter_pit_provenance.py",
+    ):
+        assert f'      - "{path}"' in workflow
+    assert "python -m pytest -q tests/test_mlb_pit_policy.py tests/test_mlb_starter_pit_provenance.py" in workflow
+
+
 def test_mlb_pit_policy_workflow_covers_acquisition_dependency():
     workflow = (ROOT / ".github" / "workflows" / "mlb_pit_policy.yml").read_text(encoding="utf-8")
     assert '      - "data/pit_acquisition.py"' in workflow
