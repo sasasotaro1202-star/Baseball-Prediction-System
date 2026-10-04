@@ -18,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: mlb-pit-policy
+  group: mlb-pit-policy-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
