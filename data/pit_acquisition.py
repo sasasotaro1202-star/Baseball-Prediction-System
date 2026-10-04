@@ -21,6 +21,7 @@ from typing import Any, Iterable
 
 from core.http import get_json as http_get_json, get_text as http_get_text, session as http_session
 from core.pit_snapshot import append_snapshot, make_snapshot, payload_hash
+from core.mlb_pit_policy import derive_first_observed_evidence
 
 ROOT = Path(__file__).resolve().parents[1]
 PIT_DIR = ROOT / "data" / "pit"
@@ -499,6 +500,27 @@ def acquire_mlb_game_content(game_id: str) -> tuple[Any, str] | None:
         return None
 
 
+def _load_mlb_event_history() -> dict[str, list[dict[str, Any]]]:
+    """Load immutable prior MLB event observations grouped by canonical game ID."""
+    history: dict[str, list[dict[str, Any]]] = {}
+    if not EVENT_LOG.exists():
+        return history
+    for line in EVENT_LOG.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(row, dict) or row.get("league") != "MLB":
+            continue
+        game_id = str(row.get("game_id") or "")
+        if not game_id:
+            continue
+        history.setdefault(game_id, []).append(row)
+    return history
+
+
 def acquire_mlb() -> int:
     start = (datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)).date()
     end = (datetime.now(timezone.utc) + timedelta(days=LOOKAHEAD_DAYS)).date()
@@ -514,6 +536,7 @@ def acquire_mlb() -> int:
     probe_now = datetime.fromisoformat(retrieved)
     probe_deadline = probe_now + timedelta(hours=PROBE_LOOKAHEAD_HOURS)
     last_probe_at = _load_last_probe_times() if ENABLE_MLB_GAME_PROBES else {}
+    history_by_game = _load_mlb_event_history()
     probe_games = 0
     seen: set[str] = set()
     for g in _candidate_games(payload):
@@ -527,6 +550,7 @@ def acquire_mlb() -> int:
             "event_id": f"MLB:{gid}", "league": "MLB", "game_id": gid,
             "home_team": hname, "away_team": aname,
             "home_starter": _starter_name(home), "away_starter": _starter_name(away),
+            "home_starter_id": _starter_id(home), "away_starter_id": _starter_id(away),
             "home_starter_announced_at": _explicit_announcement(g, "home"),
             "away_starter_announced_at": _explicit_announcement(g, "away"),
             "home_starter_evidence_level": "OFFICIAL_ANNOUNCEMENT" if _explicit_announcement(g, "home") else "RETRIEVAL_ONLY",
@@ -541,6 +565,29 @@ def acquire_mlb() -> int:
             "away_starter_source": MLB_SCHEDULE_URL,
             "payload_hash": payload_hash(g),
         }
+        observations = history_by_game.get(gid, []) + [row]
+        home_first = derive_first_observed_evidence(
+            observations,
+            game_id=gid,
+            side="home",
+            starter_id=row["home_starter_id"],
+            starter_name=row["home_starter"],
+        )
+        away_first = derive_first_observed_evidence(
+            observations,
+            game_id=gid,
+            side="away",
+            starter_id=row["away_starter_id"],
+            starter_name=row["away_starter"],
+        )
+        row["home_starter_first_observed_at"] = (
+            home_first.timestamp.isoformat() if home_first.timestamp is not None else None
+        )
+        row["away_starter_first_observed_at"] = (
+            away_first.timestamp.isoformat() if away_first.timestamp is not None else None
+        )
+        row["home_starter_availability_evidence"] = home_first.evidence_class.value
+        row["away_starter_availability_evidence"] = away_first.evidence_class.value
         _append_jsonl(EVENT_LOG, row)
         _append_jsonl(AVAILABILITY_LOG, {
             **row,
