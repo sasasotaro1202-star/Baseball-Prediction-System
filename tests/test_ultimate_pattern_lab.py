@@ -81,9 +81,11 @@ def _artifact():
             "confirm": {"start_row": 600, "end_row": 700},
             "deep": {"start_row": 700, "end_row": 800},
         },
-        "winner": {"candidate_id": "x"},
+        "stage_c_all": [{"candidate_id": "x", "feature_meta": {"feature_schema_hash": "abc"}}],
+        "winner": {"candidate_id": "x", "feature_meta": {"feature_schema_hash": "abc"}},
         "locked_holdout": {
             "winner_only": True,
+            "feature_meta": {"feature_schema_hash": "abc"},
             "metrics": {"LogLoss": 1.0, "Brier": 0.5, "Accuracy": 0.5, "ECE": 0.1, "rows": 100},
         },
     }
