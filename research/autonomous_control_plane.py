@@ -1,4 +1,10 @@
-"""Bounded autonomous control plane for scheduled Baseball GitHub Actions."""
+"""Bounded autonomous control plane for scheduled Baseball GitHub Actions.
+
+The control plane is a scheduler/recovery layer only. It does not promote
+models or rewrite production configuration. Expensive research is bounded to
+one heavy dispatch per cycle, while scheduler-stuck runs are cancelled and
+re-dispatched on the current main snapshot.
+"""
 from __future__ import annotations
 
 import argparse
@@ -12,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 ACTIVE = {"queued", "pending", "waiting", "requested", "in_progress"}
+QUEUED = {"queued", "pending", "waiting", "requested"}
 RECOVERABLE = {"cancelled", "timed_out", "startup_failure"}
 
 @dataclass(frozen=True)
@@ -19,25 +26,41 @@ class Target:
     workflow: str
     max_age_hours: float
     heavy: bool = False
+    pending_recover_minutes: int = 45
+    max_runtime_hours: float | None = None
+    skip_is_healthy: bool = False
 
 TARGETS = (
-    Target(".github/workflows/baseball-production-runtime-health.yml", 2.0),
-    Target(".github/workflows/baseball_governance_autopilot.yml", 8.0),
-    Target(".github/workflows/project_source_provenance_audit.yml", 30.0),
-    Target(".github/workflows/baseball_24h_research_autopilot.yml", 30.0, True),
-    Target(".github/workflows/npb-production.yml", 10.0, True),
-    Target(".github/workflows/npb_prediction_experience_archive.yml", 6.0),
-    Target(".github/workflows/npb_experience_reconciliation.yml", 30.0),
-    Target(".github/workflows/npb_experience_learning.yml", 12.0),
-    Target(".github/workflows/baseball_phase1_gate.yml", 30.0),
-    Target(".github/workflows/baseball_universal_readiness.yml", 30.0),
-    Target(".github/workflows/baseball_candidate_oos.yml", 192.0, True),
+    Target(".github/workflows/baseball_24h_supervisor.yml", 1.0, pending_recover_minutes=30, max_runtime_hours=0.25),
+    Target(".github/workflows/baseball-production-runtime-health.yml", 2.0, pending_recover_minutes=30, max_runtime_hours=0.5),
+    Target(".github/workflows/baseball_candidate_oos_watchdog.yml", 2.0, pending_recover_minutes=30, max_runtime_hours=0.5),
+    Target(".github/workflows/baseball_research_readiness.yml", 6.0, pending_recover_minutes=45, max_runtime_hours=0.75),
+    Target(".github/workflows/baseball_research_preflight.yml", 6.0, pending_recover_minutes=45, max_runtime_hours=0.75),
+    Target(".github/workflows/baseball_governance_autopilot.yml", 8.0, pending_recover_minutes=30, max_runtime_hours=0.5),
+    Target(".github/workflows/project_source_provenance_audit.yml", 30.0, pending_recover_minutes=60, max_runtime_hours=0.5),
+    Target(".github/workflows/baseball_closed_loop.yml", 10.0, True, 45, 3.0),
+    Target(".github/workflows/baseball_24h_research_autopilot.yml", 30.0, True, 60, 7.0),
+    Target(".github/workflows/npb-production.yml", 10.0, True, 45, 2.0),
+    Target(".github/workflows/npb_prediction_experience_archive.yml", 6.0, pending_recover_minutes=60, max_runtime_hours=0.5, skip_is_healthy=True),
+    Target(".github/workflows/npb_experience_reconciliation.yml", 30.0, pending_recover_minutes=60, max_runtime_hours=0.5),
+    Target(".github/workflows/npb_experience_learning.yml", 12.0, pending_recover_minutes=60, max_runtime_hours=0.75),
+    Target(".github/workflows/baseball_phase1_gate.yml", 30.0, pending_recover_minutes=60, max_runtime_hours=1.0),
+    Target(".github/workflows/baseball_universal_readiness.yml", 30.0, pending_recover_minutes=60, max_runtime_hours=0.75),
+    Target(".github/workflows/baseball_candidate_oos.yml", 192.0, True, 60, 6.0),
 )
 
 ROOT = Path(__file__).resolve().parents[1]
 
 def _gh(args: list[str]) -> str:
-    result = subprocess.run(["gh", *args], cwd=ROOT, check=True, capture_output=True, text=True, timeout=45, env=os.environ.copy())
+    result = subprocess.run(
+        ["gh", *args],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=45,
+        env=os.environ.copy(),
+    )
     return result.stdout
 
 def list_runs(repo: str) -> list[dict[str, Any]]:
@@ -45,21 +68,38 @@ def list_runs(repo: str) -> list[dict[str, Any]]:
     runs = payload.get("workflow_runs", [])
     return [r for r in runs if r.get("head_branch") == "main"]
 
+def current_main_sha(repo: str) -> str:
+    value = _gh(["api", f"repos/{repo}/git/ref/heads/main", "--jq", ".object.sha"]).strip()
+    if not value:
+        raise RuntimeError("main branch SHA could not be resolved")
+    return value
+
 def parse_time(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 def dispatch_count(runs: list[dict[str, Any]], workflow: str, now: datetime) -> int:
     cutoff = now - timedelta(hours=24)
     return sum(
-        1 for r in runs
+        1
+        for r in runs
         if str(r.get("path", "")).lstrip("/") == workflow
         and r.get("event") == "workflow_dispatch"
         and parse_time(r["created_at"]) >= cutoff
     )
 
-def decide(target: Target, runs: list[dict[str, Any]], now: datetime, cap: int = 2) -> dict[str, Any]:
-    matching = [r for r in runs if str(r.get("path", "")).lstrip("/") == target.workflow]
-    matching.sort(key=lambda r: r.get("created_at", ""), reverse=True)
+def _matching(runs: list[dict[str, Any]], workflow: str) -> list[dict[str, Any]]:
+    result = [r for r in runs if str(r.get("path", "")).lstrip("/") == workflow]
+    result.sort(key=lambda r: r.get("created_at", ""), reverse=True)
+    return result
+
+def decide(
+    target: Target,
+    runs: list[dict[str, Any]],
+    now: datetime,
+    cap: int = 2,
+    current_sha: str | None = None,
+) -> dict[str, Any]:
+    matching = _matching(runs, target.workflow)
     active = [r for r in matching if r.get("status") in ACTIVE]
     attempts = dispatch_count(runs, target.workflow, now)
     result: dict[str, Any] = {
@@ -74,46 +114,106 @@ def decide(target: Target, runs: list[dict[str, Any]], now: datetime, cap: int =
         "latest_conclusion": None,
         "latest_age_minutes": None,
     }
+
     if active:
+        latest_active = active[0]
+        created = parse_time(latest_active["created_at"])
+        age_minutes = max(0.0, (now - created).total_seconds() / 60.0)
+        run_sha = str(latest_active.get("head_sha") or "")
+        result.update(
+            {
+                "latest_run_id": latest_active.get("id"),
+                "latest_status": latest_active.get("status"),
+                "latest_age_minutes": round(age_minutes, 2),
+                "active_head_sha": run_sha or None,
+                "active_sha_relation": (
+                    "CURRENT" if current_sha and run_sha == current_sha else "OLDER_OR_UNKNOWN"
+                ),
+            }
+        )
+
+        if attempts >= cap:
+            result["decision"], result["reason"] = "HOLD", "dispatch_cap_reached_while_active"
+            return result
+
+        if latest_active.get("status") in QUEUED:
+            if current_sha and run_sha and run_sha != current_sha:
+                result["decision"], result["reason"] = "RECOVER", "queued_run_on_superseded_sha"
+                return result
+            if age_minutes >= target.pending_recover_minutes:
+                result["decision"], result["reason"] = "RECOVER", "scheduler_stuck_pending"
+                return result
+            result["reason"] = "active_queued_run"
+            return result
+
+        if latest_active.get("status") == "in_progress":
+            if (
+                target.max_runtime_hours is not None
+                and age_minutes >= target.max_runtime_hours * 60.0
+            ):
+                result["decision"], result["reason"] = "RECOVER", "stale_in_progress_run"
+                return result
+            result["reason"] = "active_in_progress_run"
+            return result
+
         result["reason"] = "active_run"
-        result["latest_run_id"] = active[0].get("id")
-        result["latest_status"] = active[0].get("status")
         return result
+
     if not matching:
         if attempts >= cap:
             result["decision"], result["reason"] = "HOLD", "dispatch_cap_reached_without_history"
         else:
             result["decision"], result["reason"] = "DISPATCH", "no_recent_history"
         return result
+
     latest = matching[0]
     result["latest_run_id"] = latest.get("id")
     result["latest_status"] = latest.get("status")
     result["latest_conclusion"] = latest.get("conclusion")
     age_minutes = max(0.0, (now - parse_time(latest["created_at"])).total_seconds() / 60.0)
     result["latest_age_minutes"] = round(age_minutes, 2)
+
     if attempts >= cap:
         result["decision"], result["reason"] = "HOLD", "dispatch_cap_reached"
         return result
+
     conclusion = latest.get("conclusion")
-    if conclusion in RECOVERABLE and age_minutes >= 15:
+    if conclusion == "skipped" and target.skip_is_healthy:
+        result["reason"] = "expected_skipped_state"
+    elif conclusion in RECOVERABLE and age_minutes >= 15:
         result["decision"], result["reason"] = "DISPATCH", f"recoverable_terminal_state:{conclusion}"
     elif conclusion == "success" and age_minutes >= target.max_age_hours * 60:
         result["decision"], result["reason"] = "DISPATCH", "stale_success"
     elif conclusion == "failure":
         result["decision"], result["reason"] = "HOLD", "deterministic_failure_is_authoritative"
-    elif conclusion in {None, "skipped"} and age_minutes >= target.max_age_hours * 60:
+    elif conclusion == "skipped":
+        result["reason"] = "skipped_within_controlled_state"
+    elif conclusion is None and age_minutes >= target.max_age_hours * 60:
         result["decision"], result["reason"] = "DISPATCH", "stale_non_success_terminal_state"
     else:
         result["reason"] = "within_window"
     return result
 
+def _active_for(runs: list[dict[str, Any]], workflow: str) -> list[dict[str, Any]]:
+    return [r for r in _matching(runs, workflow) if r.get("status") in ACTIVE]
+
+def cancel_run(repo: str, run_id: int) -> None:
+    _gh(["run", "cancel", str(run_id), "--repo", repo])
+    for _ in range(6):
+        time.sleep(2)
+        runs = list_runs(repo)
+        if not any(int(r.get("id", -1)) == int(run_id) and r.get("status") in ACTIVE for r in runs):
+            return
+    raise RuntimeError(f"cancel accepted but run remained active: {run_id}")
+
 def dispatch_and_verify(repo: str, target: Target, dispatch_epoch: int) -> int:
     _gh(["workflow", "run", target.workflow, "--repo", repo, "--ref", "main"])
-    for _ in range(5):
+    for _ in range(6):
         time.sleep(2)
         runs = list_runs(repo)
         recent = [
-            r for r in runs
+            r
+            for r in runs
             if str(r.get("path", "")).lstrip("/") == target.workflow
             and r.get("event") == "workflow_dispatch"
             and parse_time(r["created_at"]).timestamp() >= dispatch_epoch
@@ -125,11 +225,16 @@ def dispatch_and_verify(repo: str, target: Target, dispatch_epoch: int) -> int:
 def run(repo: str, output: Path, max_dispatches_per_cycle: int = 2) -> dict[str, Any]:
     now = datetime.now(timezone.utc)
     runs = list_runs(repo)
-    decisions = [decide(target, runs, now) for target in TARGETS]
+    main_sha = current_main_sha(repo)
+    decisions = [
+        decide(target, runs, now, max_dispatches_per_cycle, main_sha)
+        for target in TARGETS
+    ]
     dispatched = 0
     heavy_dispatched = 0
+
     for item, target in zip(decisions, TARGETS):
-        if item["decision"] != "DISPATCH":
+        if item["decision"] not in {"DISPATCH", "RECOVER"}:
             continue
         if dispatched >= max_dispatches_per_cycle:
             item["decision"], item["reason"] = "HOLD", "cycle_dispatch_cap_reached"
@@ -137,6 +242,11 @@ def run(repo: str, output: Path, max_dispatches_per_cycle: int = 2) -> dict[str,
         if target.heavy and heavy_dispatched >= 1:
             item["decision"], item["reason"] = "HOLD", "heavy_dispatch_cap_reached"
             continue
+
+        if item["decision"] == "RECOVER" and item.get("latest_run_id") is not None:
+            cancel_run(repo, int(item["latest_run_id"]))
+            item["recovered_run_id"] = int(item["latest_run_id"])
+
         epoch = int(time.time())
         run_id = dispatch_and_verify(repo, target, epoch)
         item["decision"] = "DISPATCHED"
@@ -144,20 +254,30 @@ def run(repo: str, output: Path, max_dispatches_per_cycle: int = 2) -> dict[str,
         dispatched += 1
         if target.heavy:
             heavy_dispatched += 1
+
     blockers = [
-        x for x in decisions
-        if x["decision"] == "HOLD" and x["reason"] == "deterministic_failure_is_authoritative"
+        x
+        for x in decisions
+        if x["decision"] == "HOLD"
+        and x["reason"] == "deterministic_failure_is_authoritative"
     ]
     report = {
-        "schema_version": 1,
+        "schema_version": 2,
         "generated_at": now.isoformat(),
         "git_commit": os.environ.get("GITHUB_SHA") or None,
+        "current_main_sha": main_sha,
         "repository": repo,
         "control_plane_status": "EXECUTED_WITH_BLOCKERS" if blockers else "EXECUTED",
         "cycle_dispatch_count": dispatched,
         "cycle_heavy_dispatch_count": heavy_dispatched,
         "targets": decisions,
         "deterministic_failure_targets": [x["workflow"] for x in blockers],
+        "safety_contract": {
+            "production_modified": False,
+            "auto_promotion": False,
+            "fail_closed": True,
+            "max_heavy_dispatches_per_cycle": 1,
+        },
     }
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -171,6 +291,8 @@ def main() -> int:
     args = parser.parse_args()
     if not args.repo:
         raise SystemExit("GITHUB_REPOSITORY is required")
+    if args.max_dispatches_per_cycle < 1:
+        raise SystemExit("--max-dispatches-per-cycle must be >= 1")
     report = run(args.repo, ROOT / args.output, args.max_dispatches_per_cycle)
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0
