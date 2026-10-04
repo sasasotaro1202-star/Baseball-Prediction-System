@@ -35,3 +35,25 @@ def test_candidate_oos_allows_only_experience_data_main_updates():
     assert 'data/experience/*)' in workflow
     assert 'Evidence-affecting main update detected' in workflow
     assert 'refusing mixed-snapshot evidence' in workflow
+
+
+def test_candidate_oos_runtime_does_not_depend_on_experience_archive():
+    source_paths = (
+        ROOT / "research" / "npb_candidate_replay.py",
+        ROOT / "research" / "mlb_candidate_replay.py",
+        ROOT / "research" / "real_data_validation.py",
+        ROOT / "research" / "validation_pipeline.py",
+        ROOT / "research" / "candidates.py",
+        ROOT / "research" / "individually_calibrated_ensemble.py",
+        ROOT / "research" / "adoption_gate.py",
+        ROOT / "research" / "regime_router.py",
+        ROOT / "research" / "correlated_score.py",
+        ROOT / "research" / "competition_taxonomy.py",
+        ROOT / "research" / "competition_strategy.py",
+        ROOT / "research" / "hierarchical_result_model.py",
+        ROOT / "baseball_backtest.py",
+    )
+    forbidden = ("data/experience", "experience_learning", "experience_ledger", "experience_rollup")
+    for path in source_paths:
+        text = path.read_text(encoding="utf-8")
+        assert not any(token in text for token in forbidden), path
