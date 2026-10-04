@@ -86,7 +86,8 @@
     "default_runtime_variant": "FULL_VALIDATED_ENSEMBLE",
     "decision_rule": "Screen on newest chronological holdout only after chronological model-validation selection; no auto-adoption. Any winner must repeat full WFO/OOS + calibration + ablation + robustness + frozen holdout.",
     "registered_variant_count": 33,
-    "note": "Canonical registry is research/feature_set_variants.py; screening covers every registered variant and never auto-promotes."
+    "note": "Canonical registry is research/feature_set_variants.py; screening covers every registered variant and never auto-promotes.",
+    "matrix": "33 feature variants × 5 recency half-lives × 3 model pools × 2 leagues; all combinations scheduled, with PIT-context-required cells explicitly BLOCKED when evidence is absent."
   },
   "canonical_registry": "research/feature_set_variants.py",
   "screening_variants": [
