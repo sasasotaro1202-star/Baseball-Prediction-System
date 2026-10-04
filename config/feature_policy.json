@@ -29,18 +29,18 @@
   "adoption_rule": "LOCAL_PIT -> chronological OOS/WFO -> calibration -> ablation -> robustness -> frozen holdout -> adoption",
   "missingness_rule": "missing/unavailable/unknown/delayed/source_failed are not TRUE_ZERO and must not be silently converted into observed zero",
   "feature_set_variants": {
-    "BASELINE_TEAM_STATE": "core team state + run volatility",
-    "TEAM_PLUS_STARTER": "BASELINE_TEAM_STATE + PIT-safe starter history and starter-derived gaps",
-    "TEAM_PLUS_BULLPEN": "BASELINE_TEAM_STATE + lagged bullpen/workload and source-supported relief quality",
-    "TEAM_PLUS_OFFENSE": "BASELINE_TEAM_STATE + lagged batting/offense features",
-    "TEAM_PLUS_STARTER_BULLPEN": "BASELINE_TEAM_STATE + starter + bullpen families",
-    "TEAM_PLUS_STARTER_OFFENSE": "BASELINE_TEAM_STATE + starter + offense families",
-    "TEAM_PLUS_STARTER_BULLPEN_OFFENSE": "BASELINE_TEAM_STATE + starter + bullpen + offense",
-    "TEAM_PLUS_STARTER_BULLPEN_OFFENSE_INTERACTIONS": "above + explicit low-complexity interaction family",
-    "FULL_NO_PIT_CONTEXT": "all constructed non-context families; excludes lineup/weather/context flags",
-    "FULL_VALIDATED_ENSEMBLE": "all constructed families including explicitly PIT-safe context when enabled"
+    "BASELINE_TEAM_STATE": "core + volatility",
+    "TEAM_PLUS_STARTER": "core + volatility + starter",
+    "TEAM_PLUS_BULLPEN": "core + volatility + bullpen",
+    "TEAM_PLUS_OFFENSE": "core + volatility + offense",
+    "TEAM_PLUS_STARTER_BULLPEN": "core + volatility + starter + bullpen",
+    "TEAM_PLUS_STARTER_OFFENSE": "core + volatility + starter + offense",
+    "TEAM_PLUS_STARTER_BULLPEN_OFFENSE": "core + volatility + starter + bullpen + offense",
+    "TEAM_PLUS_STARTER_BULLPEN_OFFENSE_INTERACTIONS": "previous + explicit interaction features",
+    "FULL_NO_PIT_CONTEXT": "all non-context families; excludes lineup/weather context",
+    "FULL_VALIDATED_ENSEMBLE": "all registered families, including PIT-safe context only when eligible"
   },
-  "variant_selection_rule": "Select feature sets by chronological OOS/WFO evidence, PIT eligibility, missingness/coverage, calibration, robustness, computational cost and holdout behavior. Do not prefer larger feature sets by default.",
+  "variant_selection_rule": "Evaluate registered variants on identical chronological OOS/WFO splits with PIT gating. Compare LogLoss first, then Brier/Accuracy/ECE, stability, missingness, robustness, cost and frozen holdout. Do not select by column count.",
   "runtime_truth": "The prediction artifact's feature_set_id and feature_schema_hash are authoritative for the exact columns used.",
   "feature_variant_screen": {
     "runner": "research/feature_variant_screen.py",
@@ -58,5 +58,18 @@
     ],
     "default_runtime_variant": "FULL_VALIDATED_ENSEMBLE",
     "decision_rule": "Screen on newest chronological holdout only after chronological model-validation selection; no auto-adoption. Any winner must repeat full WFO/OOS + calibration + ablation + robustness + frozen holdout."
-  }
+  },
+  "canonical_registry": "research/feature_set_variants.py",
+  "screening_variants": [
+    "BASELINE_TEAM_STATE",
+    "TEAM_PLUS_STARTER",
+    "TEAM_PLUS_BULLPEN",
+    "TEAM_PLUS_OFFENSE",
+    "TEAM_PLUS_STARTER_BULLPEN",
+    "TEAM_PLUS_STARTER_OFFENSE",
+    "TEAM_PLUS_STARTER_BULLPEN_OFFENSE",
+    "TEAM_PLUS_STARTER_BULLPEN_OFFENSE_INTERACTIONS",
+    "FULL_NO_PIT_CONTEXT",
+    "FULL_VALIDATED_ENSEMBLE"
+  ]
 }
