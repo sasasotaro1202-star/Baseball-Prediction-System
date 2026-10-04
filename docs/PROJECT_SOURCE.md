@@ -2422,3 +2422,8 @@ The newest 20% remains a locked winner-only holdout.
 ### 94.3 Safety
 Transforms are fixed algebraic operations on PIT-safe columns. Missing/non-finite values fail closed. Representation selection never auto-promotes a model. The exact Git SHA is stored in the artifact and checked by the verifier.
 
+⸻
+
+## 96. HYPERPARAMETER PROFILE EXPLORATION
+
+The model profile frontier supplements feature and representation search. It compares six deterministic estimator configurations—BALANCED, ROBUST, SMOOTH, DEEP, LOCAL and REGULARIZED—using only chronological OOS evidence. Profile choice is never tuned on the frozen holdout and cannot bypass the normal promotion gates.
