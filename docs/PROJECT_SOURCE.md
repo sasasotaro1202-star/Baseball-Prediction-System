@@ -2370,7 +2370,7 @@ Stage B is evaluated on a later, disjoint chronological OOS band.
 
 Stage C takes only the Stage-B top four and runs the full ensemble path with routing and calibration enabled on a third disjoint chronological OOS band.
 
-This structure is successive-haldving by chronology rather than one giant in-sample search.
+This structure is successive-halving by chronology rather than one giant in-sample search.
 
 ### 93.3 Frozen holdout
 The newest 20% is locked before candidate selection. The Development-selected Stage-C winner is fit on the complete pre-holdout prefix and is then scored on the holdout exactly once.
