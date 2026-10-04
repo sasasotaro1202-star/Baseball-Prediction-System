@@ -79,6 +79,16 @@ def test_jst_date_boundary_is_inclusive():
     assert ts<=end
 
 
+def test_terminal_completion_requires_final_row_evidence():
+    raw=_toy_game()
+    raw["result_id"]=""
+    raw["end_time"]=""
+    raw.loc[0,"result_id"]="intermediate"
+    normalized=canonicalize_pbp_frame(raw)
+    assert not normalized.empty
+    assert set(normalized["complete_status"])=={"UNKNOWN"}
+
+
 def test_research_status_remains_non_production_without_pit_proof():
     assert SCHEMA_VERSION=="game-script-v4"
     assert PIT_STATUS.startswith("UNVERIFIABLE")
