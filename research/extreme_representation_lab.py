@@ -105,13 +105,16 @@ def _safe_pair_bases(columns: list[str]) -> list[str]:
 
 
 def _safe_ratio_bases(columns: list[str]) -> list[str]:
-    whitelist = (
-        "_avg_", "_era", "_whip", "_k9", "_bb9", "_hr9", "_fip",
-        "_ip_", "_pitches", "_starts", "_matches", "_gf_", "_ga_",
-        "_ab_", "_hr_", "_bb_", "_so_", "_xbh_", "_rest_days",
+    # Ratios are only allowed for semantically positive/rate-like paired signals.
+    # Generic pair existence is insufficient because signed quantities such as
+    # Elo differences do not have a stable ratio interpretation here.
+    prefixes = (
+        "gf_", "ga_", "bat_avg_", "bat_ab_", "bat_hr_", "bat_bb_", "bat_so_",
+        "bat_xbh_", "bp_", "era", "whip", "k9", "bb9", "hr9", "fip",
+        "ip", "pitches", "starts", "matches", "rest_days",
     )
     bases = _safe_pair_bases(columns)
-    return [b for b in bases if any(token in b for token in whitelist)]
+    return [b for b in bases if str(b).startswith(prefixes)]
 
 
 def transform_representation(X, mode: str):
