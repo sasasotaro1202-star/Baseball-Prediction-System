@@ -401,7 +401,7 @@ def test_24h_supervisor_recovers_only_latest_zero_job_pregame_failures_with_dail
     # dedicated recovery workflow owns the stronger zero-job terminal-state token.
     assert "Pregame dispatch verified:" in text
     assert "gh run rerun" not in text
-    assert "Latest pregame failure is not a zero-job startup failure" in text
+    assert 'Latest pregame failure ${latest_failure_id}: created=${latest_failure_created} jobs=${latest_failure_job_count}' in text
     assert "HTTP 4[0-9]{2}" in text
     assert "HTTP (408|429)" in text
     assert "gh deterministic HTTP 4xx; refusing retry." in text
