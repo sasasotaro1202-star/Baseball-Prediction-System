@@ -158,7 +158,7 @@ PY
             need_research=0
             reason="Game-Script code and upstream PBP manifest unchanged"
           else
-            reason="Git SHA or upstream PBP manifest changed"
+            reason="Game-Script code or upstream PBP manifest changed"
           fi
           printf 'need_research=%s\nreason=%s\n' "$need_research" "$reason" | tee results/research_decision.txt
           echo "Need research: $need_research"
