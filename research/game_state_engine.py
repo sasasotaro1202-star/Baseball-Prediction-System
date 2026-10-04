@@ -19,7 +19,7 @@ from typing import Any, Mapping, Sequence
 import numpy as np
 import pandas as pd
 
-SCHEMA_VERSION = "game-state-transition-v3"
+SCHEMA_VERSION = "game-state-transition-v4"
 PIT_STATUS = "UNVERIFIABLE_HISTORICAL_PBP_AVAILABILITY"
 MAX_SCORE_DIFF = 8
 MAX_RUNS_PER_TRANSITION = 4
@@ -279,6 +279,14 @@ def _summary(matrix: np.ndarray, hs: int, aw: int) -> dict[str, float]:
     p_actual = {"H": ph, "A": pa, "D": pd}[actual]
     pred = "H" if ph >= max(pa, pd) else "A" if pa >= pd else "D"
     top = int(top4[0]); phs, pas = divmod(top, matrix.shape[1])
+    confidence = float(max(ph, pd, pa))
+    entropy = float(
+        -sum(
+            q * math.log(max(1e-12, q))
+            for q in (ph, pd, pa)
+        )
+    )
+    predictability = float(np.clip(1.0 - entropy / math.log(3.0), 0.0, 1.0))
     return {
         "accuracy": float(pred == actual),
         "logloss": float(-math.log(max(1e-12, p_actual))),
@@ -286,7 +294,9 @@ def _summary(matrix: np.ndarray, hs: int, aw: int) -> dict[str, float]:
         "score_mae": float((abs(phs - hs) + abs(pas - aw)) / 2),
         "top1_exact": float(phs == hs and pas == aw),
         "top4_exact": float(any(divmod(int(i), matrix.shape[1]) == (hs, aw) for i in top4)),
-        "confidence": float(max(ph, pd, pa)),
+        "confidence": confidence,
+        "predictability": predictability,
+        "outcome_entropy": entropy,
         "correct": float(pred == actual),
     }
 
@@ -299,8 +309,16 @@ def _aggregate(rows: pd.DataFrame) -> dict[str, float | int]:
         if m.any():
             ece += float(m.mean()) * abs(float(rows.loc[m, "correct"].mean()) - float(rows.loc[m, "confidence"].mean()))
     return {
-        "rows": int(len(rows)), "accuracy": float(rows.accuracy.mean()), "logloss": float(rows.logloss.mean()), "brier": float(rows.brier.mean()),
-        "ece": float(ece), "score_mae": float(rows.score_mae.mean()), "top1_exact": float(rows.top1_exact.mean()), "top4_exact": float(rows.top4_exact.mean()),
+        "rows": int(len(rows)),
+        "accuracy": float(rows.accuracy.mean()),
+        "logloss": float(rows.logloss.mean()),
+        "brier": float(rows.brier.mean()),
+        "ece": float(ece),
+        "score_mae": float(rows.score_mae.mean()),
+        "top1_exact": float(rows.top1_exact.mean()),
+        "top4_exact": float(rows.top4_exact.mean()),
+        "mean_predictability": float(rows.predictability.mean()) if "predictability" in rows else float("nan"),
+        "mean_outcome_entropy": float(rows.outcome_entropy.mean()) if "outcome_entropy" in rows else float("nan"),
     }
 
 
@@ -378,7 +396,16 @@ def evaluate_from_files(
                 t = _transition(a, b)
                 if t is None: continue
                 nh, no, nb, runs, scorer = t
-                key = _state_key(int(a["inning"]), str(a["half"]), int(a["outs"]), _base_mask(a), int(round(float(a["home_score"]) - float(a["away_score"]))))
+                # IMPORTANT: use only the reconstructed score available at this
+                # play state. The serialized final score is a post-game label and
+                # must never influence an in-game transition key.
+                key = _state_key(
+                    int(a["inning"]),
+                    str(a["half"]),
+                    int(a["outs"]),
+                    _base_mask(a),
+                    int(round(float(a["state_home_score"]) - float(a["state_away_score"]))),
+                )
                 outcome = (nh, no, nb, runs, scorer); exact[key][outcome] += 1; by_state[(key[0], key[1], key[2], key[3])][outcome] += 1; by_half[key[1]][outcome] += 1; transitions += 1
     if transitions < 100: raise ValueError(f"insufficient valid transitions: {transitions} < 100")
     kernel = TransitionKernel(exact, by_state, by_half, transitions)
