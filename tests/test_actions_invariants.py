@@ -196,6 +196,19 @@ def test_candidate_oos_fails_closed_on_incomplete_evidence():
     assert "if-no-files-found: warn" not in text
 
 
+def test_candidate_oos_watchdog_recovers_stale_in_progress_runs_after_sha_drift():
+    text = (ROOT / ".github" / "workflows" / "baseball_candidate_oos_watchdog.yml").read_text(encoding="utf-8")
+    start = text.index("# Recover a runner that stayed in-progress well beyond the candidate")
+    block = text[start:text.index("in_progress_count=", start)]
+
+    # A Candidate OOS run beyond the 360-minute grace period is stale even when
+    # main has advanced. Recovery must therefore not require sha == current_sha.
+    assert '[[ "${status}" == "in_progress" ]] && [[ -n "${created}" ]]' in block
+    assert 'if [[ "${age_minutes}" -ge 360 ]]; then' in block
+    assert 'sha="${current_sha}"' not in block.split('if [[ "${age_minutes}" -ge 360 ]]; then', 1)[0]
+    assert "stale superseded-SHA in-progress candidate run" in block
+    assert 'gh run cancel "${id}" --repo "${GH_REPO}"' in block
+
 def test_candidate_oos_watchdog_allows_validated_autonomous_control_plane_continuity():
     text = (ROOT / ".github" / "workflows" / "baseball_candidate_oos_watchdog.yml").read_text(encoding="utf-8")
     assert ".github/workflows/baseball_autonomous_control_plane.yml" in text
