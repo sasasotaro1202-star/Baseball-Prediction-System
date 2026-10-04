@@ -386,7 +386,8 @@ def test_research_lab_caches_are_snapshot_verified_and_file_scoped():
         save_block = text[save_pos:text.find("- name: Upload", save_pos)]
         assert f"path: results/{artifact_name}" in save_block
         assert "path: results\n" not in save_block
-        assert f"key: {cache_key_prefix}-${{ matrix.league }}-${{ github.sha }}" in save_block
+        expected_key = "key: " + cache_key_prefix + "-${{ matrix.league }}-${{ github.sha }}"
+        assert expected_key in save_block
 
 def test_phase1_candidate_gate_stages_npb_data_before_real_validation():
     text = (ROOT / ".github" / "workflows" / "baseball_phase1_gate.yml").read_text(encoding="utf-8")
