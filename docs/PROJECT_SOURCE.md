@@ -2203,3 +2203,7 @@ The experience ledger must preserve them through reconciliation. Missing taxonom
 Candidate OOS evidence is valid only for the implementation and data snapshot it actually evaluates. Any change that can alter candidate selection, calibration, score modeling, routing, adoption gating, or candidate identity must retrigger the Candidate OOS workflow. The workflow trigger contract is therefore part of evidence integrity, not merely CI convenience.
 
 A green Candidate OOS run from an older commit must not be reused as evidence for a changed implementation. Trigger coverage must include direct research dependencies that are not otherwise covered by the existing path filters, while avoiding unnecessary broad recomputation where a narrower dependency set is sufficient.
+
+
+### Long-running OOS versus append-only experience commits
+An already-running Candidate OOS replay may tolerate a main-branch commit only when the complete diff is limited to `data/experience/**`, because those files are append-only historical postgame reconciliation outputs and are not runtime inputs to candidate selection or scoring. Any code, configuration, workflow, PIT source, evaluation, or other data change remains evidence-affecting and must fail closed. This distinction prevents scheduled experience archival from invalidating otherwise valid long-running OOS evidence without weakening the code/config snapshot gate.
