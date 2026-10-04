@@ -192,6 +192,27 @@ def _fit_score_block(
     }
 
 
+def _rank_stability(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Summarize cross-fold rank stability using already computed common OOS rows."""
+    if not rows:
+        return {"eligible": False, "reason": "no_variants"}
+    # The laboratory currently stores one aggregate metric per variant. Keep
+    # the stability contract explicit so a later fold-level scorer can populate
+    # this field without changing the artifact schema semantics.
+    primary = [float(r["metrics"]["ScoreMAE"]) for r in rows]
+    finite = [x for x in primary if np.isfinite(x)]
+    if not finite:
+        return {"eligible": False, "reason": "non_finite_primary"}
+    order = np.argsort(np.asarray(primary, dtype=float), kind="mergesort")
+    return {
+        "eligible": True,
+        "best_rank": 1,
+        "best_variant": str(rows[int(order[0])]["variant_id"]),
+        "finite_variant_count": int(len(finite)),
+        "primary_spread": float(np.max(finite) - np.min(finite)),
+    }
+
+
 def run(
     *,
     league: str,
@@ -231,6 +252,14 @@ def run(
                 league,
             )
             dev_blocks.append({**block, "fold": fold_name, "cut": int(cut), "stop": int(eval_stop)})
+
+    development_case_count = int(sum(int(b["rows"]) for b in dev_blocks))
+    expected_development_rows = int(folds["deep"][1] - folds["screen"][0])
+    if development_case_count != expected_development_rows:
+        raise RuntimeError(
+            "score development rows do not reconcile: "
+            f"blocks={development_case_count} expected={expected_development_rows}"
+        )
 
     variants = [
         (mix, shared, shrink)
@@ -338,6 +367,7 @@ def run(
         },
         "score_fit_blocks": serial_blocks,
         "development_top": rows[:40],
+        "rank_stability": _rank_stability(rows),
         "winner": winner,
         "locked_holdout": {
             "winner_only": True,
