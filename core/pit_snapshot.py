@@ -47,7 +47,6 @@ class SourceSnapshot:
         _dt(self.retrieved_at)
         _dt(self.prediction_cutoff)
         retrieved = _dt(self.retrieved_at)
-        cutoff = _dt(self.prediction_cutoff)
         if self.source_timestamp:
             source_ts = _dt(self.source_timestamp)
             if source_ts > retrieved:
@@ -58,12 +57,8 @@ class SourceSnapshot:
                 raise ValueError("available_at cannot be after retrieved_at")
             # Do not reject future observations here. core.pit_replay is the
             # authoritative PIT gate and excludes observations unavailable at
-            # the requested replay cutoff.
-        # The cutoff describes the prediction context, while retrieval records
-        # when the observation actually entered the local immutable ledger.
-        # A ledger row cannot be observed after its own declared cutoff.
-        if retrieved > cutoff:
-            raise ValueError("retrieved_at cannot be after prediction_cutoff")
+            # the requested replay cutoff. prediction_cutoff is preserved as
+            # the replay context and is not required to equal retrieval time.
 
 
 def payload_hash(payload: Any) -> str:

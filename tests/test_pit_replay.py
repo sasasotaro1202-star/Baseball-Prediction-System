@@ -31,6 +31,37 @@ def test_replay_excludes_future_and_unverifiable(tmp_path: Path):
     assert rows[0]["available_at"] == "2026-09-12T09:00:00+00:00"
 
 
+
+def test_snapshot_allows_retrieval_after_declared_historical_cutoff(tmp_path: Path):
+    p = tmp_path / "snapshots.jsonl"
+    snapshot = make_snapshot(
+        event_id="MLB:cutoff", league="MLB", entity_type="game", entity_id="cutoff",
+        source="TEST", payload={"value": "historical-cutoff"},
+        prediction_cutoff="2026-09-12T08:00:00+00:00",
+        available_at="2026-09-12T09:00:00+00:00",
+        source_timestamp="2026-09-12T08:30:00+00:00",
+        retrieved_at="2026-09-12T09:05:00+00:00",
+    )
+    append_snapshot(snapshot, p)
+    assert replay(p, cutoff="2026-09-12T08:00:00+00:00") == []
+
+
+def test_snapshot_rejects_source_timestamp_after_retrieval(tmp_path: Path):
+    p = tmp_path / "snapshots.jsonl"
+    try:
+        make_snapshot(
+            event_id="MLB:bad", league="MLB", entity_type="game", entity_id="bad",
+            source="TEST", payload={"value": "bad-source-time"},
+            prediction_cutoff="2026-09-12T10:00:00+00:00",
+            available_at="2026-09-12T09:00:00+00:00",
+            source_timestamp="2026-09-12T09:06:00+00:00",
+            retrieved_at="2026-09-12T09:05:00+00:00",
+        )
+    except ValueError as exc:
+        assert "source_timestamp cannot be after retrieved_at" in str(exc)
+    else:
+        raise AssertionError("future source timestamp must fail closed")
+
 def test_replay_filters_league(tmp_path: Path):
     p = tmp_path / "snapshots.jsonl"
     for league in ("MLB", "NPB"):
