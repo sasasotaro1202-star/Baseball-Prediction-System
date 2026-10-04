@@ -20,6 +20,10 @@ def _write_prediction(root: Path, *, cutoff: str, game_id: str = "NPB-2026-09-26
         "starter_evidence_status": "official_announced",
         "pit_status": "PASS",
         "source_run_id": "1",
+        "git_commit": "prediction-commit-abc",
+        "model_version": "npb-test-model-v2",
+        "feature_version": "features-test-v3",
+        "calibration_version": "calibration-test-v1",
         "home": "横浜DeNAベイスターズ",
         "away": "阪神タイガース",
         "home_starter": "尾形崇斗",
@@ -159,6 +163,11 @@ def test_rollup_preserves_multiple_pregame_snapshots(tmp_path, monkeypatch):
     snap = pd.read_csv(exp / "snapshot_experience_ledger.csv")
     canonical = json.loads((exp / "experience_case_summary.json").read_text(encoding="utf-8"))
     assert result["matched_snapshot_rows"] == 2
+    assert result["evidence"]["scope"] == "HISTORICAL_POSTGAME_EXPERIENCE"
+    assert result["evidence"]["performance_status"] == "HISTORICAL_ONLY_NOT_CURRENT_MODEL_VERIFICATION"
+    assert result["evidence"]["prediction_source_commits"] == ["prediction-commit-abc"]
+    assert result["evidence"]["prediction_model_versions"] == ["npb-test-model-v2"]
+    assert result["evidence"]["comparison_to_current_production"]["status"] == "UNVERIFIED"
     assert len(snap) == 2
     assert canonical["unique_games_with_results"] == 1
     assert canonical["experience_cases"]["rows"] == 1
@@ -170,11 +179,15 @@ def test_rollup_preserves_multiple_pregame_snapshots(tmp_path, monkeypatch):
         (exp / "performance_breakdown.json").read_text(encoding="utf-8")
     )
     assert breakdown["schema_version"] == 4
+    assert breakdown["evidence"]["scope"] == "HISTORICAL_POSTGAME_EXPERIENCE"
+    assert breakdown["evidence"]["performance_status"] == "HISTORICAL_ONLY_NOT_CURRENT_MODEL_VERIFICATION"
     assert breakdown["dimension_order"] == [
         "league", "competition", "phase", "target", "horizon"
     ]
     assert "by_horizon" in breakdown["league_competition_phase_target"]["NPB"]
     assert "3_TO_6H" in breakdown["league_competition_phase_target"]["NPB"]["by_horizon"]
+    training = json.loads((exp / "experience_training_index.json").read_text(encoding="utf-8"))
+    assert training["evidence"]["comparison_to_current_production"]["status"] == "UNVERIFIED"
 
 
 def test_rollup_rejects_post_start_prediction(tmp_path, monkeypatch):
