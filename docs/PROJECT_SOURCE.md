@@ -2448,3 +2448,27 @@ Required ordering for explicit evidence is conservative:
 published_at <= announced_at <= available_at <= retrieved_at <= prediction_cutoff
 
 where fields are present. Missing announcement timestamps remain non-eligible rather than being inferred from retrieval time.
+
+⸻
+
+## 98. SCORE DISTRIBUTION PATTERN LAB
+
+The score layer now has a dedicated research laboratory that reuses one fitted score ensemble per chronological OOS block and compares post-fit score patterns on identical cases.
+
+### Search dimensions
+
+* model aggregation: TOP1, TOP2 inverse-loss, TOP3 inverse-loss, uniform TOP3, and alternative loss-power weighting;
+* shared bivariate-Poisson intensity scale: 0.00 through 1.25;
+* mean shrinkage toward the strictly prior training-prefix home/away run mean: 0.00 through 0.30.
+
+This yields 210 deterministic score-distribution candidates per league.
+
+### Evaluation
+
+The same cases are used across all score candidates. Evaluation records ScoreMAE, High>=7 LogLoss/Brier/Accuracy, exact-score Top-4 hit rate, and exact-score LogLoss where the realized score lies inside the evaluated grid.
+
+The newest 20% is frozen before candidate selection. Only the Development-selected winner is evaluated on that holdout. Score target semantics are never changed: Top-4 exact score and Low<=6 / High>=7 remain distinct targets.
+
+### Safety
+
+No new information source is introduced at the score-pattern layer. Missing values are not converted to scores. Failed executions and invalid artifacts fail closed. Results are research-only and cannot auto-promote the Production runtime.
