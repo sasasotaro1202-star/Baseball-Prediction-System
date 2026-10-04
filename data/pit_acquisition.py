@@ -235,12 +235,11 @@ def _explicit_timestamp(
                 else datetime.fromisoformat(str(retrieved_at).replace("Z", "+00:00"))
             )
         except ValueError:
-            retrieval_dt = None
-        if retrieval_dt is not None:
-            if retrieval_dt.tzinfo is None:
-                return None
-            if dt > retrieval_dt.astimezone(timezone.utc):
-                return None
+            return None
+        if retrieval_dt.tzinfo is None:
+            return None
+        if dt > retrieval_dt.astimezone(timezone.utc):
+            return None
 
     return dt.isoformat()
 
