@@ -53,7 +53,7 @@ def _base_team_state(name: str) -> bool:
         return True
     if re.match(r"^[had]_(pts|gf|ga|gd|win|draw|win_shrunk|gd_shrunk|draw_shrunk)_\d+$", name):
         return True
-    if re.match(r"^[ha]_(venue_n|venue_pts|venue_gf|venue_ga|elo|rest_days|matches|bp3|bp7)$", name):
+    if re.match(r"^[ha]_(venue_n|venue_pts|venue_gf|venue_ga|elo|rest_days|matches)$", name):
         return True
     if re.match(r"^[had]_(bat_ab|bat_avg|bat_hr|bat_bb|bat_so|bat_bb_rate|bat_so_rate|bat_xbh|bat_hr_rate|bat_iso_proxy|bat_extra_base_rate)_\d+$", name):
         return True
