@@ -21,7 +21,7 @@ jobs:
     steps:
       - name: Inspect and recover Game-Script research loop
         env:
-          GH_TOKEN: $GITHUB_TOKEN
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           workflow="npb_game_script_autoresearch.yml"
