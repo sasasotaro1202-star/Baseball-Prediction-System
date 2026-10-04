@@ -15,7 +15,7 @@ def test_active_run_is_not_restarted():
     }]
     result = decide(Target(".github/workflows/x.yml", 1), runs, now)
     assert result["decision"] == "NOOP"
-    assert result["reason"] == "active_run"
+    assert result["reason"] == "active_in_progress_run"
 
 
 def test_stale_success_dispatches():
