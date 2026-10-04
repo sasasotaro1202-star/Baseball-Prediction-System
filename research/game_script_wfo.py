@@ -79,7 +79,33 @@ def evaluate(paths: Sequence[str|Path], *, development_end="2024-12-31", validat
         if ck and done%max(1,int(checkpoint_every))==0: save_checkpoint(ck,cfg,processed,val_rows,ablation_rows)
     if ck: save_checkpoint(ck,cfg,processed,val_rows,ablation_rows)
     if not val_rows: raise ValueError("validation set is empty")
-    v=pd.DataFrame(val_rows);\n    if v.empty:\n        raise ValueError("validation set is empty")\n    shadow={"status":"NOT_REQUESTED","rows":0}
+    v=pd.DataFrame(val_rows);\n    if v.empty:\n        raise ValueError("validation set is empty")\n    warmup={"status":"NOT_REQUESTED","games":0,"transitions":0}
+    if sh_start is not None:
+        warmup_latest=sh_start-pd.Timedelta(nanoseconds=1)
+        warmup_games=0
+        warmup_transitions=0
+        for game in iter_games(files):
+            rec=record(game)
+            if rec["game_date"]<=val_end:
+                continue
+            if rec["game_date"]>=sh_start:
+                break
+            if rec["complete_status"]!="PASS":
+                continue
+            added=kernel.add_game(game)
+            if added:
+                strength.update(rec["home"],rec["away"],rec["home_score"],rec["away_score"],rec["game_date"],warmup_latest)
+                warmup_games+=1
+                warmup_transitions+=added
+        warmup={
+            "status":"RECENT_CONTEXT_WARMUP",
+            "games":int(warmup_games),
+            "transitions":int(warmup_transitions),
+            "start_exclusive":str(val_end),
+            "end_exclusive":str(sh_start),
+            "updates_used_for_shadow_only":True,
+        }
+    shadow={"status":"NOT_REQUESTED","rows":0}
     if sh_start is not None and max_shadow_games>0:
         sr=[]
         for game in iter_games(files):
@@ -95,4 +121,4 @@ def evaluate(paths: Sequence[str|Path], *, development_end="2024-12-31", validat
     if not adf.empty: ab.update({"rich_logloss":float(adf.rich_logloss.mean()),"coarse_logloss":float(adf.coarse_logloss.mean()),"rich_vs_coarse_logloss_relative_improvement":float((adf.coarse_logloss.mean()-adf.rich_logloss.mean())/max(1e-12,adf.coarse_logloss.mean()))})
     total=max(1,cov["rows"]); coverage={"sample_rows":int(cov["rows"]),"count_available":float(cov["count"]/total),"base_state_complete":float(cov["base"]/total),"batter_id_available":float(cov["batter"]/total),"pitcher_id_available":float(cov["pitcher"]/total),"pitch_id_available":float(cov["pitch"]/total),"release_speed_available":float(cov["speed"]/total),"plate_xy_available":float(cov["xy"]/total)}
     latest=v.tail(min(30,len(v)))
-    return {"schema_version":SCHEMA_VERSION,"validation_cases":val_rows,"shadow_cases":shadow.get("cases",[]),"status":"RESEARCH_SCREENING_ONLY","candidate_role":"CHALLENGER_RESEARCH","pit_status":PIT_STATUS,"production_eligible":False,"decision":"HOLD_RESEARCH_ONLY","reason":"Historical PBP publication/availability timestamps are not proven; no production OOS or promotion evidence is claimed.","development_end":development_end,"validation_start":validation_start,"validation_end":validation_end,"shadow_start":shadow_start or "","shadow_end":shadow_end or "","games_seen":games_seen,"development_games":dev_games,"validation_games":len(v),"kernel":kernel.snapshot(),"aggregate":{"validation":aggregate(v),"latest_validation_30":aggregate(latest.reset_index(drop=True))},"period_aggregates":{str(k):aggregate(g.reset_index(drop=True)) for k,g in v.groupby("period",sort=True)},"ablation":ab,"recent_shadow":shadow,"data_coverage":coverage,"checkpoint":{"enabled":ck is not None,"processed_validation_games":len(processed),"every_games":int(checkpoint_every)},"reproducibility":{"seed":int(seed),"simulations":int(simulations),"chronological_order":"file_month_then_game_date_then_game_id","validation_updates":"POST_TARGET_ONLY","shadow_updates":"FORBIDDEN","holdout_tuning":"FORBIDDEN","production_promotion":"FORBIDDEN"}}
+    return {"schema_version":SCHEMA_VERSION,"validation_cases":val_rows,"shadow_cases":shadow.get("cases",[]),"warmup":warmup,"status":"RESEARCH_SCREENING_ONLY","candidate_role":"CHALLENGER_RESEARCH","pit_status":PIT_STATUS,"production_eligible":False,"decision":"HOLD_RESEARCH_ONLY","reason":"Historical PBP publication/availability timestamps are not proven; no production OOS or promotion evidence is claimed.","development_end":development_end,"validation_start":validation_start,"validation_end":validation_end,"shadow_start":shadow_start or "","shadow_end":shadow_end or "","games_seen":games_seen,"development_games":dev_games,"validation_games":len(v),"kernel":kernel.snapshot(),"aggregate":{"validation":aggregate(v),"latest_validation_30":aggregate(latest.reset_index(drop=True))},"period_aggregates":{str(k):aggregate(g.reset_index(drop=True)) for k,g in v.groupby("period",sort=True)},"ablation":ab,"recent_shadow":shadow,"data_coverage":coverage,"checkpoint":{"enabled":ck is not None,"processed_validation_games":len(processed),"every_games":int(checkpoint_every)},"reproducibility":{"seed":int(seed),"simulations":int(simulations),"chronological_order":"file_month_then_game_date_then_game_id","validation_updates":"POST_TARGET_ONLY","shadow_updates":"FORBIDDEN","holdout_tuning":"FORBIDDEN","production_promotion":"FORBIDDEN"}}
