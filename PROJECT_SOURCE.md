@@ -1498,4 +1498,409 @@ GitHub Actionsは:
 * deterministic writes
 * artifact preservation
 * concurrency
-No readable content was found in this file for the requested mode.
+68. SINGLE-WRITER
+
+critical state:
+
+* model registry
+* experiment registry
+* source registry
+* experience ledger
+* promotion state
+* rollback state
+* scope state
+
+はsingle-writer semanticsを優先。
+
+並列researchは可能だがmergeはdeterministic。
+
+⸻
+
+69. CACHE / EFFICIENCY
+
+最適化順序:
+
+cache
+→ exact snapshot reuse
+→ incremental update
+→ deduplication
+→ vectorization
+→ parallel I/O
+→ selective recomputation
+→ retraining optimization
+→ algorithm optimization
+
+同一fingerprintを重複計算しない。
+
+⸻
+
+70. AUTOMATION QUALITY
+
+System qualityだけでなくautomation qualityを測定する。
+
+* false success
+* false recovery
+* repeated failure
+* recovery time
+* checkpoint recovery
+* duplicate execution
+* stale artifact
+* wasted compute
+* blocked queue
+
+green Action countをquality proxyにしない。
+
+⸻
+
+71. COST FIREWALL
+
+優先:
+
+1. verified free
+2. free quota
+3. OSS/local
+4. cached/local snapshot
+5. lightweight computation
+
+paid-only、billing-risk、unknown-cost、auto-renew trial、quota-overageは自動利用禁止。
+
+cost不明 = HOLD / UNCONFIRMED。
+
+⸻
+
+72. SECURITY / DATA GOVERNANCE
+
+secret/API key/tokenをcode、logs、artifacts、reports、commitsへ出力しない。
+
+external sourceについて:
+
+* license
+* attribution
+* redistribution
+* rate limit
+* commercial restriction
+* retention
+
+を確認する。
+
+license/cost不明sourceをproduction dependencyにしない。
+
+⸻
+
+73. POLICY REGRET
+
+後から:
+
+* Model Regret
+* Timing Regret
+* Information Regret
+* Scope Regret
+* Policy Regret
+* Research Regret
+
+を分析する。
+
+例えば、
+starter取得を早める価値、
+late informationを待つ価値、
+specialist routingの価値、
+abstentionの価値
+を評価する。
+
+⸻
+
+74. FRONTIER SCANS
+
+定期的に:
+
+Data Frontier
+Research Frontier
+Failure Frontier
+Scope Frontier
+Source Frontier
+Model Frontier
+Unknown Frontier
+
+をscanする。
+
+目的は無限拡張ではなく、現在のsystem limitationを発見すること。
+
+⸻
+
+75. SELF-EVOLUTION
+
+detect:
+
+* recurring failure
+* obsolete rule
+* contradictory source
+* stale source
+* ineffective workflow
+* inefficient computation
+* new validated method
+* new coverage opportunity
+
+change flow:
+
+PROPOSE
+→ CONSISTENCY CHECK
+→ HISTORICAL IMPACT CHECK
+→ IMPLEMENT
+→ TEST
+→ PIT
+→ OOS
+→ ROBUSTNESS
+→ HOLDOUT/RELEASE
+→ ADOPT/REJECT
+
+過去の成績・失敗・holdoutを良く見せるために改変しない。
+
+⸻
+
+76. RESEARCH STOPPING
+
+以下で停止/保留可能:
+
+* repeated zero incremental value
+* insufficient PIT
+* insufficient sample
+* unresolved source quality
+* robustness failure
+* high compute cost
+* duplicated mechanism
+* frontier saturation
+
+停止理由はNegative Knowledgeへ保存する。
+
+⸻
+
+77. PREDICTION STATE
+
+標準state:
+
+FRESH
+AGING
+STALE
+UNKNOWN
+SHOCKED
+REQUIRES_RECALC
+FALLBACK
+ABSTAIN
+INVALIDATED
+
+stateをprediction outputへ可能な範囲で付与する。
+
+⸻
+
+78. RESULT PRESENTATION
+
+性能が変化した場合、作業報告に自動表示:
+
+* Current Champion
+* Prior Champion
+* Candidate
+* OOS ΔLogLoss
+* OOS ΔBrier
+* OOS ΔAccuracy
+* OOS ΔECE
+* Latest Holdout Δ
+* Robustness Δ
+* PIT status
+* sample size
+* evaluation period
+* decision
+* production status
+
+measured improvementとhypothetical improvementを区別する。
+
+⸻
+
+79. STATUS TAXONOMY
+
+厳密に区別:
+
+IMPLEMENTED
+EXECUTED
+VERIFIED
+PERFORMANCE_VERIFIED
+PROMOTION_CANDIDATE
+ADOPTED
+PRODUCTION
+STABLE
+HOLD
+REJECTED
+FAILED
+BLOCKED
+DEFERRED
+ROLLED_BACK
+UNKNOWN
+UNVERIFIABLE
+SUPERSEDED
+RETIRED
+
+code exists ≠ adopted。
+workflow green ≠ performance verified。
+
+⸻
+
+80. NO-FAKE-SUCCESS
+
+禁止:
+
+* fabricated metrics
+* missing→zero
+* silent exception
+* hidden partial completion
+* skipped test→passed
+* failed job→success
+* unknown PIT→valid
+* incomplete data→complete
+* failed recovery→recovered
+
+実測、推定、仮説、未検証を明確に表示する。
+
+⸻
+
+81. REPRODUCIBILITY
+
+production/research resultは可能な限り、
+
+source snapshot
+→ feature
+→ model
+→ calibration
+→ probability
+→ decision
+
+をreplay可能にする。
+
+再現不能artifactはevidence levelを下げる。
+
+⸻
+
+82. ARTIFACT INTEGRITY
+
+artifactには可能な範囲で:
+
+* hash
+* git commit
+* experiment id
+* dataset hash
+* source snapshot
+* generation time
+* schema version
+* model version
+
+を保存する。
+
+⸻
+
+83. COMPLETION DEFINITION
+
+completionは「Workflowがgreen」「prediction JSONが存在」ではない。
+
+最低限:
+
+* tests
+* PIT audit
+* leakage/meta-leakage audit
+* chronological WFO/OOS
+* calibration
+* ablation
+* robustness
+* frozen holdout
+* artifact validation
+* reproducibility
+* recovery
+* release gate
+* monitoring
+* rollback
+
+のevidenceが必要。
+
+未実施は未実施として表示する。
+
+⸻
+
+84. CONTINUOUS OPERATING LOOP
+
+MONITOR
+→ DETECT
+→ TRIAGE
+→ RESEARCH
+→ IMPLEMENT
+→ TEST
+→ PIT
+→ OOS/WFO
+→ CALIBRATION
+→ ROBUSTNESS
+→ HOLDOUT
+→ ADOPT/HOLD/REJECT
+→ RELEASE
+→ PRODUCTION
+→ RECONCILE
+→ FAILURE ANALYSIS
+→ MEMORY
+→ NEXT RESEARCH
+
+を継続する。
+
+⸻
+
+85. ULTIMATE PRINCIPLE
+
+Baseball Prediction Systemの最適化対象は単なる勝敗Accuracyではない。
+
+Future Generalization
+×
+Case-Level Correctness
+×
+Calibration
+×
+Predictability Awareness
+×
+Uncertainty Quality
+×
+Robustness
+×
+PIT Integrity
+×
+Information Efficiency
+×
+Operational Reliability
+×
+Recovery
+×
+Reproducibility
+
+を最大化する。
+
+特に、
+
+PIT Integrity > Apparent Backtest Gain
+Evidence > Assumption
+Future Generalization > Historical Fit
+Case-Level Error Analysis > Aggregate Average
+Calibration > Raw Confidence
+Robustness > Single-Fold Improvement
+Failure Learning > Repeated Failure
+Safe Degradation > False Prediction
+Reproducibility > Convenient Output
+
+を基本原則とする。
+
+目標は「もっと複雑な野球モデル」ではなく、
+
+いつ予測するか、
+その時点で本当に何が分かっていたか、
+starter/lineupがどの程度確定していたか、
+どのモデルが適切か、
+どの程度確信すべきか、
+追加情報を取得する価値があるか、
+予測を出すべきでないgameはどれか、
+なぜ失敗したか、
+その失敗を次の研究へどう変換するか
+
+まで制御できるAdaptive Baseball Prediction Intelligenceを構築することである。
+
+=== COPY END ===
