@@ -19,7 +19,7 @@ from typing import Any, Mapping, Sequence
 import numpy as np
 import pandas as pd
 
-SCHEMA_VERSION = "game-state-transition-v2"
+SCHEMA_VERSION = "game-state-transition-v3"
 PIT_STATUS = "UNVERIFIABLE_HISTORICAL_PBP_AVAILABILITY"
 MAX_SCORE_DIFF = 8
 MAX_RUNS_PER_TRANSITION = 4
@@ -75,6 +75,11 @@ def canonicalize_pbp_frame(raw: pd.DataFrame) -> pd.DataFrame:
     out["away"] = _first(raw, ["away_team_name", "V_NameS"], "").astype("string").fillna("").str.strip()
     out["home_score"] = pd.to_numeric(_first(raw, ["home_total_runs", "H_R"]), errors="coerce")
     out["away_score"] = pd.to_numeric(_first(raw, ["away_total_runs", "V_R"]), errors="coerce")
+    # Final/total score columns remain labels only; they must never define the
+    # in-game state. Reconstruct state score from play-level addedRuns instead.
+    out["added_runs"] = pd.to_numeric(_first(raw, ["addedRuns", "added_runs"]), errors="coerce")
+    out["pitcher_hand"] = _first(raw, ["pitcher_hand", "pitLR"], "").astype("string").fillna("").str.strip()
+    out["batter_hand"] = _first(raw, ["batter_hand", "batLR"], "").astype("string").fillna("").str.strip()
     out["outs"] = pd.to_numeric(_first(raw, ["outs_when_up", "out"]), errors="coerce")
     for src, dst in (("on_1b", "base1"), ("on_2b", "base2"), ("on_3b", "base3")):
         out[dst] = raw[src] if src in raw.columns else (_first(raw, [dst]))
@@ -95,7 +100,56 @@ def canonicalize_pbp_frame(raw: pd.DataFrame) -> pd.DataFrame:
         out["game_id"] + "|" + out["inning"].astype(str) + "|" + out["half"] + "|" + out["play_order"].astype(str),
     )
     out = out.drop_duplicates("_identity", keep="last").drop(columns=["_identity", "_half_order"])
+    out = _reconstruct_state_scores(out)
     return out.reset_index(drop=True)
+
+
+def _reconstruct_state_scores(frame: pd.DataFrame) -> pd.DataFrame:
+    """Reconstruct cumulative score at each observed PBP row.
+
+    A game is usable only when play-level addedRuns are complete, valid, start
+    from 0-0, and reconcile to the final score label. Otherwise the engine
+    drops the game rather than using a possibly post-game total as state.
+    """
+    if frame.empty:
+        return frame.copy()
+    kept: list[pd.DataFrame] = []
+    for _gid, game in frame.groupby("game_id", sort=False):
+        game = game.copy()
+        runs = pd.to_numeric(game["added_runs"], errors="coerce")
+        if runs.isna().any() or not np.isfinite(runs.to_numpy()).all():
+            continue
+        vals = runs.to_numpy(dtype=float)
+        rounded = np.rint(vals)
+        if np.any(np.abs(vals - rounded) > 1e-9) or np.any(vals < 0) or np.any(vals > 4):
+            continue
+        home_state = 0
+        away_state = 0
+        hs_state: list[int] = []
+        as_state: list[int] = []
+        valid = True
+        for half, add in zip(game["half"].astype(str), rounded.astype(int)):
+            if half == "T":
+                away_state += int(add)
+            elif half == "B":
+                home_state += int(add)
+            else:
+                valid = False
+                break
+            hs_state.append(home_state)
+            as_state.append(away_state)
+        if not valid or not hs_state or hs_state[0] != 0 or as_state[0] != 0:
+            continue
+        final_h = float(game["home_score"].iloc[-1])
+        final_a = float(game["away_score"].iloc[-1])
+        if not np.isfinite(final_h) or not np.isfinite(final_a):
+            continue
+        if int(hs_state[-1]) != int(round(final_h)) or int(as_state[-1]) != int(round(final_a)):
+            continue
+        game["state_home_score"] = np.asarray(hs_state, dtype=int)
+        game["state_away_score"] = np.asarray(as_state, dtype=int)
+        kept.append(game)
+    return pd.concat(kept, ignore_index=True) if kept else frame.iloc[0:0].copy()
 
 
 def _transition(a: Mapping[str, Any], b: Mapping[str, Any]) -> tuple[str, int, int, int, str] | None:
@@ -107,8 +161,8 @@ def _transition(a: Mapping[str, Any], b: Mapping[str, Any]) -> tuple[str, int, i
     ao, bo = int(a["outs"]), int(b["outs"])
     if ai == bi and ah == bh and bo < ao:
         return None
-    dh = float(b["home_score"]) - float(a["home_score"])
-    da = float(b["away_score"]) - float(a["away_score"])
+    dh = float(b["state_home_score"]) - float(a["state_home_score"])
+    da = float(b["state_away_score"]) - float(a["state_away_score"])
     if dh < 0 or da < 0 or dh > MAX_RUNS_PER_TRANSITION or da > MAX_RUNS_PER_TRANSITION or (dh > 0 and da > 0):
         return None
     runs = int(round(dh + da))
@@ -167,7 +221,7 @@ def fit_transition_kernel(pbp: pd.DataFrame, *, min_transitions: int = 100) -> T
             if t is None:
                 continue
             nh, no, nb, runs, scorer = t
-            key = _state_key(int(a["inning"]), str(a["half"]), int(a["outs"]), _base_mask(a), int(round(float(a["home_score"]) - float(a["away_score"]))))
+            key = _state_key(int(a["inning"]), str(a["half"]), int(a["outs"]), _base_mask(a), int(round(float(a["state_home_score"]) - float(a["state_away_score"]))))
             outcome = (nh, no, nb, runs, scorer)
             exact[key][outcome] += 1
             by_state[(key[0], key[1], key[2], key[3])][outcome] += 1
@@ -373,8 +427,7 @@ def main(argv: list[str] | None = None) -> int:
     a = p.parse_args(argv); files = sorted(Path().glob(a.data_glob));
     if not files: raise SystemExit(f"no PBP files matched: {a.data_glob}")
     result = evaluate_from_files(files, development_end=a.development_end, validation_start=a.validation_start, validation_end=a.validation_end, holdout_start=a.holdout_start, max_validation_games=max(1,a.max_validation_games), max_holdout_games=max(1,a.max_holdout_games), simulations=max(1,a.simulations), seed=a.seed)
-    out = Path(a.output); out.parent.mkdir(parents=True, exist_ok=True); out.write_text(json.dumps(result, ensure_ascii=False, indent=2, default=str) + "
-", encoding="utf-8")
+    out = Path(a.output); out.parent.mkdir(parents=True, exist_ok=True); out.write_text(json.dumps(result, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")
     print(json.dumps({k: result[k] for k in ("status", "pit_status", "production_eligible", "decision", "aggregate", "delta_vs_poisson")}, ensure_ascii=False, indent=2)); return 0
 
 
