@@ -16,6 +16,8 @@ def test_fast_npb_wrapper_defers_only_observation_context():
     assert "collect_npb_team_player_context" in source
     assert "collect_npb_pregame_context" in source
     assert '"status": "DEFERRED_FAST_MODE"' in source
+    assert "FAST_SHADOW" in source
+    assert '"BASEBALL_CATBOOST_ITERATIONS", "100"' in source
 
     # Fast mode must call the canonical predictor rather than create a second
     # probability implementation.
