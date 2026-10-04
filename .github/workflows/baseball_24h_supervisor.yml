@@ -196,6 +196,41 @@ jobs:
             fi
           else
             echo "Latest pregame terminal state is not eligible for speculative restart; preserving authoritative failure/blocked state."
+          if [ "${pregame_dispatch}" -eq 1 ]; then
+            dispatch_epoch="$(date +%s)"
+            echo "Dispatching pregame: ${pregame_reason} dispatch_epoch=${dispatch_epoch}"
+            gh_retry workflow run "${PREGAME_WORKFLOW}" --repo "${GH_REPO}" --ref main
+            verified_pregame=0
+            new_pregame_run_id=""
+            for attempt in 1 2 3 4 5; do
+              sleep 3
+              pregame_dispatch_api_after="$(gh_retry api "repos/${GH_REPO}/actions/runs?event=workflow_dispatch&branch=main&per_page=100")"
+              new_pregame_run_id="$(printf "%s" "${pregame_dispatch_api_after}" |
+                jq -r --arg workflow "${PREGAME_WORKFLOW}" --argjson cutoff "${dispatch_epoch}"
+                  '[.workflow_runs[]
+                   | select(.path == (".github/workflows/" + $workflow))
+                   | select(.head_branch == "main")
+                   | select((.created_at | fromdateiso8601) >= $cutoff)
+                  ] | sort_by(.created_at) | reverse | .[0].id // empty')"
+              pregame_active_after="$(printf "%s" "${pregame_dispatch_api_after}" |
+                jq --arg workflow "${PREGAME_WORKFLOW}"
+                  '[.workflow_runs[]
+                   | select(.path == (".github/workflows/" + $workflow))
+                   | select(.head_branch == "main")
+                   | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")]
+                  | length')"
+              echo "Pregame dispatch verification ${attempt}/5: active=${pregame_active_after} new_run_id=${new_pregame_run_id:-<none>}"
+              if [ -n "${new_pregame_run_id}" ] || [ "${pregame_active_after}" -gt 0 ]; then
+                verified_pregame=1
+                break
+              fi
+            done
+            if [ "${verified_pregame}" -ne 1 ]; then
+              echo "Pregame workflow_dispatch completed but no new/current run was observed." >&2
+              exit 1
+            fi
+            printf "%s\n" "Pregame dispatch verified: run_id=${new_pregame_run_id:-<active-unresolved>} dispatch_epoch=${dispatch_epoch}" >> "$GITHUB_STEP_SUMMARY"
+          fi
           fi
           # Candidate OOS has a separate concurrency group because it is much
           # more expensive than the lightweight supervisor. A scheduler-stuck
