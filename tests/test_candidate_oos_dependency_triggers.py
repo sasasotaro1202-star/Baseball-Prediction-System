@@ -16,3 +16,5 @@ def test_candidate_oos_dependency_paths_are_under_main_push_filter():
     paths = workflow.split("paths:", 1)[1].split("schedule:", 1)[0]
     assert "research/individually_calibrated_ensemble.py" in paths
     assert "research/adoption_gate.py" in paths
+    assert "baseball_backtest.py" in paths
+    assert "evaluation/**" in paths
