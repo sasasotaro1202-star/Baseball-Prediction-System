@@ -103,7 +103,11 @@ jobs:
               | @tsv'             | sort > results/pbp_release_manifest.tsv
           test -s results/pbp_release_manifest.tsv
           sha256sum results/pbp_release_manifest.tsv | awk '{print $1}' > results/source_fingerprint.txt
+          code_files=(research/game_script_common.py research/game_script_wfo.py research/game_script_engine.py tests/test_game_script_engine.py tests/test_game_script_automation_contract.py .github/workflows/npb_game_script_autoresearch.yml .github/workflows/npb_game_script_watchdog.yml docs/GAME_SCRIPT_V4.md)
+          for f in "${code_files[@]}"; do test -s "$f"; done
+          (for f in "${code_files[@]}"; do sha256sum "$f"; done) | sha256sum | awk '{print $1}' > results/code_fingerprint.txt
           echo "source_fingerprint=$(cat results/source_fingerprint.txt)" >> "$GITHUB_STEP_SUMMARY"
+          echo "code_fingerprint=$(cat results/code_fingerprint.txt)" >> "$GITHUB_STEP_SUMMARY"
           echo "git_sha=$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Fetch previous successful evidence for resume and change detection
@@ -127,11 +131,13 @@ jobs:
           current_source=$(tr -d '[:space:]' < results/source_fingerprint.txt)
           prev_source=""
           prev_manifest=""
-          prev_git=""
+          prev_code=""
           prev_manifest_path=$(find .previous_evidence -type f -name 'pbp_release_manifest.tsv' -print -quit || true)
           prev_source_path=$(find .previous_evidence -type f -name 'source_fingerprint.txt' -print -quit || true)
+          prev_code_path=$(find .previous_evidence -type f -name 'code_fingerprint.txt' -print -quit || true)
           prev_json_path=$(find .previous_evidence -type f -name 'game_script_screening.json' -print -quit || true)
           if [ -n "$prev_source_path" ]; then prev_source=$(tr -d '[:space:]' < "$prev_source_path"); fi
+          if [ -n "$prev_code_path" ]; then prev_code=$(tr -d '[:space:]' < "$prev_code_path"); fi
           if [ -n "$prev_manifest_path" ]; then prev_manifest=$(sha256sum "$prev_manifest_path" | awk '{print $1}'); fi
           if [ -n "$prev_json_path" ]; then prev_git=$(python - "$prev_json_path" <<'PY'
 import json, sys
@@ -143,13 +149,14 @@ except Exception:
 PY
           ); fi
           current_manifest=$(sha256sum results/pbp_release_manifest.tsv | awk '{print $1}')
+          current_code=$(tr -d '[:space:]' < results/code_fingerprint.txt)
           need_research=1
           reason="no previous successful evidence"
           if [ "$force_research" = "true" ]; then
             reason="manual force_research requested"
-          elif [ "$prev_source" = "$current_source" ] && [ "$prev_manifest" = "$current_manifest" ] && [ "$prev_git" = "$GITHUB_SHA" ]; then
+          elif [ "$prev_source" = "$current_source" ] && [ "$prev_manifest" = "$current_manifest" ] && [ "$prev_code" = "$current_code" ]; then
             need_research=0
-            reason="Git SHA and upstream PBP manifest unchanged"
+            reason="Game-Script code and upstream PBP manifest unchanged"
           else
             reason="Git SHA or upstream PBP manifest changed"
           fi
@@ -236,6 +243,7 @@ obj = {
     "reason": reason,
     "git_sha": Path(".git/HEAD").read_text(encoding="utf-8").strip(),
     "source_fingerprint": Path("results/source_fingerprint.txt").read_text(encoding="utf-8").strip(),
+    "code_fingerprint": Path("results/code_fingerprint.txt").read_text(encoding="utf-8").strip(),
     "reproducibility": {
         "production_promotion": "FORBIDDEN",
         "unchanged_source": "NO_RECOMPUTATION",
@@ -266,6 +274,7 @@ p=Path("results/game_script_screening.json")
 obj=json.loads(p.read_text(encoding="utf-8"))
 obj["git_sha"]=os.environ["GITHUB_SHA"]
 obj["source_fingerprint"]=Path("results/source_fingerprint.txt").read_text(encoding="utf-8").strip()
+obj["code_fingerprint"]=Path("results/code_fingerprint.txt").read_text(encoding="utf-8").strip()
 p.write_text(json.dumps(obj,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
 PY
 
@@ -276,6 +285,7 @@ PY
           test -s results/game_script_screening.json
           test -s results/pbp_release_manifest.tsv
           test -s results/source_fingerprint.txt
+          test -s results/code_fingerprint.txt
           python - <<'PY'
 import json, math
 from pathlib import Path
@@ -336,6 +346,7 @@ PY
             results/game_script_checkpoint.json
             results/pbp_release_manifest.tsv
             results/source_fingerprint.txt
+            results/code_fingerprint.txt
             results/research_decision.txt
             results/previous_run.txt
             research/game_script_common.py
