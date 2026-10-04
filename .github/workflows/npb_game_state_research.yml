@@ -71,13 +71,13 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: requirements-ci.txt
 
       - name: Install dependencies
         timeout-minutes: 10
         run: |
           set -euo pipefail
-          python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
+          python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements-ci.txt
 
       - name: Compile and focused tests
         timeout-minutes: 10
