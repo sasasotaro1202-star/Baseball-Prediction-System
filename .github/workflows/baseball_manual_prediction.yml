@@ -52,6 +52,15 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: requirements.txt
+      
+      - name: Restore NPB historical PBP cache
+        if: inputs.league == 'NPB'
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809
+        with:
+          path: data/*_pbp.csv
+          key: ${{ runner.os }}-npb-pbp-${{ hashFiles('requirements.txt', 'data/npb_pbp_adapter.py', 'production_npb.py') }}
+          restore-keys: |
+            ${{ runner.os }}-npb-pbp-
 
       - name: Install production dependencies
         run: |
@@ -95,27 +104,59 @@ jobs:
           output="results/manual_prediction.json"
           mkdir -p results
 
-          set +e
-          python -m prediction.current_production \
-            --league "${{ inputs.league }}" \
-            --data-dir data \
-            > "${output}"
-          rc=$?
-          set -e
+          if [ "${{ inputs.league }}" = "NPB" ]; then
+            # Fast NPB path: canonical PIT/model computation with observation-only
+            # enrichment deferred. This remains explicit RESEARCH_SHADOW when
+            # NPB production is not formally adopted.
+            target="$(TZ=Asia/Tokyo date +%Y-%m-%d)"
+            python scripts/npb_fast_prediction.py               --date "${target}"               --data-dir data               --research-shadow               --minimum-lead-minutes 0               > "${output}"
+            rc=$?
+          else
+            set +e
+            python -m prediction.current_production               --league "${{ inputs.league }}"               --data-dir data               > "${output}"
+            rc=$?
+            set -e
+          fi
 
           if [ ! -s "${output}" ]; then
-            echo "current production runtime produced no JSON output (rc=${rc}); preserving the original runtime failure." >&2
+            echo "prediction runtime produced no JSON output (rc=${rc}); preserving the original runtime failure." >&2
             exit "${rc:-1}"
           fi
-          if [ "${{ inputs.league }}" = "NPB" ]; then
-            if grep -Eq '"execution_status": "(BLOCKED_NO_CURRENT_PRODUCTION_RUNTIME|BLOCKED_PRODUCTION_GATE)"' "${output}"; then
-              echo "Production runtime is blocked; running explicit research-shadow manual forecast without changing production state."
-              target="$(TZ=Asia/Tokyo date +%Y-%m-%d)"
-              python production_npb.py                 --date "${target}"                 --data-dir data                 --research-shadow                 > "${output}"
-              rc=$?
-              test -s "${output}"
-            fi
-          fi
+
+          # Manual on-demand consumers require stable request metadata. This
+          # annotation changes provenance metadata only; it never changes
+          # probabilities or PIT evidence.
+          python - "${output}" <<'PY'
+          import json
+          import sys
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          obj = json.loads(path.read_text(encoding="utf-8"))
+          obj["prediction_request_mode"] = "on_demand"
+          for pred in obj.get("predictions", []):
+              if not isinstance(pred, dict):
+                  continue
+              pred["prediction_source"] = "MANUAL_LIVE"
+              pred["prediction_schedule"] = "on_demand"
+              pred["prediction_request_mode"] = "on_demand"
+              try:
+                  generated = datetime.fromisoformat(
+                      str(pred["prediction_generated_at"]).replace("Z", "+00:00")
+                  )
+                  game_time = datetime.fromisoformat(
+                      str(pred["datetime_jst"]).replace("Z", "+00:00")
+                  )
+                  if generated.tzinfo is not None and game_time.tzinfo is not None:
+                      pred["prediction_target_lead_minutes"] = round(
+                          (game_time - generated).total_seconds() / 60.0, 3
+                      )
+              except Exception:
+                  pass
+          path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          PY
+
           python - "${output}" "${rc}" <<'PY'
           import json
           import sys
@@ -123,13 +164,7 @@ jobs:
 
           path = Path(sys.argv[1])
           rc = int(sys.argv[2])
-          try:
-              obj = json.loads(path.read_text(encoding="utf-8"))
-          except json.JSONDecodeError as exc:
-              # Preserve the runtime exit code instead of masking an upstream
-              # failure with a secondary JSON parser error.
-              print(f"manual prediction runtime did not emit valid JSON: {exc}", file=sys.stderr)
-              raise SystemExit(rc if rc else 1)
+          obj = json.loads(path.read_text(encoding="utf-8"))
           status = str(obj.get("execution_status", "UNKNOWN"))
 
           allowed = {
@@ -143,20 +178,15 @@ jobs:
           }
           if status not in allowed:
               raise SystemExit("unexpected manual prediction status: " + status)
-
-          # A fail-closed runtime block is a valid operational result, not a
-          # fabricated prediction and not a successful prediction claim.
-          if status.startswith("BLOCKED_") or status == "NO_FUTURE_GAMES":
-              print(json.dumps({
-                  "status": status,
-                  "prediction_rows": len(obj.get("predictions", [])),
-                  "runtime_available": obj.get("current_production_runtime") is not None,
-                  "exit_code": rc,
-              }, ensure_ascii=False))
-              if status == "BLOCKED_STALE_TARGET_DATE":
-                  raise SystemExit(2)
-          elif rc != 0:
+          if status == "BLOCKED_STALE_TARGET_DATE":
+              raise SystemExit(2)
+          if status in {"EXECUTED", "RESEARCH_SHADOW_EXECUTED"} and rc != 0:
               raise SystemExit("prediction execution failed with rc=" + str(rc))
+          print(json.dumps({
+              "status": status,
+              "prediction_rows": len(obj.get("predictions", [])),
+              "exit_code": rc,
+          }, ensure_ascii=False))
           PY
 
       - name: Validate on-demand metadata when a prediction was emitted
