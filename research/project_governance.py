@@ -92,6 +92,11 @@ WORKFLOW_CONTRACTS: dict[str, dict[str, Any]] = {
         "max_age_hours": 12,
         "required": ("schedule:", "workflow_dispatch:", "research.experience_learning", "research.experience_learning_gate"),
     },
+    ".github/workflows/project_source_provenance_audit.yml": {
+        "monitor": True,
+        "max_age_hours": 30,
+        "required": ("schedule:", "PROJECT_SOURCE.md", "PROJECT_SOURCE_PROVENANCE.json", "sha256"),
+    },
     ".github/workflows/baseball_actions_recovery.yml": {
         "monitor": False,
         "max_age_hours": 0,
