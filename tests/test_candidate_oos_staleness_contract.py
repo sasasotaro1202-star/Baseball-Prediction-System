@@ -32,7 +32,7 @@ def test_candidate_oos_watchdog_monitors_all_candidate_dependencies():
 def test_candidate_oos_allows_only_non_runtime_main_updates():
     workflow = (ROOT / '.github' / 'workflows' / 'baseball_candidate_oos.yml').read_text(encoding='utf-8')
     assert 'mapfile -t changed_files' in workflow
-    assert 'data/experience/*|tests/*)' in workflow
+    assert 'data/experience/*|tests/*|.github/workflows/baseball_candidate_oos_watchdog.yml)' in workflow
     assert 'Evidence-affecting main update detected' in workflow
     assert 'refusing mixed-snapshot evidence' in workflow
 
