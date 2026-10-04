@@ -137,3 +137,7 @@ def test_mlb_starter_id_is_read_from_probable_pitcher():
     assert pit._starter_id({"probablePitcher": {"playerId": "456"}}) == "456"
     assert pit._starter_id({"probablePitcher": {}}) is None
     assert pit._starter_id({}) is None
+
+def test_mlb_pit_policy_workflow_installs_requests_dependency():
+    workflow = (ROOT / ".github" / "workflows" / "mlb_pit_policy.yml").read_text(encoding="utf-8")
+    assert "python -m pip install --disable-pip-version-check pytest requests" in workflow
