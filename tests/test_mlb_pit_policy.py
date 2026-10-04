@@ -180,3 +180,27 @@ def test_mlb_starter_id_is_read_from_probable_pitcher():
 def test_mlb_pit_policy_workflow_installs_requests_dependency():
     workflow = (ROOT / ".github" / "workflows" / "mlb_pit_policy.yml").read_text(encoding="utf-8")
     assert "python -m pip install --disable-pip-version-check pytest requests" in workflow
+
+
+def test_explicit_mlb_starter_timestamp_rejects_future_of_retrieval():
+    import data.pit_acquisition as pit
+
+    retrieval = "2026-09-19T09:10:00+00:00"
+    assert pit._explicit_timestamp(
+        {"home_starter_announced_at": "2026-09-19T09:11:00+00:00"},
+        "home",
+        "announcement",
+        retrieved_at=retrieval,
+    ) is None
+
+
+def test_explicit_mlb_starter_timestamp_accepts_at_retrieval():
+    import data.pit_acquisition as pit
+
+    retrieval = "2026-09-19T09:10:00+00:00"
+    assert pit._explicit_timestamp(
+        {"home_starter_announced_at": retrieval},
+        "home",
+        "announcement",
+        retrieved_at=retrieval,
+    ) == retrieval
