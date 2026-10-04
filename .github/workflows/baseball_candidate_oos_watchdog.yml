@@ -49,6 +49,24 @@ jobs:
           current_sha="$(gh api "repos/${GH_REPO}/git/ref/heads/main" --jq '.object.sha')"
           echo "current_main_sha=${current_sha}"
 
+          is_non_runtime_only_change() {
+            local base_sha="$1"
+            local changed
+            changed="$(gh api "repos/${GH_REPO}/compare/${base_sha}...${current_sha}" --jq '.files[]?.filename' 2>/dev/null)" || return 1
+            [ -n "${changed}" ] || return 1
+            while IFS= read -r changed_path; do
+              [ -n "${changed_path}" ] || continue
+              case "${changed_path}" in
+                data/experience/*|tests/*)
+                  ;;
+                *)
+                  return 1
+                  ;;
+              esac
+            done <<< "${changed}"
+            return 0
+          }
+
           runs="$(gh run list --repo "${GH_REPO}" --workflow "${CANDIDATE_WORKFLOW}" --limit 50             --json databaseId,status,conclusion,createdAt,headSha,number)"
           echo "${runs}" | jq '.[0:12]'
 
@@ -61,12 +79,16 @@ jobs:
             status="$(jq -r '.status' <<<"${row}")"
             sha="$(jq -r '.headSha // empty' <<<"${row}")"
             if [[ "${status}" =~ ^(queued|pending|waiting|requested)$ ]] && [[ -n "${sha}" ]] && [[ "${sha}" != "${current_sha}" ]]; then
-              echo "Cancelling superseded queued candidate run ${id} (${sha})."
-              if ! gh run cancel "${id}" --repo "${GH_REPO}"; then
-                echo "Failed to cancel superseded candidate run ${id}; refusing to continue with stale queue state." >&2
-                exit 1
+              if is_non_runtime_only_change "${sha}"; then
+                echo "Keeping queued candidate run ${id}: main moved only through non-runtime files."
+              else
+                echo "Cancelling superseded queued candidate run ${id} (${sha})."
+                if ! gh run cancel "${id}" --repo "${GH_REPO}"; then
+                  echo "Failed to cancel superseded candidate run ${id}; refusing to continue with stale queue state." >&2
+                  exit 1
+                fi
+                stale_cancelled=1
               fi
-              stale_cancelled=1
             fi
           done < <(jq -c '.[]' <<<"${runs}")
 
@@ -143,6 +165,12 @@ jobs:
           in_progress_count="$(jq '[.[] | select(.status == "in_progress")] | length' <<<"${runs}")"
           if [[ "${in_progress_count}" -gt 0 ]]; then
             echo "Candidate OOS has in-progress work; do not interrupt expensive research."
+            exit 0
+          fi
+
+          current_pending_count="$(jq --arg sha "${current_sha}" '[.[] | select((.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested") and .headSha == $sha)] | length' <<<"${runs}")"
+          if [[ "${current_pending_count}" -gt 0 ]]; then
+            echo "Candidate OOS already has current-main queued/pending work; no duplicate dispatch."
             exit 0
           fi
 
