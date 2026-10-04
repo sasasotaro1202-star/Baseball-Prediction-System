@@ -52,7 +52,9 @@ TARGETS = (
     # Weekly research challenger heartbeat. It is research-only and can never
     # modify the production runtime; the control plane only recovers queued/stale
     # executions and re-dispatches the current main snapshot.
-    Target(".github/workflows/npb_game_state_research.yml", 192.0, True, 60, 2.5),
+    # Twice-weekly Game-State research heartbeat; recover missing schedules
+    # within four days while keeping the heavy-dispatch cap fail-closed.
+    Target(".github/workflows/npb_game_state_research.yml", 96.0, True, 60, 2.5),
 )
 
 ROOT = Path(__file__).resolve().parents[1]
