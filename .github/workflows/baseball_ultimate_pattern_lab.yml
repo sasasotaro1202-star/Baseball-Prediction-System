@@ -125,6 +125,13 @@ jobs:
           file="results/ultimate_pattern_lab_${TARGET_LEAGUE,,}.json"
           python scripts/verify_ultimate_pattern_lab.py "$file"
 
+      - name: Save exact research result cache
+        if: steps.result-cache.outputs.cache-hit != 'true' && success()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: results
+          key: baseball-ultimate-pattern-v1-${{ matrix.league }}-${{ github.sha }}
+
       - name: Verify main snapshot after evidence generation
         env:
           EXPECTED_SHA: ${{ github.sha }}
