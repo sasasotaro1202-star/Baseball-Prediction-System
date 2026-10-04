@@ -41,7 +41,7 @@ concurrency:
   group: baseball-candidate-oos
   # Candidate OOS is expensive evidence generation. Never interrupt a running
   # validation; a newer pending cycle can take the next slot.
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   PYTHONPATH: .
@@ -51,7 +51,6 @@ env:
 
 jobs:
   candidate-oos:
-    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[fast-prediction]') }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
