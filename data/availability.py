@@ -107,6 +107,8 @@ class AvailabilityRecord:
                         raise ValueError(f"{side} starter publication is after announcement time")
                     if published_ts > cutoff:
                         raise ValueError(f"{side} starter publication is after prediction cutoff")
+                    if published_ts > retrieved:
+                        raise ValueError(f"{side} starter publication is after source retrieval")
             elif available_at:
                 # An availability timestamp without an explicit announcement
                 # cannot establish that a starter was announced/known by cutoff.
