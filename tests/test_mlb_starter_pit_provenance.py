@@ -48,11 +48,15 @@ def test_starter_publication_after_announcement_fails_closed():
         record.validate()
 
 
-def test_starter_publication_after_retrieval_fails_closed():
+def test_starter_timestamps_after_retrieval_fail_closed():
     record = _record(
         home_starter_published_at="2026-09-01T09:01:00+00:00",
+        home_starter_announced_at="2026-09-01T09:02:00+00:00",
     )
-    with pytest.raises(ValueError, match="publication is after source retrieval"):
+    # AvailabilityRecord validates the announcement boundary before the
+    # publication boundary. Both timestamps are therefore rejected closed,
+    # with the first invalid PIT condition reported deterministically.
+    with pytest.raises(ValueError, match="announcement is after source retrieval"):
         record.validate()
 
 def test_revision_time_after_cutoff_fails_closed():
