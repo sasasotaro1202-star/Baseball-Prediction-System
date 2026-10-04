@@ -24,8 +24,8 @@
     "tuning_allowed": false
   },
   "selection": {
-    "primary": "HighLogLoss",
-    "secondary": ["ScoreMAE", "HighBrier", "Top4HitRate"],
+    "primary": "ScoreMAE",
+    "secondary": ["ExactScoreLogLoss", "HighLogLoss", "HighBrier", "Top4HitRate"],
     "development_only": true,
     "auto_adoption": false
   },
