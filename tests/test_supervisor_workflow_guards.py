@@ -50,3 +50,14 @@ def test_candidate_oos_never_cancels_an_in_progress_validation() -> None:
     assert "cancel-in-progress: false" in text
     assert "matrix:\n        league: [NPB, MLB]" in text
     assert "timeout-minutes: 260" in text
+
+def test_supervisor_monitors_scheduled_pregame_runs_and_recovers_missed_schedule() -> None:
+    text = _text(SUPERVISOR)
+
+    assert 'actions/runs?branch=main&per_page=100' in text
+    assert 'event: .event' in text
+    assert 'event=push&branch=main' not in text
+    assert 'latest successful pregame run is stale' in text
+    assert 'pregame_latest_age_minutes}" -ge 15' in text
+    assert 'Pregame missed-schedule daily cap reached' in text
+    assert 'pregame_recovery_attempts_24h}" -ge 3' in text
