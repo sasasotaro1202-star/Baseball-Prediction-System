@@ -73,6 +73,7 @@ from evaluation.metrics import expected_calibration_error
 from core.atomic_io import atomic_write_text
 from research.feature_set_variants import select_feature_set
 from research.feature_set_router import select_features
+from research.model_profiles import apply_model_profile
 
 RANDOM_STATE = 42
 ROOT = Path(__file__).resolve().parent
@@ -1387,6 +1388,9 @@ class BaseballBacktest:
                 cat_kwargs["random_strength"] = 0.0
                 cat_kwargs["thread_count"] = 1
             m["CatBoost"] = CatBoostClassifier(**cat_kwargs)
+
+        profile = os.getenv("BASEBALL_MODEL_PROFILE", "BALANCED").strip() or "BALANCED"
+        m = apply_model_profile(m, profile)
 
         # Scheduled closed-loop runs can opt into an explicit bounded research
         # portfolio. The production/default portfolio remains unchanged, and
