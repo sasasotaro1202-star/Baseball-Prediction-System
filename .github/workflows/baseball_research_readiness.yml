@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths-ignore:
       - 'data/pit/**'
+      - 'prediction_requests/**'
   pull_request:
     branches: [main]
   workflow_dispatch:
