@@ -36,6 +36,15 @@ jobs:
           actual="$(git rev-parse HEAD)"
           test "$actual" = "$EXPECTED_REF"
           echo "research_snapshot_sha=$actual"
+      - name: Verify main has not advanced
+        env:
+          EXPECTED_REF: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --prune origin main
+          current_main="$(git rev-parse origin/main)"
+          test "$current_main" = "$EXPECTED_REF"
+          echo "current_main_sha=$current_main"
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.12'
@@ -123,6 +132,15 @@ jobs:
           actual="$(git rev-parse HEAD)"
           test "$actual" = "$EXPECTED_REF"
           echo "research_snapshot_sha=$actual"
+      - name: Verify main has not advanced
+        env:
+          EXPECTED_REF: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --prune origin main
+          current_main="$(git rev-parse origin/main)"
+          test "$current_main" = "$EXPECTED_REF"
+          echo "current_main_sha=$current_main"
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.12'
@@ -195,6 +213,15 @@ jobs:
           actual="$(git rev-parse HEAD)"
           test "$actual" = "$EXPECTED_REF"
           echo "research_snapshot_sha=$actual"
+      - name: Verify main has not advanced
+        env:
+          EXPECTED_REF: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --prune origin main
+          current_main="$(git rev-parse origin/main)"
+          test "$current_main" = "$EXPECTED_REF"
+          echo "current_main_sha=$current_main"
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.12'
@@ -253,6 +280,15 @@ jobs:
           actual="$(git rev-parse HEAD)"
           test "$actual" = "$EXPECTED_REF"
           echo "research_snapshot_sha=$actual"
+      - name: Verify main has not advanced
+        env:
+          EXPECTED_REF: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --prune origin main
+          current_main="$(git rev-parse origin/main)"
+          test "$current_main" = "$EXPECTED_REF"
+          echo "current_main_sha=$current_main"
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.12'
@@ -324,8 +360,15 @@ jobs:
           W2: ${{ needs.wave2-frontier.result }}
           W3: ${{ needs.wave3-candidate-oos.result }}
           W4: ${{ needs.wave4-meta-research.result }}
+          EXPECTED_REF: ${{ github.sha }}
         run: |
           set -euo pipefail
+          git fetch --no-tags --prune origin main
+          current_main="$(git rev-parse origin/main)"
+          stale_run=false
+          if [ "$current_main" != "$EXPECTED_REF" ]; then stale_run=true; fi
+          export STALE_RUN="$stale_run"
+          export CURRENT_MAIN_SHA="$current_main"
           mkdir -p results/24h
           python - <<'PY'
           import json, os
@@ -343,8 +386,9 @@ jobs:
               'workflow':'Baseball 24h Research Autopilot',
               'run_id':'${{ github.run_id }}',
               'research_ref':'${{ env.RESEARCH_REF }}',
+              'current_main_sha':os.environ['CURRENT_MAIN_SHA'],
               'max_execution_minutes':1440,
-              'status':'COMPLETED' if all(v == 'success' for v in lane_results.values()) else 'PARTIAL_OR_BLOCKED',
+              'status':'COMPLETED' if all(v == 'success' for v in lane_results.values()) and not stale_run else 'PARTIAL_OR_BLOCKED',
               'lane_results':lane_results,
               'evidence_file_count':len(files),
               'evidence_files':files[:2000],
