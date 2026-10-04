@@ -4,9 +4,19 @@ on:
   push:
     branches:
       - main
+    paths:
+      - '**.py'
+      - 'requirements*.txt'
+      - 'tests/**'
+      - '.github/workflows/baseball_v44_compatibility.yml'
   pull_request:
     branches:
       - main
+    paths:
+      - '**.py'
+      - 'requirements*.txt'
+      - 'tests/**'
+      - '.github/workflows/baseball_v44_compatibility.yml'
   workflow_dispatch:
 
 permissions:
