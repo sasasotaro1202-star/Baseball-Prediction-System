@@ -32,5 +32,5 @@ jobs:
           python-version: "3.12"
       - name: Run policy tests
         run: |
-          python -m pip install --disable-pip-version-check pytest
+          python -m pip install --disable-pip-version-check pytest requests
           python -m pytest -q tests/test_mlb_pit_policy.py
