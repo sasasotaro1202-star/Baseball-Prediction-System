@@ -49,7 +49,14 @@ def _is_official_mlb_source(source: str, source_url: str | None) -> bool:
 
 
 def _parse_observation_time(row: Mapping[str, object]) -> datetime | None:
-    """Return immutable observation time without treating it as announcement time."""
+    """Return a PIT-safe observation time without treating it as announcement time."""
+    retrieval_value = row.get("retrieved_at")
+    retrieval = None
+    if retrieval_value not in (None, ""):
+        try:
+            retrieval = datetime.fromisoformat(str(retrieval_value).replace("Z", "+00:00"))
+        except ValueError:
+            retrieval = None
     for key in ("available_at", "observed_at", "retrieved_at"):
         value = row.get(key)
         if value in (None, ""):
@@ -58,8 +65,14 @@ def _parse_observation_time(row: Mapping[str, object]) -> datetime | None:
             ts = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
         except ValueError:
             continue
-        if ts.tzinfo is not None:
-            return ts
+        if ts.tzinfo is None:
+            continue
+        if retrieval is not None and retrieval.tzinfo is not None and ts > retrieval:
+            # A source cannot have been available/observed after the response
+            # that supposedly recorded it. Skip the malformed timestamp rather
+            # than letting it fabricate an earlier/later first-observed boundary.
+            continue
+        return ts
     return None
 
 

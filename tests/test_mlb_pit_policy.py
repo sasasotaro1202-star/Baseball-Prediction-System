@@ -89,6 +89,45 @@ def test_first_observed_is_research_availability_evidence_not_announcement():
     assert not production_eligible(evidence, cutoff)
 
 
+
+def test_first_observed_ignores_availability_after_retrieval():
+    observations = [
+        {
+            "game_id": "1",
+            "home_starter_id": "123",
+            "home_starter": "Pitcher",
+            "source": "https://www.mlb.com/schedule/",
+            "available_at": "2026-09-19T10:30:00+00:00",
+            "observed_at": "2026-09-19T09:05:00+00:00",
+            "retrieved_at": "2026-09-19T09:10:00+00:00",
+            "payload_hash": "malformed-available",
+        }
+    ]
+    evidence = derive_first_observed_evidence(
+        observations, game_id="1", side="home", starter_id="123", starter_name="Pitcher"
+    )
+    assert evidence.evidence_class is EvidenceClass.OFFICIAL_FIRST_OBSERVED
+    assert evidence.timestamp == datetime(2026, 9, 19, 9, 5, tzinfo=timezone.utc)
+
+
+def test_first_observed_rejects_only_future_observation_timestamp():
+    observations = [
+        {
+            "game_id": "1",
+            "home_starter_id": "123",
+            "home_starter": "Pitcher",
+            "source": "https://www.mlb.com/schedule/",
+            "available_at": "2026-09-19T10:30:00+00:00",
+            "retrieved_at": "2026-09-19T09:10:00+00:00",
+            "payload_hash": "future-only",
+        }
+    ]
+    evidence = derive_first_observed_evidence(
+        observations, game_id="1", side="home", starter_id="123", starter_name="Pitcher"
+    )
+    assert evidence.evidence_class is EvidenceClass.NONE
+    assert evidence.timestamp is None
+
 def test_first_observed_does_not_backdate_changed_starter_or_accept_third_party():
     cutoff = datetime(2026, 9, 19, 12, tzinfo=timezone.utc)
     observations = [
