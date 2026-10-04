@@ -199,9 +199,11 @@ def test_candidate_oos_fails_closed_on_incomplete_evidence():
 def test_candidate_oos_watchdog_allows_validated_autonomous_control_plane_continuity():
     text = (ROOT / ".github" / "workflows" / "baseball_candidate_oos_watchdog.yml").read_text(encoding="utf-8")
     assert ".github/workflows/baseball_autonomous_control_plane.yml" in text
-    # Control-plane-only orchestration changes are explicitly non-runtime and
-    # must not invalidate a running chronological OOS replay.
-    assert "Never interrupt an already-running OOS lifecycle for those control-plane-only changes." in text
+    # The watchdog compares the active candidate snapshot against current main
+    # and explicitly classifies control-plane-only workflow changes as safe.
+    assert "is_non_runtime_only_change" in text
+    assert "baseball_autonomous_control_plane.yml" in text
+    assert "Keeping queued candidate run" in text
 
 
 def test_control_plane_and_v44_triggers_do_not_react_to_unrelated_main_commits():
@@ -385,7 +387,8 @@ def test_24h_supervisor_recovers_only_latest_zero_job_pregame_failures_with_dail
     # The supervisor records a verified redispatch as a summary event; the
     # recovery workflow owns the stronger terminal-state token.
     assert "Pregame dispatch verified:" in text
-    assert "FAILED_PREGAME_ZERO_JOB_DISPATCH" in text
+    # The stronger zero-job terminal state belongs to the dedicated Actions
+    # recovery workflow; Supervisor only emits the verified dispatch evidence.
     assert "gh run rerun" not in text
     assert "Latest pregame failure is not a zero-job startup failure" in text
     assert "HTTP 4[0-9]{2}" in text
