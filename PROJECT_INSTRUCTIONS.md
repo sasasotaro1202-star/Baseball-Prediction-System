@@ -91,3 +91,5 @@ Use `research/ultimate_pattern_lab.py` for broad research-only pattern explorati
 ## Extreme representation research
 The research system also includes `research/extreme_representation_lab.py`. It explores fixed mathematical representations of the existing PIT-safe feature matrix (level, home/away-only, gap-only, absolute-gap, squared-gap, signed-log gap, level+gap transforms, and gated log-ratios). Representation selection is research-only and must use chronological OOS; the newest holdout remains locked and winner-only.
 
+## Ultimate breadth expansion
+The extreme representation laboratory may cross selected PIT-safe feature families and representations with deterministic model profiles. Such exploration remains RESEARCH_ONLY and cannot auto-promote Production.
