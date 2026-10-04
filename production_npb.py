@@ -36,6 +36,18 @@ from research.target_strategy import as_dict as target_strategy_dict, standard_t
 from research.competition_taxonomy import classify_npb
 
 ROOT = Path(__file__).resolve().parent
+FEATURE_MANIFEST_VERSION = "feature-contract-v1"
+
+def _feature_schema_metadata(columns):
+    names = [str(x) for x in columns]
+    digest = hashlib.sha256("\n".join(names).encode("utf-8")).hexdigest()
+    context_features = [x for x in names if x.startswith("lineup_") or x.startswith("h_lineup_") or x.startswith("a_lineup_") or x.startswith("d_lineup_") or x.startswith("weather_")]
+    return {
+        "feature_manifest_version": FEATURE_MANIFEST_VERSION,
+        "feature_count": len(names),
+        "feature_schema_hash": digest,
+        "feature_context_mode": "PIT_SAFE_CONTEXT_ACTIVE" if context_features else "BASELINE_NO_PIT_SAFE_CONTEXT",
+    }
 
 
 def _git_commit() -> str:
@@ -1179,6 +1191,7 @@ def predict(
 
     score_fit=bt.fit_score_ensemble(X,hist["home_score"].astype(float).values,hist["away_score"].astype(float).values,"NPB")
     outputs=[]
+    feature_schema = None
     for _,r in games.iterrows():
         feature_row = r.copy()
         feature_row["datetime"] = pd.Timestamp(r["prediction_cutoff_utc"])
@@ -1186,6 +1199,11 @@ def predict(
         if xrow.isna().any().any() or not np.isfinite(xrow.to_numpy(dtype=float)).all():
             raise RuntimeError("Production target feature vector contains undefined/non-finite values; refusing implicit imputation.")
         xrow=xrow.astype(float)
+        current_feature_schema = _feature_schema_metadata(xrow.columns)
+        if feature_schema is None:
+            feature_schema = current_feature_schema
+        elif feature_schema["feature_schema_hash"] != current_feature_schema["feature_schema_hash"]:
+            raise RuntimeError("Production feature schema changed between target games; refusing non-deterministic prediction columns.")
         p=bt.ensemble_proba(fitted,xrow,"NPB")[0]
         regime_label = str(bt._regime_router.labels(xrow)[0]) if getattr(bt, "_regime_router", None) is not None else "global"
         regime_model_weights = dict(getattr(bt, "_regime_weights", {}).get(regime_label, {}))
@@ -1223,6 +1241,10 @@ def predict(
           "competition_metadata_source_field":r.competition_metadata_source_field,
           "competition_metadata_source_value":r.competition_metadata_source_value,
           "starter_evidence_status":r.starter_evidence_status,
+          "feature_manifest_version":feature_schema["feature_manifest_version"],
+          "feature_count":feature_schema["feature_count"],
+          "feature_schema_hash":feature_schema["feature_schema_hash"],
+          "feature_context_mode":feature_schema["feature_context_mode"],
           "starter_source":r.starter_source,
           "starter_evidence_observed_at_utc":r.starter_evidence_observed_at_utc,
           "prediction_cutoff_utc":r.prediction_cutoff_utc,
@@ -1262,6 +1284,10 @@ def predict(
             "data_quality_status":"PASS",
             "historical_score_mean_total":round(hist_score_mean,6),
             "historical_score_zero_rate":round(hist_score_zero_rate,6),
+            "feature_manifest_version":feature_schema["feature_manifest_version"],
+            "feature_count":feature_schema["feature_count"],
+            "feature_schema_hash":feature_schema["feature_schema_hash"],
+            "feature_context_mode":feature_schema["feature_context_mode"],
             "predictions":outputs}
     # Recover from silent cross-target model collapse instead of emitting a
     # misleadingly uniform forecast. The recovery remains PIT-safe because it
@@ -1498,172 +1524,3 @@ def predict(
                 for p in (team_context_map.get(team, {}).get("players", []) or [])
                 if str(p.get("player_id") or "").strip()
                 and str(p.get("player_name") or "").strip() == name
-            }
-            if len(candidates) == 1:
-                pid = next(iter(candidates))
-        if team and pid and status:
-            resolved_transaction_index.setdefault((team, pid), set()).add(status)
-
-    transaction_index = resolved_transaction_index
-
-    for team, team_ctx in (team_player_context.get("teams") or {}).items():
-        if not isinstance(team_ctx, dict):
-            continue
-        active_ids = {str(p.get("player_id") or "").strip() for p in (resolved_roster_teams.get(str(team), []) or []) if str(p.get("player_id") or "").strip()}
-        registered_today = removed_today = matched = 0
-        for player in team_ctx.get("players", []) or []:
-            pid = str(player.get("player_id") or "").strip()
-            tx_statuses = transaction_index.get((str(team), pid), set()) if pid else set()
-            if tx_statuses == {"REGISTERED"}:
-                player["roster_transaction_status"] = "REGISTERED_TODAY"
-                registered_today += 1
-            elif tx_statuses == {"REMOVED"}:
-                player["roster_transaction_status"] = "REMOVED_TODAY"
-                removed_today += 1
-            elif tx_statuses:
-                player["roster_transaction_status"] = "TRANSACTION_CONFLICT"
-            else:
-                player["roster_transaction_status"] = "NO_TRANSACTION_RECORDED"
-
-            if pid and pid in active_ids:
-                player["roster_status"] = "REGISTERED_ON_TARGET_DATE"
-                matched += 1
-            elif pid:
-                player["roster_status"] = "NOT_IN_TARGET_DATE_ROSTER"
-            else:
-                player["roster_status"] = "ROSTER_MATCH_UNKNOWN"
-        team_ctx["roster_player_count"] = int(len(active_ids))
-        team_ctx["roster_matched_player_count"] = int(matched)
-        team_ctx["roster_match_rate"] = float(matched / max(1, len(active_ids))) if active_ids else None
-        team_ctx["roster_registered_today_count"] = int(registered_today)
-        team_ctx["roster_removed_today_count"] = int(removed_today)
-        team_ctx["roster_context_snapshot_id"] = roster_snapshot_id
-
-    team_context_snapshot_id = team_player_context.get("snapshot_id") if isinstance(team_player_context, dict) else None
-    team_contexts = team_player_context.get("teams", {}) if isinstance(team_player_context, dict) else {}
-    for pred in outputs:
-        home = str(pred.get("home") or "").strip()
-        away = str(pred.get("away") or "").strip()
-        pred["roster_context_snapshot_id"] = roster_snapshot_id
-        pred["home_roster_context"] = resolved_roster_teams.get(home)
-        pred["away_roster_context"] = resolved_roster_teams.get(away)
-        pred["team_player_context_snapshot_id"] = team_context_snapshot_id
-        pred["home_team_player_context"] = team_contexts.get(home)
-        pred["away_team_player_context"] = team_contexts.get(away)
-
-    # Capture the request-time game context separately from model features.
-    # This release stores the new information for later PIT/OOS experiments;
-    # it does not silently change model coefficients or promotion status.
-    pregame_context = None
-    try:
-        pregame_context = collect_npb_pregame_context(target_date)
-    except Exception as exc:
-        pregame_context = {
-            "schema_version": "npb-pregame-context-v1",
-            "target_date": target_date,
-            "status": "SOURCE_FAILED",
-            "error": f"{type(exc).__name__}: {exc}",
-            "historical_oos_consumption": "DISABLED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
-        }
-    if isinstance(pregame_context, dict) and isinstance(pregame_context.get("games"), list):
-        context_by_key = {
-            (
-                str(game.get("home") or ""),
-                str(game.get("away") or ""),
-                str(game.get("official_start_time") or ""),
-            ): game
-            for game in pregame_context["games"]
-        }
-        attached = 0
-        context_snapshot_id = pregame_context.get("snapshot_id")
-        for pred in outputs:
-            key = (
-                str(pred.get("home") or ""),
-                str(pred.get("away") or ""),
-                pd.Timestamp(pred["datetime_jst"]).tz_convert("Asia/Tokyo").strftime("%H:%M"),
-            )
-            row_context = context_by_key.get(key)
-            pred["pregame_context_snapshot_id"] = context_snapshot_id
-            pred["pregame_context"] = row_context
-            if row_context is not None:
-                attached += 1
-        pregame_context["attached_prediction_count"] = attached
-    result["player_context_status"] = str(player_context.get("status") or "AVAILABLE")
-    result["player_context_snapshot_id"] = player_context.get("snapshot_id")
-    result["player_context_requested_count"] = int(player_context.get("players_requested") and len(player_context.get("players_requested")) or 0)
-    result["player_context_resolved_count"] = int(player_context.get("players_resolved", 0))
-    result["player_context"] = player_context
-
-    result["team_player_context_status"] = str(team_player_context.get("status") or "AVAILABLE")
-    result["team_player_context_snapshot_id"] = team_player_context.get("snapshot_id")
-    result["team_player_context_requested_count"] = int(team_player_context.get("teams_requested") and len(team_player_context.get("teams_requested")) or 0)
-    result["team_player_context_resolved_count"] = int(sum(1 for _k, _v in (team_player_context.get("teams") or {}).items() if isinstance(_v, dict) and _v.get("status") in {"AVAILABLE", "PARTIAL"}))
-    result["team_player_context"] = team_player_context
-
-    result["pregame_context_status"] = (
-        str(pregame_context.get("status") or "AVAILABLE")
-        if isinstance(pregame_context, dict) else "UNAVAILABLE"
-    )
-    result["pregame_context_snapshot_id"] = (
-        pregame_context.get("snapshot_id")
-        if isinstance(pregame_context, dict) else None
-    )
-    result["pregame_context_attached_prediction_count"] = (
-        int(pregame_context.get("attached_prediction_count", 0))
-        if isinstance(pregame_context, dict) else 0
-    )
-    result["pregame_context"] = pregame_context
-
-    # Output validation: probabilities are finite, win probabilities sum to 100,
-    # Low/High sum to 100, and exactly four score candidates exist.
-    for o in outputs:
-        probs = [float(o[k]) for k in ("home_win_pct", "draw_pct", "away_win_pct", "low_pct", "high_pct")]
-        if not all(np.isfinite(v) and 0.0 <= v <= 100.0 for v in probs):
-            raise RuntimeError("Production output validation failed: non-finite or out-of-range probability.")
-        if abs(o["home_win_pct"]+o["draw_pct"]+o["away_win_pct"]-100) >= 0.05:
-            raise RuntimeError("Production output validation failed: final-result probabilities do not sum to 100%.")
-        if abs(o["low_pct"]+o["high_pct"]-100) >= 0.05:
-            raise RuntimeError("Production output validation failed: Low/High probabilities do not sum to 100%.")
-        exact = o["top4_exact_scores"]
-        if len(exact) != 4 or len({s.get("score") for s in exact}) != 4:
-            raise RuntimeError("Production output validation failed: Top4 exact scores are not four unique candidates.")
-        exact_probs = [float(s.get("prob_pct", float("nan"))) for s in exact]
-        if not all(np.isfinite(v) and 0.0 <= v <= 100.0 for v in exact_probs):
-            raise RuntimeError("Production output validation failed: exact-score probability is invalid.")
-    output_stem = "npb_shadow" if research_shadow else "npb_production"
-    out=ROOT/"results"/f"{output_stem}_{target_date}.json"; out.parent.mkdir(exist_ok=True)
-    atomic_write_json(out, result)
-    return result
-
-def main():
-    ap=argparse.ArgumentParser()
-    ap.add_argument("--date",required=True,help="YYYY-MM-DD, JST")
-    ap.add_argument("--data-dir",default="data")
-    ap.add_argument(
-        "--pregame-only",
-        action="store_true",
-        help="Only predict games in the automatic pregame window.",
-    )
-    ap.add_argument(
-        "--research-shadow",
-        action="store_true",
-        help="Explicit research-only PIT-safe forecast lane; never unlocks production.",
-    )
-    args=ap.parse_args()
-    print(json.dumps(
-        predict(
-            args.date,
-            args.data_dir,
-            pregame_only=args.pregame_only,
-            research_shadow=args.research_shadow,
-            minimum_lead_minutes=(0.0 if args.research_shadow and not args.pregame_only else None),
-            preferred_lead_minutes=(60.0 if args.pregame_only else None),
-        ),
-        ensure_ascii=False,
-        indent=2,
-    ))
-
-if __name__=="__main__":
-    main()
-
-# Production execution trigger: use current JST date for manual verification.
