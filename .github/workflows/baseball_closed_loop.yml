@@ -45,6 +45,18 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
 
+      - name: Resolve published NPB PBP release fingerprint
+        id: npb-pbp-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_sha="$(gh api repos/armstjc/Nippon-Baseball-Data-Repository/git/ref/tags/pbp --jq '.object.sha')"
+          test -n "${release_sha}"
+          echo "sha=${release_sha}" >> "${GITHUB_OUTPUT}"
+          echo "NPB published PBP release fingerprint=${release_sha}" >> "${GITHUB_STEP_SUMMARY}"
+
       - name: Restore immutable historical NPB PBP and official-result cache
         id: npb-cache
         uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57
@@ -57,9 +69,11 @@ jobs:
             data/2024-*_pbp.csv
             data/2025-*_pbp.csv
             data/.npb_official_schedule_cache/**
-          key: baseball-npb-historical-v6-${{ runner.os }}-${{ hashFiles('requirements.txt', 'research/npb_official_results.py') }}
+          key: baseball-npb-historical-v6-${{ runner.os }}-${{ steps.npb-pbp-release.outputs.sha }}-${{ hashFiles('requirements.txt', 'research/npb_official_results.py') }}
+          # A different published release is a different raw-data snapshot.
+          # Never restore across release fingerprints.
           restore-keys: |
-            baseball-npb-historical-v6-${{ runner.os }}-
+            baseball-npb-historical-v6-${{ runner.os }}-${{ steps.npb-pbp-release.outputs.sha }}-
 
       - name: Restore chronological OOS checkpoints
         id: oos-checkpoint-restore
@@ -251,7 +265,7 @@ jobs:
             data/2024-*_pbp.csv
             data/2025-*_pbp.csv
             data/.npb_official_schedule_cache/**
-          key: baseball-npb-historical-v6-${{ runner.os }}-${{ hashFiles('requirements.txt', 'research/npb_official_results.py') }}
+          key: baseball-npb-historical-v6-${{ runner.os }}-${{ steps.npb-pbp-release.outputs.sha }}-${{ hashFiles('requirements.txt', 'research/npb_official_results.py') }}
 
       - name: Run chronological Baseball OOS research
         timeout-minutes: 90
