@@ -1100,6 +1100,7 @@ def predict(
     *,
     pregame_only: bool = False,
     research_shadow: bool = False,
+    fast_mode: bool = False,
     minimum_lead_minutes: float | None = None,
     maximum_lead_minutes: float | None = None,
     preferred_lead_minutes: float | None = None,
@@ -1385,297 +1386,344 @@ def predict(
                 teams = sorted(set(hist["home"].map(lambda x: norm_team(x, "NPB"))) | set(hist["away"].map(lambda x: norm_team(x, "NPB"))))
                 print("PRODUCTION_DEGENERACY_DEBUG", json.dumps({"predictions": debug, "historical_team_count": len(teams), "historical_teams": teams}, ensure_ascii=False), file=sys.stderr)
                 raise RuntimeError("Production degeneracy guard: PIT-safe recovery remained insufficiently differentiated.")
-    # Capture detailed official player context for the announced starters.
-    # Player data is attached as a snapshot only; this release does not feed it
-    # into the production probabilities without a separate PIT/OOS experiment.
-    starter_names = []
-    for game in outputs:
-        for key in ("home_starter", "away_starter"):
-            name = str(game.get(key) or "").strip()
-            if name and name not in starter_names:
-                starter_names.append(name)
-    player_context = None
-    if starter_names:
-        try:
-            player_context = collect_npb_player_context(starter_names)
-        except Exception as exc:
-            player_context = {
-                "schema_version": "npb-player-context-v1",
-                "status": "SOURCE_FAILED",
-                "players_requested": starter_names,
-                "players_resolved": 0,
-                "error": f"{type(exc).__name__}: {exc}",
-                "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
-            }
-    else:
+    # These contexts are observation/evidence enrichment and are not consumed by
+    # the probability path. Fast mode defers them to minimize request latency.
+    if fast_mode:
         player_context = {
             "schema_version": "npb-player-context-v1",
-            "status": "NO_STARTERS",
+            "status": "DEFERRED_FAST_MODE",
             "players_requested": [],
             "players_resolved": 0,
+            "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
         }
-    player_by_name = {
-        str(p.get("name_requested") or "").strip(): p
-        for p in player_context.get("players", [])
-        if isinstance(p, dict)
-    }
-    player_snapshot_id = player_context.get("snapshot_id") if isinstance(player_context, dict) else None
-    for pred in outputs:
-        pred["player_context_snapshot_id"] = player_snapshot_id
-        pred["home_starter_player_context"] = player_by_name.get(str(pred.get("home_starter") or "").strip())
-        pred["away_starter_player_context"] = player_by_name.get(str(pred.get("away_starter") or "").strip())
-
-    # Capture date-scoped official first-team roster context before team stats.
-    # Roster player_ids are used only to prioritize profile enrichment and to
-    # annotate the resulting evidence snapshot. They do not alter probabilities.
-    roster_context = None
-    try:
-        roster_context = collect_npb_roster_context(target_date)
-    except Exception as exc:
         roster_context = {
             "schema_version": "npb-roster-context-v1",
             "target_date": target_date,
-            "status": "SOURCE_FAILED",
+            "status": "DEFERRED_FAST_MODE",
             "teams": {},
             "player_count": 0,
-            "error": f"{type(exc).__name__}: {exc}",
             "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
         }
-    roster_snapshot_id = roster_context.get("snapshot_id") if isinstance(roster_context, dict) else None
-    roster_teams = roster_context.get("teams", {}) if isinstance(roster_context, dict) else {}
-    # Resolve name-only official roster rows to stable player IDs through the
-    # official NPB player search, limited to teams actually present in today's games.
-    # This is identity/evidence enrichment only; probabilities are unchanged.
-    team_names = []
-    for game in outputs:
-        for key in ("home", "away"):
-            team = str(game.get(key) or "").strip()
-            if team and team not in team_names:
-                team_names.append(team)
-    try:
-        roster_context = resolve_roster_player_ids(roster_context, teams=set(team_names))
-    except Exception as exc:
-        roster_context["identity_resolution"] = {
-            "status": "SOURCE_FAILED",
-            "teams": team_names,
-            "requested_count": 0,
-            "resolved_count": 0,
-            "ambiguous_count": 0,
-            "not_found_count": 0,
-            "source_failed_count": 1,
-            "resolved_rate": 0.0,
-            "source": {"source_id": "npb_official_player_search", "status": "SOURCE_FAILED"},
-            "error": f"{type(exc).__name__}: {exc}",
-            "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
-        }
-    roster_teams = roster_context.get("teams", {}) if isinstance(roster_context, dict) else {}
-    preferred_roster_ids_by_team = {
-        str(team): {
-            str(player.get("player_id") or "").strip()
-            for player in players
-            if str(player.get("player_id") or "").strip()
-        }
-        for team, players in (roster_teams or {}).items()
-        if isinstance(players, list)
-    }
-
-    # Capture current official team-wide player context (batting/pitching/fielding).
-    # The resolved roster IDs are used only for deterministic identity and
-    # enrichment-priority; this remains an evidence snapshot, not a model feature.
-    preferred_roster_names_by_team = {
-        str(team): {
-            str(player.get("player_name") or "").strip()
-            for player in (players or [])
-            if str(player.get("player_name") or "").strip()
-        }
-        for team, players in roster_teams.items()
-        if isinstance(players, list)
-    }
-    try:
-        team_player_context = collect_npb_team_player_context(
-            team_names,
-            season=int(target_date[:4]),
-            preferred_player_ids_by_team=preferred_roster_ids_by_team,
-            preferred_player_names_by_team=preferred_roster_names_by_team,
-        ) if team_names else {
-            "schema_version": "npb-team-player-context-v1", "status": "NO_TEAMS",
-            "teams_requested": [], "teams": {},
-            "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
-        }
-    except Exception as exc:
         team_player_context = {
             "schema_version": "npb-team-player-context-v1",
-            "status": "SOURCE_FAILED",
-            "teams_requested": team_names,
+            "status": "DEFERRED_FAST_MODE",
+            "teams_requested": [],
             "teams": {},
-            "error": f"{type(exc).__name__}: {exc}",
             "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
         }
-
-    # Resolve name-only official roster rows against already-fetched official team
-    # stats by exact normalized player name. This is deterministic (not fuzzy).
-    resolved_roster_teams = deepcopy(roster_teams)
-    resolved_transaction_index: dict[tuple[str, str], set[str]] = {}
-    team_context_map = team_player_context.get("teams", {}) if isinstance(team_player_context, dict) else {}
-    for team, players in resolved_roster_teams.items():
-        team_ctx = team_context_map.get(team) if isinstance(team_context_map, dict) else None
-        official_players = team_ctx.get("players", []) if isinstance(team_ctx, dict) else []
-        by_name: dict[str, set[str]] = {}
-        by_name_url: dict[str, str] = {}
-        for official_player in official_players or []:
-            pid = str(official_player.get("player_id") or "").strip()
-            name = str(official_player.get("player_name") or "").strip()
-            if pid and name:
-                by_name.setdefault(name, set()).add(pid)
-                if official_player.get("player_url"):
-                    by_name_url[name] = str(official_player["player_url"])
-        for player in players or []:
-            pid = str(player.get("player_id") or "").strip()
-            name = str(player.get("player_name") or "").strip()
-            if pid:
-                player["identity_resolution_status"] = "SOURCE_STABLE_ID"
-                continue
-            candidates = by_name.get(name, set())
-            if len(candidates) == 1:
-                pid = next(iter(candidates))
-                player["player_id"] = pid
-                player["player_url"] = player.get("player_url") or by_name_url.get(name)
-                player["identity_status"] = "VERIFIED_STABLE_ID"
-                player["identity_resolution_status"] = "RESOLVED_EXACT_TEAM_STATS"
-            elif len(candidates) > 1:
-                player["identity_resolution_status"] = "IDENTITY_AMBIGUOUS"
-            else:
-                player["identity_resolution_status"] = "IDENTITY_NOT_FOUND"
-
-    for tx in (roster_context.get("transactions") or []) if isinstance(roster_context, dict) else []:
-        if not isinstance(tx, dict):
-            continue
-        team = str(tx.get("team") or "").strip()
-        pid = str(tx.get("player_id") or "").strip()
-        status = str(tx.get("transaction_status") or "").strip()
-        name = str(tx.get("player_name") or "").strip()
-        if team and status and not pid:
-            candidates = {
-                str(p.get("player_id") or "").strip()
-                for p in (team_context_map.get(team, {}).get("players", []) or [])
-                if str(p.get("player_id") or "").strip()
-                and str(p.get("player_name") or "").strip() == name
-            }
-            if len(candidates) == 1:
-                pid = next(iter(candidates))
-        if team and pid and status:
-            resolved_transaction_index.setdefault((team, pid), set()).add(status)
-
-    transaction_index = resolved_transaction_index
-
-    for team, team_ctx in (team_player_context.get("teams") or {}).items():
-        if not isinstance(team_ctx, dict):
-            continue
-        active_ids = {str(p.get("player_id") or "").strip() for p in (resolved_roster_teams.get(str(team), []) or []) if str(p.get("player_id") or "").strip()}
-        registered_today = removed_today = matched = 0
-        for player in team_ctx.get("players", []) or []:
-            pid = str(player.get("player_id") or "").strip()
-            tx_statuses = transaction_index.get((str(team), pid), set()) if pid else set()
-            if tx_statuses == {"REGISTERED"}:
-                player["roster_transaction_status"] = "REGISTERED_TODAY"
-                registered_today += 1
-            elif tx_statuses == {"REMOVED"}:
-                player["roster_transaction_status"] = "REMOVED_TODAY"
-                removed_today += 1
-            elif tx_statuses:
-                player["roster_transaction_status"] = "TRANSACTION_CONFLICT"
-            else:
-                player["roster_transaction_status"] = "NO_TRANSACTION_RECORDED"
-
-            if pid and pid in active_ids:
-                player["roster_status"] = "REGISTERED_ON_TARGET_DATE"
-                matched += 1
-            elif pid:
-                player["roster_status"] = "NOT_IN_TARGET_DATE_ROSTER"
-            else:
-                player["roster_status"] = "ROSTER_MATCH_UNKNOWN"
-        team_ctx["roster_player_count"] = int(len(active_ids))
-        team_ctx["roster_matched_player_count"] = int(matched)
-        team_ctx["roster_match_rate"] = float(matched / max(1, len(active_ids))) if active_ids else None
-        team_ctx["roster_registered_today_count"] = int(registered_today)
-        team_ctx["roster_removed_today_count"] = int(removed_today)
-        team_ctx["roster_context_snapshot_id"] = roster_snapshot_id
-
-    team_context_snapshot_id = team_player_context.get("snapshot_id") if isinstance(team_player_context, dict) else None
-    team_contexts = team_player_context.get("teams", {}) if isinstance(team_player_context, dict) else {}
-    for pred in outputs:
-        home = str(pred.get("home") or "").strip()
-        away = str(pred.get("away") or "").strip()
-        pred["roster_context_snapshot_id"] = roster_snapshot_id
-        pred["home_roster_context"] = resolved_roster_teams.get(home)
-        pred["away_roster_context"] = resolved_roster_teams.get(away)
-        pred["team_player_context_snapshot_id"] = team_context_snapshot_id
-        pred["home_team_player_context"] = team_contexts.get(home)
-        pred["away_team_player_context"] = team_contexts.get(away)
-
-    # Capture the request-time game context separately from model features.
-    # This release stores the new information for later PIT/OOS experiments;
-    # it does not silently change model coefficients or promotion status.
-    pregame_context = None
-    try:
-        pregame_context = collect_npb_pregame_context(target_date)
-    except Exception as exc:
         pregame_context = {
             "schema_version": "npb-pregame-context-v1",
             "target_date": target_date,
-            "status": "SOURCE_FAILED",
-            "error": f"{type(exc).__name__}: {exc}",
+            "status": "DEFERRED_FAST_MODE",
             "historical_oos_consumption": "DISABLED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
         }
-    if isinstance(pregame_context, dict) and isinstance(pregame_context.get("games"), list):
-        context_by_key = {
-            (
-                str(game.get("home") or ""),
-                str(game.get("away") or ""),
-                str(game.get("official_start_time") or ""),
-            ): game
-            for game in pregame_context["games"]
-        }
-        attached = 0
-        context_snapshot_id = pregame_context.get("snapshot_id")
         for pred in outputs:
-            key = (
-                str(pred.get("home") or ""),
-                str(pred.get("away") or ""),
-                pd.Timestamp(pred["datetime_jst"]).tz_convert("Asia/Tokyo").strftime("%H:%M"),
-            )
-            row_context = context_by_key.get(key)
-            pred["pregame_context_snapshot_id"] = context_snapshot_id
-            pred["pregame_context"] = row_context
-            if row_context is not None:
-                attached += 1
-        pregame_context["attached_prediction_count"] = attached
+            pred["player_context_snapshot_id"] = None
+            pred["home_starter_player_context"] = None
+            pred["away_starter_player_context"] = None
+            pred["roster_context_snapshot_id"] = None
+            pred["home_roster_context"] = None
+            pred["away_roster_context"] = None
+            pred["team_player_context_snapshot_id"] = None
+            pred["home_team_player_context"] = None
+            pred["away_team_player_context"] = None
+            pred["pregame_context_snapshot_id"] = None
+            pred["pregame_context"] = None
+    else:
+        # Capture detailed official player context for the announced starters.
+        # Player data is attached as a snapshot only; this release does not feed it
+        # into the production probabilities without a separate PIT/OOS experiment.
+        starter_names = []
+        for game in outputs:
+            for key in ("home_starter", "away_starter"):
+                name = str(game.get(key) or "").strip()
+                if name and name not in starter_names:
+                    starter_names.append(name)
+        player_context = None
+        if starter_names:
+            try:
+                player_context = collect_npb_player_context(starter_names)
+            except Exception as exc:
+                player_context = {
+                    "schema_version": "npb-player-context-v1",
+                    "status": "SOURCE_FAILED",
+                    "players_requested": starter_names,
+                    "players_resolved": 0,
+                    "error": f"{type(exc).__name__}: {exc}",
+                    "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
+                }
+        else:
+            player_context = {
+                "schema_version": "npb-player-context-v1",
+                "status": "NO_STARTERS",
+                "players_requested": [],
+                "players_resolved": 0,
+            }
+        player_by_name = {
+            str(p.get("name_requested") or "").strip(): p
+            for p in player_context.get("players", [])
+            if isinstance(p, dict)
+        }
+        player_snapshot_id = player_context.get("snapshot_id") if isinstance(player_context, dict) else None
+        for pred in outputs:
+            pred["player_context_snapshot_id"] = player_snapshot_id
+            pred["home_starter_player_context"] = player_by_name.get(str(pred.get("home_starter") or "").strip())
+            pred["away_starter_player_context"] = player_by_name.get(str(pred.get("away_starter") or "").strip())
+    
+        # Capture date-scoped official first-team roster context before team stats.
+        # Roster player_ids are used only to prioritize profile enrichment and to
+        # annotate the resulting evidence snapshot. They do not alter probabilities.
+        roster_context = None
+        try:
+            roster_context = collect_npb_roster_context(target_date)
+        except Exception as exc:
+            roster_context = {
+                "schema_version": "npb-roster-context-v1",
+                "target_date": target_date,
+                "status": "SOURCE_FAILED",
+                "teams": {},
+                "player_count": 0,
+                "error": f"{type(exc).__name__}: {exc}",
+                "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
+            }
+        roster_snapshot_id = roster_context.get("snapshot_id") if isinstance(roster_context, dict) else None
+        roster_teams = roster_context.get("teams", {}) if isinstance(roster_context, dict) else {}
+        # Resolve name-only official roster rows to stable player IDs through the
+        # official NPB player search, limited to teams actually present in today's games.
+        # This is identity/evidence enrichment only; probabilities are unchanged.
+        team_names = []
+        for game in outputs:
+            for key in ("home", "away"):
+                team = str(game.get(key) or "").strip()
+                if team and team not in team_names:
+                    team_names.append(team)
+        try:
+            roster_context = resolve_roster_player_ids(roster_context, teams=set(team_names))
+        except Exception as exc:
+            roster_context["identity_resolution"] = {
+                "status": "SOURCE_FAILED",
+                "teams": team_names,
+                "requested_count": 0,
+                "resolved_count": 0,
+                "ambiguous_count": 0,
+                "not_found_count": 0,
+                "source_failed_count": 1,
+                "resolved_rate": 0.0,
+                "source": {"source_id": "npb_official_player_search", "status": "SOURCE_FAILED"},
+                "error": f"{type(exc).__name__}: {exc}",
+                "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
+            }
+        roster_teams = roster_context.get("teams", {}) if isinstance(roster_context, dict) else {}
+        preferred_roster_ids_by_team = {
+            str(team): {
+                str(player.get("player_id") or "").strip()
+                for player in players
+                if str(player.get("player_id") or "").strip()
+            }
+            for team, players in (roster_teams or {}).items()
+            if isinstance(players, list)
+        }
+    
+        # Capture current official team-wide player context (batting/pitching/fielding).
+        # The resolved roster IDs are used only for deterministic identity and
+        # enrichment-priority; this remains an evidence snapshot, not a model feature.
+        preferred_roster_names_by_team = {
+            str(team): {
+                str(player.get("player_name") or "").strip()
+                for player in (players or [])
+                if str(player.get("player_name") or "").strip()
+            }
+            for team, players in roster_teams.items()
+            if isinstance(players, list)
+        }
+        try:
+            team_player_context = collect_npb_team_player_context(
+                team_names,
+                season=int(target_date[:4]),
+                preferred_player_ids_by_team=preferred_roster_ids_by_team,
+                preferred_player_names_by_team=preferred_roster_names_by_team,
+            ) if team_names else {
+                "schema_version": "npb-team-player-context-v1", "status": "NO_TEAMS",
+                "teams_requested": [], "teams": {},
+                "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
+            }
+        except Exception as exc:
+            team_player_context = {
+                "schema_version": "npb-team-player-context-v1",
+                "status": "SOURCE_FAILED",
+                "teams_requested": team_names,
+                "teams": {},
+                "error": f"{type(exc).__name__}: {exc}",
+                "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
+            }
+    
+        # Resolve name-only official roster rows against already-fetched official team
+        # stats by exact normalized player name. This is deterministic (not fuzzy).
+        resolved_roster_teams = deepcopy(roster_teams)
+        resolved_transaction_index: dict[tuple[str, str], set[str]] = {}
+        team_context_map = team_player_context.get("teams", {}) if isinstance(team_player_context, dict) else {}
+        for team, players in resolved_roster_teams.items():
+            team_ctx = team_context_map.get(team) if isinstance(team_context_map, dict) else None
+            official_players = team_ctx.get("players", []) if isinstance(team_ctx, dict) else []
+            by_name: dict[str, set[str]] = {}
+            by_name_url: dict[str, str] = {}
+            for official_player in official_players or []:
+                pid = str(official_player.get("player_id") or "").strip()
+                name = str(official_player.get("player_name") or "").strip()
+                if pid and name:
+                    by_name.setdefault(name, set()).add(pid)
+                    if official_player.get("player_url"):
+                        by_name_url[name] = str(official_player["player_url"])
+            for player in players or []:
+                pid = str(player.get("player_id") or "").strip()
+                name = str(player.get("player_name") or "").strip()
+                if pid:
+                    player["identity_resolution_status"] = "SOURCE_STABLE_ID"
+                    continue
+                candidates = by_name.get(name, set())
+                if len(candidates) == 1:
+                    pid = next(iter(candidates))
+                    player["player_id"] = pid
+                    player["player_url"] = player.get("player_url") or by_name_url.get(name)
+                    player["identity_status"] = "VERIFIED_STABLE_ID"
+                    player["identity_resolution_status"] = "RESOLVED_EXACT_TEAM_STATS"
+                elif len(candidates) > 1:
+                    player["identity_resolution_status"] = "IDENTITY_AMBIGUOUS"
+                else:
+                    player["identity_resolution_status"] = "IDENTITY_NOT_FOUND"
+    
+        for tx in (roster_context.get("transactions") or []) if isinstance(roster_context, dict) else []:
+            if not isinstance(tx, dict):
+                continue
+            team = str(tx.get("team") or "").strip()
+            pid = str(tx.get("player_id") or "").strip()
+            status = str(tx.get("transaction_status") or "").strip()
+            name = str(tx.get("player_name") or "").strip()
+            if team and status and not pid:
+                candidates = {
+                    str(p.get("player_id") or "").strip()
+                    for p in (team_context_map.get(team, {}).get("players", []) or [])
+                    if str(p.get("player_id") or "").strip()
+                    and str(p.get("player_name") or "").strip() == name
+                }
+                if len(candidates) == 1:
+                    pid = next(iter(candidates))
+            if team and pid and status:
+                resolved_transaction_index.setdefault((team, pid), set()).add(status)
+    
+        transaction_index = resolved_transaction_index
+    
+        for team, team_ctx in (team_player_context.get("teams") or {}).items():
+            if not isinstance(team_ctx, dict):
+                continue
+            active_ids = {str(p.get("player_id") or "").strip() for p in (resolved_roster_teams.get(str(team), []) or []) if str(p.get("player_id") or "").strip()}
+            registered_today = removed_today = matched = 0
+            for player in team_ctx.get("players", []) or []:
+                pid = str(player.get("player_id") or "").strip()
+                tx_statuses = transaction_index.get((str(team), pid), set()) if pid else set()
+                if tx_statuses == {"REGISTERED"}:
+                    player["roster_transaction_status"] = "REGISTERED_TODAY"
+                    registered_today += 1
+                elif tx_statuses == {"REMOVED"}:
+                    player["roster_transaction_status"] = "REMOVED_TODAY"
+                    removed_today += 1
+                elif tx_statuses:
+                    player["roster_transaction_status"] = "TRANSACTION_CONFLICT"
+                else:
+                    player["roster_transaction_status"] = "NO_TRANSACTION_RECORDED"
+    
+                if pid and pid in active_ids:
+                    player["roster_status"] = "REGISTERED_ON_TARGET_DATE"
+                    matched += 1
+                elif pid:
+                    player["roster_status"] = "NOT_IN_TARGET_DATE_ROSTER"
+                else:
+                    player["roster_status"] = "ROSTER_MATCH_UNKNOWN"
+            team_ctx["roster_player_count"] = int(len(active_ids))
+            team_ctx["roster_matched_player_count"] = int(matched)
+            team_ctx["roster_match_rate"] = float(matched / max(1, len(active_ids))) if active_ids else None
+            team_ctx["roster_registered_today_count"] = int(registered_today)
+            team_ctx["roster_removed_today_count"] = int(removed_today)
+            team_ctx["roster_context_snapshot_id"] = roster_snapshot_id
+    
+        team_context_snapshot_id = team_player_context.get("snapshot_id") if isinstance(team_player_context, dict) else None
+        team_contexts = team_player_context.get("teams", {}) if isinstance(team_player_context, dict) else {}
+        for pred in outputs:
+            home = str(pred.get("home") or "").strip()
+            away = str(pred.get("away") or "").strip()
+            pred["roster_context_snapshot_id"] = roster_snapshot_id
+            pred["home_roster_context"] = resolved_roster_teams.get(home)
+            pred["away_roster_context"] = resolved_roster_teams.get(away)
+            pred["team_player_context_snapshot_id"] = team_context_snapshot_id
+            pred["home_team_player_context"] = team_contexts.get(home)
+            pred["away_team_player_context"] = team_contexts.get(away)
+    
+        # Capture the request-time game context separately from model features.
+        # This release stores the new information for later PIT/OOS experiments;
+        # it does not silently change model coefficients or promotion status.
+        pregame_context = None
+        try:
+            pregame_context = collect_npb_pregame_context(target_date)
+        except Exception as exc:
+            pregame_context = {
+                "schema_version": "npb-pregame-context-v1",
+                "target_date": target_date,
+                "status": "SOURCE_FAILED",
+                "error": f"{type(exc).__name__}: {exc}",
+                "historical_oos_consumption": "DISABLED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
+            }
+        if isinstance(pregame_context, dict) and isinstance(pregame_context.get("games"), list):
+            context_by_key = {
+                (
+                    str(game.get("home") or ""),
+                    str(game.get("away") or ""),
+                    str(game.get("official_start_time") or ""),
+                ): game
+                for game in pregame_context["games"]
+            }
+            attached = 0
+            context_snapshot_id = pregame_context.get("snapshot_id")
+            for pred in outputs:
+                key = (
+                    str(pred.get("home") or ""),
+                    str(pred.get("away") or ""),
+                    pd.Timestamp(pred["datetime_jst"]).tz_convert("Asia/Tokyo").strftime("%H:%M"),
+                )
+                row_context = context_by_key.get(key)
+                pred["pregame_context_snapshot_id"] = context_snapshot_id
+                pred["pregame_context"] = row_context
+                if row_context is not None:
+                    attached += 1
+            pregame_context["attached_prediction_count"] = attached
+        result["fast_mode"] = bool(fast_mode)
+    result["observation_enrichment_mode"] = (
+        "DEFERRED_FAST_MODE" if fast_mode else "FULL_REQUEST_TIME"
+    )
     result["player_context_status"] = str(player_context.get("status") or "AVAILABLE")
-    result["player_context_snapshot_id"] = player_context.get("snapshot_id")
-    result["player_context_requested_count"] = int(player_context.get("players_requested") and len(player_context.get("players_requested")) or 0)
-    result["player_context_resolved_count"] = int(player_context.get("players_resolved", 0))
-    result["player_context"] = player_context
-
-    result["team_player_context_status"] = str(team_player_context.get("status") or "AVAILABLE")
-    result["team_player_context_snapshot_id"] = team_player_context.get("snapshot_id")
-    result["team_player_context_requested_count"] = int(team_player_context.get("teams_requested") and len(team_player_context.get("teams_requested")) or 0)
-    result["team_player_context_resolved_count"] = int(sum(1 for _k, _v in (team_player_context.get("teams") or {}).items() if isinstance(_v, dict) and _v.get("status") in {"AVAILABLE", "PARTIAL"}))
-    result["team_player_context"] = team_player_context
-
-    result["pregame_context_status"] = (
-        str(pregame_context.get("status") or "AVAILABLE")
-        if isinstance(pregame_context, dict) else "UNAVAILABLE"
-    )
-    result["pregame_context_snapshot_id"] = (
-        pregame_context.get("snapshot_id")
-        if isinstance(pregame_context, dict) else None
-    )
-    result["pregame_context_attached_prediction_count"] = (
-        int(pregame_context.get("attached_prediction_count", 0))
-        if isinstance(pregame_context, dict) else 0
-    )
-    result["pregame_context"] = pregame_context
-
+        result["player_context_snapshot_id"] = player_context.get("snapshot_id")
+        result["player_context_requested_count"] = int(player_context.get("players_requested") and len(player_context.get("players_requested")) or 0)
+        result["player_context_resolved_count"] = int(player_context.get("players_resolved", 0))
+        result["player_context"] = player_context
+    
+        result["team_player_context_status"] = str(team_player_context.get("status") or "AVAILABLE")
+        result["team_player_context_snapshot_id"] = team_player_context.get("snapshot_id")
+        result["team_player_context_requested_count"] = int(team_player_context.get("teams_requested") and len(team_player_context.get("teams_requested")) or 0)
+        result["team_player_context_resolved_count"] = int(sum(1 for _k, _v in (team_player_context.get("teams") or {}).items() if isinstance(_v, dict) and _v.get("status") in {"AVAILABLE", "PARTIAL"}))
+        result["team_player_context"] = team_player_context
+    
+        result["pregame_context_status"] = (
+            str(pregame_context.get("status") or "AVAILABLE")
+            if isinstance(pregame_context, dict) else "UNAVAILABLE"
+        )
+        result["pregame_context_snapshot_id"] = (
+            pregame_context.get("snapshot_id")
+            if isinstance(pregame_context, dict) else None
+        )
+        result["pregame_context_attached_prediction_count"] = (
+            int(pregame_context.get("attached_prediction_count", 0))
+            if isinstance(pregame_context, dict) else 0
+        )
+        result["pregame_context"] = pregame_context
     # Output validation: probabilities are finite, win probabilities sum to 100,
     # Low/High sum to 100, and exactly four score candidates exist.
     for o in outputs:
@@ -1711,6 +1759,11 @@ def main():
         action="store_true",
         help="Explicit research-only PIT-safe forecast lane; never unlocks production.",
     )
+    ap.add_argument(
+        "--fast",
+        action="store_true",
+        help="Defer observation-only enrichment; model and PIT path are unchanged.",
+    )
     args=ap.parse_args()
     print(json.dumps(
         predict(
@@ -1718,6 +1771,7 @@ def main():
             args.data_dir,
             pregame_only=args.pregame_only,
             research_shadow=args.research_shadow,
+            fast_mode=args.fast,
             minimum_lead_minutes=(0.0 if args.research_shadow and not args.pregame_only else None),
             preferred_lead_minutes=(60.0 if args.pregame_only else None),
         ),
