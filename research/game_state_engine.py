@@ -138,7 +138,10 @@ def _reconstruct_state_scores(frame: pd.DataFrame) -> pd.DataFrame:
                 break
             hs_state.append(home_state)
             as_state.append(away_state)
-        if not valid or not hs_state or hs_state[0] != 0 or as_state[0] != 0:
+        # The first observed PBP row is already *after* its play. A scoring
+        # first play therefore legitimately has state score > 0. The implicit
+        # pre-game state is always 0-0 and is never exposed as a row.
+        if not valid or not hs_state:
             continue
         final_h = float(game["home_score"].iloc[-1])
         final_a = float(game["away_score"].iloc[-1])
@@ -216,7 +219,38 @@ def fit_transition_kernel(pbp: pd.DataFrame, *, min_transitions: int = 100) -> T
     n = 0
     for _, game in frame.groupby("game_id", sort=False):
         rows = game.to_dict("records")
-        for a, b in zip(rows, rows[1:]):
+        pairs = list(zip(rows, rows[1:]))
+        if rows:
+            first = rows[0]
+            pitch_number = first.get("pitch_number")
+            first_pitch = False
+            try:
+                first_pitch = int(float(pitch_number)) <= 1
+            except (TypeError, ValueError):
+                first_pitch = False
+            # Capture the first play only when the dataset itself gives enough
+            # evidence that this is the true game start. Otherwise fail closed
+            # and do not fabricate an initial state.
+            try:
+                can_seed = (
+                    int(first["inning"]) == 1
+                    and str(first["half"]) == "T"
+                    and int(first["outs"]) >= 0
+                    and _base_mask(first) == 0
+                    and first_pitch
+                )
+            except (TypeError, ValueError):
+                can_seed = False
+            if can_seed:
+                initial = dict(first)
+                initial["outs"] = 0
+                initial["state_home_score"] = 0
+                initial["state_away_score"] = 0
+                initial["base1"] = 0
+                initial["base2"] = 0
+                initial["base3"] = 0
+                pairs.insert(0, (initial, first))
+        for a, b in pairs:
             t = _transition(a, b)
             if t is None:
                 continue
@@ -304,9 +338,11 @@ def _aggregate(rows: pd.DataFrame) -> dict[str, float | int]:
     }
 
 
-def simulate_game(kernel: TransitionKernel, *, base_run: float, home_factor: float, away_factor: float, simulations: int = 500, seed: int = 42, max_innings: int = 12) -> dict[str, Any]:
+def simulate_game(kernel: TransitionKernel, *, base_run: float, home_factor: float, away_factor: float, simulations: int = 500, seed: int = 42, max_innings: int = 12, max_steps_per_simulation: int = 4000) -> dict[str, Any]:
     if simulations <= 0:
         raise ValueError("simulations must be positive")
+    if max_steps_per_simulation <= 0:
+        raise ValueError("max_steps_per_simulation must be positive")
     rng = np.random.default_rng(int(seed))
     scores: list[tuple[int, int]] = []
     extras = lead_change_games = comebacks = 0
@@ -314,9 +350,14 @@ def simulate_game(kernel: TransitionKernel, *, base_run: float, home_factor: flo
     sf = {"H": float(np.clip(home_factor ** 0.55, 0.55, 1.45)), "A": float(np.clip(away_factor ** 0.55, 0.55, 1.45))}
     for _ in range(int(simulations)):
         inning, half, outs, bases, hs, aw = 1, "T", 0, 0, 0, 0
+        steps = 0
         ever_home_trailing = ever_away_trailing = False
         saw_change = False; first_change: int | None = None; aborted = False
         while inning <= max_innings:
+            steps += 1
+            if steps > max_steps_per_simulation:
+                aborted = True
+                break
             if hs < aw: ever_home_trailing = True
             if aw < hs: ever_away_trailing = True
             if half == "B" and inning >= 9 and hs > aw: break
@@ -348,7 +389,7 @@ def simulate_game(kernel: TransitionKernel, *, base_run: float, home_factor: flo
     home_win, away_win, draw = float(np.tril(matrix, -1).sum()), float(np.triu(matrix, 1).sum()), float(np.trace(matrix))
     low = float(sum(matrix[i, j] for i in range(15) for j in range(15) if i + j <= 6))
     return {
-        "schema_version": SCHEMA_VERSION, "simulations": int(simulations), "valid_simulations": int(valid), "seed": int(seed),
+        "schema_version": SCHEMA_VERSION, "simulations": int(simulations), "valid_simulations": int(valid), "seed": int(seed), "max_steps_per_simulation": int(max_steps_per_simulation),
         "kernel_fingerprint": kernel.fingerprint, "kernel_transitions": kernel.transitions,
         "home_factor": float(home_factor), "away_factor": float(away_factor), "base_run": float(base_run),
         "score_distribution": matrix.tolist(), "probabilities": {"home_win": home_win, "draw": draw, "away_win": away_win, "low_le_6": low, "high_ge_7": 1 - low},
@@ -418,7 +459,7 @@ def evaluate_from_files(
         "development_end": development_end, "validation_start": validation_start, "validation_end": validation_end, "holdout_start": holdout_start,
         "input_files": [str(p) for p in files], "input_file_count": len(files), "kernel": {"transitions": kernel.transitions, "fingerprint": kernel.fingerprint},
         "aggregate": aggregate, "delta_vs_poisson": delta, "evaluation_rows": {"candidate": cand_rows, "baseline": base_rows},
-        "reproducibility": {"seed": int(seed), "simulations": int(simulations), "chronological_order": "game_date_then_game_id", "holdout_tuning": "FORBIDDEN", "kernel_training_boundary": development_end},
+        "reproducibility": {"seed": int(seed), "simulations": int(simulations), "max_steps_per_simulation": 4000, "chronological_order": "game_date_then_game_id", "holdout_tuning": "FORBIDDEN", "kernel_training_boundary": development_end},
     }
 
 
