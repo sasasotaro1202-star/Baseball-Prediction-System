@@ -65,6 +65,8 @@ def test_user_prediction_workflow_has_bounded_cache():
     assert "id: pbp_ref" in workflow
     assert "steps.pbp_ref.outputs.sha" in workflow
     assert "hashFiles('requirements.txt', 'data/npb_pbp_adapter.py')" in workflow
+    assert "steps.pbp_ref.outputs.sha" in workflow
+    assert "Do not restore a different published PBP release" in workflow
     assert "gh release download pbp" in workflow
     assert '--pattern "${year}-${mm}_pbp.csv"' in workflow
     # The manual workflow must consume the wrapper's atomic JSON artifact rather
