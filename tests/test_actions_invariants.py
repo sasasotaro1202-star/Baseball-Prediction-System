@@ -384,10 +384,16 @@ def test_research_lab_caches_are_snapshot_verified_and_file_scoped():
         save_pos = text.index("- name: Save exact")
         assert verify_pos < save_pos, f"{filename} must snapshot-verify before cache save"
         save_block = text[save_pos:text.find("- name: Upload", save_pos)]
+        restore_pos = text.index("- name: Restore exact")
+        restore_block = text[restore_pos:save_pos]
+        assert f"path: results/{artifact_name}" in restore_block
+        assert "path: results\n" not in restore_block
         assert f"path: results/{artifact_name}" in save_block
         assert "path: results\n" not in save_block
         expected_key = "key: " + cache_key_prefix + "-${{ matrix.league }}-${{ github.sha }}"
+        assert expected_key in restore_block
         assert expected_key in save_block
+        assert "cancel-in-progress: false" in text
 
 def test_phase1_candidate_gate_stages_npb_data_before_real_validation():
     text = (ROOT / ".github" / "workflows" / "baseball_phase1_gate.yml").read_text(encoding="utf-8")
