@@ -414,7 +414,10 @@ def test_24h_supervisor_recovers_only_latest_zero_job_pregame_failures_with_dail
     assert len(pregame.splitlines()) <= 90
     assert (ROOT / ".github" / "workflows" / "baseball_60m_pregame_auto.yml").is_file()
     assert (ROOT / "scripts" / "pregame_auto.sh").is_file()
-    assert "--field recovery_mode=zero_job_startup_recovery" in text
+    assert 'pregame_recovery_mode="zero_job_startup_recovery"' in text
+    assert 'pregame_recovery_mode="bootstrap_recovery"' in text
+    assert 'pregame_recovery_mode="missed_schedule_recovery"' in text
+    assert '--field recovery_mode="${pregame_recovery_mode}"' in text
 
 
 
