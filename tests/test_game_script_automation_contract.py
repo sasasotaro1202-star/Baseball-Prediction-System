@@ -19,6 +19,8 @@ def test_game_script_autoresearch_is_daily_and_fail_closed():
     assert "production_promotion" in text
     assert "HOLD_RESEARCH_ONLY" in text
     assert "source_fingerprint" in text
+    assert "code_fingerprint" in text
+    assert "prev_code" in text
     assert "game_script_checkpoint.json" in text
 
 
