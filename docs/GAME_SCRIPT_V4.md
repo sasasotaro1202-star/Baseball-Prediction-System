@@ -88,3 +88,16 @@ The daily workflow separates PBP provenance into:
 When only the current-context fingerprint changes and the code plus historical validation fingerprint remain unchanged, the workflow does not repeat historical Monte Carlo WFO. It restores a compatible complete validation checkpoint, rebuilds the full validation state, warms the kernel and team-strength state through the latest pre-shadow 2026 games, and refreshes the current-month frozen shadow only.
 
 A code or historical-validation change invalidates the checkpoint and forces a fresh chronological WFO. This prevents stale metrics or model state from being silently reused after logic/data changes.
+
+
+## Redundant automation path
+
+The existing `Baseball 24h Research Autopilot` also contains an auxiliary Game-Script v4 fallback lane. It checks for a recent successful dedicated v4 run; when one exists it records a no-op delegation result, avoiding duplicate expensive computation. When the dedicated lane is absent or stale, the fallback downloads and verifies the same PBP release assets and runs either:
+
+`FULL_WFO_FALLBACK`
+
+or, when a compatible complete checkpoint exists:
+
+`SHADOW_REFRESH_FALLBACK`.
+
+This lane is research-only, does not modify production configuration, and preserves its own evidence artifact.
