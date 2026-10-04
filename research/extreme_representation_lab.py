@@ -177,6 +177,7 @@ def run(*, league: str, data_dir: str = "data", holdout_fraction: float = 0.20, 
         raise ValueError("top_k_a must be >= top_k_b >= 1")
     os.environ["BASEBALL_FEATURE_SET_VARIANT"] = "FULL_VALIDATED_ENSEMBLE"
     bt = BaseballBacktest(Path(data_dir))
+    _set_model_profile("BALANCED")
     games = _load_games(bt, league, mlb_start, mlb_end)
     X, y, meta = bt.build_features(games)
     locked_start = int(len(X) * (1.0 - holdout_fraction))
