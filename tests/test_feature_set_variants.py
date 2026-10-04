@@ -77,3 +77,37 @@ def test_pit_context_variants_fail_closed_without_required_context():
         select_feature_set(base, "NPB", variant="TEAM_PLUS_LINEUP_PIT_SAFE")
     with pytest.raises(ValueError, match="requires unavailable PIT-safe feature families"):
         select_feature_set(base, "NPB", variant="TEAM_PLUS_WEATHER_PIT_SAFE")
+
+def test_horizon_variants_are_distinct():
+    frame = pd.DataFrame({
+        "home_adv": [1.0],
+        "h_elo": [1500.0], "a_elo": [1490.0], "d_elo": [10.0],
+        "h_gf_3": [1.0], "a_gf_3": [1.0], "d_gf_3": [0.0],
+        "h_gf_5": [1.0], "a_gf_5": [1.0], "d_gf_5": [0.0],
+        "h_gf_10": [1.0], "a_gf_10": [1.0], "d_gf_10": [0.0],
+        "h_gf_20": [1.0], "a_gf_20": [1.0], "d_gf_20": [0.0],
+        "h_gf_30": [1.0], "a_gf_30": [1.0], "d_gf_30": [0.0],
+        "h_gf_45": [1.0], "a_gf_45": [1.0], "d_gf_45": [0.0],
+        "h_gf_60": [1.0], "a_gf_60": [1.0], "d_gf_60": [0.0],
+        "h_gd_10": [0.1], "a_gd_10": [0.1], "d_gd_10": [0.0],
+        "h_gd_shrunk_10": [0.1], "a_gd_shrunk_10": [0.1], "d_gd_shrunk_10": [0.0],
+        "h_gf_sd_20": [0.1], "a_gf_sd_20": [0.1], "d_gf_sd_20": [0.0],
+    })
+    short, _ = select_feature_set(frame, "NPB", variant="TEAM_CORE_SHORT_HORIZON")
+    medium, _ = select_feature_set(frame, "NPB", variant="TEAM_CORE_MEDIUM_HORIZON")
+    long, _ = select_feature_set(frame, "NPB", variant="TEAM_CORE_LONG_HORIZON")
+    assert "h_gf_3" in short.columns and "h_gf_20" not in short.columns
+    assert "h_gf_5" in medium.columns and "h_gf_30" not in medium.columns
+    assert "h_gf_60" in long.columns and "h_gf_5" not in long.columns
+
+def test_pit_context_variants_fail_closed_without_required_family():
+    frame = pd.DataFrame({
+        "home_adv": [1.0],
+        "h_elo": [1500.0],
+        "a_elo": [1490.0],
+        "d_elo": [10.0],
+    })
+    with pytest.raises(ValueError):
+        select_feature_set(frame, "NPB", variant="TEAM_PLUS_LINEUP_PIT_SAFE")
+    with pytest.raises(ValueError):
+        select_feature_set(frame, "NPB", variant="TEAM_PLUS_WEATHER_PIT_SAFE")
