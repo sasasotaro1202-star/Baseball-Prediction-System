@@ -420,7 +420,7 @@ jobs:
           fi
           if ! find .previous_evidence -type f -name 'game_script_checkpoint.json' -print -quit | grep -q .; then
             autopilot_id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow baseball_24h_research_autopilot.yml --branch main --limit 20 --json databaseId,conclusion \
-              --jq '[.[] | select(.conclusion=="success") | select(.databaseId != ('"$GITHUB_RUN_ID"'))] | .[0].databaseId // empty' 2>/dev/null || true)"
+              --jq '[.[] | select(.conclusion=="success")] | .[0].databaseId // empty' 2>/dev/null || true)"
             if [ -n "$autopilot_id" ]; then
               gh run download "$autopilot_id" --repo "$GITHUB_REPOSITORY" --name npb-game-script-fallback --dir .previous_evidence 2>/dev/null || true
             fi
@@ -555,7 +555,7 @@ PY
             --checkpoint-every 1
             --output results/game_script_screening.json
           )
-          if [ "$mode" = "SHADOW_REFRESH_FALLBACK" ]; then
+          if [ "$mode" = "SHADOW_REFRESH_FALLBACK" ] || [ "$mode" = "SHADOW_REFRESH_FALLBACK_CONTEXT_UPDATE" ]; then
             args+=(--shadow-only)
           fi
           python -m research.game_script_engine "${args[@]}"
