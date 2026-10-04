@@ -57,7 +57,7 @@ jobs:
             while IFS= read -r changed_path; do
               [ -n "${changed_path}" ] || continue
               case "${changed_path}" in
-                data/experience/*|tests/*)
+                data/experience/*|tests/*|.github/workflows/baseball_candidate_oos_watchdog.yml)
                   ;;
                 *)
                   return 1
@@ -70,8 +70,9 @@ jobs:
           runs="$(gh run list --repo "${GH_REPO}" --workflow "${CANDIDATE_WORKFLOW}" --limit 50             --json databaseId,status,conclusion,createdAt,headSha,number)"
           echo "${runs}" | jq '.[0:12]'
 
-          # A newer main commit supersedes any queued/pending candidate run,
-          # but never interrupts an already-running OOS lifecycle.
+          # A newer main commit supersedes any queued/pending candidate run, unless
+          # the complete diff is limited to non-runtime continuity files. Never
+          # interrupt an already-running OOS lifecycle for those control-plane-only changes.
           stale_cancelled=0
           while IFS= read -r row; do
             [ -n "${row}" ] || continue

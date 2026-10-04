@@ -76,9 +76,10 @@ jobs:
             exit 0
           fi
 
-          # Candidate OOS may survive only non-runtime test maintenance or
-          # append-only historical experience updates between queue time and
-          # job start. Workflow/code/config/PIT/data changes remain evidence-
+          # Candidate OOS may survive only non-runtime continuity updates between
+          # queue time and job start: append-only historical experience data,
+          # tests, or this watchdog's control-plane workflow. Candidate runtime,
+          # configuration, PIT, evaluation, or other data changes remain evidence-
           # affecting and fail closed.
           mapfile -t changed_files < <(git diff --name-only "$EXPECTED_REF" "$current_main")
           if [ "${#changed_files[@]}" -eq 0 ]; then
@@ -89,7 +90,7 @@ jobs:
           unexpected=0
           for path in "${changed_files[@]}"; do
             case "$path" in
-              data/experience/*|tests/*)
+              data/experience/*|tests/*|.github/workflows/baseball_candidate_oos_watchdog.yml)
                 echo "Allowed non-runtime main update: $path"
                 ;;
               *)
@@ -196,13 +197,12 @@ jobs:
             exit 0
           fi
 
-          # Historical postgame experience is append-only reconciliation data.
-          # Those commits do not alter the candidate runtime or selection
-          # contract and must not invalidate an already-running OOS replay.
-          #
-          # Any other main-branch change can alter code, configuration,
-          # orchestration, PIT inputs, or candidate identity, so the run fails
-          # closed instead of producing evidence under a mixed snapshot.
+          # Historical postgame experience, tests, and this watchdog are non-runtime
+          # continuity updates. They do not alter candidate computation or
+          # candidate selection, so they must not invalidate an already-running
+          # OOS replay. Any other main-branch change can alter code,
+          # configuration, PIT inputs, evaluation, or candidate identity, so the
+          # run fails closed instead of producing evidence under a mixed snapshot.
           mapfile -t changed_files < <(git diff --name-only "$EXPECTED_REF" "$current_main")
           if [ "${#changed_files[@]}" -eq 0 ]; then
             echo "Unable to determine changes between candidate snapshot and current main." >&2
