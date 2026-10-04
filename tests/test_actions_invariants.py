@@ -222,8 +222,11 @@ def test_24h_supervisor_avoids_deterministic_failure_retry_loop():
     assert "gh_retry workflow run" in text
     assert "Dispatch verification" in text
     assert "latest_age_minutes" in text
-    assert "paths-ignore:" in text
-    assert "'data/pit/**'" in text
+    # The supervisor deliberately avoids a push trigger so PIT-only evidence commits
+    # cannot create a queue-flooding control-plane loop. Main-branch drift is checked
+    # explicitly by compare/${latest_sha}...${current_main_sha} instead.
+    trigger = text.split("permissions:", 1)[0]
+    assert "push:" not in trigger
     assert "compare/${latest_sha}...${current_main_sha}" in text
     assert 'startswith("data/pit/")' in text
     assert "main advanced only through PIT evidence commits" in text

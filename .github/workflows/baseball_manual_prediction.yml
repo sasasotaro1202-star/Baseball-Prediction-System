@@ -154,7 +154,10 @@ jobs:
           from pathlib import Path
 
           path = Path(sys.argv[1])
-          obj = json.loads(path.read_text(encoding="utf-8"))
+          try:
+              obj = json.loads(path.read_text(encoding="utf-8"))
+          except json.JSONDecodeError as exc:
+              raise SystemExit("manual prediction output is not valid JSON") from exc
           obj["prediction_request_mode"] = "on_demand"
           for pred in obj.get("predictions", []):
               if not isinstance(pred, dict):
