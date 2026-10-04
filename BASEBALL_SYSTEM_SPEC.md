@@ -144,3 +144,12 @@ The current `baseball_backtest.py::match_features` contract yields an expected b
 Lineup and weather features require explicit PIT-safe context configuration and cutoff-valid availability timestamps. Player profiles, roster context, standings and source-health snapshots are observation-only until they independently pass local PIT, chronological OOS/WFO, calibration, ablation, robustness and frozen holdout gates.
 
 Feature column order must be deterministic. A feature schema mismatch during a multi-game production batch is fail-closed. Feature additions are not performance improvements without independent chronological evidence.
+
+## Versioned feature-set variants
+
+The baseball predictor must support multiple validated feature-set variants rather than treating one feature vector as universally optimal. Variants are selected by league/competition, target contract, runtime lane, PIT-safe context and OOS evidence.
+
+The exact runtime feature set is identified by feature_set_id, feature_manifest_version, ordered feature_schema_hash, feature count and context mode. The runtime artifact is the authoritative evidence of actual feature consumption.
+
+Expected 482 NPB / 470 MLB base counts are current observed contracts for the inspected base feature path only. They must not be used as a hard-coded universal requirement for research or future runtimes.
+
