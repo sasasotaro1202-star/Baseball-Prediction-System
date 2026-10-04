@@ -87,7 +87,7 @@ jobs:
             fi
             git fetch origin main
             if ! git rebase origin/main; then
-              git rebase --abort || true
+              git rebase --abort
               echo "request-result push conflict could not be reconciled safely" >&2
               exit 1
             fi

@@ -2695,8 +2695,9 @@ class BaseballBacktest:
             return
         df.to_csv(RESULTS / f"{league.lower()}_backtest_results.csv", index=False)
         summary = pd.DataFrame([self.evaluate(df, league)])
-        if self.feature_set_metadata:
-            for key, value in self.feature_set_metadata.items():
+        feature_set_metadata = getattr(self, "feature_set_metadata", None)
+        if feature_set_metadata:
+            for key, value in feature_set_metadata.items():
                 summary.loc[0, key] = value
         summary.to_csv(RESULTS / f"{league.lower()}_backtest_summary.csv", index=False)
         model = df.groupby("model").agg(

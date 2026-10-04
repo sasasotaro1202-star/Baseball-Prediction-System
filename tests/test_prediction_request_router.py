@@ -107,6 +107,36 @@ def test_route_uses_validated_research_shadow_when_production_is_unavailable(mon
     assert result["generation_status"] == "RESEARCH_SHADOW_EXECUTED"
 
 
+def test_unverifiable_generation_status_is_preserved():
+    request = {
+        "schema_version": "baseball-prediction-request-v1",
+        "request_id": "r-unverifiable",
+        "competition_id": "MLB",
+        "target_date": "2026-10-04",
+    }
+    payload = {
+        "execution_status": "GENERATION_OUTPUT_UNVERIFIABLE",
+        "pit_status": "UNKNOWN",
+        "predictions": [],
+    }
+    router._validate_generated_output(payload, request, "CURRENT_PRODUCTION_RUNTIME")
+
+
+def test_generation_failure_status_is_preserved():
+    request = {
+        "schema_version": "baseball-prediction-request-v1",
+        "request_id": "r-failed",
+        "competition_id": "MLB",
+        "target_date": "2026-10-04",
+    }
+    payload = {
+        "execution_status": "GENERATION_FAILED",
+        "pit_status": "UNKNOWN",
+        "predictions": [],
+    }
+    router._validate_generated_output(payload, request, "CURRENT_PRODUCTION_RUNTIME")
+
+
 def test_unknown_competition_fails_closed(monkeypatch, tmp_path):
     request = {
         "schema_version": "baseball-prediction-request-v1",

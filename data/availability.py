@@ -108,9 +108,11 @@ class AvailabilityRecord:
                     if published_ts > cutoff:
                         raise ValueError(f"{side} starter publication is after prediction cutoff")
             elif available_at:
-                available_ts = _dt(available_at)
-                if available_ts > cutoff or available_ts > retrieved:
-                    raise ValueError(f"{side} starter availability is not PIT-safe")
+                # An availability timestamp without an explicit announcement
+                # cannot establish that a starter was announced/known by cutoff.
+                # Preserve fail-closed PIT semantics instead of treating the
+                # availability boundary as an announcement.
+                raise ValueError(f"{side} starter has unknown announcement timestamp")
 
         if self.lineup_announced_at:
             ts = _dt(self.lineup_announced_at)

@@ -40,7 +40,7 @@ def _artifact():
       "locked_holdout_rows":10,
       "stage_counts":{"stage_a_requested":136,"stage_a_successful":136,"stage_a_failed":0,"stage_b_requested":180,"stage_b_successful":180,"stage_b_failed":0,"stage_c_requested":24,"stage_c_successful":24,"stage_c_failed":0},
       "research_gate":{"holdout_locked_before_selection":True,"no_auto_adoption":True,"unexpected_execution_failures":0},
-      "representation_catalog":{"modes":list(REPRESENTATIONS)},
+      "representation_catalog":{"modes":list(REPRESENTATIONS),"model_profiles":list(MODEL_PROFILES)},
       "winner":{"candidate_id":"x"},
       "locked_holdout":{"winner_only":True,"metrics":{"LogLoss":1.0,"Brier":.5,"Accuracy":.5,"ECE":.1,"rows":10}}
     }

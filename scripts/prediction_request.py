@@ -104,12 +104,24 @@ def _validate_generated_output(payload: dict[str, Any], request: dict[str, Any],
         "BLOCKED_PRODUCTION_GATE",
         "BLOCKED_NO_CURRENT_PRODUCTION_RUNTIME",
         "BLOCKED_NO_VALIDATED_PREDICTION_RUNTIME",
+        "GENERATION_OUTPUT_UNVERIFIABLE",
+        "GENERATION_FAILED",
+        "GENERATION_TIMEOUT",
     }
     if status not in allowed:
         raise ValueError(f"unrecognized prediction execution status: {status}")
     predictions = payload.get("predictions", [])
     if not isinstance(predictions, list):
         raise ValueError("prediction output predictions must be a list")
+
+    non_usable = {"GENERATION_OUTPUT_UNVERIFIABLE", "GENERATION_FAILED", "GENERATION_TIMEOUT"}
+    if status in non_usable:
+        if predictions:
+            raise ValueError(f"{status} must not contain predictions")
+        pit = str(payload.get("pit_status", "")).strip().upper()
+        if pit not in {"UNKNOWN", "NOT_RUN"}:
+            raise ValueError(f"{status} must preserve UNKNOWN/NOT_RUN PIT status")
+        return
 
     usable = {"EXECUTED", "RESEARCH_SHADOW_EXECUTED"}
     if status in usable and not predictions:
@@ -234,7 +246,18 @@ def main(argv: list[str] | None = None) -> int:
     fingerprint = _fingerprint(request)
     policy = _load_json(POLICY_PATH)
     runtime = _load_json(RUNTIME_PATH)
-    result_dir = ROOT / str(policy.get("result_directory", "prediction_requests/results"))
+
+    # Repository execution uses ROOT, while isolated tests and explicitly supplied
+    # request files may live outside the repository. Resolve relative result paths
+    # from the request's containing execution root so artifact discovery remains
+    # deterministic without hard-coding the test filesystem.
+    resolved_request = request_path.resolve()
+    try:
+        request_root = ROOT if resolved_request.is_relative_to(ROOT) else resolved_request.parent
+    except AttributeError:
+        request_root = ROOT if str(resolved_request).startswith(str(ROOT)) else resolved_request.parent
+    result_dir_value = Path(str(policy.get("result_directory", "prediction_requests/results")))
+    result_dir = result_dir_value if result_dir_value.is_absolute() else request_root / result_dir_value
     source_commit = os.environ.get("GITHUB_SHA") or "unknown"
 
     production_template = policy.get("production_commands", {}).get(competition_id)
@@ -336,7 +359,11 @@ def main(argv: list[str] | None = None) -> int:
 
     output_paths = policy.get("output_paths", {}).get(competition_id, {})
     path_template = output_paths.get(lane) if isinstance(output_paths, dict) else None
-    generated_path = ROOT / str(path_template).replace("{target_date}", target_date) if path_template else None
+    if path_template:
+        generated_value = Path(str(path_template).replace("{target_date}", target_date))
+        generated_path = generated_value if generated_value.is_absolute() else request_root / generated_value
+    else:
+        generated_path = None
     if generated_path is None or not generated_path.exists():
         # Production/other routes are expected to return their JSON on stdout
         # when they don't use the shared results path.
