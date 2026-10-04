@@ -128,3 +128,23 @@ def test_source_provenance_rejects_drift(tmp_path: Path):
     )
     errors = source_provenance_errors(tmp_path)
     assert errors and errors[0].startswith("project_source_sha256_mismatch:")
+
+
+def test_critical_automation_files_are_in_governance_contracts():
+    from research.project_governance import WORKFLOW_CONTRACTS
+    for path in (
+        ".github/workflows/baseball_governance_autopilot.yml",
+        ".github/workflows/npb_prediction_experience_archive.yml",
+        ".github/workflows/npb_experience_reconciliation.yml",
+        ".github/workflows/npb_experience_learning.yml",
+    ):
+        assert path in WORKFLOW_CONTRACTS
+
+
+def test_governance_workflow_expressions_are_not_backslash_escaped():
+    workflow = Path(".github/workflows/baseball_governance_autopilot.yml").read_text(encoding="utf-8")
+    expression = "$" + "{{"
+    assert "\\" + expression not in workflow
+    assert expression + " github.token }}" in workflow
+    assert expression + " github.repository }}" in workflow
+    assert expression + " github.sha }}" in workflow
