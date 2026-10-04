@@ -188,3 +188,72 @@ def test_phase1_and_universal_readiness_are_monitored():
 def test_autonomous_control_plane_is_governed():
     from research.project_governance import WORKFLOW_CONTRACTS
     assert ".github/workflows/baseball_autonomous_control_plane.yml" in WORKFLOW_CONTRACTS
+
+
+def test_no_run_is_deferred_when_autonomous_control_plane_is_active(monkeypatch):
+    from datetime import datetime, timezone
+    from research import project_governance as governance
+
+    monkeypatch.setenv("GITHUB_SHA", "current")
+
+    def fake_gh_json(args):
+        return {
+            "workflow_runs": [
+                {
+                    "path": ".github/workflows/baseball_autonomous_control_plane.yml",
+                    "status": "in_progress",
+                    "conclusion": None,
+                    "created_at": "2026-10-04T09:50:00Z",
+                    "updated_at": "2026-10-04T09:55:00Z",
+                    "head_sha": "current",
+                    "id": 100,
+                    "run_number": 10,
+                }
+            ]
+        }
+
+    monkeypatch.setattr(governance, "_gh_json", fake_gh_json)
+    report = governance.action_health("owner/repo", datetime(2026, 10, 4, 10, 0, tzinfo=timezone.utc))
+    entry = report["workflows"][".github/workflows/baseball_closed_loop.yml"]
+    assert entry["state"] == "DEFERRED"
+    assert "actions_no_recent_run:.github/workflows/baseball_closed_loop.yml" in report["deferred"]
+    assert not any("baseball_closed_loop.yml" in x for x in report["blockers"])
+
+
+def test_expected_skipped_archive_is_not_failed(monkeypatch):
+    from datetime import datetime, timezone
+    from research import project_governance as governance
+
+    monkeypatch.setenv("GITHUB_SHA", "current")
+
+    def fake_gh_json(args):
+        return {
+            "workflow_runs": [
+                {
+                    "path": ".github/workflows/baseball_autonomous_control_plane.yml",
+                    "status": "in_progress",
+                    "conclusion": None,
+                    "created_at": "2026-10-04T09:50:00Z",
+                    "updated_at": "2026-10-04T09:55:00Z",
+                    "head_sha": "current",
+                    "id": 100,
+                    "run_number": 10,
+                },
+                {
+                    "path": ".github/workflows/npb_prediction_experience_archive.yml",
+                    "status": "completed",
+                    "conclusion": "skipped",
+                    "created_at": "2026-10-04T09:00:00Z",
+                    "updated_at": "2026-10-04T09:00:00Z",
+                    "head_sha": "current",
+                    "id": 101,
+                    "run_number": 101,
+                },
+            ]
+        }
+
+    monkeypatch.setattr(governance, "_gh_json", fake_gh_json)
+    report = governance.action_health("owner/repo", datetime(2026, 10, 4, 10, 0, tzinfo=timezone.utc))
+    entry = report["workflows"][".github/workflows/npb_prediction_experience_archive.yml"]
+    assert entry["state"] == "HEALTHY"
+    assert not any("npb_prediction_experience_archive.yml" in x for x in report["blockers"])
