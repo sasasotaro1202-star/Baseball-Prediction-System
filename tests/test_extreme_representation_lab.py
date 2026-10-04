@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from research.extreme_representation_lab import (
-    REPRESENTATIONS, SEED_FAMILY_PATTERNS, transform_representation, _safe_ratio_bases,
+    REPRESENTATIONS, SEED_FAMILY_PATTERNS, transform_representation, _safe_ratio_bases, MODEL_PROFILES,
 )
 from scripts.verify_extreme_representation_lab import validate
 
@@ -12,6 +12,7 @@ def test_representation_catalog_is_unique():
     assert len(REPRESENTATIONS) == 8
     assert len(set(REPRESENTATIONS)) == 8
     assert len(SEED_FAMILY_PATTERNS) == 16
+    assert MODEL_PROFILES == ("BALANCED", "ROBUST", "SMOOTH", "DEEP", "LOCAL", "REGULARIZED")
 
 def test_representation_transforms_are_deterministic_and_finite():
     frame=pd.DataFrame({
@@ -37,7 +38,7 @@ def _artifact():
       "status":"RESEARCH_ONLY","research_contract_id":"extreme-representation-v1","decision":"NO_AUTO_ADOPTION",
       "git_commit_sha":"0123456789abcdef0123456789abcdef01234567",
       "locked_holdout_rows":10,
-      "stage_counts":{"stage_a_requested":128,"stage_a_successful":128,"stage_a_failed":0,"stage_b_requested":180,"stage_b_successful":180,"stage_b_failed":0,"stage_c_requested":4,"stage_c_successful":4,"stage_c_failed":0},
+      "stage_counts":{"stage_a_requested":128,"stage_a_successful":128,"stage_a_failed":0,"stage_b_requested":180,"stage_b_successful":180,"stage_b_failed":0,"stage_c_requested":24,"stage_c_successful":24,"stage_c_failed":0},
       "research_gate":{"holdout_locked_before_selection":True,"no_auto_adoption":True,"unexpected_execution_failures":0},
       "representation_catalog":{"modes":list(REPRESENTATIONS)},
       "winner":{"candidate_id":"x"},
