@@ -208,6 +208,23 @@ class TransitionKernel:
         return list(counts.keys())[int(rng.choice(len(counts), p=p))]
 
 
+def _transition_state_key(row: Mapping[str, Any], *, use_score_diff: bool = True) -> tuple[int, str, int, int, int]:
+    """Build a transition key strictly from information at that PBP state."""
+    if use_score_diff:
+        score_diff = int(
+            round(float(row["state_home_score"]) - float(row["state_away_score"]))
+        )
+    else:
+        score_diff = 0
+    return _state_key(
+        int(row["inning"]),
+        str(row["half"]),
+        int(row["outs"]),
+        _base_mask(row),
+        score_diff,
+    )
+
+
 def fit_transition_kernel(
     pbp: pd.DataFrame, *, min_transitions: int = 100, use_score_diff: bool = True
 ) -> TransitionKernel:
@@ -660,26 +677,34 @@ def evaluate_from_files(
         else:
             checkpoint = None
 
+    kernel_final: TransitionKernel | None = None
+
+    def build_final_kernel() -> TransitionKernel:
+        final_frames = [
+            frame[frame.game_date <= val_end].copy()
+            for frame in canonical_frames
+            if (frame.game_date <= val_end).any()
+        ]
+        if not final_frames:
+            raise ValueError("no final-training PBP rows")
+        return fit_transition_kernel(
+            pd.concat(final_frames, ignore_index=True, sort=False),
+            min_transitions=100,
+            use_score_diff=True,
+        )
+
+    if start_index >= len(val):
+        kernel_final = build_final_kernel()
+
     for pos in range(start_index, len(selected)):
         r = selected.iloc[pos]
-        if pos == 0 or pos == len(val):
-            phase = "validation" if pos < len(val) else "holdout"
+        phase = "validation" if pos < len(val) else "holdout"
+        if phase == "validation":
+            kernel = kernel_dev
         else:
-            phase = "validation" if pos < len(val) else "holdout"
-        kernel = kernel_dev if phase == "validation" else None
-        if phase == "holdout":
-            final_frames = [
-                frame[frame.game_date <= val_end].copy()
-                for frame in canonical_frames
-                if (frame.game_date <= val_end).any()
-            ]
-            if not final_frames:
-                raise ValueError("no final-training PBP rows")
-            kernel = fit_transition_kernel(
-                pd.concat(final_frames, ignore_index=True, sort=False),
-                min_transitions=100,
-                use_score_diff=True,
-            )
+            if kernel_final is None:
+                kernel_final = build_final_kernel()
+            kernel = kernel_final
         ho, hd, ao, ad = roll.before(str(r.home), str(r.away))
         hf = float(np.clip(math.sqrt(max(0.0, ho * ad)), 0.60, 1.55))
         af = float(np.clip(math.sqrt(max(0.0, ao * hd)), 0.60, 1.55))
@@ -777,16 +802,8 @@ def evaluate_from_files(
     if not ablation_df.empty:
         aggregate["validation_ablation_no_score_diff"] = _aggregate(ablation_df)
 
-    final_frames = [
-        frame[frame.game_date <= val_end].copy()
-        for frame in canonical_frames
-        if (frame.game_date <= val_end).any()
-    ]
-    kernel_final = fit_transition_kernel(
-        pd.concat(final_frames, ignore_index=True, sort=False),
-        min_transitions=100,
-        use_score_diff=True,
-    )
+    if kernel_final is None:
+        kernel_final = build_final_kernel()
     stability = _simulation_stability(
         kernel_final,
         rows=hold,
