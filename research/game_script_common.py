@@ -10,7 +10,7 @@ import pandas as pd
 
 SCHEMA_VERSION = "game-script-v4"
 PIT_STATUS = "UNVERIFIABLE_HISTORICAL_PBP_AVAILABILITY"
-ALPHA, MIN_SUPPORT, MAX_SCORE_DIFF, MAX_STEPS, SCORE_GRID = 0.5, 24, 8, 420, 21
+ALPHA, MIN_SUPPORT, MAX_SCORE_DIFF, MAX_STEPS, SCORE_GRID = 0.5, 24, 8, 420, 31
 
 
 def _first(df: pd.DataFrame, names: Sequence[str], default=np.nan) -> pd.Series:
@@ -179,41 +179,103 @@ def simulate_game(kernel,home_factor,away_factor,simulations=800,seed=42,max_inn
     if simulations<=0: raise ValueError("simulations must be positive")
     rng=np.random.default_rng(int(seed)); scores=[]; levels=Counter(); ents=[]; extras=changes=comebacks=0; first=Counter(); aborted=0
     for _ in range(int(simulations)):
-        inning,half,outs,bases,balls,strikes,hs,aw=1,"T",0,0,0,0,0,0; trailing_h=trailing_a=changed=False; first_in=None; ok=False
+        inning,half,outs,bases,balls,strikes,hs,aw=1,"T",0,0,0,0,0,0
+        trailing_h=trailing_a=changed=False; first_in=None; ok=False
         for _ in range(MAX_STEPS):
             if hs<aw: trailing_h=True
             if aw<hs: trailing_a=True
             if half=="B" and inning>=9 and hs>aw: ok=True; break
             if inning>=max_innings and half=="B" and outs>=2: ok=True; break
-            try: out,lvl,e=kernel.sample((_band(inning),half,outs,bases,_diff(hs-aw),balls,strikes),rng,{"H":home_factor,"A":away_factor},profile)
-            except LookupError: break
-            levels[lvl]+=1; ents.append(e); nh,no,nb,nbal,nstr,runs,scorer=out; ni=inning+1 if half=="B" and nh=="T" else inning; prev=hs-aw
+            try:
+                out,lvl,e=kernel.sample(
+                    (_band(inning),half,outs,bases,_diff(hs-aw),balls,strikes),
+                    rng,{"H":home_factor,"A":away_factor},profile
+                )
+            except LookupError:
+                break
+            levels[lvl]+=1; ents.append(e)
+            nh,no,nb,nbal,nstr,runs,scorer=out
+            ni=inning+1 if half=="B" and nh=="T" else inning
+            prev=hs-aw
             if scorer=="H": hs+=runs
             elif scorer=="A": aw+=runs
-            if prev*(hs-aw)<0: changed=True; first_in=first_in if first_in is not None else ni
-            outs,bases,balls,strikes=int(no),int(nb),int(nbal),int(nstr); inning,half=ni,nh
+            if prev*(hs-aw)<0:
+                changed=True; first_in=first_in if first_in is not None else ni
+            outs,bases,balls,strikes=int(no),int(nb),int(nbal),int(nstr)
+            inning,half=ni,nh
             if inning>max_innings: ok=True; break
-        if not ok: aborted+=1; continue
-        scores.append((hs,aw)); extras+=int(inning>9); changes+=int(changed); comebacks+=int((hs>aw and trailing_h) or (aw>hs and trailing_a))
+        if not ok:
+            aborted+=1; continue
+        scores.append((hs,aw)); extras+=int(inning>9); changes+=int(changed)
+        comebacks+=int((hs>aw and trailing_h) or (aw>hs and trailing_a))
         if changed and first_in is not None: first[first_in]+=1
     valid=len(scores)
-    if valid<math.ceil(simulations*.995): raise RuntimeError(f"simulation coverage below fail-closed threshold: {valid}/{simulations}")
+    if valid<math.ceil(simulations*.995):
+        raise RuntimeError(f"simulation coverage below fail-closed threshold: {valid}/{simulations}")
     m=np.zeros((SCORE_GRID,SCORE_GRID),float)
     for h,a in scores: m[min(SCORE_GRID-1,h),min(SCORE_GRID-1,a)]+=1
-    m/=m.sum(); hw=float(np.tril(m,-1).sum()); awp=float(np.triu(m,1).sum()); dr=float(np.trace(m)); low=float(sum(m[i,j] for i in range(SCORE_GRID) for j in range(SCORE_GRID) if i+j<=6)); flat=m.ravel(); top=np.argsort(-flat,kind="mergesort")[:4]
-    ent=float(-(np.array([hw,dr,awp])*np.log(np.clip([hw,dr,awp],1e-12,1))).sum()); pred=float(1-ent/math.log(3))
-    return {"schema_version":SCHEMA_VERSION,"simulations":simulations,"valid_simulations":valid,"aborted_simulations":aborted,"coverage":valid/simulations,"seed":int(seed),"profile":profile,"score_distribution":m.tolist(),"probabilities":{"home_win":hw,"draw":dr,"away_win":awp,"low_le_6":low,"high_ge_7":1-low},"top4_exact_score":[{"score":f"{i//SCORE_GRID}-{i%SCORE_GRID}","probability":float(flat[i])} for i in top],"extra_inning_probability":extras/valid,"lead_change_probability":changes/valid,"comeback_probability":comebacks/valid,"first_lead_change_inning_distribution":{str(k):v/valid for k,v in sorted(first.items())},"uncertainty":{"outcome_entropy":ent,"outcome_predictability":pred,"mc_se_home_win":math.sqrt(max(1e-12,hw*(1-hw))/valid),"state_transition_entropy_mean":float(np.mean(ents)) if ents else float("nan"),"fallback_level_distribution":{k:v/max(1,sum(levels.values())) for k,v in sorted(levels.items())},"fallback_rate":sum(v for k,v in levels.items() if k!="rich")/max(1,sum(levels.values()))}}
-
-
-def summary(m,hs,aw):
-    hw=float(np.tril(m,-1).sum()); awp=float(np.triu(m,1).sum()); dr=float(np.trace(m)); actual="H" if hs>aw else "A" if aw>hs else "D"; p={"H":hw,"A":awp,"D":dr}[actual]; pred="H" if hw>=max(awp,dr) else "A" if awp>=dr else "D"; flat=m.ravel(); top=np.argsort(-flat,kind="mergesort")[:4]; i=int(top[0]); th,ta=divmod(i,m.shape[1])
-    return {"accuracy":float(pred==actual),"logloss":float(-math.log(max(1e-12,p))),"brier":float((hw-(actual=="H"))**2+(dr-(actual=="D"))**2+(awp-(actual=="A"))**2),"score_mae":float((abs(th-hs)+abs(ta-aw))/2),"top1_exact":float(th==hs and ta==aw),"top4_exact":float(any(divmod(int(j),m.shape[1])==(hs,aw) for j in top)),"confidence":float(max(hw,dr,awp)),"correct":float(pred==actual),"low_le_6_accuracy":float((low_probability(m)==float(hs+aw<=6)))}
+    m/=m.sum()
+    hw=float(np.tril(m,-1).sum()); awp=float(np.triu(m,1).sum()); dr=float(np.trace(m))
+    low=float(sum(m[i,j] for i in range(SCORE_GRID) for j in range(SCORE_GRID) if i+j<=6))
+    flat=m.ravel(); top=np.argsort(-flat,kind="mergesort")[:4]
+    ent=float(-(np.array([hw,dr,awp])*np.log(np.clip([hw,dr,awp],1e-12,1))).sum())
+    predictability=float(1-ent/math.log(3))
+    return {
+        "schema_version":SCHEMA_VERSION,"simulations":simulations,"valid_simulations":valid,
+        "aborted_simulations":aborted,"coverage":valid/simulations,"seed":int(seed),"profile":profile,
+        "score_distribution":m.tolist(),
+        "probabilities":{"home_win":hw,"draw":dr,"away_win":awp,"low_le_6":low,"high_ge_7":1-low},
+        "top4_exact_score":[{"score":f"{i//SCORE_GRID}-{i%SCORE_GRID}","probability":float(flat[i])} for i in top],
+        "extra_inning_probability":extras/valid,"lead_change_probability":changes/valid,
+        "comeback_probability":comebacks/valid,
+        "first_lead_change_inning_distribution":{str(k):v/valid for k,v in sorted(first.items())},
+        "uncertainty":{
+            "outcome_entropy":ent,"outcome_predictability":predictability,
+            "mc_se_home_win":math.sqrt(max(1e-12,hw*(1-hw))/valid),
+            "state_transition_entropy_mean":float(np.mean(ents)) if ents else float("nan"),
+            "fallback_level_distribution":{k:v/max(1,sum(levels.values())) for k,v in sorted(levels.items())},
+            "fallback_rate":sum(v for k,v in levels.items() if k!="rich")/max(1,sum(levels.values()))
+        }
+    }
 
 def low_probability(m): return float(sum(m[i,j] for i in range(m.shape[0]) for j in range(m.shape[1]) if i+j<=6))
 
+
+def summary(m,hs,aw):
+    hw=float(np.tril(m,-1).sum()); awp=float(np.triu(m,1).sum()); dr=float(np.trace(m))
+    actual="H" if hs>aw else "A" if aw>hs else "D"
+    p={"H":hw,"A":awp,"D":dr}[actual]
+    pred="H" if hw>=max(awp,dr) else "A" if awp>=dr else "D"
+    flat=m.ravel(); top=np.argsort(-flat,kind="mergesort")[:4]; i=int(top[0]); th,ta=divmod(i,m.shape[1])
+    low=float(low_probability(m)); low_actual=float(hs+aw<=6)
+    eps=1e-12
+    low_ll=-(math.log(max(eps,low)) if low_actual else math.log(max(eps,1-low)))
+    low_brier=(low-low_actual)**2
+    return {
+        "accuracy":float(pred==actual),"logloss":float(-math.log(max(eps,p))),
+        "brier":float((hw-(actual=="H"))**2+(dr-(actual=="D"))**2+(awp-(actual=="A"))**2),
+        "score_mae":float((abs(th-hs)+abs(ta-aw))/2),
+        "top1_exact":float(th==hs and ta==aw),
+        "top4_exact":float(any(divmod(int(j),m.shape[1])==(hs,aw) for j in top)),
+        "confidence":float(max(hw,dr,awp)),"correct":float(pred==actual),
+        "low_le_6_probability":low,"low_le_6_accuracy":float((low>=0.5)==bool(low_actual)),
+        "low_le_6_logloss":float(low_ll),"low_le_6_brier":float(low_brier),
+    }
+
+
 def aggregate(df):
+    if df.empty: raise ValueError("cannot aggregate empty evaluation set")
     ece=0.0
     for lo,hi in zip(np.linspace(0,1,11)[:-1],np.linspace(0,1,11)[1:]):
         mask=(df.confidence>=lo)&((df.confidence<hi) if hi<1 else (df.confidence<=hi))
         if mask.any(): ece+=float(mask.mean())*abs(float(df.loc[mask,"correct"].mean())-float(df.loc[mask,"confidence"].mean()))
-    return {"rows":len(df),"accuracy":float(df.accuracy.mean()),"logloss":float(df.logloss.mean()),"brier":float(df.brier.mean()),"ece":float(ece),"score_mae":float(df.score_mae.mean()),"top1_exact":float(df.top1_exact.mean()),"top4_exact":float(df.top4_exact.mean()),"low_le_6_accuracy":float(df.low_le_6_accuracy.mean())}
+    return {
+        "rows":int(len(df)),
+        "accuracy":float(df.accuracy.mean()),"logloss":float(df.logloss.mean()),
+        "brier":float(df.brier.mean()),"ece":float(ece),"score_mae":float(df.score_mae.mean()),
+        "top1_exact":float(df.top1_exact.mean()),"top4_exact":float(df.top4_exact.mean()),
+        "low_le_6_accuracy":float(df.low_le_6_accuracy.mean()),
+        "low_le_6_logloss":float(df.low_le_6_logloss.mean()),
+        "low_le_6_brier":float(df.low_le_6_brier.mean()),
+    }
+
