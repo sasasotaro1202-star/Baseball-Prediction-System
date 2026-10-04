@@ -76,7 +76,19 @@ VARIANT_FAMILIES: dict[str, frozenset[str]] = {
     ),
 }
 
-SCREENING_VARIANTS: tuple[str, ...] = tuple(VARIANT_FAMILIES)
+REGISTERED_VARIANTS: tuple[str, ...] = tuple(VARIANT_FAMILIES)
+SCREENING_VARIANTS: tuple[str, ...] = (
+    "BASELINE_TEAM_STATE",
+    "TEAM_PLUS_STARTER",
+    "TEAM_PLUS_BULLPEN",
+    "TEAM_PLUS_OFFENSE",
+    "TEAM_PLUS_STARTER_BULLPEN",
+    "TEAM_PLUS_STARTER_OFFENSE",
+    "TEAM_PLUS_STARTER_BULLPEN_OFFENSE",
+    "TEAM_PLUS_STARTER_BULLPEN_OFFENSE_INTERACTIONS",
+    "FULL_NO_PIT_CONTEXT",
+    "FULL_VALIDATED_ENSEMBLE",
+)
 
 _STABLE_CORE = re.compile(
     r"^(?:home_adv|expected_env|h_(?:venue_|elo$|rest_days$|matches$|bp3$|bp7$)|"
@@ -200,7 +212,7 @@ def select_feature_set(
         "feature_count": int(len(cols)),
         "feature_schema_hash": digest,
         "feature_context_mode": (
-            "PIT_SAFE_CONTEXT_ACTIVE" if "context" in families
+            "PIT_SAFE_CONTEXT_ACTIVE" if families.intersection({"context", "lineup", "weather"})
             else "BASELINE_NO_PIT_SAFE_CONTEXT"
         ),
         "feature_family_counts": {k: int(v) for k, v in sorted(family_counts.items())},
