@@ -63,6 +63,14 @@ SEED_FAMILY_PATTERNS = (
 CORE_HORIZONS = ("ALL", "SHORT", "LONG")
 HALF_LIVES = (600, 900, 1800, 3600, 7200)
 MODEL_POOLS = ("LINEAR_TREE", "BROAD_TREE", "DIVERSE")
+MODEL_PROFILES = ("BALANCED", "ROBUST", "SMOOTH", "DEEP", "LOCAL", "REGULARIZED")
+
+
+def _set_model_profile(profile: str) -> None:
+    profile = str(profile).upper()
+    if profile not in MODEL_PROFILES:
+        raise ValueError(f"unknown model profile: {profile}")
+    os.environ["BASEBALL_MODEL_PROFILE"] = profile
 
 
 def _metrics(y, p, league):
@@ -259,34 +267,37 @@ def run(*, league: str, data_dir: str = "data", holdout_fraction: float = 0.20, 
         rep = str(brow["representation_meta"]["representation"])
         half_life = int(brow["half_life"])
         pool = str(brow["model_pool"])
-        candidate = brow["candidate_id"]
-        bt._check_time_budget(f"extreme_rep_c:{rank_b}")
-        try:
-            base, fmeta = select_pattern(X, fams, horizon="ALL")
-            Xv, rmeta = transform_representation(base, rep)
-            metrics, selected, validation_scores = _fit_predict(
-                bt, Xv, y, meta, cut_c, stop_c, league, pool,
-                fast_oos=False, half_life=half_life,
-            )
-            stage_c.append({
-                "candidate_id": candidate,
-                "source_stage_b_rank": rank_b,
-                "feature_meta": fmeta,
-                "representation_meta": rmeta,
-                "half_life": half_life,
-                "model_pool": pool,
-                "metrics": metrics,
-                "selected_models": selected,
-                "validation_scores": {k: float(v) for k, v in validation_scores.items()},
-                "stage": "C",
-            })
-        except Exception as exc:
-            fail_c.append({
-                "candidate_id": candidate,
-                "stage": "C",
-                "failure_type": "FAILED",
-                "error": f"{type(exc).__name__}: {exc}",
-            })
+        for profile in MODEL_PROFILES:
+            candidate = f"{brow['candidate_id']}|profile={profile}"
+            bt._check_time_budget(f"extreme_rep_c:{rank_b}:{profile}")
+            try:
+                _set_model_profile(profile)
+                base, fmeta = select_pattern(X, fams, horizon="ALL")
+                Xv, rmeta = transform_representation(base, rep)
+                metrics, selected, validation_scores = _fit_predict(
+                    bt, Xv, y, meta, cut_c, stop_c, league, pool,
+                    fast_oos=False, half_life=half_life,
+                )
+                stage_c.append({
+                    "candidate_id": candidate,
+                    "source_stage_b_rank": rank_b,
+                    "feature_meta": fmeta,
+                    "representation_meta": rmeta,
+                    "half_life": half_life,
+                    "model_pool": pool,
+                    "model_profile": profile,
+                    "metrics": metrics,
+                    "selected_models": selected,
+                    "validation_scores": {k: float(v) for k, v in validation_scores.items()},
+                    "stage": "C",
+                })
+            except Exception as exc:
+                fail_c.append({
+                    "candidate_id": candidate,
+                    "stage": "C",
+                    "failure_type": "FAILED",
+                    "error": f"{type(exc).__name__}: {exc}",
+                })
     stage_c = sorted(stage_c, key=lambda r: (r["metrics"]["LogLoss"], r["metrics"]["Brier"], r["metrics"]["ECE"], r["candidate_id"]))
     if not stage_c:
         raise RuntimeError("representation Stage C produced no usable candidates")
@@ -294,6 +305,7 @@ def run(*, league: str, data_dir: str = "data", holdout_fraction: float = 0.20, 
 
     fams = frozenset(winner["feature_meta"]["families"])
     rep = str(winner["representation_meta"]["representation"])
+    _set_model_profile(str(winner["model_profile"]))
     base, winner_fmeta = select_pattern(X, fams, horizon="ALL")
     Xw, winner_rmeta = transform_representation(base, rep)
     os.environ["BASEBALL_RECENCY_HALF_LIFE_GAMES"] = str(winner["half_life"])
@@ -325,6 +337,7 @@ def run(*, league: str, data_dir: str = "data", holdout_fraction: float = 0.20, 
         "locked_holdout_rows": int(len(y) - locked_start),
         "representation_catalog": {
             "modes": list(REPRESENTATIONS),
+            "model_profiles": list(MODEL_PROFILES),
             "mode_count": len(REPRESENTATIONS),
             "seed_family_pattern_count": len(SEED_FAMILY_PATTERNS),
             "stage_a_requested": len(SEED_FAMILY_PATTERNS) * len(REPRESENTATIONS),
@@ -341,7 +354,7 @@ def run(*, league: str, data_dir: str = "data", holdout_fraction: float = 0.20, 
             "stage_b_requested": int(top_k_a * len(HALF_LIVES) * len(MODEL_POOLS)),
             "stage_b_successful": len(stage_b),
             "stage_b_failed": len(fail_b),
-            "stage_c_requested": int(top_k_b),
+            "stage_c_requested": int(top_k_b * len(MODEL_PROFILES)),
             "stage_c_successful": len(stage_c),
             "stage_c_failed": len(fail_c),
         },
