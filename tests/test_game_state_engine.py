@@ -134,6 +134,31 @@ def test_simulation_is_reproducible_and_normalized():
     ) < 1e-9
 
 
+def test_simulation_emits_half_state_profiles():
+    kernel = fit_transition_kernel(_frame(), min_transitions=10)
+    result = simulate_game(
+        kernel,
+        base_run=3.5,
+        home_factor=1.0,
+        away_factor=1.0,
+        simulations=50,
+        seed=9,
+        max_innings=3,
+    )
+    profiles = result["half_state_profiles"]
+    assert "1T" in profiles
+    for profile in profiles.values():
+        assert 0.0 < profile["reach_probability"] <= 1.0
+        assert abs(
+            profile["home_lead_probability"]
+            + profile["tie_probability"]
+            + profile["away_lead_probability"]
+            - 1.0
+        ) < 1e-9
+        assert profile["mean_home_score"] >= 0.0
+        assert profile["mean_away_score"] >= 0.0
+
+
 def test_sampling_keeps_observed_support():
     no_run = ("T", 1, 0, 0, "N")
     home_run = ("T", 1, 0, 1, "H")
