@@ -151,3 +151,19 @@ def test_transition_key_never_uses_terminal_score_label():
     changed_terminal = {**base, "home_score": 88, "away_score": 3}
     assert _transition_state_key(base) == _transition_state_key(changed_terminal)
     assert _transition_state_key(base, use_score_diff=False) == (5, "T", 1, 2, 0)
+
+def test_sparse_exact_state_shrinks_toward_coarse_prior():
+    no_run = ("T", 1, 0, 0, "N")
+    home_run = ("T", 1, 0, 1, "H")
+    kernel = TransitionKernel(
+        {(1, "T", 0, 0, 0): {no_run: 1}},
+        {(1, "T", 0, 0): {home_run: 19, no_run: 1}},
+        {"T": {home_run: 99, no_run: 1}},
+        121,
+    )
+    draws = []
+    rng = np.random.default_rng(9)
+    for _ in range(500):
+        draws.append(kernel.sample((1, "T", 0, 0, 0), rng, {"H": 1.0, "A": 1.0}))
+    assert set(draws) == {no_run, home_run}
+    assert draws.count(home_run) > 100
