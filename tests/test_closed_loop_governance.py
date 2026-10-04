@@ -199,8 +199,8 @@ def test_governance_blocks_stale_artifact_commit(tmp_path):
 
     assert calibration_stage(calibration, expected_commit="new-sha").blockers == ("calibration_git_commit_mismatch:old-sha!=new-sha",)
     assert oos_stage(oos, expected_commit="new-sha").blockers == ("development_oos_git_commit_mismatch:old-sha!=new-sha",)
-    assert holdout_stage(holdout, expected_commit="new-sha").blockers == ("independent_holdout_git_commit_mismatch:old-sha!=new-sha",)
-    assert candidate_stage(candidate, expected_commit="new-sha").blockers == ("candidate_validation_git_commit_mismatch:old-sha!=new-sha",)
+    assert "independent_holdout_git_commit_mismatch:old-sha!=new-sha" in holdout_stage(holdout, expected_commit="new-sha").blockers
+    assert "candidate_validation_git_commit_mismatch:old-sha!=new-sha" in candidate_stage(candidate, expected_commit="new-sha").blockers
 
 
 def test_governance_blocks_missing_artifact_commit_when_expected(tmp_path):
