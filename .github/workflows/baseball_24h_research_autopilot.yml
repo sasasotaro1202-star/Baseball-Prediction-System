@@ -394,11 +394,12 @@ jobs:
           code_files=(research/game_script_common.py research/game_script_wfo.py research/game_script_engine.py tests/test_game_script_engine.py tests/test_game_script_automation_contract.py .github/workflows/npb_game_script_autoresearch.yml .github/workflows/npb_game_script_watchdog.yml docs/GAME_SCRIPT_V4.md)
           (for f in "${code_files[@]}"; do sha256sum "$f"; done) | sha256sum | awk '{print $1}' > results/code_fingerprint.txt
 
-          dedicated_json="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow npb_game_script_autoresearch.yml --branch main --limit 20 --json databaseId,conclusion,createdAt 2>/dev/null || true)"
+          dedicated_json="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow npb_game_script_autoresearch.yml --branch main --limit 20 --json databaseId,conclusion,createdAt,headSha 2>/dev/null || true)"
           dedicated_success_id="$(echo "$dedicated_json" | jq -r '[.[] | select(.conclusion=="success")] | .[0].databaseId // empty')"
           dedicated_success_created="$(echo "$dedicated_json" | jq -r '[.[] | select(.conclusion=="success")] | .[0].createdAt // empty')"
+          dedicated_success_sha="$(echo "$dedicated_json" | jq -r '[.[] | select(.conclusion=="success")] | .[0].headSha // empty')"
           delegated_recent=0
-          if [ -n "$dedicated_success_created" ]; then
+          if [ -n "$dedicated_success_created" ] && [ "$dedicated_success_sha" = "$GITHUB_SHA" ]; then
             created_epoch="$(date -d "$dedicated_success_created" +%s)"
             age_minutes=$(( ($(date +%s) - created_epoch) / 60 ))
             if [ "$age_minutes" -le 1500 ]; then delegated_recent=1; fi
@@ -477,9 +478,11 @@ jobs:
           delegated_recent="$(awk -F= '$1=="dedicated_recent"{print $2; exit}' results/delegation_decision.txt)"
           current_code="$(tr -d '[:space:]' < results/code_fingerprint.txt)"
           current_validation="$(tr -d '[:space:]' < results/validation_source_fingerprint.txt)"
+          current_context="$(tr -d '[:space:]' < results/context_source_fingerprint.txt)"
           previous_json="$(find .previous_evidence -type f -name 'game_script_screening.json' -print -quit || true)"
           previous_code=""
           previous_validation=""
+          previous_context=""
           if [ -n "$previous_json" ]; then
             previous_code="$(python - "$previous_json" <<'PY'
 import json, sys
@@ -493,10 +496,16 @@ try: print(json.load(open(sys.argv[1],encoding="utf-8")).get("validation_source_
 except Exception: print("")
 PY
 )"
+            previous_context="$(python - "$previous_json" <<'PY'
+import json, sys
+try: print(json.load(open(sys.argv[1],encoding="utf-8")).get("context_source_fingerprint",""))
+except Exception: print("")
+PY
+)"
           fi
 
           mode="FULL_WFO_FALLBACK"
-          if [ "$delegated_recent" = "1" ]; then
+          if [ "$delegated_recent" = "1" ] && [ "$previous_context" = "$current_context" ]; then
             python - <<'PY'
 import json, os
 from pathlib import Path
@@ -519,11 +528,16 @@ PY
           fi
 
           checkpoint="$(find .previous_evidence -type f -name 'game_script_checkpoint.json' -print -quit || true)"
-          if [ -n "$checkpoint" ] && [ "$previous_code" = "$current_code" ] && [ "$previous_validation" = "$current_validation" ]; then
+          if [ "$delegated_recent" = "1" ] && [ "$previous_context" != "$current_context" ] && [ -n "$checkpoint" ] && [ "$previous_code" = "$current_code" ] && [ "$previous_validation" = "$current_validation" ]; then
+            echo "Dedicated run is recent but current-season PBP changed; forcing shadow refresh."
+            cp "$checkpoint" results/game_script_checkpoint.json
+            mode="SHADOW_REFRESH_FALLBACK_CONTEXT_UPDATE"
+          elif [ -n "$checkpoint" ] && [ "$previous_code" = "$current_code" ] && [ "$previous_validation" = "$current_validation" ]; then
             cp "$checkpoint" results/game_script_checkpoint.json
             mode="SHADOW_REFRESH_FALLBACK"
           fi
           echo "mode=$mode" | tee -a results/delegation_decision.txt
+          export GAME_SCRIPT_FALLBACK_MODE="$mode"
 
           current_month=$(TZ=Asia/Tokyo date +%Y-%m)
           args=(
