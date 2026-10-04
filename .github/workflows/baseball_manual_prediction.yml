@@ -109,12 +109,32 @@ jobs:
             # Fast NPB path: canonical PIT/model computation with observation-only
             # enrichment deferred. This remains explicit RESEARCH_SHADOW when
             # NPB production is not formally adopted.
+            #
+            # Do not treat stdout as the result protocol. The fast wrapper writes
+            # an atomic JSON file, while diagnostics may legitimately be emitted
+            # by the underlying model runtime. Copy only that result file into
+            # the stable manual-result path.
             target="$(TZ=Asia/Tokyo date +%Y-%m-%d)"
-            python scripts/npb_fast_prediction.py               --date "${target}"               --data-dir data               --research-shadow               --minimum-lead-minutes 0               > "${output}"
+            set +e
+            python scripts/npb_fast_prediction.py \
+              --date "${target}" \
+              --data-dir data \
+              --research-shadow \
+              --minimum-lead-minutes 0 \
+              > results/npb_fast_stdout.log \
+              2> results/npb_fast_stderr.log
             rc=$?
+            set -e
+            source_output="results/npb_shadow_${target}.json"
+            if [ -s "${source_output}" ]; then
+              cp "${source_output}" "${output}"
+            fi
           else
             set +e
-            python -m prediction.current_production               --league "${{ inputs.league }}"               --data-dir data               > "${output}"
+            python -m prediction.current_production \
+              --league "${{ inputs.league }}" \
+              --data-dir data \
+              > "${output}"
             rc=$?
             set -e
           fi
