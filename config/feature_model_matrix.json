@@ -1,0 +1,59 @@
+{
+  "schema_version": "baseball-feature-model-matrix-v1",
+  "status": "RESEARCH_ONLY",
+  "feature_variants_source": "research/feature_set_variants.py",
+  "half_lives": [
+    600,
+    900,
+    1800,
+    3600,
+    7200
+  ],
+  "model_pools": {
+    "LINEAR_TREE": [
+      "Logistic",
+      "HistGB"
+    ],
+    "BROAD_TREE": [
+      "Logistic",
+      "HistGB",
+      "RandomForest",
+      "ExtraTrees"
+    ],
+    "DIVERSE": [
+      "Logistic",
+      "HistGB",
+      "RandomForest",
+      "ExtraTrees",
+      "KNNAnalog"
+    ]
+  },
+  "total_unique_feature_variants": 33,
+  "configurations_per_model_pool": 165,
+  "configurations_per_league": 495,
+  "configurations_both_leagues": 990,
+  "holdout_fraction": 0.2,
+  "development_folds": [
+    {
+      "start_ratio": 0.55,
+      "end_ratio": 0.68
+    },
+    {
+      "start_ratio": 0.68,
+      "end_ratio": 0.81
+    },
+    {
+      "start_ratio": 0.81,
+      "end_ratio": 1
+    }
+  ],
+  "selection_primary_metric": "mean chronological Development OOS LogLoss",
+  "selection_secondary_metrics": [
+    "mean chronological Development OOS Brier",
+    "ECE",
+    "Accuracy"
+  ],
+  "holdout_policy": "newest 20 percent locked before candidate selection; evaluate only the Development-selected winner",
+  "adoption_policy": "NO_AUTO_ADOPTION; winner must pass full WFO, calibration, ablation, robustness and frozen holdout gates",
+  "pit_policy": "all variants use the same PIT-safe feature matrix; conditional lineup/weather variants fail closed when required availability evidence is absent"
+}
