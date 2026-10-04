@@ -189,7 +189,7 @@ def run(
     variants: list[str] | None = None,
     half_lives: list[int] | None = None,
     model_pools: list[str] | None = None,
-    max_configs: int = 160,
+    max_configs: int = 500,
     mlb_start: int = 2020,
     mlb_end: int = 2026,
 ) -> dict[str, Any]:
@@ -229,9 +229,17 @@ def run(
         for p in chosen_pools
     ]
     if len(configs) > max_configs:
-        # Deterministic coverage-preserving truncation: keep every variant,
-        # spreading the budget across half-life/model-pool combinations.
-        configs = configs[:max_configs]
+        # Deterministic truncation that preserves every feature variant first,
+        # then every half-life before filling the remaining slots. The workflow
+        # sets max_configs=165 for the full 33 x 5 matrix per model-pool lane.
+        selected: list[Config] = []
+        for variant in chosen_variants:
+            for half_life in chosen_hl:
+                for pool in chosen_pools:
+                    candidate = Config(variant, half_life, pool)
+                    if candidate in configs and len(selected) < max_configs:
+                        selected.append(candidate)
+        configs = selected
 
     baseline_ids = {f"BASELINE_TEAM_STATE|hl={h}|pool={p}" for h in chosen_hl for p in chosen_pools}
     results: list[dict[str, Any]] = []
@@ -354,7 +362,7 @@ def main() -> int:
     parser.add_argument("--variant", action="append", dest="variants")
     parser.add_argument("--half-life", action="append", dest="half_lives", type=int)
     parser.add_argument("--model-pool", action="append", dest="model_pools")
-    parser.add_argument("--max-configs", type=int, default=160)
+    parser.add_argument("--max-configs", type=int, default=500)
     parser.add_argument("--mlb-start", type=int, default=2020)
     parser.add_argument("--mlb-end", type=int, default=2026)
     args = parser.parse_args()
