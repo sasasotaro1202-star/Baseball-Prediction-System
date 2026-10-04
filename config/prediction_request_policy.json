@@ -43,7 +43,8 @@
       "data",
       "--research-shadow",
       "--minimum-lead-minutes",
-      "0"
+      "0",
+      "--fast"
     ]
   },
   "result_directory": "prediction_requests/results",
@@ -53,7 +54,8 @@
     "production_runtime": "Only use when the current production runtime registry says the competition is CURRENT_PRODUCTION.",
     "research_shadow": "Explicit research lane only; never changes Champion/Production state.",
     "unknown_competition": "Must fail closed.",
-    "missing_output": "Must fail closed; never substitute an independently generated forecast."
+    "missing_output": "Must fail closed; never substitute an independently generated forecast.",
+    "fast_mode": "Fast user requests defer observation-only enrichment; PIT-safe model inputs and probability computation remain unchanged."
   },
   "max_verified_cache_age_seconds": 900,
   "output_paths": {
