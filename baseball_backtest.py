@@ -2264,12 +2264,16 @@ class BaseballBacktest:
     def fit_score_ensemble(self, X: pd.DataFrame, y_home: np.ndarray, y_away: np.ndarray, league: str):
         if len(X) < max(80, MIN_TRAIN // 2):
             return None
+        score_fast_validation = os.getenv("BASEBALL_SCORE_FAST_VALIDATION", "0") == "1"
+        # Score fast validation is an explicit research-only compute profile.
+        # Activating it must also activate the lightweight model defaults; otherwise
+        # the caller could shorten validation splits while still paying for the
+        # full five-model score ensemble and its expensive final refits.
         fast = os.getenv("BASEBALL_FAST_OOS", "0") == "1"
+        if score_fast_validation:
+            fast = True
         splits = self._validation_splits(len(X))
         if fast and splits:
-            splits = splits[-1:]
-        score_fast_validation = os.getenv("BASEBALL_SCORE_FAST_VALIDATION", "0") == "1"
-        if score_fast_validation and splits:
             splits = splits[-1:]
         score_tree_estimators = self._env_int(
             "BASEBALL_SCORE_TREE_ESTIMATORS", 90 if fast else 180, minimum=1
@@ -2296,6 +2300,11 @@ class BaseballBacktest:
             f"BASEBALL_FAST_SCORE_MODEL_POOL_{league}",
             os.getenv("BASEBALL_FAST_SCORE_MODEL_POOL", ""),
         ).strip()
+        if score_fast_validation and not score_pool_raw and league == "NPB":
+            # Keep the bounded NPB research profile deterministic even when callers
+            # do not provide a per-league pool override. MLB keeps its existing
+            # lightweight multi-model pool unless a caller narrows it explicitly.
+            score_pool_raw = "Poisson,HistPoisson"
         if fast and score_pool_raw:
             requested_scores = [name.strip() for name in score_pool_raw.split(",") if name.strip()]
             known_scores = {name for name, _factory in specs}
@@ -2310,6 +2319,16 @@ class BaseballBacktest:
             specs = [item for item in specs if item[0] in requested_scores]
             if not specs:
                 raise ValueError("BASEBALL_FAST_SCORE_MODEL_POOL selected no available models")
+        self.audit.append({
+            "type": "score_compute_profile",
+            "league": league,
+            "fast": bool(fast),
+            "score_fast_validation": bool(score_fast_validation),
+            "model_pool": [name for name, _factory in specs],
+            "regression_max_iter": int(score_regression_max_iter),
+            "hist_max_iter": int(score_hist_iter),
+            "tree_estimators": int(score_tree_estimators),
+        })
         scored=[]
         residuals_by_model={}
         for name, factory in specs:

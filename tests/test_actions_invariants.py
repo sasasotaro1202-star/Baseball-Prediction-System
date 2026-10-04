@@ -212,9 +212,32 @@ def test_candidate_oos_watchdog_recovers_stale_in_progress_runs_after_sha_drift(
 def test_candidate_oos_watchdog_allows_validated_autonomous_control_plane_continuity():
     text = (ROOT / ".github" / "workflows" / "baseball_candidate_oos_watchdog.yml").read_text(encoding="utf-8")
     assert ".github/workflows/baseball_autonomous_control_plane.yml" in text
-    # Control-plane-only orchestration changes are explicitly non-runtime and
-    # must not invalidate a running chronological OOS replay.
-    assert "Never interrupt an already-running OOS lifecycle for those control-plane-only changes." in text
+    # The watchdog classifies validated control-plane-only workflow changes as
+    # non-runtime continuity and keeps compatible queued OOS work intact.
+    assert "is_non_runtime_only_change" in text
+    assert "baseball_autonomous_control_plane.yml" in text
+    assert "Keeping queued candidate run" in text
+
+
+def test_control_plane_and_v44_triggers_do_not_react_to_unrelated_main_commits():
+    control = (ROOT / ".github" / "workflows" / "baseball_autonomous_control_plane.yml").read_text(encoding="utf-8")
+    v44 = (ROOT / ".github" / "workflows" / "baseball_v44_compatibility.yml").read_text(encoding="utf-8")
+    control_trigger = control.split("permissions:", 1)[0]
+    v44_trigger = v44.split("permissions:", 1)[0]
+
+    # Control-plane heartbeat is schedule/manual driven. Broad main pushes create
+    # recursive orchestration pressure and are intentionally excluded.
+    assert "push:" not in control_trigger
+    assert "schedule:" in control_trigger
+    assert "workflow_dispatch:" in control_trigger
+
+    # v4.4 compatibility remains automatic for code/test changes, but excludes
+    # append-only experience/data churn and unrelated documentation updates.
+    assert "push:" in v44_trigger
+    assert "paths:" in v44_trigger
+    assert "'**.py'" in v44_trigger
+    assert "'tests/**'" in v44_trigger
+    assert "data/experience" not in v44_trigger
 
 
 def test_npb_production_never_scores_started_games_and_accepts_empty_future_state():
@@ -375,11 +398,10 @@ def test_24h_supervisor_recovers_only_latest_zero_job_pregame_failures_with_dail
     assert 'gh_retry workflow run "${PREGAME_WORKFLOW}" --repo "${GH_REPO}" --ref main' in text
     assert "Pregame recovery verification" in text
     # The supervisor records a verified redispatch as a summary event; the
-    # recovery workflow owns the stronger terminal-state token.
+    # dedicated recovery workflow owns the stronger zero-job terminal-state token.
     assert "Pregame dispatch verified:" in text
-    assert "FAILED_PREGAME_ZERO_JOB_DISPATCH" in text
     assert "gh run rerun" not in text
-    assert "Latest pregame failure is not a zero-job startup failure" in text
+    assert 'Latest pregame failure ${latest_failure_id}: created=${latest_failure_created} jobs=${latest_failure_job_count}' in text
     assert "HTTP 4[0-9]{2}" in text
     assert "HTTP (408|429)" in text
     assert "gh deterministic HTTP 4xx; refusing retry." in text
@@ -392,7 +414,10 @@ def test_24h_supervisor_recovers_only_latest_zero_job_pregame_failures_with_dail
     assert len(pregame.splitlines()) <= 90
     assert (ROOT / ".github" / "workflows" / "baseball_60m_pregame_auto.yml").is_file()
     assert (ROOT / "scripts" / "pregame_auto.sh").is_file()
-    assert "--field recovery_mode=zero_job_startup_recovery" in text
+    assert 'pregame_recovery_mode="zero_job_startup_recovery"' in text
+    assert 'pregame_recovery_mode="bootstrap_recovery"' in text
+    assert 'pregame_recovery_mode="missed_schedule_recovery"' in text
+    assert '--field recovery_mode="${pregame_recovery_mode}"' in text
 
 
 

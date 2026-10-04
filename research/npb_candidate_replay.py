@@ -205,13 +205,19 @@ def _target_metrics(
     games_holdout: pd.DataFrame,
     X_holdout: pd.DataFrame,
     p: np.ndarray,
+    score_fit: Any | None = None,
 ) -> tuple[dict[str, float], dict[str, float]]:
-    score_fit = bt.fit_score_ensemble(
-        X_train,
-        games_train["home_score"].astype(float).to_numpy(),
-        games_train["away_score"].astype(float).to_numpy(),
-        "NPB",
-    )
+    # Score targets are independent from win probabilities. Reuse an explicitly
+    # supplied score fit when baseline and candidate are evaluated on the same
+    # locked holdout; refitting the identical score model twice only burns compute
+    # and does not add evidence.
+    if score_fit is None:
+        score_fit = bt.fit_score_ensemble(
+            X_train,
+            games_train["home_score"].astype(float).to_numpy(),
+            games_train["away_score"].astype(float).to_numpy(),
+            "NPB",
+        )
     home_true = games_holdout["home_score"].astype(float).to_numpy()
     away_true = games_holdout["away_score"].astype(float).to_numpy()
     expected_home: list[float] = []
@@ -646,8 +652,20 @@ def run_npb_candidate_cycle(
     cand_metrics = _metrics(y_holdout, cand_p)
     base_metrics.update(_draw_metrics(y_holdout, base_p))
     cand_metrics.update(_draw_metrics(y_holdout, cand_p))
-    base_score, base_hilo = _target_metrics(bt, X_train, games_train, games_holdout, X_holdout, base_p)
-    cand_score, cand_hilo = _target_metrics(bt, X_train, games_train, games_holdout, X_holdout, cand_p)
+    score_fit = bt.fit_score_ensemble(
+        X_train,
+        games_train["home_score"].astype(float).to_numpy(),
+        games_train["away_score"].astype(float).to_numpy(),
+        "NPB",
+    )
+    if score_fit is None:
+        raise RuntimeError("score ensemble could not be fitted for locked holdout")
+    base_score, base_hilo = _target_metrics(
+        bt, X_train, games_train, games_holdout, X_holdout, base_p, score_fit
+    )
+    cand_score, cand_hilo = _target_metrics(
+        bt, X_train, games_train, games_holdout, X_holdout, cand_p, score_fit
+    )
 
     evaluation_periods = _evaluation_periods(y_holdout, base_p, cand_p)
 

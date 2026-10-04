@@ -108,3 +108,35 @@ def test_invalid_catboost_random_strength_fails_closed(monkeypatch):
         assert "BASEBALL_CATBOOST_RANDOM_STRENGTH" in str(exc)
     else:
         raise AssertionError("invalid CatBoost randomness configuration was silently accepted")
+
+
+def test_score_fast_validation_activates_bounded_profile():
+    source = (
+        __import__("pathlib").Path("baseball_backtest.py")
+        .read_text(encoding="utf-8")
+    )
+    assert 'if score_fast_validation:' in source
+    assert '            fast = True' in source
+    assert 'if score_fast_validation and not score_pool_raw and league == "NPB":' in source
+    assert '"type": "score_compute_profile"' in source
+
+
+def test_candidate_oos_sets_explicit_npb_score_compute_profile():
+    workflow = (
+        __import__("pathlib").Path(".github/workflows/baseball_candidate_oos.yml")
+        .read_text(encoding="utf-8")
+    )
+    assert 'export BASEBALL_FAST_SCORE_MODEL_POOL_NPB="Poisson,HistPoisson"' in workflow
+    assert "export BASEBALL_SCORE_REGRESSION_MAX_ITER=300" in workflow
+    assert "export BASEBALL_SCORE_HIST_MAX_ITER=120" in workflow
+
+
+def test_npb_locked_holdout_reuses_one_score_fit_for_baseline_and_candidate():
+    source = (
+        __import__("pathlib").Path("research/npb_candidate_replay.py")
+        .read_text(encoding="utf-8")
+    )
+    assert "score_fit: Any | None = None" in source
+    assert source.count('score_fit = bt.fit_score_ensemble(') == 2
+    assert 'base_p, score_fit' in source
+    assert 'cand_p, score_fit' in source

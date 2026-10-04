@@ -8,24 +8,6 @@ on:
   # completions are too bursty and caused self-cancellation/queue storms.
   # The 15-minute loop is the single orchestration heartbeat; target workflows
   # retain their own workflow_run hooks for evidence-specific tasks.
-  push:
-    branches: [main]
-    paths:
-      - "research/autonomous_control_plane.py"
-      - "tests/test_autonomous_control_plane.py"
-      - "tests/test_project_governance.py"
-      - "tests/test_action_preflight.py"
-      - ".github/workflows/baseball_autonomous_control_plane.yml"
-      - ".github/workflows/**"
-      - "research/project_governance.py"
-      - "research/autonomous_control_plane.py"
-      - "tests/test_autonomous_control_plane.py"
-      - "PROJECT_SOURCE.md"
-      - "PROJECT_SOURCE_PROVENANCE.json"
-      - "PROJECT_INSTRUCTIONS.md"
-      - "config/current_production_runtime.json"
-      - "docs/FEATURE_MANIFEST.md"
-
 permissions:
   actions: write
   contents: read
