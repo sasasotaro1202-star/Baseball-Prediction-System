@@ -27,6 +27,7 @@ def main(argv=None) -> int:
     p.add_argument("--simulations",type=int,default=600)
     p.add_argument("--seed",type=int,default=42)
     p.add_argument("--no-ablation",action="store_true")
+    p.add_argument("--shadow-only",action="store_true",help="refresh only the frozen current-month shadow using a complete compatible validation checkpoint")
     p.add_argument("--checkpoint-path",default="results/game_script_checkpoint.json")
     p.add_argument("--checkpoint-every",type=int,default=1)
     p.add_argument("--output",default="results/game_script_screening.json")
