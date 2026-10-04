@@ -123,7 +123,7 @@ def _validate_generated_output(payload: dict[str, Any], request: dict[str, Any],
             for key in ("game_id", "home", "away"):
                 if not str(pred.get(key, "")).strip():
                     raise ValueError(f"prediction row missing {key}")
-        expected_research = lane == "VALIDATED_RESEARCH_SHADOW"
+        expected_research = lane in {"VALIDATED_RESEARCH_SHADOW", "COMPETITION_SPECIFIC_RESEARCH_RUNTIME"}
         if expected_research and status != "RESEARCH_SHADOW_EXECUTED":
             raise ValueError("research lane output must retain RESEARCH_SHADOW_EXECUTED status")
 
@@ -239,6 +239,7 @@ def main(argv: list[str] | None = None) -> int:
 
     production_template = policy.get("production_commands", {}).get(competition_id)
     research_template = policy.get("validated_research_shadow_commands", {}).get(competition_id)
+    competition_research_template = policy.get("competition_specific_research_commands", {}).get(competition_id)
 
     command: list[str] | None = None
     lane = ""
@@ -248,6 +249,9 @@ def main(argv: list[str] | None = None) -> int:
     elif isinstance(research_template, list):
         command = _format_command(research_template, target_date)
         lane = "VALIDATED_RESEARCH_SHADOW"
+    elif isinstance(competition_research_template, list):
+        command = _format_command(competition_research_template, target_date)
+        lane = "COMPETITION_SPECIFIC_RESEARCH_RUNTIME"
 
     if command is None:
         output = {
