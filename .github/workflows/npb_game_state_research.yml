@@ -141,7 +141,6 @@ jobs:
 
       - name: Run chronological Game-State screening
         id: game_state
-        continue-on-error: true
         timeout-minutes: 75
         env:
           SIMULATIONS: ${{ inputs.simulations || '500' }}
@@ -161,12 +160,10 @@ jobs:
             --seed 42 \
             --output results/game_state_screening.json \
             --checkpoint results/game_state_checkpoint.json
-          rc=$?
-          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
-          exit 0
+          exit $?
 
       - name: Verify screening result
-        if: ${{ steps.game_state.outputs.exit_code == '0' }}
+        if: success()
         timeout-minutes: 5
         run: |
           set -euo pipefail
@@ -243,10 +240,4 @@ jobs:
             git rebase origin/main
           done
           echo "Unable to persist Game-State evidence after retries." >&2
-          exit 1
-
-      - name: Fail closed on research execution failure
-        if: ${{ steps.game_state.outputs.exit_code != '0' }}
-        run: |
-          echo "Game-State research did not complete successfully; preserved checkpoint/evidence where available." >&2
           exit 1
