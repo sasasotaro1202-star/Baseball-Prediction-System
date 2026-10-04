@@ -1357,9 +1357,10 @@ class BaseballBacktest:
         if not np.isfinite(cat_random_strength) or cat_random_strength < 0:
             raise ValueError("BASEBALL_CATBOOST_RANDOM_STRENGTH must be finite and >= 0")
         cat_deterministic = os.getenv("BASEBALL_CATBOOST_DETERMINISTIC", "0") == "1"
+        logistic_max_iter = self._env_int("BASEBALL_LOGISTIC_MAX_ITER", 600 if fast else 2500, minimum=100)
 
         m: Dict[str, Any] = {
-            "Logistic": Pipeline([("scale", StandardScaler()), ("m", LogisticRegression(C=0.5, max_iter=2500, class_weight="balanced", random_state=RANDOM_STATE))]),
+            "Logistic": Pipeline([("scale", StandardScaler()), ("m", LogisticRegression(C=0.5, max_iter=logistic_max_iter, class_weight="balanced", random_state=RANDOM_STATE))]),
             "HistGB": HistGradientBoostingClassifier(max_iter=hist_max_iter, learning_rate=0.035, max_leaf_nodes=15, min_samples_leaf=12, l2_regularization=2.0, random_state=RANDOM_STATE),
             "RandomForest": RandomForestClassifier(n_estimators=rf_estimators, max_depth=10, min_samples_leaf=6, max_features=0.55, class_weight="balanced_subsample", random_state=RANDOM_STATE, n_jobs=self.inner_jobs),
             "ExtraTrees": ExtraTreesClassifier(n_estimators=et_estimators, max_depth=12, min_samples_leaf=5, max_features=0.65, class_weight="balanced", random_state=RANDOM_STATE, n_jobs=self.inner_jobs),
@@ -2276,13 +2277,16 @@ class BaseballBacktest:
         score_hist_iter = self._env_int(
             "BASEBALL_SCORE_HIST_MAX_ITER", 120 if fast else 180, minimum=1
         )
+        score_regression_max_iter = self._env_int(
+            "BASEBALL_SCORE_REGRESSION_MAX_ITER", 300 if fast else 1000, minimum=50
+        )
         specs = [
-            ("Poisson", lambda: PoissonRegressor(alpha=0.15, max_iter=1000)),
+            ("Poisson", lambda: PoissonRegressor(alpha=0.15, max_iter=score_regression_max_iter)),
             # Tweedie adds a flexible mean-variance relationship for run counts.
             # It is a challenger only; validation and the locked holdout decide
             # whether it contributes to the deployed score ensemble.
             ("Tweedie", lambda: TweedieRegressor(
-                power=1.5, alpha=0.08, link="log", max_iter=1000
+                power=1.5, alpha=0.08, link="log", max_iter=score_regression_max_iter
             )),
             ("HistPoisson", lambda: HistGradientBoostingRegressor(loss="poisson", max_iter=score_hist_iter, learning_rate=0.035, max_leaf_nodes=15, l2_regularization=1.5, random_state=42)),
             ("RFReg", lambda: RandomForestRegressor(n_estimators=score_tree_estimators, min_samples_leaf=5, max_features=0.75, random_state=42, n_jobs=self.inner_jobs)),
