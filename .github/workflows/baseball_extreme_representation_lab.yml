@@ -98,6 +98,10 @@ jobs:
         run: |
           set -euo pipefail
           python -m research.extreme_representation_lab             --league "${{ matrix.league }}"             --top-k-a 12             --top-k-b 4             --mlb-start 2020             --mlb-end 2026
+      - name: Verify evidence
+        run: |
+          set -euo pipefail
+          python scripts/verify_extreme_representation_lab.py             "results/extreme_representation_lab_${{ matrix.league }}.json"
       - name: Save exact research result cache
         if: steps.result-cache.outputs.cache-hit != 'true' && success()
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
@@ -105,10 +109,6 @@ jobs:
           path: results
           key: baseball-extreme-representation-v1-${{ matrix.league }}-${{ github.sha }}
 
-      - name: Verify evidence
-        run: |
-          set -euo pipefail
-          python scripts/verify_extreme_representation_lab.py             "results/extreme_representation_lab_${{ matrix.league }}.json"
       - name: Verify main snapshot after evidence generation
         env:
           EXPECTED_SHA: ${{ github.sha }}
