@@ -2308,3 +2308,32 @@ Feature assembly order must be deterministic. Differential columns must remain e
 
 A runtime feature schema mismatch between prediction games is a fail-closed condition. Feature metadata is part of artifact integrity and reproducibility.
 
+97. MULTIPLE FEATURE-SET VARIANTS AND EXACT RUNTIME TRACEABILITY
+
+Feature engineering is not a single fixed vector. The system may maintain multiple feature-set variants by league, competition, target contract, runtime lane, PIT-safe context, data availability and research stage.
+
+Canonical variant concepts include:
+BASELINE_TEAM_STATE
+TEAM_PLUS_STARTER
+TEAM_PLUS_BULLPEN
+TEAM_PLUS_LINEUP_PIT_SAFE
+TEAM_PLUS_WEATHER_PIT_SAFE
+FULL_VALIDATED_ENSEMBLE
+SCORE_MODEL_FEATURE_SET
+RESEARCH_STATCAST_SET
+
+These names do not imply current implementation or production eligibility. The actual runtime output is authoritative.
+
+For every prediction artifact, feature provenance should include:
+feature_set_id
+feature_manifest_version
+feature_count
+feature_schema_hash
+feature_context_mode
+feature/data-quality status
+source/data snapshot identifiers
+
+A 482-column NPB or 470-column MLB base matrix is an observed current contract for the inspected match_features path, not a permanent universal requirement. The exact feature columns may differ by validated feature-set variant.
+
+Selection must be based on chronological OOS/WFO, PIT eligibility, coverage/missingness, calibration, robustness, cost and frozen holdout. Larger feature count is not a selection criterion by itself.
+
