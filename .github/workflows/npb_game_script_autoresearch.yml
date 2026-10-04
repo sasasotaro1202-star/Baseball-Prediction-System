@@ -120,7 +120,10 @@ jobs:
           previous_run_id=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "npb_game_script_autoresearch.yml" --branch main --limit 20 --json databaseId,conclusion --jq '[.[] | select(.conclusion=="success")] | .[0].databaseId // empty')
           echo "previous_run_id=$previous_run_id" | tee results/previous_run.txt
           if [ -n "$previous_run_id" ]; then
-            gh run download "$previous_run_id" --repo "$GITHUB_REPOSITORY" --dir .previous_evidence
+            if ! gh run download "$previous_run_id" --repo "$GITHUB_REPOSITORY" --dir .previous_evidence; then
+              echo "Previous evidence download failed; continuing without resume/change-detection evidence."
+              rm -rf .previous_evidence/*
+            fi
           fi
 
       - name: Decide whether to recompute
@@ -154,6 +157,8 @@ PY
           reason="no previous successful evidence"
           if [ "$force_research" = "true" ]; then
             reason="manual force_research requested"
+          elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            reason="manual workflow dispatch requested"
           elif [ "$prev_source" = "$current_source" ] && [ "$prev_manifest" = "$current_manifest" ] && [ "$prev_code" = "$current_code" ]; then
             need_research=0
             reason="Game-Script code and upstream PBP manifest unchanged"
