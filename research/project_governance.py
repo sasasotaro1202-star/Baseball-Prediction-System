@@ -29,6 +29,8 @@ REQUIRED_FILES = (
     "docs/FEATURE_MANIFEST.md",
     "research/action_preflight.py",
     "research/closed_loop_governance.py",
+    "research/autonomous_control_plane.py",
+    "tests/test_autonomous_control_plane.py",
 )
 
 WORKFLOW_CONTRACTS: dict[str, dict[str, Any]] = {
@@ -80,6 +82,8 @@ WORKFLOW_CONTRACTS: dict[str, dict[str, Any]] = {
     ".github/workflows/npb_prediction_experience_archive.yml": {
         "monitor": True,
         "max_age_hours": 6,
+        "allowed_conclusions": ("success", "skipped"),
+        "defer_stale_conclusions": ("skipped",),
         "required": ("workflow_run:", "schedule:", "contents: write"),
     },
     ".github/workflows/baseball_24h_research_keeper.yml": {
@@ -276,21 +280,75 @@ def action_health(repo: str, now: datetime | None = None) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     payload = _gh_json([f"repos/{repo}/actions/runs?per_page=100&branch=main"])
     runs = payload.get("workflow_runs", [])
+    current_sha = os.environ.get("GITHUB_SHA", "").strip() or None
+
+    control_path = ".github/workflows/baseball_autonomous_control_plane.yml"
+    control_runs = [
+        r for r in runs
+        if str(r.get("path", "")).lstrip("/") == control_path
+    ]
+    control_runs.sort(key=lambda r: r.get("created_at", ""), reverse=True)
+    control = control_runs[0] if control_runs else None
+    control_age_hours = None
+    control_healthy = False
+    if control:
+        control_age_hours = max(
+            0.0,
+            (now - _parse_time(control["created_at"])).total_seconds() / 3600.0,
+        )
+        if control.get("status") in {"queued", "pending", "waiting", "requested", "in_progress"}:
+            control_healthy = True
+        elif control.get("conclusion") == "success" and control_age_hours <= 0.5:
+            control_healthy = True
+
     report: dict[str, Any] = {
         "checked_at": now.isoformat(),
         "repository": repo,
+        "control_plane": {
+            "workflow": control_path,
+            "state": "HEALTHY" if control_healthy else ("NO_RUN" if control is None else "STALE_OR_FAILED"),
+            "run_id": control.get("id") if control else None,
+            "status": control.get("status") if control else None,
+            "conclusion": control.get("conclusion") if control else None,
+            "age_hours": round(control_age_hours, 3) if control_age_hours is not None else None,
+        },
         "workflows": {},
         "blockers": [],
+        "deferred": [],
     }
 
     for workflow_path, contract in WORKFLOW_CONTRACTS.items():
         if not contract["monitor"]:
             continue
-        matching = [r for r in runs if str(r.get("path", "")).lstrip("/") == workflow_path]
+
+        matching = [
+            r for r in runs
+            if str(r.get("path", "")).lstrip("/") == workflow_path
+        ]
         matching.sort(key=lambda r: r.get("created_at", ""), reverse=True)
+
         if not matching:
-            report["workflows"][workflow_path] = {"state": "NO_RUN"}
-            report["blockers"].append(f"actions_no_recent_run:{workflow_path}")
+            entry = {
+                "state": "NO_RUN",
+                "run_id": None,
+                "status": None,
+                "conclusion": None,
+                "created_at": None,
+                "updated_at": None,
+                "head_sha": None,
+                "current_sha": current_sha,
+                "sha_relation": "UNKNOWN",
+                "age_hours": None,
+                "reasons": [],
+            }
+            if workflow_path != control_path and control_healthy:
+                entry["state"] = "DEFERRED"
+                entry["reasons"] = ["awaiting_autonomous_control_plane_reconciliation"]
+                report["deferred"].append(f"actions_no_recent_run:{workflow_path}")
+            else:
+                entry["reasons"] = ["no_recent_run"]
+                report["blockers"].append(f"actions_no_recent_run:{workflow_path}")
+            report["workflows"][workflow_path] = entry
             continue
 
         latest = matching[0]
@@ -299,18 +357,43 @@ def action_health(repo: str, now: datetime | None = None) -> dict[str, Any]:
         status = latest.get("status")
         conclusion = latest.get("conclusion")
         head_sha = latest.get("head_sha")
-        current_sha = os.environ.get("GITHUB_SHA", "").strip() or None
 
         state = "HEALTHY"
         reasons: list[str] = []
-        if age_hours > float(contract["max_age_hours"]):
-            state = "STALE"
-            reasons.append(f"age_hours={age_hours:.2f}>{contract['max_age_hours']}")
-        active_statuses = {"queued", "pending", "waiting", "requested", "in_progress"}
-        if status not in active_statuses and conclusion != "success":
-            state = "FAILED"
-            reasons.append(f"conclusion={conclusion}")
-        if state != "HEALTHY":
+
+        if status in {"queued", "pending", "waiting", "requested", "in_progress"}:
+            state = "HEALTHY"
+            reasons.append("active_run")
+        else:
+            allowed_conclusions = set(contract.get("allowed_conclusions", ("success",)))
+            if conclusion not in allowed_conclusions:
+                state = "FAILED"
+                reasons.append(f"conclusion={conclusion}")
+
+        if state == "HEALTHY" and status not in {"queued", "pending", "waiting", "requested", "in_progress"}:
+            if age_hours > float(contract["max_age_hours"]):
+                if conclusion in set(contract.get("defer_stale_conclusions", ())):
+                    state = "DEFERRED"
+                    reasons.append(
+                        f"stale_but_deferred_conclusion:{conclusion}:age_hours={age_hours:.2f}"
+                    )
+                    report["deferred"].append(f"actions_stale_deferred:{workflow_path}")
+                else:
+                    state = "STALE"
+                    reasons.append(
+                        f"age_hours={age_hours:.2f}>{contract['max_age_hours']}"
+                    )
+
+        if state in {"FAILED", "STALE"} and workflow_path != control_path and control_healthy:
+            # The autonomous control plane is the owner of bounded dispatch/recovery.
+            # Governance reports the condition but does not create a second retry loop.
+            report["deferred"].append(f"actions_{state.lower()}_owned_by_control_plane:{workflow_path}")
+            state = "DEFERRED"
+            reasons.append("autonomous_control_plane_owns_recovery")
+
+        if state == "DEFERRED":
+            report["deferred"].append(f"actions_deferred:{workflow_path}")
+        elif state != "HEALTHY":
             report["blockers"].append(f"actions_{state.lower()}:{workflow_path}")
 
         report["workflows"][workflow_path] = {
