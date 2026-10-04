@@ -149,7 +149,7 @@ def workflow_contract_errors(text: str, path: Path) -> list[str]:
             errors.append(f"workflow_failure_masking:{path}")
         if "|| true" in stripped:
             errors.append(f"workflow_failure_masking_or_true:{path}")
-        if re.match(r"^uses:\s+", stripped):
+        if re.match(r"^(?:-\s*)?uses:\s+", stripped):
             ref = stripped.rsplit("@", 1)[-1]
             if not re.fullmatch(r"[0-9a-fA-F]{40}", ref):
                 errors.append(f"workflow_unpinned_action:{path}:{stripped}")
