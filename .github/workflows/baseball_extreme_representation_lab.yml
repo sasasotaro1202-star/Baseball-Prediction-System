@@ -102,13 +102,6 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/verify_extreme_representation_lab.py             "results/extreme_representation_lab_${{ matrix.league }}.json"
-      - name: Save exact research result cache
-        if: steps.result-cache.outputs.cache-hit != 'true' && success()
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-        with:
-          path: results
-          key: baseball-extreme-representation-v1-${{ matrix.league }}-${{ github.sha }}
-
       - name: Verify main snapshot after evidence generation
         env:
           EXPECTED_SHA: ${{ github.sha }}
@@ -117,6 +110,13 @@ jobs:
           git fetch --no-tags --prune origin main
           current="$(git rev-parse origin/main)"
           test "$current" = "$EXPECTED_SHA"
+      - name: Save exact research result cache
+        if: steps.result-cache.outputs.cache-hit != 'true' && success()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: results
+          key: baseball-extreme-representation-v1-${{ matrix.league }}-${{ github.sha }}
+
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

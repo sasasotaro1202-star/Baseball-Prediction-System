@@ -118,13 +118,6 @@ jobs:
           file="results/score_distribution_pattern_lab_${TARGET_LEAGUE,,}.json"
           python scripts/verify_score_distribution_pattern_lab.py "$file"
 
-      - name: Save exact score-lab result cache
-        if: steps.result-cache.outputs.cache-hit != 'true' && success()
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-        with:
-          path: results
-          key: baseball-score-distribution-v1-${{ matrix.league }}-${{ github.sha }}
-
       - name: Verify main snapshot after evidence generation
         env:
           EXPECTED_SHA: ${{ github.sha }}
@@ -133,6 +126,13 @@ jobs:
           git fetch --no-tags --prune origin main
           current="$(git rev-parse origin/main)"
           test "$current" = "$EXPECTED_SHA"
+
+      - name: Save exact score-lab result cache
+        if: steps.result-cache.outputs.cache-hit != 'true' && success()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: results
+          key: baseball-score-distribution-v1-${{ matrix.league }}-${{ github.sha }}
 
       - name: Upload score evidence
         if: always()
