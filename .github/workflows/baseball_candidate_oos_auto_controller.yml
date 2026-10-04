@@ -1,0 +1,125 @@
+name: Baseball Candidate OOS Auto Controller
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/15 * * * *'
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: baseball-candidate-oos-auto-controller
+  cancel-in-progress: true
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      CANDIDATE_WORKFLOW: baseball_candidate_oos.yml
+    steps:
+      - name: Reconcile current-main Candidate OOS evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh_retry() {
+            local attempt output rc
+            for attempt in 1 2 3 4; do
+              if output="$(gh "$@" 2>&1)"; then
+                printf '%s\n' "$output"
+                return 0
+              fi
+              rc=$?
+              echo "gh retry $attempt/4 failed (rc=$rc): $output" >&2
+              if printf '%s' "$output" | grep -Eq 'HTTP 4[0-9]{2}' &&
+                 ! printf '%s' "$output" | grep -Eq 'HTTP (408|429)'; then
+                return "$rc"
+              fi
+              if [ "$attempt" -lt 4 ]; then
+                sleep $((attempt * 2))
+              else
+                return "$rc"
+              fi
+            done
+          }
+
+          current_main="$(gh_retry api "repos/$GH_REPO/git/ref/heads/main" --jq '.object.sha')"
+          test -n "$current_main"
+
+          runs_json="$(gh_retry run list --repo "$GH_REPO" --workflow "$CANDIDATE_WORKFLOW" --limit 50 --json databaseId,status,conclusion,createdAt,updatedAt,headSha)"
+          active_count="$(printf '%s' "$runs_json" | jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+          echo "candidate_active_count=$active_count"
+
+          if [ "$active_count" -gt 0 ]; then
+            echo "Candidate OOS already active; no duplicate dispatch." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          current_terminal="$(printf '%s' "$runs_json" | jq -c --arg sha "$current_main" '[.[] | select(.headSha == $sha and .status == "completed")] | sort_by(.createdAt) | last // empty')"
+          if [ -n "$current_terminal" ]; then
+            id="$(printf '%s' "$current_terminal" | jq -r '.databaseId')"
+            conclusion="$(printf '%s' "$current_terminal" | jq -r '.conclusion // empty')"
+            echo "Current main already has terminal Candidate OOS evidence: $id ($conclusion)."
+            echo "Candidate OOS auto-controller: terminal current-main evidence=$id conclusion=$conclusion; no automatic retry." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          latest_completed_sha="$(printf '%s' "$runs_json" | jq -r '[.[] | select(.status == "completed")] | sort_by(.createdAt) | last.headSha // empty')"
+          dispatch_reason=""
+
+          if [ -z "$latest_completed_sha" ]; then
+            dispatch_reason="no prior completed Candidate OOS evidence"
+          elif [ "$latest_completed_sha" = "$current_main" ]; then
+            echo "Latest completed Candidate OOS is current-main." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          else
+            compare_json="$(gh_retry api "repos/$GH_REPO/compare/$latest_completed_sha...$current_main")"
+            total_commits="$(printf '%s' "$compare_json" | jq -r '.total_commits')"
+            test "$total_commits" != "null"
+
+            evidence_affecting=0
+            while IFS= read -r path; do
+              [ -n "$path" ] || continue
+              case "$path" in
+                data/experience/*|tests/*|docs/*|README*|PROJECT_INSTRUCTIONS.md|results/*|.github/workflows/*)
+                  echo "Non-candidate-runtime change: $path"
+                  ;;
+                *)
+                  evidence_affecting=1
+                  echo "Candidate-evidence-affecting change: $path"
+                  ;;
+              esac
+            done < <(printf '%s' "$compare_json" | jq -r '.files[]?.filename')
+
+            if [ "$evidence_affecting" -ne 1 ]; then
+              echo "No Candidate OOS runtime/evidence change detected." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            dispatch_reason="evidence-affecting changes since $latest_completed_sha"
+          fi
+
+          echo "Dispatching Candidate OOS on current main $current_main ($dispatch_reason)"
+          gh_retry workflow run "$CANDIDATE_WORKFLOW" --repo "$GH_REPO" --ref main
+
+          verified=0
+          for attempt in 1 2 3 4 5; do
+            sleep 3
+            active_current="$(gh_retry run list --repo "$GH_REPO" --workflow "$CANDIDATE_WORKFLOW" --limit 20 --json status,headSha --jq --arg sha "$current_main" '[.[] | select(.headSha == $sha) | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+            echo "Dispatch verification $attempt/5: current_main_active=$active_current"
+            if [ "$active_current" -gt 0 ]; then
+              verified=1
+              break
+            fi
+          done
+
+          if [ "$verified" -ne 1 ]; then
+            echo "Candidate OOS dispatch requested but no current-main active run was observed." >&2
+            exit 1
+          fi
+
+          echo "Candidate OOS auto-controller: DISPATCHED ($dispatch_reason); current_main=$current_main." >> "$GITHUB_STEP_SUMMARY"
