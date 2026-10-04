@@ -96,3 +96,6 @@ The extreme representation laboratory may cross selected PIT-safe feature famili
 ## MLB starter PIT provenance
 Starter evidence keeps announcement, publication, availability, retrieval, observation and revision timestamps distinct.
 A probable-pitcher observation from MLB's current official page is not treated as an announcement timestamp. Production remains fail-closed until explicit announcement/availability provenance is present and passes the timestamp ordering gates.
+
+## Score-distribution research
+Use `research/score_distribution_pattern_lab.py` for research-only exploration of score-model composition, shared scoring correlation, and mean shrinkage. The canonical targets remain independent: Score Top-4 exact-score, Low<=6, High>=7. Candidate selection is chronological Development OOS only and the newest 20% remains winner-only frozen holdout. No score-pattern result may auto-promote Production.
