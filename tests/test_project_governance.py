@@ -183,3 +183,8 @@ def test_phase1_and_universal_readiness_are_monitored():
     from research.project_governance import WORKFLOW_CONTRACTS
     assert ".github/workflows/baseball_phase1_gate.yml" in WORKFLOW_CONTRACTS
     assert ".github/workflows/baseball_universal_readiness.yml" in WORKFLOW_CONTRACTS
+
+
+def test_autonomous_control_plane_is_governed():
+    from research.project_governance import WORKFLOW_CONTRACTS
+    assert ".github/workflows/baseball_autonomous_control_plane.yml" in WORKFLOW_CONTRACTS

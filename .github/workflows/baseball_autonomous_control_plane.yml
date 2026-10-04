@@ -1,0 +1,94 @@
+name: Baseball Autonomous Control Plane
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_run:
+    workflows:
+      - Baseball Governance Autopilot
+      - Project Source Provenance Audit
+      - Baseball 24h Research Autopilot
+      - NPB Production Prediction
+      - Baseball Production Runtime Health
+      - NPB Prediction Experience Archive
+      - NPB Prediction Experience Reconciliation
+      - NPB Experience Learning Loop
+      - Baseball Phase 1 Production Gate
+      - Baseball Universal Readiness Audit
+      - Baseball Candidate OOS Validation
+    types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - "research/autonomous_control_plane.py"
+      - "tests/test_autonomous_control_plane.py"
+      - ".github/workflows/baseball_autonomous_control_plane.yml"
+      - "research/project_governance.py"
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: baseball-autonomous-control-plane
+  cancel-in-progress: true
+
+jobs:
+  control:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+
+      - name: Run control-plane unit tests
+        run: |
+          set -euo pipefail
+          python -m py_compile research/autonomous_control_plane.py tests/test_autonomous_control_plane.py
+          python -m pytest -q tests/test_autonomous_control_plane.py
+
+      - name: Execute bounded autonomous control plane
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -euo pipefail
+          python -m research.autonomous_control_plane --repo "${GITHUB_REPOSITORY}" --output results/control_plane/autonomous_control_plane.json --max-dispatches-per-cycle 2
+
+      - name: Publish control-plane summary
+        if: always()
+        run: |
+          set -euo pipefail
+          test -s results/control_plane/autonomous_control_plane.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path("results/control_plane/autonomous_control_plane.json").read_text(encoding="utf-8"))
+          with open(r"${{ github.step_summary }}", "a", encoding="utf-8") as out:
+              out.write("## Baseball Autonomous Control Plane\n")
+              out.write(f"- status: {d.get('control_plane_status')}\n")
+              out.write(f"- dispatches: {d.get('cycle_dispatch_count')}\n")
+              out.write(f"- heavy_dispatches: {d.get('cycle_heavy_dispatch_count')}\n")
+              for x in d.get('targets', []):
+                  out.write(f"- {x.get('workflow')}: {x.get('decision')} ({x.get('reason')})\n")
+          PY
+
+      - name: Upload control-plane evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: baseball-autonomous-control-plane-${{ github.run_id }}
+          path: results/control_plane/
+          if-no-files-found: error
+          retention-days: 14

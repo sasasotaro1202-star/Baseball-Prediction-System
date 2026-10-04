@@ -67,6 +67,11 @@ WORKFLOW_CONTRACTS: dict[str, dict[str, Any]] = {
         "max_age_hours": 30,
         "required": ("schedule:", "workflow_dispatch:"),
     },
+    ".github/workflows/baseball_autonomous_control_plane.yml": {
+        "monitor": True,
+        "max_age_hours": 2,
+        "required": ("schedule:", "workflow_run:", "actions: write", "research.autonomous_control_plane"),
+    },
     ".github/workflows/baseball_governance_autopilot.yml": {
         "monitor": True,
         "max_age_hours": 8,
