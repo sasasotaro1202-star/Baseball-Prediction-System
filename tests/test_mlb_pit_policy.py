@@ -204,3 +204,25 @@ def test_explicit_mlb_starter_timestamp_accepts_at_retrieval():
         "announcement",
         retrieved_at=retrieval,
     ) == retrieval
+
+
+def test_explicit_mlb_starter_timestamp_rejects_malformed_retrieval_boundary():
+    import data.pit_acquisition as pit
+
+    assert pit._explicit_timestamp(
+        {"home_starter_announced_at": "2026-09-19T09:05:00+00:00"},
+        "home",
+        "announcement",
+        retrieved_at="not-a-timestamp",
+    ) is None
+
+
+def test_explicit_mlb_starter_timestamp_rejects_naive_retrieval_boundary():
+    import data.pit_acquisition as pit
+
+    assert pit._explicit_timestamp(
+        {"home_starter_announced_at": "2026-09-19T09:05:00+00:00"},
+        "home",
+        "announcement",
+        retrieved_at="2026-09-19T09:10:00",
+    ) is None
