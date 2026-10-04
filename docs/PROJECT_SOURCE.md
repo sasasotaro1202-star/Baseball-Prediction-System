@@ -2427,3 +2427,24 @@ Transforms are fixed algebraic operations on PIT-safe columns. Missing/non-finit
 ## 96. HYPERPARAMETER PROFILE EXPLORATION
 
 The model profile frontier supplements feature and representation search. It compares six deterministic estimator configurations—BALANCED, ROBUST, SMOOTH, DEEP, LOCAL and REGULARIZED—using only chronological OOS evidence. Profile choice is never tuned on the frozen holdout and cannot bypass the normal promotion gates.
+⸻
+
+## 97. MLB STARTER PIT PROVENANCE
+
+The MLB starter pipeline now preserves separate fields for:
+
+* starter announced_at
+* starter published_at
+* starter available_at
+* retrieved_at
+* first_observed_at
+* revision_time
+
+A current MLB Probable Pitchers page observation establishes that a probable pitcher is currently displayed, but does not by itself establish a historical announcement timestamp. The system therefore records observation-only evidence as unverifiable for strict production starter eligibility.
+When a future authoritative payload supplies explicit announcement/publication/availability timestamps, the schema can validate them without changing field semantics.
+
+Required ordering for explicit evidence is conservative:
+
+published_at <= announced_at <= available_at <= retrieved_at <= prediction_cutoff
+
+where fields are present. Missing announcement timestamps remain non-eligible rather than being inferred from retrieval time.
