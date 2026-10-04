@@ -20,10 +20,11 @@ permissions:
 concurrency:
   group: baseball-extreme-representation-lab
   # Preserve active evidence runs; snapshot gates invalidate evidence when main advances.
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   lab:
+    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[fast-prediction]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
     strategy:
