@@ -572,6 +572,10 @@ for name in ("game_script_fallback.json","game_script_screening.json"):
     o=json.loads(p.read_text())
     assert str(o.get("pit_status","")).startswith("UNVERIFIABLE")
     assert o.get("production_eligible") is False
+    assert o.get("source_fingerprint")
+    assert o.get("validation_source_fingerprint")
+    assert o.get("context_source_fingerprint")
+    assert o.get("code_fingerprint")
     break
 PY
 
