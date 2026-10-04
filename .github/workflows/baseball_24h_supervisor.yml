@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths-ignore:
       - 'data/pit/**'
+      - 'prediction_requests/**'
   workflow_run:
     workflows: ["Baseball Closed Loop Research"]
     types: [completed]
