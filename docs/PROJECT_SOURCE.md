@@ -2337,3 +2337,55 @@ A 482-column NPB or 470-column MLB base matrix is an observed current contract f
 
 Selection must be based on chronological OOS/WFO, PIT eligibility, coverage/missingness, calibration, robustness, cost and frozen holdout. Larger feature count is not a selection criterion by itself.
 
+⸻
+
+## 93. ULTIMATE PATTERN LAB
+
+`research/ultimate_pattern_lab.py` is the broad pattern-exploration layer for future-generalization research.
+
+### 93.1 Feature-family search
+The lab exhaustively enumerates all (2^8=256) subsets of the optional feature families:
+
+* volatility
+* starter
+* bullpen
+* offense
+* interaction
+* lineup
+* weather
+* context
+
+Core team-state features remain present in every pattern. Missing required families are recorded as `BLOCKED_UNAVAILABLE_FAMILY`; they are never silently replaced with zero or another family.
+
+### 93.2 Nested chronological stages
+Stage A uses only an early pre-holdout chronological OOS band and a lightweight LINEAR_TREE lane for broad feature-ecology screening.
+
+Stage B takes only the Stage-A top eight and evaluates:
+
+* core horizon: ALL / SHORT / LONG
+* recency half-life: 600 / 900 / 1800 / 3600 / 7200
+* model pool: LINEAR_TREE / BROAD_TREE / DIVERSE
+
+Stage B is evaluated on a later, disjoint chronological OOS band.
+
+Stage C takes only the Stage-B top four and runs the full ensemble path with routing and calibration enabled on a third disjoint chronological OOS band.
+
+This structure is successive-haldving by chronology rather than one giant in-sample search.
+
+### 93.3 Frozen holdout
+The newest 20% is locked before candidate selection. The Development-selected Stage-C winner is fit on the complete pre-holdout prefix and is then scored on the holdout exactly once.
+
+The holdout is score-only evidence. It cannot select feature families, half-life, model pool, routing, calibration, threshold or production state.
+
+### 93.4 Evidence and release
+Expected execution breadth is:
+
+* Stage A: 256
+* Stage B: 8 × 3 × 5 × 3 = 360
+* Stage C: 4
+* locked holdout: 1
+
+All failures remain explicit. Unexpected execution failures fail verification. Successful artifacts remain `RESEARCH_ONLY` with `NO_AUTO_ADOPTION`.
+
+Ultimate-pattern results do not replace the incumbent production champion. Any promotion still requires the normal PIT audit, chronological WFO/OOS, calibration, ablation, robustness, frozen holdout and release gate.
+
