@@ -135,3 +135,12 @@ Generation precedence is CURRENT_PRODUCTION_RUNTIME -> VALIDATED_RESEARCH_SHADOW
 
 External current information may verify context, but it must not silently replace the GitHub-generated prediction. Prediction request results are tracked by request_id/fingerprint, source commit, lane, generation status and output artifact. Valid verified results may be reused by fingerprint; stale or invalidated results must be regenerated.
 
+## Feature manifest and runtime feature provenance
+
+The canonical feature contract is documented in `docs/FEATURE_MANIFEST.md` and governed by `config/feature_policy.json`.
+
+The current `baseball_backtest.py::match_features` contract yields an expected base matrix of 482 NPB columns and 470 MLB columns before conditional lineup/weather context. Actual production outputs must record the observed feature count, feature schema hash, manifest version and context mode.
+
+Lineup and weather features require explicit PIT-safe context configuration and cutoff-valid availability timestamps. Player profiles, roster context, standings and source-health snapshots are observation-only until they independently pass local PIT, chronological OOS/WFO, calibration, ablation, robustness and frozen holdout gates.
+
+Feature column order must be deterministic. A feature schema mismatch during a multi-game production batch is fail-closed. Feature additions are not performance improvements without independent chronological evidence.
