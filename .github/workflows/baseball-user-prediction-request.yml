@@ -39,6 +39,62 @@ jobs:
       - name: Install repository prediction dependencies
         run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
 
+      - name: Stage PIT-safe NPB history for prediction router
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUEST_FILE: ${{ github.event.inputs.request_file || 'prediction_requests/inbox/active.json' }}
+        run: |
+          set -euo pipefail
+          competition="$(python - "$REQUEST_FILE" <<'PY'
+          import json, sys
+          with open(sys.argv[1], encoding="utf-8") as fh:
+              obj = json.load(fh)
+          print(str(obj.get("competition_id") or obj.get("league") or "").strip().upper())
+          PY
+          )"
+          if [ "$competition" != "NPB" ]; then
+            echo "No NPB history staging required for competition=$competition."
+            exit 0
+          fi
+          mkdir -p data
+          target="$(python - "$REQUEST_FILE" <<'PY'
+          import json, sys
+          from datetime import datetime, timezone
+          from zoneinfo import ZoneInfo
+          with open(sys.argv[1], encoding="utf-8") as fh:
+              obj = json.load(fh)
+          value = str(obj.get("target_date") or "").strip().lower()
+          if not value or value == "today":
+              value = datetime.now(timezone.utc).astimezone(ZoneInfo("Asia/Tokyo")).strftime("%Y-%m-%d")
+          print(value)
+          PY
+          )"
+          year="$(printf '%s' "$target" | cut -d- -f1)"
+          month="$(printf '%s' "$target" | cut -d- -f2)"
+          month_num=$((10#$month))
+          if [ "$month_num" -gt 2 ]; then
+            for m in $(seq 2 $((month_num - 1))); do
+              mm="$(printf '%02d' "$m")"
+              f="data/${year}-${mm}_pbp.csv"
+              if [ -s "$f" ]; then
+                continue
+              fi
+              gh release download pbp \
+                --repo armstjc/Nippon-Baseball-Data-Repository \
+                --pattern "${year}-${mm}_pbp.csv" \
+                --dir data \
+                --clobber
+              test -s "$f"
+            done
+          fi
+          count="$(find data -maxdepth 1 -name '*_pbp.csv' -type f | wc -l | tr -d ' ')"
+          if [ "$count" -lt 1 ]; then
+            echo "PIT-safe NPB history staging produced no readable PBP file." >&2
+            exit 1
+          fi
+          echo "PIT-safe NPB history staged: $count monthly PBP file(s) for target=$target." >> "$GITHUB_STEP_SUMMARY"
+
       - name: Generate requested prediction through repository router
         id: generate
         env:
