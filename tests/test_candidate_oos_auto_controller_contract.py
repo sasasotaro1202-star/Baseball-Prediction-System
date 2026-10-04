@@ -9,6 +9,6 @@ def test_candidate_oos_auto_controller_contract():
     assert "current_terminal" in workflow
     assert "compare/$latest_completed_sha...$current_main" in workflow
     assert "evidence_affecting=0" in workflow
-    assert "data/experience/*|tests/*|docs/*|README*|PROJECT_INSTRUCTIONS.md|results/*|.github/workflows/*" in workflow
+    assert "data/experience/*|tests/*|docs/*|README*|PROJECT_INSTRUCTIONS.md|results/*|.github/workflows/baseball_manual_prediction.yml" in workflow
     assert 'gh_retry workflow run "$CANDIDATE_WORKFLOW" --repo "$GH_REPO" --ref main' in workflow
     assert "cancel-in-progress: true" in workflow
