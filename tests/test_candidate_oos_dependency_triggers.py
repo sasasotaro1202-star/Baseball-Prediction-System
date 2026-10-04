@@ -18,3 +18,16 @@ def test_candidate_oos_dependency_paths_are_under_main_push_filter():
     assert "research/adoption_gate.py" in paths
     assert "baseball_backtest.py" in paths
     assert "evaluation/**" in paths
+
+
+def test_candidate_oos_retriggers_for_baseball_backtest_research_dependencies():
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    paths = workflow.split("paths:", 1)[1].split("schedule:", 1)[0]
+    for path in (
+        "research/competition_taxonomy.py",
+        "research/competition_strategy.py",
+        "research/hierarchical_result_model.py",
+        "research/regime_router.py",
+        "research/correlated_score.py",
+    ):
+        assert path in paths
