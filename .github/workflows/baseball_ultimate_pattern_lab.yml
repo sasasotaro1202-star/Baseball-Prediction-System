@@ -48,6 +48,7 @@ jobs:
         timeout-minutes: 12
         run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
 
+      # Snapshot gates intentionally make evidence invalid when main moves during a run.
       - name: Verify main snapshot before evidence generation
         env:
           EXPECTED_SHA: ${{ github.sha }}
