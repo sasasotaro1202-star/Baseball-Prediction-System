@@ -16,7 +16,7 @@
   "stage_b": {"top_k_from_stage_a": 12, "half_lives": [600, 900, 1800, 3600, 7200], "model_pools": ["LINEAR_TREE", "BROAD_TREE", "DIVERSE"], "chronological_band": [0.60, 0.70]},
   "stage_c": {"top_k_from_stage_b": 4, "model_profiles": ["BALANCED", "ROBUST", "SMOOTH", "DEEP", "LOCAL", "REGULARIZED"], "full_ensemble": true, "routing_and_calibration": true, "chronological_band": [0.70, 0.80]},
   "frozen_holdout": {"fraction": 0.20, "winner_only": true, "tuning_allowed": false},
-  "execution_counts": {"stage_a": 136, "stage_b": 180, "stage_c": 24, "holdout": 1, "maximum_pre_holdout_evaluations": 332},
+  "execution_counts": {"stage_a": 136, "stage_b": 180, "stage_c": 24, "holdout": 1, "maximum_pre_holdout_evaluations": 340},
   "selection": {"primary": "LogLoss", "secondary": ["Brier", "ECE", "Accuracy"], "nested_chronology": true, "auto_adoption": false},
   "pit": {"representation_source": "already constructed PIT-safe feature columns only", "transforms_are_fixed": true, "future_rows_not_used_to_fit_transform": true, "missing_is_not_zero": true}
 }
