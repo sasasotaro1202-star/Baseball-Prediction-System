@@ -54,12 +54,24 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
       
+      - name: Resolve published NPB PBP release fingerprint
+        if: inputs.league == 'NPB'
+        id: pbp_ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_sha="$(gh api repos/armstjc/Nippon-Baseball-Data-Repository/git/ref/tags/pbp --jq '.object.sha')"
+          test -n "${release_sha}"
+          echo "sha=${release_sha}" >> "${GITHUB_OUTPUT}"
+
       - name: Restore NPB historical PBP cache
         if: inputs.league == 'NPB'
         uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809
         with:
           path: data/*_pbp.csv
-          key: ${{ runner.os }}-npb-pbp-${{ hashFiles('requirements.txt', 'data/npb_pbp_adapter.py', 'production_npb.py') }}
+          key: ${{ runner.os }}-npb-pbp-${{ steps.pbp_ref.outputs.sha }}-${{ hashFiles('requirements.txt', 'data/npb_pbp_adapter.py') }}
           restore-keys: |
             ${{ runner.os }}-npb-pbp-
 
