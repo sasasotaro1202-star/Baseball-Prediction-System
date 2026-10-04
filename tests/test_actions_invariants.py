@@ -196,6 +196,14 @@ def test_candidate_oos_fails_closed_on_incomplete_evidence():
     assert "if-no-files-found: warn" not in text
 
 
+def test_candidate_oos_watchdog_allows_validated_autonomous_control_plane_continuity():
+    text = (ROOT / ".github" / "workflows" / "baseball_candidate_oos_watchdog.yml").read_text(encoding="utf-8")
+    assert ".github/workflows/baseball_autonomous_control_plane.yml" in text
+    # Control-plane-only orchestration changes are explicitly non-runtime and
+    # must not invalidate a running chronological OOS replay.
+    assert "Never interrupt an already-running OOS lifecycle for those control-plane-only changes." in text
+
+
 def test_npb_production_never_scores_started_games_and_accepts_empty_future_state():
     production = (ROOT / ".github" / "workflows" / "npb-production.yml").read_text(encoding="utf-8")
     source = (ROOT / "production_npb.py").read_text(encoding="utf-8")
