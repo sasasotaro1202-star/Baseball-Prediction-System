@@ -59,8 +59,12 @@ def test_user_prediction_workflow_has_bounded_cache():
     assert "cache: pip" in workflow
     assert "actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809" in workflow
     assert "path: data/*_pbp.csv" in workflow
-    # Historical PBP is acquired from the published `pbp` release; the cache
-    # itself remains bounded to monthly PBP files.
+    # Cache identity follows the published PBP release fingerprint so revised
+    # source data cannot silently reuse an older raw-data cache.
+    assert "git/ref/tags/pbp" in workflow
+    assert "id: pbp_ref" in workflow
+    assert "steps.pbp_ref.outputs.sha" in workflow
+    assert "hashFiles('requirements.txt', 'data/npb_pbp_adapter.py')" in workflow
     assert "gh release download pbp" in workflow
     assert '--pattern "${year}-${mm}_pbp.csv"' in workflow
     # The manual workflow must consume the wrapper's atomic JSON artifact rather
