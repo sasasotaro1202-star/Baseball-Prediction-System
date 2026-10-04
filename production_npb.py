@@ -35,6 +35,7 @@ from data.npb_team_player_context import collect_teams as collect_npb_team_playe
 from data.npb_roster_context import collect_npb_roster_context, resolve_roster_player_ids
 from research.target_strategy import as_dict as target_strategy_dict, standard_target_strategies
 from research.competition_taxonomy import classify_npb
+from research.feature_set_variants import select_feature_set
 
 ROOT = Path(__file__).resolve().parent
 FEATURE_MANIFEST_VERSION = "feature-contract-v1"
@@ -1209,7 +1210,11 @@ def predict(
         if xrow.isna().any().any() or not np.isfinite(xrow.to_numpy(dtype=float)).all():
             raise RuntimeError("Production target feature vector contains undefined/non-finite values; refusing implicit imputation.")
         xrow=xrow.astype(float)
+        feature_variant = __import__("os").environ.get("BASEBALL_FEATURE_SET_VARIANT", "FULL_VALIDATED_ENSEMBLE")
+        xrow, selected_feature_meta = select_feature_set(xrow, "NPB", variant=feature_variant)
         current_feature_schema = _feature_schema_metadata(xrow.columns)
+        current_feature_schema["feature_set_variant"] = selected_feature_meta["feature_set_variant"]
+        current_feature_schema["feature_family_counts"] = selected_feature_meta["feature_family_counts"]
         if feature_schema is None:
             feature_schema = current_feature_schema
         elif feature_schema["feature_schema_hash"] != current_feature_schema["feature_schema_hash"]:
@@ -1291,6 +1296,8 @@ def predict(
             "historical_score_mean_total":round(hist_score_mean,6),
             "historical_score_zero_rate":round(hist_score_zero_rate,6),
             "feature_manifest_version":feature_schema["feature_manifest_version"],
+            "feature_set_variant":feature_schema.get("feature_set_variant", "FULL_VALIDATED_ENSEMBLE"),
+            "feature_family_counts":feature_schema.get("feature_family_counts", {}),
             "feature_set_id":feature_schema["feature_set_id"],
             "feature_count":feature_schema["feature_count"],
             "feature_schema_hash":feature_schema["feature_schema_hash"],
