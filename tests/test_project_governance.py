@@ -269,7 +269,7 @@ def test_autonomous_control_plane_is_single_heartbeat_not_workflow_run_driven():
 def test_actions_recovery_is_singleton():
     from research.project_governance import WORKFLOW_CONTRACTS
 
-    path = ".github/workflows/baseball_actions_recovery_v2.yml"
+    path = ".github/workflows/baseball_actions_recovery_20261006.yml"
     contract = WORKFLOW_CONTRACTS[path]
     assert contract["monitor"] is False
     assert "group: baseball-actions-recovery" in contract["required"]
@@ -277,7 +277,7 @@ def test_actions_recovery_is_singleton():
 
 
 def test_actions_recovery_covers_zero_job_research_workflows():
-    workflow = Path(".github/workflows/baseball_actions_recovery_v2.yml").read_text(encoding="utf-8")
+    workflow = Path(".github/workflows/baseball_actions_recovery_20261006.yml").read_text(encoding="utf-8")
     assert "NPB Game-Script Auto Research" in workflow
     assert "Baseball Game Script Lab" in workflow
     assert ".github/workflows/npb_game_script_autoresearch_canonical.yml" in workflow
@@ -508,7 +508,7 @@ def test_user_prediction_results_are_persisted():
 
 
 def test_user_prediction_workflow_is_in_recovery_surface():
-    workflow = Path(".github/workflows/baseball_actions_recovery_v2.yml").read_text(encoding="utf-8")
+    workflow = Path(".github/workflows/baseball_actions_recovery_20261006.yml").read_text(encoding="utf-8")
     assert "Baseball User Prediction Request" in workflow
     assert "Install repository prediction dependencies" in workflow
     assert "Generate requested prediction through repository router" in workflow
@@ -520,7 +520,7 @@ def test_user_prediction_workflow_is_in_recovery_surface():
 def test_control_plane_owns_automatic_recovery_surface():
     control = Path(".github/workflows/baseball_autonomous_control_plane.yml")
     legacy = Path(".github/workflows/baseball_actions_recovery_canonical.yml")
-    stable = Path(".github/workflows/baseball_actions_recovery_v2.yml")
+    stable = Path(".github/workflows/baseball_actions_recovery_20261006.yml")
     assert control.is_file()
     control_text = control.read_text(encoding="utf-8")
     assert ".github/workflows/baseball-user-prediction-request.yml" in Path("research/autonomous_control_plane.py").read_text(encoding="utf-8")
