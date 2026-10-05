@@ -45,6 +45,33 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
+      - name: Validate autonomous control-plane contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile research/autonomous_control_plane.py
+          python - <<'PY'
+from pathlib import Path
+
+workflow = Path(".github/workflows/baseball_candidate_oos_watchdog.yml").read_text(encoding="utf-8")
+required = [
+    "actions: write",
+    "cron: '*/15 * * * *'",
+    "baseball_autonomous_control_plane_canonical.yml",
+    "gh workflow run",
+    "gh run cancel",
+    "python -m research.autonomous_control_plane",
+    "max-dispatches-per-cycle",
+    "if: always()",
+]
+for token in required:
+    if token not in workflow:
+        raise SystemExit(f"missing autonomous control-plane contract token: {token}")
+if "continue-on-error: true" in workflow or "|| true" in workflow:
+    raise SystemExit("failure masking is forbidden in the autonomous watchdog")
+print("autonomous control-plane contract: PASS")
+PY
+
       - name: Bootstrap and execute canonical autonomous control plane
         id: control_plane_heartbeat
         shell: bash
@@ -153,6 +180,7 @@ jobs:
 
       - name: Run canonical autonomous control plane
         id: control_plane_execute
+        timeout-minutes: 5
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
