@@ -502,5 +502,9 @@ def test_legacy_push_startup_guard_is_present_in_all_zero_job_lanes():
     for relpath, job_ids in workflows.items():
         text = (ROOT / relpath).read_text(encoding="utf-8")
         for job_id in job_ids:
-            pattern = rf"(?m)^  {re.escape(job_id)}:\n    if: .*{re.escape(guard)}"
-            assert re.search(pattern, text), f"{relpath}:{job_id} lacks legacy-push execution guard"
+            match = re.search(
+                rf"(?ms)^  {re.escape(job_id)}:\n(.*?)(?=^  [A-Za-z0-9_-]+:\n|\\Z)",
+                text,
+            )
+            assert match, f"{relpath}:{job_id} job block not found"
+            assert guard in match.group(1), f"{relpath}:{job_id} lacks legacy-push execution guard"
