@@ -316,10 +316,21 @@ class BaseballBacktest:
         """
         aggregate = self.data_dir / "npb_multi_source_games_all.csv"
         season_files = sorted((self.data_dir / "npb_games").glob("*_multi_source_pbp.csv")) if (self.data_dir / "npb_games").exists() else []
+        cached_pbp_dir = self.data_dir / "pbp"
+        cached_pbp_files = (
+            sorted(cached_pbp_dir.glob("*_pbp.csv"))
+            if cached_pbp_dir.exists()
+            else []
+        )
         if aggregate.exists():
             files = [aggregate]
         elif season_files:
             files = season_files
+        elif cached_pbp_files:
+            # Shared PIT-screening cache used by the Game-Script and daily
+            # research lanes. Those workflows validate each asset against the
+            # upstream release manifest before model fitting.
+            files = cached_pbp_files
         else:
             files = sorted(self.data_dir.glob("*_multi_source_pbp.csv"))
             files += sorted(self.data_dir.glob("*_pbp.csv"))
