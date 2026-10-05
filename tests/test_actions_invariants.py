@@ -186,11 +186,11 @@ def test_candidate_oos_watchdog_recovers_stale_in_progress_runs_after_sha_drift(
 
 def test_candidate_oos_watchdog_allows_validated_autonomous_control_plane_continuity():
     text = (ROOT / ".github" / "workflows" / "baseball_candidate_oos_watchdog.yml").read_text(encoding="utf-8")
-    assert ".github/workflows/baseball_autonomous_control_plane_canonical.yml" in text
+    assert ".github/workflows/baseball_autonomous_control_plane_stable.yml" in text
     # The watchdog classifies validated control-plane-only workflow changes as
     # non-runtime continuity and keeps compatible queued OOS work intact.
     assert "is_non_runtime_only_change" in text
-    assert "baseball_autonomous_control_plane_canonical.yml" in text
+    assert "baseball_autonomous_control_plane_stable.yml" in text
     assert "Keeping queued candidate run" in text
 
 
