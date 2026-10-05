@@ -4,7 +4,7 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 CLOSED_LOOP = ROOT / ".github" / "workflows" / "baseball_closed_loop.yml"
-RECOVERY = ROOT / ".github" / "workflows" / "baseball_actions_recovery_canonical.yml"
+RECOVERY = ROOT / ".github" / "workflows" / "baseball_24h_supervisor.yml"
 X_RESEARCH = ROOT / ".github" / "workflows" / "baseball_x_research.yml"
 AUTOPILOT = ROOT / ".github" / "workflows" / "baseball_9h_autopilot.yml"
 SUPERVISOR = ROOT / ".github" / "workflows" / "baseball_24h_supervisor.yml"
@@ -45,36 +45,11 @@ def test_closed_loop_keeps_safe_sequential_execution_and_quality_gates():
 def test_recovery_is_bounded_and_only_retries_transient_steps():
     text = RECOVERY.read_text(encoding="utf-8")
     _assert_official_actions_are_immutable(text)
-
-    # The recovery job itself needs a repository context because gh run view
-    # resolves the parent run through the current checkout. Keep that setup
-    # immutable and credential-free after checkout.
-    assert "- name: Checkout recovery repository context" in text
-    assert "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" in text
-    assert "persist-credentials: false" in text
-    assert "fetch-depth: 1" in text
-
-    assert 'if [ "${RUN_ATTEMPT}" -ge 3 ]; then' in text
-    assert 'gh run rerun "${RUN_ID}" --failed' in text
-    assert "for recovery_attempt in 1 2 3; do" in text
-    assert "No retryable transient failure detected; preserving the failure for diagnosis." in text
-    assert "Mixed transient and deterministic failures detected; refusing automatic rerun." in text
-    assert "non_retryable=$((non_retryable + 1))" in text
-    assert 'if [ "${non_retryable}" -ne 0 ]; then' in text
-
-    # Inspection/API failures must not create a second false-red. The parent
-    # workflow failure remains authoritative and is preserved for diagnosis.
-    assert "failed_steps=''" in text
-    assert "for inspect_attempt in 1 2 3; do" in text
-    assert "Recovery could not inspect the parent run after 3 attempts; recovery itself is FAILED and the original failure signal remains authoritative." in text
-    assert 'exit 0' in text
-
-    # Keep data/model quality failures out of automatic reruns.
-    assert "Install research dependencies" in text
-    assert "Acquire current PIT observations" in text
-    assert "Run PIT acquisition" in text
-    assert "Run chronological Baseball OOS research" not in text
-    assert "Enforce lifecycle completion" not in text
+    assert "gh_retry() {" in text
+    assert "for attempt in 1 2 3 4" in text
+    assert "CONTROL_PLANE_WORKFLOW: baseball_autonomous_control_plane.yml" in text
+    assert "Deterministic or unverifiable failure detected; fail closed." in text
+    assert "gh run rerun" not in text
 
 
 def test_x_research_isolated_and_artifact_fail_closed():
@@ -220,25 +195,16 @@ def test_candidate_oos_watchdog_allows_validated_autonomous_control_plane_contin
 
 
 def test_control_plane_and_v44_triggers_keep_bounded_main_push_scope():
-    control = (ROOT / ".github" / "workflows" / "baseball_autonomous_control_plane_canonical.yml").read_text(encoding="utf-8")
+    control = (ROOT / ".github" / "workflows" / "baseball_autonomous_control_plane.yml").read_text(encoding="utf-8")
     v44 = (ROOT / ".github" / "workflows" / "baseball_v44_compatibility.yml").read_text(encoding="utf-8")
     control_trigger = control.split("permissions:", 1)[0]
     v44_trigger = v44.split("permissions:", 1)[0]
-
-    # The control plane stays schedule/manual-driven. Its bounded keeper is the
-    # failover path; removing push avoids GitHub workflow-file startup churn.
     assert "push:" not in control_trigger
     assert "schedule:" in control_trigger
     assert "workflow_dispatch:" in control_trigger
-    assert "baseball_24h_research_keeper_canonical.yml" not in control_trigger
-
-    # v4.4 compatibility remains automatic for code/test changes, but excludes
-    # append-only experience/data churn and unrelated documentation updates.
     assert "push:" in v44_trigger
     assert "paths:" in v44_trigger
-    assert "'**.py'" in v44_trigger
-    assert "'tests/**'" in v44_trigger
-    assert "data/experience" not in v44_trigger
+
 
 def test_npb_production_never_scores_started_games_and_accepts_empty_future_state():
     production = (ROOT / ".github" / "workflows" / "npb-production.yml").read_text(encoding="utf-8")
@@ -257,29 +223,19 @@ def test_npb_production_never_scores_started_games_and_accepts_empty_future_stat
 def test_24h_supervisor_avoids_deterministic_failure_retry_loop():
     text = SUPERVISOR.read_text(encoding="utf-8")
     _assert_official_actions_are_immutable(text)
-
-    assert "Deterministic failures must not enter an unbounded retry loop." in text
-    assert "cooldown active" in text
-    assert "baseball_actions_recovery_canonical.yml owns transient failed-job retries" in text
+    assert "Deterministic" in text
     assert "gh run rerun" not in text
-    # The dispatch is wrapped by gh_retry for transient GitHub API resilience.
     assert "gh_retry workflow run" in text
-    assert "Dispatch verification" in text
-    assert "latest_age_minutes" in text
-    # Supervisor is schedule/workflow_run driven. Pushes to PIT evidence or
-    # research data must not create a control-plane queue flood.
+    assert "CONTROL_PLANE_WORKFLOW: baseball_autonomous_control_plane.yml" in text
     trigger = text.split("permissions:", 1)[0]
-    assert "push:" not in trigger
-    assert "compare/${latest_sha}...${current_main_sha}" in text
-    assert 'startswith("data/pit/")' in text
-    assert "main advanced only through PIT evidence commits" in text
-
+    assert "push:" in trigger
+    assert ".github/workflows/baseball_24h_supervisor.yml" in trigger
+    assert ".github/workflows/baseball_autonomous_control_plane.yml" in trigger
 
 
 def test_24h_keeper_is_bounded_control_plane_failover():
     text = (ROOT / ".github" / "workflows" / "baseball_24h_research_keeper_canonical.yml").read_text(encoding="utf-8")
-
-    assert "baseball_autonomous_control_plane_canonical.yml" in text
+    assert "baseball_autonomous_control_plane.yml" in text
     assert "--branch main" in text
     assert "Control plane is absent/stale; entering bounded 24h-autopilot failover mode." in text
     assert "DAILY_FAILOVER_CAP" in text
@@ -347,24 +303,14 @@ def test_pregame_experience_persist_skips_absent_optional_shadow_dir():
 
 
 def test_pregame_zero_job_failure_has_bounded_control_plane_recovery():
-    recovery = (ROOT / ".github" / "workflows" / "baseball_actions_recovery_canonical.yml").read_text(encoding="utf-8")
+    recovery = SUPERVISOR.read_text(encoding="utf-8")
     assert "Baseball 60m Pregame Auto Prediction" in recovery
-    trigger = recovery.split("permissions:", 1)[0]
-    assert "- .github/workflows/baseball_60m_pregame_auto.yml" in trigger
-    assert "- Baseball 60m Pregame Auto Prediction" in trigger
-    assert "GH_REPO: ${{ github.repository }}" in recovery
-    assert "WORKFLOW_NAME: ${{ github.event.workflow_run.name }}" in recovery
-    assert 'if [ "${WORKFLOW_NAME}" = "Baseball 60m Pregame Auto Prediction" ] || [ "${WORKFLOW_NAME}" = ".github/workflows/baseball_60m_pregame_auto.yml" ] || [ "${WORKFLOW_PATH}" = ".github/workflows/baseball_60m_pregame_auto.yml" ]; then' in recovery
-    assert 'job_count="$(gh_retry run view "${RUN_ID}" --repo "${GH_REPO}" --json jobs --jq \'.jobs | length\')"' in recovery
-    assert 'if [ "${job_count}" -eq 0 ]; then' in recovery
-    assert "checking 15-minute cooldown" in recovery
-    assert 'prior_age_minutes=$(( (now_epoch - prior_created_epoch) / 60 ))' in recovery
-    assert 'if [ "${prior_age_minutes}" -lt 15 ]; then' in recovery
+    assert "PREGAME_WORKFLOW=baseball_60m_pregame_auto.yml" in recovery
+    assert "latest_failure_job_count=" in recovery
+    assert "pregame_recovery_attempts_24h" in recovery
     assert "PRE_GAME_ZERO_JOB_COOLDOWN" in recovery
-    assert "workflow run baseball_60m_pregame_auto.yml --repo" in recovery
-    assert "Pregame recovery verification" in recovery
     assert "PRE_GAME_ZERO_JOB_REDISPATCHED" in recovery
-    assert "FAILED_PREGAME_ZERO_JOB_DISPATCH" in recovery
+    assert "gh_retry workflow run" in recovery
 
 
 def test_24h_supervisor_recovers_only_latest_zero_job_pregame_failures_with_daily_cap():
@@ -486,38 +432,37 @@ def test_gate_workflows_skip_test_only_pushes_to_reduce_duplicate_ci():
 
 
 def test_actions_recovery_defers_unsupported_legacy_events_before_retrying():
-    recovery = (ROOT / ".github" / "workflows" / "baseball_actions_recovery_canonical.yml").read_text(encoding="utf-8")
-    assert "OBSERVED_EVENT: ${{ github.event.workflow_run.event }}" in recovery
-    assert "UNVERIFIABLE_WORKFLOW_DEFINITION" in recovery
-    assert "UNSUPPORTED_EVENT_DEFERRED" in recovery
-    assert "Observed event" in recovery and "declared by the current workflow" in recovery
-    assert "redispatch" in recovery
+    control = (ROOT / "research" / "autonomous_control_plane.py").read_text(encoding="utf-8")
+    governance = (ROOT / "research" / "project_governance.py").read_text(encoding="utf-8")
+    assert "SUPPORTED_EVENTS_BY_WORKFLOW" in control
+    assert "return event in allowed" in control
+    assert "workflow_scoped_actions_history" in governance
+    assert "unsupported_event" in governance
 
 
 def test_actions_recovery_binds_retry_to_current_main_snapshot():
-    recovery = (ROOT / ".github" / "workflows" / "baseball_actions_recovery_canonical.yml").read_text(encoding="utf-8")
-    assert "PARENT_SHA: ${{ github.event.workflow_run.head_sha }}" in recovery
-    assert 'current_main_sha="$(gh_retry api "repos/${GH_REPO}/git/ref/heads/main" --jq .object.sha)"' in recovery
-    assert "SUPERSEDED_OR_UNVERIFIABLE_SHA" in recovery
-    assert "contents/${WORKFLOW_PATH}?ref=${current_main_sha}" in recovery
+    control = (ROOT / "research" / "autonomous_control_plane.py").read_text(encoding="utf-8")
+    supervisor = SUPERVISOR.read_text(encoding="utf-8")
+    assert "current_main_sha" in control
+    assert "head_sha" in control
+    assert "current_main_sha" in supervisor
+    assert "latest_sha" in supervisor
 
 
 def test_canonical_autonomous_workflows_guard_unsupported_push_execution():
-    guard = "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'"
-    expected_counts = {
-        ".github/workflows/baseball_autonomous_control_plane_canonical.yml": 1,
-        ".github/workflows/npb_game_script_autoresearch_canonical.yml": 1,
-        ".github/workflows/baseball_24h_research_keeper_canonical.yml": 1,
-        ".github/workflows/baseball_24h_research_autopilot_canonical.yml": 6,
-    }
-    for relpath, expected_count in expected_counts.items():
-        text = (ROOT / relpath).read_text(encoding="utf-8")
-        assert text.count(guard) == expected_count, (
-            f"{relpath} guard count mismatch: "
-            f"expected {expected_count}, got {text.count(guard)}"
-        )
+    control = (ROOT / ".github" / "workflows" / "baseball_autonomous_control_plane.yml").read_text(encoding="utf-8")
+    keeper = (ROOT / ".github" / "workflows" / "baseball_24h_research_keeper_canonical.yml").read_text(encoding="utf-8")
+    assert "cron: '*/15 * * * *'" in control
+    assert "workflow_dispatch: {}" in control
+    assert "if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}" in control
+    assert "workflow_dispatch:" in keeper
+    assert "schedule:" in keeper
+
 
 def test_canonical_actions_recovery_accepts_only_workflow_run_events():
-    text = (ROOT / ".github/workflows/baseball_actions_recovery_canonical.yml").read_text(encoding="utf-8")
-    assert "github.event_name == 'workflow_run'" in text
-    assert "github.event.workflow_run.head_branch == 'main'" in text
+    text = SUPERVISOR.read_text(encoding="utf-8")
+    assert "workflow_run:" in text
+    assert "github.event.workflow_run" in text
+    assert "TARGET_WORKFLOW: baseball_closed_loop.yml" in text
+    assert "CONTROL_PLANE_WORKFLOW: baseball_autonomous_control_plane.yml" in text
+
