@@ -151,8 +151,9 @@ jobs:
               if len(preds) >= 3:
                   signatures = {(round(x["home_win_pct"],2), round(x["draw_pct"],2), round(x["away_win_pct"],2), round(x["low_pct"],2), round(x["high_pct"],2)) for x in preds}
                   assert len(signatures) >= 2
+          PY
       - name: Upload production output
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-      with:
-      name: npb-production-output-${{ steps.target.outputs.date }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: npb-production-output-${{ steps.target.outputs.date }}
           path: results/npb_production_*.json
