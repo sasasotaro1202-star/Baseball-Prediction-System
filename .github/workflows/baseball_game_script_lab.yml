@@ -54,9 +54,10 @@ jobs:
         run: python -m pytest -q tests/test_game_script_lab.py
 
       - name: Stage historical NPB PBP
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          export GH_TOKEN="$GITHUB_TOKEN"
           mkdir -p data
           for year in 2020 2021 2022 2023 2024 2025 2026; do
             found="$(find data -maxdepth 1 -name "$year-*_pbp.csv" | wc -l | tr -d ' ')"

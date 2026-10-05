@@ -44,3 +44,15 @@ def test_game_script_watchdog_is_bounded_and_non_promoting():
     assert "1560" in text
     assert 'gh workflow run "$workflow"' in text
     assert 'gh run cancel "$id"' in text
+
+
+def test_game_script_lab_uses_explicit_token_environment():
+    text = (ROOT / ".github" / "workflows" / "baseball_game_script_lab.yml").read_text(encoding="utf-8")
+    assert 'GH_TOKEN: ${{ github.token }}' in text
+    assert 'export GH_TOKEN="$GITHUB_TOKEN"' not in text
+
+
+def test_game_script_autoresearch_decision_guard_is_closed_and_well_formed():
+    text = _read("npb_game_script_autoresearch.yml")
+    assert "if grep -q '^need_research=0' not in text
+    assert "if grep -q '^need_research=0$' results/research_decision.txt; then" in text
