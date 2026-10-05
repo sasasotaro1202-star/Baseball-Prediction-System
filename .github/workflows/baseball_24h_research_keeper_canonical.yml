@@ -24,7 +24,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TARGET: baseball_24h_research_autopilot_canonical.yml
-          CONTROL_WORKFLOW: baseball_autonomous_control_plane_canonical.yml
+          CONTROL_WORKFLOW: baseball_autonomous_control_plane.yml
           SUPERVISOR_WORKFLOW: baseball_24h_supervisor.yml
         shell: bash
         run: |
@@ -70,7 +70,7 @@ jobs:
           fi
 
           echo "Primary supervisor is absent/stale; keeper may enter bounded failover ownership."
-          control_runs="$(gh_retry run list             --repo "${GH_REPO}"             --workflow baseball_autonomous_control_plane_canonical.yml             --branch main             --limit 10             --json databaseId,status,conclusion,createdAt,updatedAt,headSha,event)"
+          control_runs="$(gh_retry run list             --repo "${GH_REPO}"             --workflow baseball_autonomous_control_plane.yml             --branch main             --limit 10             --json databaseId,status,conclusion,createdAt,updatedAt,headSha,event)"
           control_active="$(printf '%s' "${control_runs}" | jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
           control_latest="$(printf '%s' "${control_runs}" | jq -c 'sort_by(.createdAt) | last // empty')"
           control_latest_id="$(printf '%s' "${control_latest}" | jq -r '.databaseId // empty')"
