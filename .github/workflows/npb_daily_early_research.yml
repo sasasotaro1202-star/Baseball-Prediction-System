@@ -161,8 +161,8 @@ jobs:
             # snapshots remain append-only and are never rewritten in-place.
             if [ -n "$(find results -maxdepth 1 -name 'npb_daily_research_forecast_*.json' -print -quit)" ]; then
               output="$(ls -1t results/npb_daily_research_forecast_*.json | head -n 1)"
-              python -m research.shadow_experience --archive "${output}" --run-id "${GH_RUN_ID}" || true
-              python -m research.shadow_experience --reconcile || true
+              python -m research.shadow_experience --archive "${output}" --run-id "${GH_RUN_ID}"
+              python -m research.shadow_experience --reconcile
             fi
             git add data/experience/research_shadow
             if git diff --cached --quiet; then
