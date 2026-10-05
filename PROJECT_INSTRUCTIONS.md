@@ -59,6 +59,21 @@ Every response should preserve, when available: GitHub commit SHA, request id/fi
 
 A successful GitHub Action, existing workflow, code presence, or generated file alone never proves model performance. Performance claims remain governed by OOS/WFO, calibration, robustness, holdout and adoption gates.
 
+## User-request availability / recovery contract
+A named future baseball game must have an executable prediction path even when the preferred runtime is temporarily unavailable. Availability means "a repository-generated research prediction can be produced and clearly labeled", not that a blocked research result may be promoted to production.
+
+For user-facing requests, use the strongest eligible runtime first. If the selected production runtime returns an expected operational block (including starter-gate blocking) or generation failure with no predictions, automatically escalate to the validated research-shadow lane. For NPB, that lane may use the starter-uncertainty-aware daily research implementation. If the richer research lane also fails or yields no future-game predictions, use the repository's explicitly coded PIT-safe emergency research fallback when available.
+
+Fallback rules are mandatory:
+- Production output remains fail-closed and is never relabeled as research or silently bypassed.
+- Research fallback must preserve RESEARCH_SHADOW scope, production_eligibility=false, and exact PIT status (PASS or UNVERIFIABLE).
+- UNVERIFIABLE starter information may be used only for research-only user prediction; it is never valid production-quality OOS evidence.
+- Every fallback attempt records its reason/provenance and must remain auditable.
+- If all registered lanes fail, return GENERATION_FAILED/UNAVAILABLE with preserved evidence rather than fabricating a prediction.
+- User-request workflows must preserve the generated result artifact and failure evidence even when the prediction process exits nonzero.
+
+The goal is operational continuity without relaxing PIT, target, identity, calibration, OOS, holdout or production-adoption gates.
+
 ## Prediction generation safety
 The request-generation workflow is a controlled execution mechanism, not a promotion mechanism. It may generate a user-requested prediction with a validated research lane when a production runtime is unavailable, but the output must be labeled RESEARCH_SHADOW or other exact research status. It must never mutate Champion/Production state, alter historical evidence, bypass PIT, or convert UNKNOWN into PASS.
 
