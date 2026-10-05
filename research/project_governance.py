@@ -69,7 +69,7 @@ WORKFLOW_CONTRACTS: dict[str, dict[str, Any]] = {
         "max_age_hours": 30,
         "required": ("schedule:", "workflow_dispatch:"),
     },
-    ".github/workflows/baseball_autonomous_control_plane.yml": {
+    ".github/workflows/baseball_autonomous_control_plane_stable.yml": {
         "monitor": True,
         "max_age_hours": 2,
         "required": ("schedule:", "cron: '*/15 * * * *'", "actions: write", "research.autonomous_control_plane"),
@@ -346,7 +346,7 @@ def action_health(repo: str, now: datetime | None = None) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     current_sha = os.environ.get("GITHUB_SHA", "").strip() or None
 
-    control_path = ".github/workflows/baseball_autonomous_control_plane.yml"
+    control_path = ".github/workflows/baseball_autonomous_control_plane_stable.yml"
     control_runs_all = _workflow_runs(repo, control_path)
     control_runs, control_unsupported_runs = _supported_workflow_runs(
         control_runs_all,
