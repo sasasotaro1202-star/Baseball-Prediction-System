@@ -286,3 +286,14 @@ def test_dispatch_verification_is_workflow_scoped(monkeypatch):
     list_calls = [call for call in calls if call[:2] == ["run", "list"]]
     assert len(list_calls) == 1
     assert ".github/workflows/x.yml" in list_calls[0]
+
+
+def test_control_plane_workflow_preserves_runtime_failure_evidence():
+    workflow = (
+        __import__("pathlib").Path(".github/workflows/baseball_autonomous_control_plane.yml")
+        .read_text(encoding="utf-8")
+    )
+    assert "control_plane_runtime.log" in workflow
+    assert "runtime_failure.json" in workflow
+    assert 'PIPESTATUS[0]' in workflow
+    assert 'failure_class": "AUTONOMOUS_CONTROL_PLANE_RUNTIME"' in workflow
