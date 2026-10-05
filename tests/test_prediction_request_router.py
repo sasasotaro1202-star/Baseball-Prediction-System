@@ -175,3 +175,36 @@ def test_past_date_is_rejected(monkeypatch, tmp_path):
     monkeypatch.setattr(router, "_today_jst", lambda: "2026-10-04")
     with pytest.raises(ValueError, match="past target dates"):
         router._resolve_target_date(request)
+
+
+def test_research_shadow_accepts_unverifiable_pit_when_marked_nonproduction():
+    request = {
+        "schema_version": "baseball-prediction-request-v1",
+        "request_id": "r-unverifiable-research",
+        "competition_id": "NPB",
+        "target_date": "2026-10-04",
+    }
+    payload = {
+        "execution_status": "RESEARCH_SHADOW_EXECUTED",
+        "scope": "RESEARCH_SHADOW",
+        "production_eligibility": False,
+        "pit_status": "UNVERIFIABLE",
+        "predictions": [{"game_id": "g1", "home": "H", "away": "A"}],
+    }
+    router._validate_generated_output(payload, request, "VALIDATED_RESEARCH_SHADOW")
+
+
+def test_current_production_rejects_unverifiable_pit():
+    request = {
+        "schema_version": "baseball-prediction-request-v1",
+        "request_id": "r-unverifiable-production",
+        "competition_id": "NPB",
+        "target_date": "2026-10-04",
+    }
+    payload = {
+        "execution_status": "EXECUTED",
+        "pit_status": "UNVERIFIABLE",
+        "predictions": [{"game_id": "g1", "home": "H", "away": "A"}],
+    }
+    with pytest.raises(ValueError, match="current production prediction must have PIT PASS"):
+        router._validate_generated_output(payload, request, "CURRENT_PRODUCTION_RUNTIME")
