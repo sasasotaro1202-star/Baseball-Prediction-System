@@ -96,7 +96,6 @@ fi
 year="$(echo "$date" | cut -d- -f1)"
 month="$(echo "$date" | cut -d- -f2)"
 month_num=$((10#$month))
-fi
 if [ "$month_num" -le 2 ]; then
   exit 0
 fi
@@ -232,9 +231,9 @@ fi
 
 set -euo pipefail
 if [ ! -s due_dates.txt ]; then
-  exit 0
-fi
-python - <<'PY'
+  echo "No canonical 60m slot; rapid-shadow lane already handled any early slot."
+else
+python - <<'PY
 import json
 from pathlib import Path
 for path in sorted(list(Path("results").glob("npb_production_*.json")) + list(Path("results").glob("npb_shadow_*.json"))):
@@ -247,9 +246,10 @@ for path in sorted(list(Path("results").glob("npb_production_*.json")) + list(Pa
         pred["prediction_target_lead_minutes"] = 60.0
     path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 PY
+fi
 
 set -euo pipefail
-if [ ! -s due_dates.txt ]; then
+if [ ! -s due_dates.txt ] && [ ! -s rapid_due_dates.txt ]; then
   exit 0
 fi
 while IFS= read -r date; do
@@ -304,6 +304,13 @@ for attempt in 1 2 3; do
       fi
     fi
   done < due_dates.txt
+  while IFS= read -r date; do
+    [ -n "$date" ] || continue
+    output="results/npb_rapid_shadow_$date.json"
+    if [ -s "$output" ]; then
+      python -m research.shadow_experience --archive "$output" --run-id "$GITHUB_RUN_ID"
+    fi
+  done < rapid_due_dates.txt
 
   for experience_path in data/experience/predictions data/experience/research_shadow; do
   if [ -d "$experience_path" ]; then
