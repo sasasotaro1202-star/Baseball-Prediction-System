@@ -490,3 +490,21 @@ def test_forever_heartbeat_is_governed():
     assert path in WORKFLOW_CONTRACTS
     assert WORKFLOW_CONTRACTS[path]["monitor"] is True
     assert WORKFLOW_CONTRACTS[path]["max_age_hours"] <= 1.0
+
+
+def test_forever_autopilot_heartbeat_is_governed_and_bounded():
+    from research.project_governance import WORKFLOW_CONTRACTS
+
+    path = ".github/workflows/baseball_forever_autopilot.yml"
+    workflow = Path(path).read_text(encoding="utf-8")
+    contract = WORKFLOW_CONTRACTS[path]
+
+    assert contract["monitor"] is True
+    assert contract["max_age_hours"] <= 1
+    assert 'cron: "*/5 * * * *"' in workflow
+    assert "actions: write" in workflow
+    assert "baseball_autonomous_control_plane_canonical.yml" in workflow
+    assert "DAILY_DISPATCH_CAP" in workflow
+    assert "daily_dispatch_cap_reached" in workflow
+    assert "deterministic_failure_or_unverifiable_startup_state" in workflow
+    assert "auto_promotion: false" in workflow
