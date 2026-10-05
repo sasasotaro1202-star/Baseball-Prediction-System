@@ -126,22 +126,24 @@ A probable-pitcher observation from MLB's current official page is not treated a
 Use `research/score_distribution_pattern_lab.py` for research-only exploration of score-model composition, shared scoring correlation, and mean shrinkage. The canonical targets remain independent: Score Top-4 exact-score, Low<=6, High>=7. Candidate selection is chronological Development OOS only and the newest 20% remains winner-only frozen holdout. No score-pattern result may auto-promote Production.
 ## Forever GitHub automation / canonical heartbeat
 
-The repository must remain capable of progressing autonomously on GitHub Actions without requiring ChatGPT or a manual browser session for each cycle. The canonical lightweight liveness anchor is the already-registered `.github/workflows/baseball_candidate_oos_watchdog.yml`, which also owns bounded control-plane bootstrap/recovery.
+The repository must remain capable of progressing autonomously on GitHub Actions without requiring ChatGPT or a manual browser session for each cycle.
 
-Its contract is:
-- heartbeat on a 5-minute schedule plus workflow_dispatch;
-- the existing 15-minute Watchdog schedule plus workflow_dispatch, used as the stable registered heartbeat;
-- actions: write / contents: read only;
+Architecture:
+- `.github/workflows/baseball_forever_autopilot.yml` is the lightweight 5-minute liveness/bootstrap layer.
+- `.github/workflows/baseball_autonomous_control_plane_stable.yml` is the single normal orchestration heartbeat, schedule/workflow_dispatch only, with bounded dispatch and no production mutation.
+- `.github/workflows/baseball_24h_supervisor.yml` is the bounded failover/reconciliation layer for the control plane and the closed loop.
+- `.github/workflows/baseball_24h_research_keeper_canonical.yml` is an emergency passive failover for the 24h research lane; it must not race the primary supervisor.
+
+The forever contract is:
 - current-main SHA verification before orchestration;
-- direct bootstrap/recovery of the canonical baseball_autonomous_control_plane.yml when no current run exists, the latest run is stale, or it is on a superseded SHA;
-- a bounded daily bootstrap cap and bounded per-cycle dispatch cap;
-- delegation to research.autonomous_control_plane for the normal MONITOR -> DETECT -> TRIAGE -> RECOVERY/DISPATCH loop;
+- workflow-scoped Action history, never repository-global history as the sole liveness source;
+- bounded per-cycle and daily dispatch/recovery caps;
+- delegation to `research.autonomous_control_plane` for the normal MONITOR -> DETECT -> TRIAGE -> RECOVERY/DISPATCH loop;
 - no auto-promotion, no production-model mutation, and no masking of deterministic failures;
 - explicit runtime-failure evidence and artifact preservation;
-- stale/queued/in-progress recovery remains subordinate to current-main and fail-closed checks.
+- stale/queued/in-progress recovery remains subordinate to current-main and fail-closed checks;
+- user prediction requests remain on the dedicated `baseball-user-prediction-request.yml` path and their immutable results are persisted under `prediction_requests/results/`.
 
 The forever heartbeat is an operational liveness mechanism, not evidence of model quality. RUNNING/DISPATCHED/RECOVERED must never be interpreted as VERIFIED/PERFORMANCE_VERIFIED/ADOPTED/PRODUCTION.
 
-When multiple existing supervisors/watchdogs coexist, the heartbeat must not create an unbounded second research loop. It should bootstrap the canonical control plane and then let that control plane own bounded dispatch/recovery. Heavy OOS/WFO jobs remain separately bounded and may be interrupted/replayed only under their own evidence-preserving recovery contracts.
-
-A schedule can be delayed or unavailable due to GitHub infrastructure/account limits. Therefore forever means self-reconciling, resumable, bounded, and fail-closed within GitHub Actions; it does not mean that execution is guaranteed under an external platform outage.
+A schedule can be delayed or unavailable due to GitHub infrastructure/account limits. Therefore forever means self-reconciling, resumable, bounded, and fail-closed within GitHub Actions; it does not mean execution is guaranteed during an external platform outage.
