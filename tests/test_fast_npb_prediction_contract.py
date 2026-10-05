@@ -74,3 +74,12 @@ def test_user_prediction_workflow_has_bounded_cache():
     assert 'source_output="results/npb_shadow_${target}.json"' in workflow
     assert 'cp "${source_output}" "${output}"' in workflow
     assert "npb_fast_stderr.log" in workflow
+
+
+def test_fast_lane_has_recovery_fallbacks():
+    source = (ROOT / "scripts/npb_fast_prediction.py").read_text(encoding="utf-8")
+    assert "_run_daily_research_fallback" in source
+    assert "_run_direct_runrate_emergency_fallback" in source
+    assert "BLOCKED_STARTERS" in source
+    assert '"UNVERIFIABLE"' in source
+    assert '"RESEARCH_NPB_EMERGENCY_DIRECT_RUNRATE"' in source
