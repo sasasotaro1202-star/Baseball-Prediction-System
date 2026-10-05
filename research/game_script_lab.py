@@ -102,6 +102,15 @@ def _parse_state(
     row: pd.Series,
     columns: ColumnMap,
 ) -> tuple[int | None, str | None]:
+    if columns.page:
+        raw = str(row.get(columns.page, "")).strip()
+        match = re.match(r"^(\d{1,2})([TBtb12])", raw)
+        if match:
+            return (
+                int(match.group(1)),
+                "T" if match.group(2).upper() in {"T", "1"} else "B",
+            )
+
     if columns.serial:
         raw = str(row.get(columns.serial, "")).strip()
         match = re.search(r"(\d{1,2}).{0,1}([TBtb12])", raw)
