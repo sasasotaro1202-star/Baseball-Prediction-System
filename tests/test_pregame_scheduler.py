@@ -555,3 +555,84 @@ def test_schedule_parser_ignores_navigation_team_links_before_schedule_heading(m
         "away": "横浜DeNAベイスターズ",
         "official_start_time": "18:00",
     }]
+
+def test_rapid_research_shadow_slot_is_not_capped_at_60_minutes(monkeypatch):
+    monkeypatch.setattr(
+        scheduler,
+        "load_runtimes",
+        lambda: {
+            "NPB": {
+                "entrypoint": "production_npb",
+                "formal_adoption_status": "BLOCKED_UNTIL_ADOPTED",
+            }
+        },
+    )
+    monkeypatch.setattr(scheduler, "load_research_active_competitions", lambda: set())
+    monkeypatch.setattr(
+        scheduler,
+        "_schedule_for_date",
+        lambda _date: [
+            {
+                "home": "東北楽天ゴールデンイーグルス",
+                "away": "福岡ソフトバンクホークス",
+                "official_start_time": "18:00",
+            }
+        ],
+    )
+    monkeypatch.setattr(scheduler, "_archived_prediction_sources", lambda _date: set())
+
+    now = datetime.fromisoformat("2026-10-05T07:30:00+00:00")  # 16:30 JST
+    out = scheduler.due_games(
+        now_utc=now,
+        min_lead_minutes=75.0,
+        preferred_lead_minutes=90.0,
+        scan_ahead_minutes=105.0,
+        prediction_source="RESEARCH_SHADOW_AUTO_RAPID_90M",
+        research_shadow_source="RESEARCH_SHADOW_AUTO_RAPID_90M",
+    )
+
+    assert out["due_games"] == []
+    assert len(out["research_shadow_due_games"]) == 1
+    row = out["research_shadow_due_games"][0]
+    assert row["prediction_source"] == "RESEARCH_SHADOW_AUTO_RAPID_90M"
+    assert 89.9 <= row["lead_minutes"] <= 90.1
+    assert out["research_shadow_due_dates"] == ["2026-10-05"]
+
+
+def test_regular_60m_shadow_slot_keeps_legacy_source(monkeypatch):
+    monkeypatch.setattr(
+        scheduler,
+        "load_runtimes",
+        lambda: {
+            "NPB": {
+                "entrypoint": "production_npb",
+                "formal_adoption_status": "BLOCKED_UNTIL_ADOPTED",
+            }
+        },
+    )
+    monkeypatch.setattr(scheduler, "load_research_active_competitions", lambda: set())
+    monkeypatch.setattr(
+        scheduler,
+        "_schedule_for_date",
+        lambda _date: [
+            {
+                "home": "千葉ロッテマリーンズ",
+                "away": "埼玉西武ライオンズ",
+                "official_start_time": "18:00",
+            }
+        ],
+    )
+    monkeypatch.setattr(scheduler, "_archived_prediction_sources", lambda _date: set())
+
+    now = datetime.fromisoformat("2026-10-05T07:58:00+00:00")  # 16:58 JST
+    out = scheduler.due_games(
+        now_utc=now,
+        min_lead_minutes=50.0,
+        preferred_lead_minutes=60.0,
+        scan_ahead_minutes=60.0,
+        research_shadow_source="RESEARCH_SHADOW_AUTO_60M",
+    )
+
+    assert len(out["research_shadow_due_games"]) == 1
+    assert out["research_shadow_due_games"][0]["prediction_source"] == "RESEARCH_SHADOW_AUTO_60M"
+
