@@ -12,7 +12,7 @@ def _read(name: str) -> str:
 
 def test_game_script_autoresearch_is_daily_and_fail_closed():
     text = _read("npb_game_script_autoresearch.yml")
-    assert 'cron: "45 0 * * *"' in text
+    assert 'cron: "45 0,6,12,18 * * *"' in text
     assert "cancel-in-progress: false" in text
     assert 'pit_status' in text
     assert 'production_eligible": False' in text
