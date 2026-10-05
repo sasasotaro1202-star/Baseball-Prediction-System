@@ -35,6 +35,6 @@ def test_zero_job_path_defines_retry_helper_before_first_use():
 def test_recovery_only_operates_on_main_branch_events():
     workflow = WORKFLOW.read_text(encoding="utf-8")
     assert "TARGET_WORKFLOW: baseball_closed_loop.yml" in workflow
-    assert "CONTROL_PLANE_WORKFLOW: baseball_autonomous_control_plane.yml" in workflow
+    assert "CONTROL_PLANE_WORKFLOW: baseball_forever_autopilot.yml" in workflow
     assert "branch main" in workflow
 
