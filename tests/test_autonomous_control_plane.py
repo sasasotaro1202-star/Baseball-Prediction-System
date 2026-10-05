@@ -140,11 +140,13 @@ def test_list_runs_uses_workflow_scoped_history(monkeypatch):
     def fake_gh(args):
         calls.append(list(args))
         workflow = args[args.index("--workflow") + 1]
+        assert workflow == control_plane.workflow_cli_ref(workflow)
         return (
             '[{"databaseId": 1, "status": "completed", '
             '"conclusion": "success", "createdAt": "2026-10-05T00:00:00Z", '
             '"updatedAt": "2026-10-05T00:01:00Z", "headSha": "current", '
             '"headBranch": "main", "event": "schedule", "path": "'
+            + ".github/workflows/"
             + workflow
             + '"}]'
         )
@@ -154,7 +156,7 @@ def test_list_runs_uses_workflow_scoped_history(monkeypatch):
 
     assert len(calls) == len(control_plane.TARGETS)
     assert {call[call.index("--workflow") + 1] for call in calls} == {
-        target.workflow for target in control_plane.TARGETS
+        control_plane.workflow_cli_ref(target.workflow) for target in control_plane.TARGETS
     }
     assert len(rows) == len(control_plane.TARGETS)
     assert {row["path"] for row in rows} == {
@@ -239,3 +241,61 @@ def test_failure_with_unknown_job_count_remains_fail_closed():
     }]
     result = control_plane.decide(target, runs, now, cap=2, current_sha="sha")
     assert result["decision"] == "HOLD"
+
+
+def test_transient_github_failure_is_retryable():
+    assert control_plane._is_transient_gh_failure("HTTP 502 Bad Gateway")
+    assert control_plane._is_transient_gh_failure("rate limit exceeded")
+    assert control_plane._is_transient_gh_failure("connection reset by peer")
+    assert not control_plane._is_transient_gh_failure("HTTP 404 Not Found")
+
+
+def test_cancel_run_polls_only_target_run(monkeypatch):
+    calls = []
+
+    def fake_gh(args):
+        calls.append(list(args))
+        if args[:3] == ["run", "cancel", "99"]:
+            return ""
+        if args[:3] == ["run", "view", "99"] and "--json" in args:
+            return "completed"
+        raise AssertionError(args)
+
+    monkeypatch.setattr(control_plane, "_gh", fake_gh)
+    control_plane.cancel_run("owner/repo", 99)
+    assert len(calls) == 2
+    assert calls[1][:4] == ["run", "view", "99", "--repo"]
+
+
+def test_dispatch_verification_is_workflow_scoped(monkeypatch):
+    calls = []
+
+    def fake_gh(args):
+        calls.append(list(args))
+        if args[:2] == ["workflow", "run"]:
+            return ""
+        if args[:3] == ["run", "list", "--repo"]:
+            return '[{"databaseId": 7, "status": "queued", "conclusion": null, "createdAt": "2026-10-05T10:00:01Z", "headBranch": "main", "event": "workflow_dispatch", "path": ".github/workflows/x.yml"}]'
+        raise AssertionError(args)
+
+    monkeypatch.setattr(control_plane, "_gh", fake_gh)
+    run_id = control_plane.dispatch_and_verify(
+        "owner/repo",
+        Target(".github/workflows/x.yml", 2),
+        int(datetime(2026, 10, 5, 10, 0, tzinfo=timezone.utc).timestamp()),
+    )
+    assert run_id == 7
+    list_calls = [call for call in calls if call[:2] == ["run", "list"]]
+    assert len(list_calls) == 1
+    assert ".github/workflows/x.yml" in list_calls[0]
+
+
+def test_control_plane_workflow_preserves_runtime_failure_evidence():
+    workflow = (
+        __import__("pathlib").Path(".github/workflows/baseball_autonomous_control_plane.yml")
+        .read_text(encoding="utf-8")
+    )
+    assert "control_plane_runtime.log" in workflow
+    assert "runtime_failure.json" in workflow
+    assert 'PIPESTATUS[0]' in workflow
+    assert 'failure_class": "AUTONOMOUS_CONTROL_PLANE_RUNTIME"' in workflow

@@ -58,6 +58,7 @@ jobs:
           python -c 'import json, os; from pathlib import Path; Path("results/control_plane/test_failure.json").write_text(json.dumps({"schema_version": 1, "status": "FAILED", "reason": "control_plane_unit_tests_failed", "git_commit": os.environ["GITHUB_SHA"]}, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")'
 
       - name: Execute bounded autonomous control plane
+        id: control_plane_execute
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -65,7 +66,36 @@ jobs:
           PYTHONUNBUFFERED: "1"
         run: |
           set -euo pipefail
-          python -m research.autonomous_control_plane --repo "${GITHUB_REPOSITORY}" --output results/control_plane/autonomous_control_plane.json --max-dispatches-per-cycle 2
+          mkdir -p results/control_plane
+          set +e
+          python -m research.autonomous_control_plane --repo "${GITHUB_REPOSITORY}" --output results/control_plane/autonomous_control_plane.json --max-dispatches-per-cycle 2 2>&1 | tee results/control_plane/control_plane_runtime.log
+          rc="${PIPESTATUS[0]}"
+          set -e
+          if [ "${rc}" -ne 0 ]; then
+            echo "Control plane execution failed with rc=${rc}; preserving runtime evidence." >&2
+            python - "${rc}" <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+log = Path("results/control_plane/control_plane_runtime.log")
+payload = {
+    "schema_version": 1,
+    "status": "FAILED",
+    "failure_class": "AUTONOMOUS_CONTROL_PLANE_RUNTIME",
+    "exit_code": int(sys.argv[1]),
+    "git_commit": os.environ.get("GITHUB_SHA"),
+    "log_path": str(log),
+}
+if log.exists():
+    payload["log_bytes"] = log.stat().st_size
+Path("results/control_plane/runtime_failure.json").write_text(
+    json.dumps(payload, ensure_ascii=False, indent=2) + "\\n",
+    encoding="utf-8",
+)
+PY
+            exit "${rc}"
+          fi
 
       - name: Publish control-plane summary
         if: always()

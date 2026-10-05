@@ -66,17 +66,65 @@ TARGETS = (
 
 ROOT = Path(__file__).resolve().parents[1]
 
-def _gh(args: list[str]) -> str:
-    result = subprocess.run(
-        ["gh", *args],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=45,
-        env=os.environ.copy(),
+def workflow_cli_ref(workflow: str) -> str:
+    """Return the GitHub CLI workflow identifier for a canonical workflow path."""
+    return Path(workflow).name
+
+
+def _is_transient_gh_failure(message: str) -> bool:
+    lowered = message.lower()
+    transient_markers = (
+        "http 408",
+        "http 429",
+        "http 500",
+        "http 502",
+        "http 503",
+        "http 504",
+        "rate limit",
+        "timed out",
+        "timeout",
+        "connection reset",
+        "connection refused",
+        "temporary failure",
+        "service unavailable",
+        "bad gateway",
+        "gateway timeout",
+        "eof",
     )
-    return result.stdout
+    return any(marker in lowered for marker in transient_markers)
+
+
+def _gh(args: list[str]) -> str:
+    last_error: str | None = None
+    for attempt in range(1, 4):
+        try:
+            result = subprocess.run(
+                ["gh", *args],
+                cwd=ROOT,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=45,
+                env=os.environ.copy(),
+            )
+            return result.stdout
+        except subprocess.TimeoutExpired as exc:
+            last_error = f"gh timeout after 45s (attempt {attempt}/3): {exc}"
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or exc.stdout or str(exc)).strip()
+            last_error = (
+                f"gh command failed rc={exc.returncode} "
+                f"(attempt {attempt}/3): {detail}"
+            )
+            if not _is_transient_gh_failure(detail):
+                raise RuntimeError(last_error) from exc
+
+        if attempt < 3:
+            time.sleep(attempt * 3)
+
+    raise RuntimeError(last_error or "gh command failed without diagnostic output")
+
+
 
 def list_runs(repo: str) -> list[dict[str, Any]]:
     """Return recent main-branch runs with workflow-scoped history.
@@ -95,7 +143,7 @@ def list_runs(repo: str) -> list[dict[str, Any]]:
             "--repo",
             repo,
             "--workflow",
-            target.workflow,
+            workflow_cli_ref(target.workflow),
             "--branch",
             "main",
             "--limit",
@@ -307,25 +355,55 @@ def cancel_run(repo: str, run_id: int) -> None:
     _gh(["run", "cancel", str(run_id), "--repo", repo])
     for _ in range(6):
         time.sleep(2)
-        runs = list_runs(repo)
-        if not any(int(r.get("id", -1)) == int(run_id) and r.get("status") in ACTIVE for r in runs):
+        status = _gh([
+            "run",
+            "view",
+            str(run_id),
+            "--repo",
+            repo,
+            "--json",
+            "status",
+            "--jq",
+            ".status",
+        ]).strip()
+        if status not in ACTIVE:
             return
     raise RuntimeError(f"cancel accepted but run remained active: {run_id}")
 
+
 def dispatch_and_verify(repo: str, target: Target, dispatch_epoch: int) -> int:
-    _gh(["workflow", "run", target.workflow, "--repo", repo, "--ref", "main"])
+    _gh(["workflow", "run", workflow_cli_ref(target.workflow), "--repo", repo, "--ref", "main"])
     for _ in range(6):
         time.sleep(2)
-        runs = list_runs(repo)
+        raw = _gh([
+            "run",
+            "list",
+            "--repo",
+            repo,
+            "--workflow",
+            target.workflow,
+            "--branch",
+            "main",
+            "--limit",
+            "10",
+            "--json",
+            "databaseId,status,conclusion,createdAt,updatedAt,headSha,headBranch,event,path",
+        ])
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(
+                f"invalid dispatch verification JSON for {target.workflow}: {exc}"
+            ) from exc
         recent = [
             r
-            for r in runs
-            if str(r.get("path", "")).lstrip("/") == target.workflow
+            for r in payload
+            if r.get("headBranch") == "main"
             and r.get("event") == "workflow_dispatch"
-            and parse_time(r["created_at"]).timestamp() >= dispatch_epoch
+            and parse_time(r["createdAt"]).timestamp() >= dispatch_epoch
         ]
         if recent:
-            return int(recent[0]["id"])
+            return int(recent[0]["databaseId"])
     raise RuntimeError(f"dispatch accepted but no new run observed: {target.workflow}")
 
 def run(repo: str, output: Path, max_dispatches_per_cycle: int = 2) -> dict[str, Any]:
