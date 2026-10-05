@@ -357,3 +357,22 @@ def test_user_prediction_request_is_under_control_plane_supervision():
     assert target.heavy is False
     assert target.max_age_hours <= 2.0
     assert target.pending_recover_minutes <= 60
+
+
+def test_superseded_terminal_failure_dispatches_current_main():
+    now = datetime(2026, 10, 4, 10, 0, tzinfo=timezone.utc)
+    runs = [{
+        "path": ".github/workflows/x.yml",
+        "head_branch": "main",
+        "status": "completed",
+        "conclusion": "failure",
+        "created_at": "2026-10-04T09:00:00Z",
+        "updated_at": "2026-10-04T09:05:00Z",
+        "event": "workflow_dispatch",
+        "id": 126,
+        "head_sha": "old",
+        "job_count": 1,
+    }]
+    result = decide(Target(".github/workflows/x.yml", 12.0), runs, now, cap=2, current_sha="current")
+    assert result["decision"] == "DISPATCH"
+    assert result["reason"] == "latest_run_on_superseded_sha"
