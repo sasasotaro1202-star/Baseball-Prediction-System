@@ -521,3 +521,24 @@ def test_canonical_actions_recovery_accepts_only_workflow_run_events():
     text = (ROOT / ".github/workflows/baseball_actions_recovery_canonical.yml").read_text(encoding="utf-8")
     assert "github.event_name == 'workflow_run'" in text
     assert "github.event.workflow_run.head_branch == 'main'" in text
+
+def test_canonical_workflows_use_narrow_push_registration_bridge():
+    specs = {
+        ".github/workflows/baseball_autonomous_control_plane_canonical.yml": "baseball_autonomous_control_plane_canonical.yml",
+        ".github/workflows/baseball_24h_research_keeper_canonical.yml": "baseball_24h_research_keeper_canonical.yml",
+        ".github/workflows/baseball_24h_research_autopilot_canonical.yml": "baseball_24h_research_autopilot_canonical.yml",
+        ".github/workflows/npb_game_script_autoresearch_canonical.yml": "npb_game_script_autoresearch_canonical.yml",
+        ".github/workflows/baseball_actions_recovery_canonical.yml": "baseball_actions_recovery_canonical.yml",
+    }
+    guard = "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'"
+    for relpath, filename in specs.items():
+        workflow = (ROOT / relpath).read_text(encoding="utf-8")
+        trigger = workflow.split("permissions:", 1)[0]
+        assert "push:" in trigger, f"{relpath} lacks registration bridge"
+        assert f'      - ".github/workflows/{filename}"' in trigger
+    for relpath in specs:
+        workflow = (ROOT / relpath).read_text(encoding="utf-8")
+        if relpath.endswith("baseball_actions_recovery_canonical.yml"):
+            assert "github.event_name == 'workflow_run'" in workflow
+        else:
+            assert guard in workflow
