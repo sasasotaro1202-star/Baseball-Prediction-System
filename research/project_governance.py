@@ -111,7 +111,7 @@ WORKFLOW_CONTRACTS: dict[str, dict[str, Any]] = {
         "max_age_hours": 30,
         "required": ("schedule:", "Phase 1 scope", "matrix:", "league: [NPB, MLB]"),
     },
-    ".github/workflows/baseball_actions_recovery_v2.yml": {
+    ".github/workflows/baseball_actions_recovery_20261006.yml": {
         "monitor": False,
         "max_age_hours": 0,
         "required": ("workflow_run:", "actions: write", "Baseball User Prediction Request", "baseball-actions-recovery-v2"),
