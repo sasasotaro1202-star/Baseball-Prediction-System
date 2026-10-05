@@ -54,3 +54,12 @@ def test_missing_inning_identity_fails_closed():
     raw=sample().drop(columns=["fiveDigitSerialNumber"])
     with pytest.raises(ValueError):
         build_half_innings(raw, resolve_columns(raw))
+
+
+def test_page_identity_recovers_state_when_serial_is_missing():
+    raw = sample()
+    raw["page"] = raw["fiveDigitSerialNumber"].astype(str) + "01"
+    raw = raw.drop(columns=["fiveDigitSerialNumber"])
+    halves = build_half_innings(raw, resolve_columns(raw))
+    assert len(halves) == 48
+    assert set(halves["half"]) == {"T", "B"}
