@@ -18,6 +18,10 @@ def test_forever_autopilot_has_independent_bootstrap_heartbeat():
     assert "gh workflow run" in text
     assert "bootstrap_daily_cap_reached" in text
     assert "control_plane_heartbeat_stale" in text
+    assert "active_control_plane_on_superseded_sha" in text
+    assert "control_plane_scheduler_stuck" in text
+    assert "control_plane_runtime_stale" in text
+    assert "gh run cancel" in text
     assert "python -m research.autonomous_control_plane" in text
     assert "--max-dispatches-per-cycle" in text
     assert "actions/upload-artifact@" in text
