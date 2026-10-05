@@ -1,6 +1,10 @@
 name: Baseball Actions Recovery
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/baseball_actions_recovery_canonical.yml"
   workflow_run:
     workflows:
       - Baseball Closed Loop Research
