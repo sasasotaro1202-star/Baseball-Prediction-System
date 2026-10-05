@@ -1,8 +1,8 @@
-# Game-Script v4 Research
+# Game-Script v5 Research
 
 ## Purpose
 
-Game-Script v4 is a research-only NPB challenger. It models the game as a sequence of state transitions and generates a full-game score/outcome distribution with Monte Carlo simulation.
+Game-Script v5 is a research-only NPB challenger. It models the game as a sequence of state transitions and generates a full-game score/outcome distribution with Monte Carlo simulation.
 
 The intended state is:
 
@@ -74,7 +74,7 @@ The watchdog never retries deterministic failures indefinitely and never changes
 
 ## Promotion
 
-Passing tests or a successful Actions run does not imply adoption. Promotion requires the project-wide chronological OOS, calibration, PIT, robustness, reproducibility, and frozen-holdout gates against the incumbent. Until those gates are satisfied, v4 remains a Challenger Research artifact.
+Passing tests or a successful Actions run does not imply adoption. Promotion requires the project-wide chronological OOS, calibration, PIT, robustness, reproducibility, and frozen-holdout gates against the incumbent. Until those gates are satisfied, v5 remains a Challenger Research artifact.
 
 
 ## Incremental current-season refresh
@@ -101,3 +101,9 @@ or, when a compatible complete checkpoint exists:
 `SHADOW_REFRESH_FALLBACK`.
 
 This lane is research-only, does not modify production configuration, and preserves its own evidence artifact.
+
+## v5 state-integrity hardening
+
+v5 rejects transitions that could create illegal simulated game paths. A top-to-bottom or bottom-to-next-top transition must reset to 0 outs and empty bases, while within-half visible outs may increase by at most two and may never decrease. This is fail-closed data handling: malformed or underspecified boundary states are excluded rather than repaired.
+
+The dedicated research loop is scheduled four times per day (00:45, 06:45, 12:45, 18:45 UTC). Unchanged fingerprints still skip full WFO, so the higher cadence is used primarily to detect refreshed current-season context without duplicating expensive historical evaluation.
