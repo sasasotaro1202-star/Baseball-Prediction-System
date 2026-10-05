@@ -172,27 +172,32 @@ PY
           fi
 
           request_verified_run_id=""
+          request_rerun_attempt=""
           if [ "$request_cancel" -eq 1 ] && [ -n "$request_latest_id" ]; then
             gh_retry run cancel "$request_latest_id" --repo "$GH_REPO"
           fi
           if [ "$request_bootstrap" -eq 1 ]; then
-            dispatch_epoch="$(date -u +%s)"
-            gh_retry workflow run "$REQUEST_WORKFLOW" --repo "$GH_REPO" --ref main
-            for attempt in 1 2 3 4 5; do
-              sleep 2
-              fresh="$(gh_retry api "repos/$GH_REPO/actions/workflows/$REQUEST_WORKFLOW/runs?branch=main&per_page=20")"
-              request_verified_run_id="$(printf "%s" "$fresh" | jq -r --argjson cutoff "$dispatch_epoch" '
-                [.workflow_runs[]
-                 | select(.event == "workflow_dispatch")
-                 | select((.created_at | fromdateiso8601) >= $cutoff)]
-                | sort_by(.created_at)
-                | reverse
-                | .[0].id // empty')"
-              if [ -n "$request_verified_run_id" ]; then break; fi
-            done
-            if [ -z "$request_verified_run_id" ]; then
-              echo "request dispatch accepted but no new request run was observable" >&2
-              exit 1
+            if [ -z "$request_latest_id" ]; then
+              echo "No request run exists to rerun; preserving missing-request state for the next active.json push."
+              request_reason="no_existing_request_run_to_rerun"
+            elif [ "$(printf "%s" "$request_latest" | jq -r ".head_sha // empty")" != "$current_sha" ]; then
+              echo "Latest request run is superseded; refusing to rerun stale request code."
+              request_reason="latest_request_run_superseded"
+            else
+              request_rerun_attempt="$(gh_retry api "repos/$GH_REPO/actions/runs/$request_latest_id" --jq ".run_attempt")"
+              gh_retry run rerun "$request_latest_id" --repo "$GH_REPO"
+              for attempt in 1 2 3 4 5; do
+                sleep 2
+                current_attempt="$(gh_retry api "repos/$GH_REPO/actions/runs/$request_latest_id" --jq ".run_attempt")"
+                if [ "$current_attempt" -gt "$request_rerun_attempt" ]; then
+                  request_verified_run_id="$request_latest_id"
+                  break
+                fi
+              done
+              if [ -z "$request_verified_run_id" ]; then
+                echo "Request run rerun accepted but run attempt did not advance." >&2
+                exit 1
+              fi
             fi
           fi
 
