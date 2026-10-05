@@ -23,7 +23,7 @@ def test_rapid_slot_selects_only_60_to_90_minutes(monkeypatch):
             },
         ],
     )
-    now = datetime(2026, 10, 5, 7, 20, tzinfo=timezone.utc)  # 16:20 JST
+    now = datetime(2026, 10, 5, 7, 30, tzinfo=timezone.utc)  # 16:30 JST
     out = rapid.rapid_due_games(now_utc=now)
     assert out["status"] == "DUE"
     assert len(out["due_games"]) == 1
