@@ -187,7 +187,7 @@ def test_phase1_and_universal_readiness_are_monitored():
 
 def test_autonomous_control_plane_is_governed():
     from research.project_governance import WORKFLOW_CONTRACTS
-    assert ".github/workflows/baseball_autonomous_control_plane.yml" in WORKFLOW_CONTRACTS
+    assert ".github/workflows/baseball_autonomous_control_plane_canonical.yml" in WORKFLOW_CONTRACTS
 
 
 def test_no_run_is_deferred_when_autonomous_control_plane_is_active(monkeypatch):
@@ -200,7 +200,7 @@ def test_no_run_is_deferred_when_autonomous_control_plane_is_active(monkeypatch)
         return {
             "workflow_runs": [
                 {
-                    "path": ".github/workflows/baseball_autonomous_control_plane.yml",
+                    "path": ".github/workflows/baseball_autonomous_control_plane_canonical.yml",
                     "status": "in_progress",
                     "conclusion": None,
                     "created_at": "2026-10-04T09:50:00Z",
@@ -230,7 +230,7 @@ def test_expected_skipped_archive_is_not_failed(monkeypatch):
         return {
             "workflow_runs": [
                 {
-                    "path": ".github/workflows/baseball_autonomous_control_plane.yml",
+                    "path": ".github/workflows/baseball_autonomous_control_plane_canonical.yml",
                     "status": "in_progress",
                     "conclusion": None,
                     "created_at": "2026-10-04T09:50:00Z",
@@ -260,7 +260,7 @@ def test_expected_skipped_archive_is_not_failed(monkeypatch):
 
 
 def test_autonomous_control_plane_is_single_heartbeat_not_workflow_run_driven():
-    workflow = Path(".github/workflows/baseball_autonomous_control_plane.yml").read_text(encoding="utf-8")
+    workflow = Path(".github/workflows/baseball_autonomous_control_plane_canonical.yml").read_text(encoding="utf-8")
     assert "cron: '*/15 * * * *'" in workflow
     assert "workflow_run:" not in workflow
     assert "research.autonomous_control_plane" in workflow
@@ -269,7 +269,7 @@ def test_autonomous_control_plane_is_single_heartbeat_not_workflow_run_driven():
 def test_actions_recovery_is_singleton():
     from research.project_governance import WORKFLOW_CONTRACTS
 
-    path = ".github/workflows/baseball_actions_recovery.yml"
+    path = ".github/workflows/baseball_actions_recovery_canonical.yml"
     contract = WORKFLOW_CONTRACTS[path]
     assert contract["monitor"] is False
     assert "group: baseball-actions-recovery" in contract["required"]
@@ -277,12 +277,12 @@ def test_actions_recovery_is_singleton():
 
 
 def test_actions_recovery_covers_zero_job_research_workflows():
-    workflow = Path(".github/workflows/baseball_actions_recovery.yml").read_text(encoding="utf-8")
+    workflow = Path(".github/workflows/baseball_actions_recovery_canonical.yml").read_text(encoding="utf-8")
     assert "NPB Game-Script Auto Research" in workflow
     assert "Baseball Game Script Lab" in workflow
-    assert ".github/workflows/npb_game_script_autoresearch.yml" in workflow
+    assert ".github/workflows/npb_game_script_autoresearch_canonical.yml" in workflow
     assert ".github/workflows/baseball_game_script_lab.yml" in workflow
-    assert ".github/workflows/baseball_24h_research_autopilot.yml" in workflow
+    assert ".github/workflows/baseball_24h_research_autopilot_canonical.yml" in workflow
     assert 'case "${WORKFLOW_PATH}" in' in workflow
     assert 'case "\\${WORKFLOW_PATH}" in' not in workflow
     assert "ZERO_JOB_COOLDOWN" in workflow
@@ -335,7 +335,7 @@ def test_unsupported_current_push_run_does_not_override_valid_scheduled_run(monk
         return {
             "workflow_runs": [
                 {
-                    "path": ".github/workflows/baseball_autonomous_control_plane.yml",
+                    "path": ".github/workflows/baseball_autonomous_control_plane_canonical.yml",
                     "status": "in_progress",
                     "conclusion": None,
                     "created_at": "2026-10-05T09:59:00Z",
@@ -346,7 +346,7 @@ def test_unsupported_current_push_run_does_not_override_valid_scheduled_run(monk
                     "event": "schedule",
                 },
                 {
-                    "path": ".github/workflows/baseball_24h_research_autopilot.yml",
+                    "path": ".github/workflows/baseball_24h_research_autopilot_canonical.yml",
                     "status": "completed",
                     "conclusion": "failure",
                     "created_at": "2026-10-05T09:59:30Z",
@@ -357,7 +357,7 @@ def test_unsupported_current_push_run_does_not_override_valid_scheduled_run(monk
                     "event": "push",
                 },
                 {
-                    "path": ".github/workflows/baseball_24h_research_autopilot.yml",
+                    "path": ".github/workflows/baseball_24h_research_autopilot_canonical.yml",
                     "status": "completed",
                     "conclusion": "success",
                     "created_at": "2026-10-05T09:50:00Z",
@@ -375,11 +375,11 @@ def test_unsupported_current_push_run_does_not_override_valid_scheduled_run(monk
         "owner/repo",
         datetime(2026, 10, 5, 10, 0, tzinfo=timezone.utc),
     )
-    entry = report["workflows"][".github/workflows/baseball_24h_research_autopilot.yml"]
+    entry = report["workflows"][".github/workflows/baseball_24h_research_autopilot_canonical.yml"]
     assert entry["state"] == "HEALTHY"
     assert entry["run_id"] == 101
     assert entry["event"] == "schedule"
-    assert "actions_ignored_unsupported_event:.github/workflows/baseball_24h_research_autopilot.yml:push" in report["deferred"]
+    assert "actions_ignored_unsupported_event:.github/workflows/baseball_24h_research_autopilot_canonical.yml:push" in report["deferred"]
 
 
 def test_current_control_plane_push_run_is_not_treated_as_healthy(monkeypatch):
@@ -391,7 +391,7 @@ def test_current_control_plane_push_run_is_not_treated_as_healthy(monkeypatch):
     def fake_gh_json(args):
         return {
             "workflow_runs": [{
-                "path": ".github/workflows/baseball_autonomous_control_plane.yml",
+                "path": ".github/workflows/baseball_autonomous_control_plane_canonical.yml",
                 "status": "completed",
                 "conclusion": "failure",
                 "created_at": "2026-10-05T09:59:00Z",
@@ -410,7 +410,7 @@ def test_current_control_plane_push_run_is_not_treated_as_healthy(monkeypatch):
     )
     assert report["control_plane"]["state"] == "NO_RUN"
     assert report["control_plane"]["ignored_unsupported_event_runs"] == 1
-    entry = report["workflows"][".github/workflows/baseball_autonomous_control_plane.yml"]
+    entry = report["workflows"][".github/workflows/baseball_autonomous_control_plane_canonical.yml"]
     assert entry["state"] == "DEFERRED"
     assert "only_unsupported_event_runs" in entry["reasons"]
 
@@ -418,10 +418,10 @@ def test_current_control_plane_push_run_is_not_treated_as_healthy(monkeypatch):
 def test_workflow_dispatch_empty_mapping_is_supported():
     from research import project_governance as governance
 
-    path = Path(".github/workflows/baseball_autonomous_control_plane.yml")
+    path = Path(".github/workflows/baseball_autonomous_control_plane_canonical.yml")
     workflow = path.read_text(encoding="utf-8")
     assert "workflow_dispatch: {}" in workflow
     assert governance._workflow_declares_event(
-        ".github/workflows/baseball_autonomous_control_plane.yml",
+        ".github/workflows/baseball_autonomous_control_plane_canonical.yml",
         "workflow_dispatch",
     )

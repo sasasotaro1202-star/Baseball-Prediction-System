@@ -11,7 +11,7 @@ def _read(name: str) -> str:
 
 
 def test_game_script_autoresearch_is_recurring_and_fail_closed():
-    text = _read("npb_game_script_autoresearch.yml")
+    text = _read("npb_game_script_autoresearch_canonical.yml")
     assert 'cron: "45 0,6,12,18 * * *"' in text
     assert '  push:' not in text
     assert "cancel-in-progress: false" in text
@@ -31,7 +31,7 @@ def test_game_script_autoresearch_is_recurring_and_fail_closed():
 
 
 def test_game_script_autoresearch_has_main_snapshot_guard():
-    text = _read("npb_game_script_autoresearch.yml")
+    text = _read("npb_game_script_autoresearch_canonical.yml")
     assert 'test "$GITHUB_REF" = "refs/heads/main"' in text
     assert 'test "$current_main" = "$GITHUB_SHA"' in text
 
@@ -54,7 +54,7 @@ def test_game_script_lab_uses_explicit_token_environment():
 
 
 def test_game_script_autoresearch_decision_guard_is_closed_and_well_formed():
-    text = _read("npb_game_script_autoresearch.yml")
+    text = _read("npb_game_script_autoresearch_canonical.yml")
     malformed = "if grep -q '^need_research=0'" + "\n"
     assert malformed not in text
     assert "if grep -q '^need_research=0$' results/research_decision.txt; then" in text

@@ -37,7 +37,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TARGET_WORKFLOW: baseball_closed_loop.yml
-          CONTROL_PLANE_WORKFLOW: baseball_autonomous_control_plane.yml
+          CONTROL_PLANE_WORKFLOW: baseball_autonomous_control_plane_canonical.yml
           EVENT_RUN_ID: ${{ github.event.workflow_run.id || '' }}
           EVENT_CONCLUSION: ${{ github.event.workflow_run.conclusion || '' }}
         shell: bash
@@ -424,7 +424,7 @@ jobs:
           # are handled by the dedicated recovery workflow instead of entering
           # an infinite retry loop.
           # Deterministic failures must not enter an unbounded retry loop.
-          # baseball_actions_recovery.yml owns transient failed-job retries.
+          # baseball_actions_recovery_canonical.yml owns transient failed-job retries.
           latest="$(printf '%s' "${runs_json}" | jq -r 'sort_by(.createdAt) | last // empty')"
           latest_id=''
           latest_conclusion=''

@@ -3,7 +3,7 @@ import re
 
 
 ROOT = Path(__file__).resolve().parents[1]
-WORKFLOW = ROOT / ".github" / "workflows" / "baseball_24h_research_autopilot.yml"
+WORKFLOW = ROOT / ".github" / "workflows" / "baseball_24h_research_autopilot_canonical.yml"
 
 
 def test_24h_autopilot_targeted_test_paths_are_discoverable_and_present():
@@ -34,7 +34,7 @@ def test_reliability_preflight_concurrency_is_ref_scoped():
 
 
 def test_24h_autopilot_has_current_main_staleness_guard():
-    workflow = (ROOT / ".github" / "workflows" / "baseball_24h_research_autopilot.yml").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github" / "workflows" / "baseball_24h_research_autopilot_canonical.yml").read_text(encoding="utf-8")
     assert workflow.count("name: Verify main has not advanced") == 4
     assert "current_main=\"$(git rev-parse origin/main)\"" in workflow
     assert "test \"$current_main\" = \"$EXPECTED_REF\"" in workflow

@@ -24,7 +24,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          workflow="npb_game_script_autoresearch.yml"
+          workflow="npb_game_script_autoresearch_canonical.yml"
           repo="$GITHUB_REPOSITORY"
           now=$(date +%s)
 

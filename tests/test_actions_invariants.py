@@ -4,7 +4,7 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 CLOSED_LOOP = ROOT / ".github" / "workflows" / "baseball_closed_loop.yml"
-RECOVERY = ROOT / ".github" / "workflows" / "baseball_actions_recovery.yml"
+RECOVERY = ROOT / ".github" / "workflows" / "baseball_actions_recovery_canonical.yml"
 X_RESEARCH = ROOT / ".github" / "workflows" / "baseball_x_research.yml"
 AUTOPILOT = ROOT / ".github" / "workflows" / "baseball_9h_autopilot.yml"
 SUPERVISOR = ROOT / ".github" / "workflows" / "baseball_24h_supervisor.yml"
@@ -211,16 +211,16 @@ def test_candidate_oos_watchdog_recovers_stale_in_progress_runs_after_sha_drift(
 
 def test_candidate_oos_watchdog_allows_validated_autonomous_control_plane_continuity():
     text = (ROOT / ".github" / "workflows" / "baseball_candidate_oos_watchdog.yml").read_text(encoding="utf-8")
-    assert ".github/workflows/baseball_autonomous_control_plane.yml" in text
+    assert ".github/workflows/baseball_autonomous_control_plane_canonical.yml" in text
     # The watchdog classifies validated control-plane-only workflow changes as
     # non-runtime continuity and keeps compatible queued OOS work intact.
     assert "is_non_runtime_only_change" in text
-    assert "baseball_autonomous_control_plane.yml" in text
+    assert "baseball_autonomous_control_plane_canonical.yml" in text
     assert "Keeping queued candidate run" in text
 
 
 def test_control_plane_and_v44_triggers_keep_bounded_main_push_scope():
-    control = (ROOT / ".github" / "workflows" / "baseball_autonomous_control_plane.yml").read_text(encoding="utf-8")
+    control = (ROOT / ".github" / "workflows" / "baseball_autonomous_control_plane_canonical.yml").read_text(encoding="utf-8")
     v44 = (ROOT / ".github" / "workflows" / "baseball_v44_compatibility.yml").read_text(encoding="utf-8")
     control_trigger = control.split("permissions:", 1)[0]
     v44_trigger = v44.split("permissions:", 1)[0]
@@ -230,7 +230,7 @@ def test_control_plane_and_v44_triggers_keep_bounded_main_push_scope():
     assert "push:" not in control_trigger
     assert "schedule:" in control_trigger
     assert "workflow_dispatch:" in control_trigger
-    assert "baseball_24h_research_keeper.yml" not in control_trigger
+    assert "baseball_24h_research_keeper_canonical.yml" not in control_trigger
 
     # v4.4 compatibility remains automatic for code/test changes, but excludes
     # append-only experience/data churn and unrelated documentation updates.
@@ -260,7 +260,7 @@ def test_24h_supervisor_avoids_deterministic_failure_retry_loop():
 
     assert "Deterministic failures must not enter an unbounded retry loop." in text
     assert "cooldown active" in text
-    assert "baseball_actions_recovery.yml owns transient failed-job retries" in text
+    assert "baseball_actions_recovery_canonical.yml owns transient failed-job retries" in text
     assert "gh run rerun" not in text
     # The dispatch is wrapped by gh_retry for transient GitHub API resilience.
     assert "gh_retry workflow run" in text
@@ -277,9 +277,9 @@ def test_24h_supervisor_avoids_deterministic_failure_retry_loop():
 
 
 def test_24h_keeper_is_bounded_control_plane_failover():
-    text = (ROOT / ".github" / "workflows" / "baseball_24h_research_keeper.yml").read_text(encoding="utf-8")
+    text = (ROOT / ".github" / "workflows" / "baseball_24h_research_keeper_canonical.yml").read_text(encoding="utf-8")
 
-    assert "baseball_autonomous_control_plane.yml" in text
+    assert "baseball_autonomous_control_plane_canonical.yml" in text
     assert "--branch main" in text
     assert "Control plane is absent/stale; entering bounded 24h-autopilot failover mode." in text
     assert "DAILY_FAILOVER_CAP" in text
@@ -289,7 +289,7 @@ def test_24h_keeper_is_bounded_control_plane_failover():
 
 
 def test_24h_research_autopilot_uses_current_commit_snapshot_and_no_push_trigger():
-    text = (ROOT / ".github" / "workflows" / "baseball_24h_research_autopilot.yml").read_text(encoding="utf-8")
+    text = (ROOT / ".github" / "workflows" / "baseball_24h_research_autopilot_canonical.yml").read_text(encoding="utf-8")
     trigger = text.split("permissions:", 1)[0]
     assert "workflow_dispatch:" in trigger
     assert "schedule:" in trigger
@@ -347,7 +347,7 @@ def test_pregame_experience_persist_skips_absent_optional_shadow_dir():
 
 
 def test_pregame_zero_job_failure_has_bounded_control_plane_recovery():
-    recovery = (ROOT / ".github" / "workflows" / "baseball_actions_recovery.yml").read_text(encoding="utf-8")
+    recovery = (ROOT / ".github" / "workflows" / "baseball_actions_recovery_canonical.yml").read_text(encoding="utf-8")
     assert "Baseball 60m Pregame Auto Prediction" in recovery
     trigger = recovery.split("permissions:", 1)[0]
     assert "- .github/workflows/baseball_60m_pregame_auto.yml" in trigger
@@ -462,7 +462,7 @@ def test_phase1_candidate_gate_stages_npb_data_before_real_validation():
     assert "timeout-minutes: 20" in text
 def test_24h_autopilot_targeted_test_paths_exist():
     """Never let the long-running autopilot reference deleted test modules."""
-    workflow = (ROOT / ".github" / "workflows" / "baseball_24h_research_autopilot.yml").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github" / "workflows" / "baseball_24h_research_autopilot_canonical.yml").read_text(encoding="utf-8")
     paths = sorted(set(re.findall(r"tests/[A-Za-z0-9_.-]+\.py", workflow)))
     assert paths, "expected at least one targeted test path in the 24h autopilot"
     missing = [path for path in paths if not (ROOT / path).is_file()]
@@ -486,7 +486,7 @@ def test_gate_workflows_skip_test_only_pushes_to_reduce_duplicate_ci():
 
 
 def test_actions_recovery_defers_unsupported_legacy_events_before_retrying():
-    recovery = (ROOT / ".github" / "workflows" / "baseball_actions_recovery.yml").read_text(encoding="utf-8")
+    recovery = (ROOT / ".github" / "workflows" / "baseball_actions_recovery_canonical.yml").read_text(encoding="utf-8")
     assert "OBSERVED_EVENT: ${{ github.event.workflow_run.event }}" in recovery
     assert "UNVERIFIABLE_WORKFLOW_DEFINITION" in recovery
     assert "UNSUPPORTED_EVENT_DEFERRED" in recovery
@@ -495,8 +495,29 @@ def test_actions_recovery_defers_unsupported_legacy_events_before_retrying():
 
 
 def test_actions_recovery_binds_retry_to_current_main_snapshot():
-    recovery = (ROOT / ".github" / "workflows" / "baseball_actions_recovery.yml").read_text(encoding="utf-8")
+    recovery = (ROOT / ".github" / "workflows" / "baseball_actions_recovery_canonical.yml").read_text(encoding="utf-8")
     assert "PARENT_SHA: ${{ github.event.workflow_run.head_sha }}" in recovery
     assert 'current_main_sha="$(gh_retry api "repos/${GH_REPO}/git/ref/heads/main" --jq .object.sha)"' in recovery
     assert "SUPERSEDED_OR_UNVERIFIABLE_SHA" in recovery
     assert "contents/${WORKFLOW_PATH}?ref=${current_main_sha}" in recovery
+
+
+def test_canonical_autonomous_workflows_guard_unsupported_push_execution():
+    guard = "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'"
+    expected_counts = {
+        ".github/workflows/baseball_autonomous_control_plane_canonical.yml": 1,
+        ".github/workflows/npb_game_script_autoresearch_canonical.yml": 1,
+        ".github/workflows/baseball_24h_research_keeper_canonical.yml": 1,
+        ".github/workflows/baseball_24h_research_autopilot_canonical.yml": 6,
+    }
+    for relpath, expected_count in expected_counts.items():
+        text = (ROOT / relpath).read_text(encoding="utf-8")
+        assert text.count(guard) == expected_count, (
+            f"{relpath} guard count mismatch: "
+            f"expected {expected_count}, got {text.count(guard)}"
+        )
+
+def test_canonical_actions_recovery_accepts_only_workflow_run_events():
+    text = (ROOT / ".github/workflows/baseball_actions_recovery_canonical.yml").read_text(encoding="utf-8")
+    assert "github.event_name == 'workflow_run'" in text
+    assert "github.event.workflow_run.head_branch == 'main'" in text
