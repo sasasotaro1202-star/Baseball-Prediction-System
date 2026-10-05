@@ -482,3 +482,21 @@ def test_gate_workflows_skip_test_only_pushes_to_reduce_duplicate_ci():
         assert "      - 'tests/**'" in trigger
         assert "push:" in trigger
 
+
+
+
+def test_actions_recovery_defers_unsupported_legacy_events_before_retrying():
+    recovery = (ROOT / ".github" / "workflows" / "baseball_actions_recovery.yml").read_text(encoding="utf-8")
+    assert "OBSERVED_EVENT: ${{ github.event.workflow_run.event }}" in recovery
+    assert "UNVERIFIABLE_WORKFLOW_DEFINITION" in recovery
+    assert "UNSUPPORTED_EVENT_DEFERRED" in recovery
+    assert "Observed event" in recovery and "declared by the current workflow" in recovery
+    assert "redispatch" in recovery
+
+
+def test_actions_recovery_binds_retry_to_current_main_snapshot():
+    recovery = (ROOT / ".github" / "workflows" / "baseball_actions_recovery.yml").read_text(encoding="utf-8")
+    assert "PARENT_SHA: ${{ github.event.workflow_run.head_sha }}" in recovery
+    assert 'current_main_sha="$(gh_retry api "repos/${GH_REPO}/git/ref/heads/main" --jq .object.sha)"' in recovery
+    assert "SUPERSEDED_OR_UNVERIFIABLE_SHA" in recovery
+    assert "contents/${WORKFLOW_PATH}?ref=${current_main_sha}" in recovery
