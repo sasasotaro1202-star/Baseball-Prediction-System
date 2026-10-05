@@ -259,7 +259,7 @@ def test_expected_skipped_archive_is_not_failed(monkeypatch):
 
 def test_autonomous_control_plane_is_single_heartbeat_not_workflow_run_driven():
     workflow = Path(".github/workflows/baseball_forever_autopilot.yml").read_text(encoding="utf-8")
-    assert "cron: '*/15 * * * *'" in workflow
+    assert 'cron: "*/5 * * * *"' in workflow
     assert "workflow_run:" not in workflow
     assert "research.autonomous_control_plane" in workflow
 
@@ -335,38 +335,32 @@ def test_unsupported_current_push_run_does_not_override_valid_scheduled_run(monk
     assert entry["event"] == "schedule"
     assert "actions_ignored_unsupported_event:.github/workflows/baseball_24h_research_autopilot_canonical.yml:push" in report["deferred"]
 
-def test_current_control_plane_push_run_is_not_treated_as_healthy(monkeypatch):
+def test_current_forever_push_run_is_tracked_as_valid(monkeypatch):
     from datetime import datetime, timezone
     from research import project_governance as governance
 
     monkeypatch.setenv("GITHUB_SHA", "current")
 
     def fake_gh_json(args):
-        return {
-            "workflow_runs": [{
+        endpoint = args[0]
+        if "baseball_forever_autopilot.yml/runs" in endpoint:
+            return {"workflow_runs": [{
                 "path": ".github/workflows/baseball_forever_autopilot.yml",
                 "status": "completed",
-                "conclusion": "failure",
+                "conclusion": "success",
                 "created_at": "2026-10-05T09:59:00Z",
                 "updated_at": "2026-10-05T09:59:00Z",
                 "head_sha": "current",
                 "id": 300,
                 "run_number": 30,
                 "event": "push",
-            }]
-        }
+            }]}
+        return {"workflow_runs": []}
 
     monkeypatch.setattr(governance, "_gh_json", fake_gh_json)
-    report = governance.action_health(
-        "owner/repo",
-        datetime(2026, 10, 5, 10, 0, tzinfo=timezone.utc),
-    )
-    assert report["control_plane"]["state"] == "NO_RUN"
-    assert report["control_plane"]["ignored_unsupported_event_runs"] == 1
+    report = governance.action_health("owner/repo", datetime(2026, 10, 5, 10, 0, tzinfo=timezone.utc))
     entry = report["workflows"][".github/workflows/baseball_forever_autopilot.yml"]
-    assert entry["state"] == "DEFERRED"
-    assert "only_unsupported_event_runs" in entry["reasons"]
-
+    assert entry["state"] == "HEALTHY"
 
 def test_workflow_dispatch_empty_mapping_is_supported():
     from research import project_governance as governance
@@ -439,20 +433,18 @@ def test_action_health_uses_workflow_scoped_history(monkeypatch):
 
 def test_forever_automation_uses_registered_control_plane():
     from research.project_governance import WORKFLOW_CONTRACTS
-
     path = ".github/workflows/baseball_forever_autopilot.yml"
     workflow = Path(path).read_text(encoding="utf-8")
     contract = WORKFLOW_CONTRACTS[path]
-
     assert contract["monitor"] is True
     assert contract["max_age_hours"] <= 2
-    assert "cron: '*/15 * * * *'" in workflow
+    assert "cron: \"*/5 * * * *\"" in workflow
     assert "workflow_dispatch: {}" in workflow
     assert "actions: write" in workflow
     assert "research.autonomous_control_plane" in workflow
-    assert "--max-dispatches-per-cycle 2" in workflow or "--max-dispatches-per-cycle\" 2" in workflow
-    assert "max_heavy_dispatches_per_cycle" in workflow or "max-dispatches-per-cycle" in workflow
-
+    assert "--max-dispatches-per-cycle 2" in workflow
+    assert "CONTROL_WORKFLOW" not in workflow
+    assert "gh workflow run" not in workflow
 
 def test_user_prediction_results_are_persisted():
     ignore = Path(".gitignore").read_text(encoding="utf-8")
@@ -468,10 +460,10 @@ def test_control_plane_directly_schedules_user_prediction_recovery():
 
 def test_registration_repair_targets_exact_known_retired_ids():
     workflow = Path(".github/workflows/baseball_workflow_registration_repair.yml").read_text(encoding="utf-8")
-    assert 'target_ids="375399090 359633887 375842323 375843510"' in workflow
+    assert 'target_ids="374504043 375853241 375399090 375399444 359633887 375842323 375843510"' in workflow
     verify_start = workflow.index("      - name: Verify ghost registrations are disabled")
     verify = workflow[verify_start:]
-    assert 'target_ids="375399090 359633887 375842323 375843510"' in verify
+    assert 'target_ids="374504043 375853241 375399090 375399444 359633887 375842323 375843510"' in verify
 
 
 def test_supervisor_ghost_repair_allowlist_covers_all_target_registrations():
