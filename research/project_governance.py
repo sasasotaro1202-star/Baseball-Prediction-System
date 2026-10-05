@@ -64,12 +64,12 @@ WORKFLOW_CONTRACTS: dict[str, dict[str, Any]] = {
         "max_age_hours": 10,
         "required": ("schedule:", "production_npb.py"),
     },
-    ".github/workflows/baseball_24h_research_autopilot_canonical.yml": {
+    ".github/workflows/baseball_24h_research_autopilot_live.yml": {
         "monitor": True,
         "max_age_hours": 30,
         "required": ("schedule:", "workflow_dispatch:"),
     },
-    ".github/workflows/baseball_autonomous_control_plane_canonical.yml": {
+    ".github/workflows/baseball_autonomous_control_plane_live.yml": {
         "monitor": True,
         "max_age_hours": 2,
         "required": ("schedule:", "cron: '*/15 * * * *'", "actions: write", "research.autonomous_control_plane"),
@@ -86,7 +86,7 @@ WORKFLOW_CONTRACTS: dict[str, dict[str, Any]] = {
         "defer_stale_conclusions": ("skipped",),
         "required": ("workflow_run:", "schedule:", "contents: write"),
     },
-    ".github/workflows/baseball_24h_research_keeper_canonical.yml": {
+    ".github/workflows/baseball_24h_research_keeper_live.yml": {
         "monitor": True,
         "max_age_hours": 1,
         "required": ("schedule:", "cron: '*/5 * * * *'", "actions: write"),
@@ -116,7 +116,7 @@ WORKFLOW_CONTRACTS: dict[str, dict[str, Any]] = {
         "max_age_hours": 30,
         "required": ("schedule:", "research.universal_readiness", "tests/test_universal_readiness.py"),
     },
-    ".github/workflows/baseball_actions_recovery_canonical.yml": {
+    ".github/workflows/baseball_actions_recovery_live.yml": {
         "monitor": False,
         "max_age_hours": 0,
         "required": (
@@ -321,7 +321,7 @@ def action_health(repo: str, now: datetime | None = None) -> dict[str, Any]:
     runs = payload.get("workflow_runs", [])
     current_sha = os.environ.get("GITHUB_SHA", "").strip() or None
 
-    control_path = ".github/workflows/baseball_autonomous_control_plane_canonical.yml"
+    control_path = ".github/workflows/baseball_autonomous_control_plane_live.yml"
     control_runs_all = [
         r for r in runs
         if str(r.get("path", "")).lstrip("/") == control_path
