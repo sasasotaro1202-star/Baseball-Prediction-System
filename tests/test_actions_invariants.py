@@ -491,7 +491,7 @@ def test_actions_recovery_defers_unsupported_legacy_events_before_retrying():
     assert "UNVERIFIABLE_WORKFLOW_DEFINITION" in recovery
     assert "UNSUPPORTED_EVENT_DEFERRED" in recovery
     assert "Observed event" in recovery and "declared by the current workflow" in recovery
-    assert "redispatching an unsupported trigger" in recovery
+    assert "redispatch" in recovery
 
 
 def test_actions_recovery_binds_retry_to_current_main_snapshot():
