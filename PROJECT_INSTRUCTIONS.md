@@ -126,11 +126,11 @@ A probable-pitcher observation from MLB's current official page is not treated a
 Use `research/score_distribution_pattern_lab.py` for research-only exploration of score-model composition, shared scoring correlation, and mean shrinkage. The canonical targets remain independent: Score Top-4 exact-score, Low<=6, High>=7. Candidate selection is chronological Development OOS only and the newest 20% remains winner-only frozen holdout. No score-pattern result may auto-promote Production.
 ## Forever GitHub automation / canonical heartbeat
 
-The repository must remain capable of progressing autonomously on GitHub Actions without requiring ChatGPT or a manual browser session for each cycle. The canonical lightweight liveness layer is .github/workflows/baseball_forever_autopilot.yml.
+The repository must remain capable of progressing autonomously on GitHub Actions without requiring ChatGPT or a manual browser session for each cycle. The canonical lightweight liveness anchor is the already-registered `.github/workflows/baseball_candidate_oos_watchdog.yml`, which also owns bounded control-plane bootstrap/recovery.
 
 Its contract is:
 - heartbeat on a 5-minute schedule plus workflow_dispatch;
-- a narrow push trigger only for the heartbeat workflow itself, used to bootstrap registration after changes;
+- the existing 15-minute Watchdog schedule plus workflow_dispatch, used as the stable registered heartbeat;
 - actions: write / contents: read only;
 - current-main SHA verification before orchestration;
 - direct bootstrap/recovery of the canonical baseball_autonomous_control_plane_canonical.yml when no current run exists, the latest run is stale, or it is on a superseded SHA;
