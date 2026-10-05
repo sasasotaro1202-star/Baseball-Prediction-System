@@ -2,24 +2,6 @@ name: Baseball Candidate OOS Watchdog
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/baseball_candidate_oos.yml'
-      - '.github/workflows/baseball_candidate_oos_watchdog.yml'
-      - 'research/real_data_validation.py'
-      - 'research/validation_pipeline.py'
-      - 'research/candidates.py'
-      - 'research/regime_router.py'
-      - 'research/correlated_score.py'
-      - 'research/competition_taxonomy.py'
-      - 'research/competition_strategy.py'
-      - 'research/hierarchical_result_model.py'
-      - 'research/individually_calibrated_ensemble.py'
-      - 'research/adoption_gate.py'
-      - 'baseball_backtest.py'
-      - 'core/**'
-      - 'evaluation/**'
   schedule:
     - cron: '*/15 * * * *'
 
@@ -44,45 +26,6 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 1
-
-      - name: Disable exact known ghost workflow registrations
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          # These are the exact obsolete registrations identified by repository
-          # evidence. Only these IDs and their historical workflow paths are
-          # eligible for automatic disabling. Unknown IDs fail closed.
-          target_ids="375399090 375399188 375399246 375399327 375399444"
-          for workflow_id in ${target_ids}; do
-            state="$(gh api "repos/${GH_REPO}/actions/workflows/${workflow_id}" --jq '.state // "unknown"')"
-            path="$(gh api "repos/${GH_REPO}/actions/workflows/${workflow_id}" --jq '.path // "unknown"')"
-            case "${path}" in
-              .github/workflows/baseball_autonomous_control_plane_canonical.yml|
-              .github/workflows/baseball_24h_research_autopilot_canonical.yml|
-              .github/workflows/baseball_24h_research_keeper_canonical.yml|
-              .github/workflows/npb_game_script_autoresearch_canonical.yml|
-              .github/workflows/baseball_actions_recovery_canonical.yml)
-                ;;
-              *)
-                echo "Ghost-registration safety guard blocked workflow_id=${workflow_id} path=${path}" >&2
-                exit 1
-                ;;
-            esac
-            case "${state}" in
-              active)
-                gh workflow disable "${workflow_id}" --repo "${GH_REPO}"
-                ;;
-              disabled_manually|disabled_inactivity)
-                ;;
-              *)
-                echo "Ghost-registration state unverifiable/unexpected: workflow_id=${workflow_id} state=${state}" >&2
-                exit 1
-                ;;
-            esac
-          done
-          echo "known ghost workflow registrations reconciled"
 
       - name: Validate autonomous control-plane contract
         shell: bash
