@@ -177,3 +177,63 @@ def test_critical_ci_targets_are_under_control_plane_supervision():
     assert ".github/workflows/baseball_regression_tests.yml" in workflows
     assert ".github/workflows/baseball_v44_compatibility.yml" in workflows
     assert ".github/workflows/npb_game_state_research.yml" in workflows
+
+def test_zero_job_failure_is_recoverable_startup_failure():
+    from research.autonomous_control_plane import Target
+    now = control_plane.datetime.now(control_plane.timezone.utc)
+    target = Target("wf.yml", 12.0, heavy=True, pending_recover_minutes=60, max_runtime_hours=3.0)
+    runs = [{
+        "id": 123,
+        "status": "completed",
+        "conclusion": "failure",
+        "created_at": (now - control_plane.timedelta(minutes=20)).isoformat(),
+        "updated_at": now.isoformat(),
+        "head_sha": "sha",
+        "head_branch": "main",
+        "event": "workflow_dispatch",
+        "path": "wf.yml",
+        "job_count": 0,
+    }]
+    result = control_plane.decide(target, runs, now, cap=2, current_sha="sha")
+    assert result["decision"] == "DISPATCH"
+    assert result["reason"] == "startup_failure_no_jobs"
+
+
+def test_failure_with_jobs_remains_fail_closed():
+    from research.autonomous_control_plane import Target
+    now = control_plane.datetime.now(control_plane.timezone.utc)
+    target = Target("wf.yml", 12.0, heavy=False, pending_recover_minutes=60, max_runtime_hours=3.0)
+    runs = [{
+        "id": 124,
+        "status": "completed",
+        "conclusion": "failure",
+        "created_at": (now - control_plane.timedelta(minutes=20)).isoformat(),
+        "updated_at": now.isoformat(),
+        "head_sha": "sha",
+        "head_branch": "main",
+        "event": "workflow_dispatch",
+        "path": "wf.yml",
+        "job_count": 1,
+    }]
+    result = control_plane.decide(target, runs, now, cap=2, current_sha="sha")
+    assert result["decision"] == "HOLD"
+    assert result["failure_job_count"] == 1
+
+
+def test_failure_with_unknown_job_count_remains_fail_closed():
+    from research.autonomous_control_plane import Target
+    now = control_plane.datetime.now(control_plane.timezone.utc)
+    target = Target("wf.yml", 12.0, heavy=False, pending_recover_minutes=60, max_runtime_hours=3.0)
+    runs = [{
+        "id": 125,
+        "status": "completed",
+        "conclusion": "failure",
+        "created_at": (now - control_plane.timedelta(minutes=20)).isoformat(),
+        "updated_at": now.isoformat(),
+        "head_sha": "sha",
+        "head_branch": "main",
+        "event": "workflow_dispatch",
+        "path": "wf.yml",
+    }]
+    result = control_plane.decide(target, runs, now, cap=2, current_sha="sha")
+    assert result["decision"] == "HOLD"
