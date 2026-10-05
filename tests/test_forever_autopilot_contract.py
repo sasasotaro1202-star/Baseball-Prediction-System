@@ -48,7 +48,7 @@ def test_forever_autopilot_is_bounded():
 def test_forever_autopilot_fails_closed_on_snapshot_and_no_history():
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "EVENT_SHA:" in text
-    assert 'current_sha != "\${EVENT_SHA}"' in text
+    assert '[ "\${current_sha}" != "\${EVENT_SHA}" ]' in text
     assert "no_control_plane_history" in text
     assert "gh_retry()" in text
     assert "actions/setup-python@" in text
