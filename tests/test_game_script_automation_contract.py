@@ -10,7 +10,7 @@ def _read(name: str) -> str:
     return (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
 
 
-def test_game_script_autoresearch_is_daily_and_fail_closed():
+def test_game_script_autoresearch_is_recurring_and_fail_closed():
     text = _read("npb_game_script_autoresearch.yml")
     assert 'cron: "45 0,6,12,18 * * *"' in text
     assert "cancel-in-progress: false" in text
