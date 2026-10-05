@@ -43,7 +43,7 @@ def test_route_prefers_current_production(monkeypatch, tmp_path):
     monkeypatch.setattr(router, "_run", lambda command, timeout_seconds: (
         0,
         json.dumps({"execution_status": "EXECUTED", "pit_status": "PASS",
-                    "predictions": [{"game_id": "g1", "home": "H", "away": "A"}]}),
+                    "predictions": [{"game_id": "g1", "home": "H", "away": "A", "competition": "npb_regular", "competition_stage": "regular_season", "competition_classification_status": "classified", "competition_key": "NPB:npb_regular:regular_season"}]}),
         "",
     ))
     write_json(tmp_path / "policy.json", policy)
@@ -95,7 +95,7 @@ def test_route_uses_validated_research_shadow_when_production_is_unavailable(mon
             "pit_status": "PASS",
             "scope": "RESEARCH_SHADOW",
             "production_eligibility": False,
-            "predictions": [{"game_id": "g1", "home": "H", "away": "A"}],
+            "predictions": [{"game_id": "g1", "home": "H", "away": "A", "competition": "npb_regular", "competition_stage": "regular_season", "competition_classification_status": "classified", "competition_key": "NPB:npb_regular:regular_season"}],
         })
         return 0, "", ""
 
@@ -191,7 +191,7 @@ def test_research_shadow_accepts_unverifiable_pit_when_marked_nonproduction():
         "scope": "RESEARCH_SHADOW",
         "production_eligibility": False,
         "pit_status": "UNVERIFIABLE",
-        "predictions": [{"game_id": "g1", "home": "H", "away": "A"}],
+        "predictions": [{"game_id": "g1", "home": "H", "away": "A", "competition": "npb_regular", "competition_stage": "regular_season", "competition_classification_status": "classified", "competition_key": "NPB:npb_regular:regular_season"}],
     }
     router._validate_generated_output(payload, request, "VALIDATED_RESEARCH_SHADOW")
 
@@ -206,7 +206,7 @@ def test_current_production_rejects_unverifiable_pit():
     payload = {
         "execution_status": "EXECUTED",
         "pit_status": "UNVERIFIABLE",
-        "predictions": [{"game_id": "g1", "home": "H", "away": "A"}],
+        "predictions": [{"game_id": "g1", "home": "H", "away": "A", "competition": "npb_regular", "competition_stage": "regular_season", "competition_classification_status": "classified", "competition_key": "NPB:npb_regular:regular_season"}],
     }
     with pytest.raises(ValueError, match="current production prediction must have PIT PASS"):
         router._validate_generated_output(payload, request, "CURRENT_PRODUCTION_RUNTIME")
@@ -260,7 +260,7 @@ def test_production_lane_falls_back_to_validated_research_shadow(monkeypatch, tm
             "scope": "RESEARCH_SHADOW",
             "production_eligibility": False,
             "pit_status": "UNVERIFIABLE",
-            "predictions": [{"game_id": "g1", "home": "H", "away": "A"}],
+            "predictions": [{"game_id": "g1", "home": "H", "away": "A", "competition": "npb_regular", "competition_stage": "regular_season", "competition_classification_status": "classified", "competition_key": "NPB:npb_regular:regular_season"}],
         })
         return 0, "", ""
 
