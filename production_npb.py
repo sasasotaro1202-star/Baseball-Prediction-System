@@ -1218,7 +1218,19 @@ def predict(
     X,y,meta=bt.build_features(hist)
     if len(X) != len(hist) or len(y) != len(hist):
         raise RuntimeError("Chronological feature contract failed: feature/label row count mismatch.")
-    fitted, validation_scores, _=bt.fit_ensemble(X,y,"NPB")
+    # The rapid pregame research lane deliberately reduces validation/refit work while
+    # preserving the same PIT-safe feature construction and target semantics. This flag
+    # is opt-in and is only consumed when the explicit research_shadow lane is active.
+    rapid_pregame = bool(
+        research_shadow
+        and __import__("os").environ.get("BASEBALL_PREGAME_FAST", "0") == "1"
+    )
+    fitted, validation_scores, _=bt.fit_ensemble(
+        X,
+        y,
+        "NPB",
+        fast_oos=rapid_pregame,
+    )
     if not fitted:
         raise RuntimeError("Production ensemble fitting failed.")
 
