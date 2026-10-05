@@ -1,4 +1,4 @@
-"""Research-only entrypoint for NPB Game-Script v4.
+"""Research-only entrypoint for NPB Game-Script v5.
 
 Production integration is disabled until PIT availability is proven and the
 challenger passes incumbent-comparable chronological OOS, calibration,
@@ -15,7 +15,7 @@ from .game_script_wfo import evaluate
 
 
 def main(argv=None) -> int:
-    p=argparse.ArgumentParser(description="NPB game-script v4 research screening")
+    p=argparse.ArgumentParser(description="NPB game-script v5 research screening")
     p.add_argument("--data-glob",default="data/pbp/*.csv")
     p.add_argument("--development-end",default="2024-12-31")
     p.add_argument("--validation-start",default="2025-01-01")
