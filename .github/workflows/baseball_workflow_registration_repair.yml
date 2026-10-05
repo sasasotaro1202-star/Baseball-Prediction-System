@@ -15,7 +15,9 @@ permissions:
 
 concurrency:
   group: baseball-workflow-registration-repair
-  cancel-in-progress: true
+  # The repair is exact, idempotent, and disable-only. Never cancel it halfway
+  # through because a second heartbeat arrived.
+  cancel-in-progress: false
 
 jobs:
   repair:
