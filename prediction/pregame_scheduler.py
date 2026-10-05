@@ -457,7 +457,7 @@ def due_games(
                     float(min_lead_minutes) < lead <= float(scan_ahead_minutes)
                     and (game["home"], game["away"], source) not in archived_sources
                 ):
-                    preferred_cutoff = start - timedelta(minutes=60.0)
+                    preferred_cutoff = start - timedelta(minutes=float(preferred_lead_minutes))
                     research_shadow_due.append({
                         "league": "NPB",
                         "target_date": target_date,
@@ -467,8 +467,9 @@ def due_games(
                         "official_start_time": game["official_start_time"],
                         "prediction_cutoff_utc": now.isoformat(),
                         "preferred_prediction_cutoff_utc": preferred_cutoff.isoformat(),
-                        "preferred_prediction_target_lead_minutes": 60.0,
-                        "preferred_60m_met": bool(now <= preferred_cutoff),
+                        "preferred_prediction_target_lead_minutes": float(preferred_lead_minutes),
+                        "preferred_target_met": bool(now <= preferred_cutoff),
+                        "preferred_60m_met": bool(now <= start - timedelta(minutes=60.0)),
                         "lead_minutes": round(lead, 3),
                         "prediction_source": source,
                         "prediction_eligibility": "RESEARCH_SHADOW_PIT_SAFE_STARTERS_REQUIRED",
