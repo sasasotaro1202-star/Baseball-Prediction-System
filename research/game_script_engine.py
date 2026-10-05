@@ -35,8 +35,7 @@ def main(argv=None) -> int:
     files=sorted(Path().glob(a.data_glob))
     if not files: raise SystemExit(f"no PBP files matched: {a.data_glob}")
     result=evaluate(files,development_end=a.development_end,validation_start=a.validation_start,validation_end=a.validation_end,shadow_start=a.shadow_start or None,shadow_end=a.shadow_end or None,max_validation_games=max(1,a.max_validation_games),max_shadow_games=max(0,a.max_shadow_games),simulations=max(1,a.simulations),seed=a.seed,ablation=not a.no_ablation,checkpoint_path=a.checkpoint_path or None,checkpoint_every=max(1,a.checkpoint_every),run_validation=not a.shadow_only)
-    out=Path(a.output); out.parent.mkdir(parents=True,exist_ok=True); out.write_text(json.dumps(result,ensure_ascii=False,indent=2,default=str)+"
-",encoding="utf-8")
+    out=Path(a.output); out.parent.mkdir(parents=True,exist_ok=True); out.write_text(json.dumps(result,ensure_ascii=False,indent=2,default=str)+"\n",encoding="utf-8")
     print(json.dumps({"status":result["status"],"decision":result["decision"],"pit_status":result["pit_status"],"validation":result["aggregate"]["validation"],"latest_validation_30":result["aggregate"]["latest_validation_30"],"ablation":result["ablation"],"recent_shadow":result["recent_shadow"],"checkpoint":result["checkpoint"]},ensure_ascii=False,indent=2))
     return 0
 
