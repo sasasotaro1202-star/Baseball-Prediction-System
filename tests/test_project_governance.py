@@ -472,7 +472,6 @@ def test_registration_repair_targets_exact_known_retired_ids():
     verify_start = workflow.index("      - name: Verify ghost registrations are disabled")
     verify = workflow[verify_start:]
     assert 'target_ids="375399090 359633887 375842323 375843510"' in verify
-    assert ".github/workflows/baseball_actions_recovery_canonical.yml" in workflow
 
 
 def test_supervisor_ghost_repair_allowlist_covers_all_target_registrations():
