@@ -2,18 +2,11 @@ name: Baseball Autonomous Control Plane
 
 on:
   workflow_dispatch: {}
-  push:
-    branches: [main]
-    paths:
-      - "research/autonomous_control_plane.py"
-      - "tests/test_autonomous_control_plane.py"
-      - ".github/workflows/baseball_autonomous_control_plane.yml"
-      - ".github/workflows/baseball_actions_recovery.yml"
   schedule:
     - cron: '*/15 * * * *'
-  # The control plane is the single orchestration heartbeat. The scoped push
-  # trigger closes the post-merge startup gap without broad repository churn;
-  # the schedule remains the normal liveness loop.
+  # The control plane is the single orchestration heartbeat. It is schedule-
+  # and manual-driven to avoid GitHub startup anomalies on workflow-file pushes.
+  # The bounded 24h keeper is the failover path when this heartbeat is absent.
 permissions:
   actions: write
   contents: read
