@@ -390,6 +390,14 @@ def action_health(repo: str, now: datetime | None = None) -> dict[str, Any]:
                         f"age_hours={age_hours:.2f}>{contract['max_age_hours']}"
                     )
 
+        # A failure from a superseded main SHA is historical evidence, not a
+        # current-state failure. Keep it visible in the report but do not let it
+        # block governance for the current main revision.
+        if state == "FAILED" and current_sha and head_sha and head_sha != current_sha:
+            state = "DEFERRED"
+            reasons.append("superseded_sha_failure_not_current")
+            report["deferred"].append(f"actions_superseded_failure:{workflow_path}")
+
         if state in {"FAILED", "STALE"} and workflow_path != control_path and control_healthy:
             # The autonomous control plane is the owner of bounded dispatch/recovery.
             # Governance reports the condition but does not create a second retry loop.
