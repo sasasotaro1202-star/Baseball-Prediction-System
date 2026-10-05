@@ -140,6 +140,7 @@ def test_list_runs_uses_workflow_scoped_history(monkeypatch):
     def fake_gh(args):
         calls.append(list(args))
         workflow = args[args.index("--workflow") + 1]
+        assert workflow == control_plane.workflow_cli_ref(workflow)
         return (
             '[{"databaseId": 1, "status": "completed", '
             '"conclusion": "success", "createdAt": "2026-10-05T00:00:00Z", '
