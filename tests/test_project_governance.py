@@ -187,7 +187,7 @@ def test_phase1_and_universal_readiness_are_monitored():
 
 def test_autonomous_control_plane_is_governed():
     from research.project_governance import WORKFLOW_CONTRACTS
-    assert ".github/workflows/baseball_autonomous_control_plane_canonical.yml" in WORKFLOW_CONTRACTS
+    assert ".github/workflows/baseball_autonomous_control_plane.yml" in WORKFLOW_CONTRACTS
 
 
 def test_no_run_is_deferred_when_autonomous_control_plane_is_active(monkeypatch):
@@ -200,7 +200,7 @@ def test_no_run_is_deferred_when_autonomous_control_plane_is_active(monkeypatch)
         return {
             "workflow_runs": [
                 {
-                    "path": ".github/workflows/baseball_autonomous_control_plane_canonical.yml",
+                    "path": ".github/workflows/baseball_autonomous_control_plane.yml",
                     "status": "in_progress",
                     "conclusion": None,
                     "created_at": "2026-10-04T09:50:00Z",
@@ -230,7 +230,7 @@ def test_expected_skipped_archive_is_not_failed(monkeypatch):
         return {
             "workflow_runs": [
                 {
-                    "path": ".github/workflows/baseball_autonomous_control_plane_canonical.yml",
+                    "path": ".github/workflows/baseball_autonomous_control_plane.yml",
                     "status": "in_progress",
                     "conclusion": None,
                     "created_at": "2026-10-04T09:50:00Z",
@@ -260,7 +260,7 @@ def test_expected_skipped_archive_is_not_failed(monkeypatch):
 
 
 def test_autonomous_control_plane_is_single_heartbeat_not_workflow_run_driven():
-    workflow = Path(".github/workflows/baseball_autonomous_control_plane_canonical.yml").read_text(encoding="utf-8")
+    workflow = Path(".github/workflows/baseball_autonomous_control_plane.yml").read_text(encoding="utf-8")
     assert "cron: '*/15 * * * *'" in workflow
     assert "workflow_run:" not in workflow
     assert "research.autonomous_control_plane" in workflow
@@ -335,7 +335,7 @@ def test_unsupported_current_push_run_does_not_override_valid_scheduled_run(monk
         return {
             "workflow_runs": [
                 {
-                    "path": ".github/workflows/baseball_autonomous_control_plane_canonical.yml",
+                    "path": ".github/workflows/baseball_autonomous_control_plane.yml",
                     "status": "in_progress",
                     "conclusion": None,
                     "created_at": "2026-10-05T09:59:00Z",
@@ -391,7 +391,7 @@ def test_current_control_plane_push_run_is_not_treated_as_healthy(monkeypatch):
     def fake_gh_json(args):
         return {
             "workflow_runs": [{
-                "path": ".github/workflows/baseball_autonomous_control_plane_canonical.yml",
+                "path": ".github/workflows/baseball_autonomous_control_plane.yml",
                 "status": "completed",
                 "conclusion": "failure",
                 "created_at": "2026-10-05T09:59:00Z",
@@ -410,7 +410,7 @@ def test_current_control_plane_push_run_is_not_treated_as_healthy(monkeypatch):
     )
     assert report["control_plane"]["state"] == "NO_RUN"
     assert report["control_plane"]["ignored_unsupported_event_runs"] == 1
-    entry = report["workflows"][".github/workflows/baseball_autonomous_control_plane_canonical.yml"]
+    entry = report["workflows"][".github/workflows/baseball_autonomous_control_plane.yml"]
     assert entry["state"] == "DEFERRED"
     assert "only_unsupported_event_runs" in entry["reasons"]
 
@@ -418,11 +418,11 @@ def test_current_control_plane_push_run_is_not_treated_as_healthy(monkeypatch):
 def test_workflow_dispatch_empty_mapping_is_supported():
     from research import project_governance as governance
 
-    path = Path(".github/workflows/baseball_autonomous_control_plane_canonical.yml")
+    path = Path(".github/workflows/baseball_autonomous_control_plane.yml")
     workflow = path.read_text(encoding="utf-8")
     assert "workflow_dispatch: {}" in workflow
     assert governance._workflow_declares_event(
-        ".github/workflows/baseball_autonomous_control_plane_canonical.yml",
+        ".github/workflows/baseball_autonomous_control_plane.yml",
         "workflow_dispatch",
     )
 
@@ -438,10 +438,10 @@ def test_action_health_uses_workflow_scoped_history(monkeypatch):
         endpoint = args[0]
         observed.append(endpoint)
         assert "/actions/workflows/" in endpoint
-        if "baseball_autonomous_control_plane_canonical.yml/runs" in endpoint:
+        if "baseball_autonomous_control_plane.yml/runs" in endpoint:
             return {
                 "workflow_runs": [{
-                    "path": ".github/workflows/baseball_autonomous_control_plane_canonical.yml",
+                    "path": ".github/workflows/baseball_autonomous_control_plane.yml",
                     "status": "in_progress",
                     "conclusion": None,
                     "created_at": "2026-10-05T09:59:00Z",
@@ -484,27 +484,18 @@ def test_action_health_uses_workflow_scoped_history(monkeypatch):
     )
 
 
-def test_forever_heartbeat_is_governed():
-    from research.project_governance import WORKFLOW_CONTRACTS
-    path = ".github/workflows/baseball_forever_autopilot.yml"
-    assert path in WORKFLOW_CONTRACTS
-    assert WORKFLOW_CONTRACTS[path]["monitor"] is True
-    assert WORKFLOW_CONTRACTS[path]["max_age_hours"] <= 1.0
-
-
-def test_forever_autopilot_heartbeat_is_governed_and_bounded():
+def test_forever_automation_uses_registered_control_plane():
     from research.project_governance import WORKFLOW_CONTRACTS
 
-    path = ".github/workflows/baseball_forever_autopilot.yml"
+    path = ".github/workflows/baseball_autonomous_control_plane.yml"
     workflow = Path(path).read_text(encoding="utf-8")
     contract = WORKFLOW_CONTRACTS[path]
 
     assert contract["monitor"] is True
-    assert contract["max_age_hours"] <= 1
-    assert 'cron: "*/5 * * * *"' in workflow
+    assert contract["max_age_hours"] <= 2
+    assert "cron: '*/15 * * * *'" in workflow
+    assert "workflow_dispatch: {}" in workflow
     assert "actions: write" in workflow
-    assert "baseball_autonomous_control_plane_canonical.yml" in workflow
-    assert "DAILY_DISPATCH_CAP" in workflow
-    assert "daily_dispatch_cap_reached" in workflow
-    assert "deterministic_failure_or_unverifiable_startup_state" in workflow
-    assert "auto_promotion: false" in workflow
+    assert "research.autonomous_control_plane" in workflow
+    assert "--max-dispatches-per-cycle 2" in workflow or "--max-dispatches-per-cycle\" 2" in workflow
+    assert "production_modified": false" in workflow
