@@ -365,7 +365,7 @@ def run(repo: str, output: Path, max_dispatches_per_cycle: int = 2) -> dict[str,
         x
         for x in decisions
         if x["decision"] == "HOLD"
-        and x["reason"] == "deterministic_failure_is_authoritative"
+        and x["reason"] == "deterministic_failure_or_unverifiable_startup_state"
     ]
     report = {
         "schema_version": 2,
