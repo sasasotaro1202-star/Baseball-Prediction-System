@@ -103,7 +103,7 @@ jobs:
           MLB_ENRICH_STARTERS: '0'
         run: python -u research_runner_v6.py --league BOTH --mlb-start 2020 --mlb-end 2026 --retries 0
       - name: Preserve wave evidence
-        if: ${{ (always()) && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: baseball-24h-wave1-${{ github.run_id }}
@@ -118,7 +118,7 @@ jobs:
   wave2-frontier:
     name: 24h Wave 2 - Frontier game/source expansion
     needs: wave1-core-oos
-    if: always()
+    if: ${{ (always()) && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     timeout-minutes: 355
     steps:
