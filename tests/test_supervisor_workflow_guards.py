@@ -63,14 +63,14 @@ def test_supervisor_monitors_scheduled_pregame_runs_and_recovers_missed_schedule
     assert 'pregame_recovery_attempts_24h}" -ge 3' in text
 
 
-def test_autonomous_control_plane_has_scoped_push_startup_trigger() -> None:
+def test_autonomous_control_plane_avoids_workflow_file_push_startup_trigger() -> None:
     text = _text(ROOT / ".github" / "workflows" / "baseball_autonomous_control_plane.yml")
 
-    assert "push:" in text
-    assert "branches: [main]" in text
-    assert 'research/autonomous_control_plane.py' in text
-    assert 'tests/test_autonomous_control_plane.py' in text
-    assert 'workflow_run:' not in text
+    trigger = text.split("permissions:", 1)[0]
+    assert "push:" not in trigger
+    assert "schedule:" in trigger
+    assert "workflow_dispatch:" in trigger
+    assert "workflow_run:" not in trigger
 
 
 def test_24h_keeper_is_main_scoped_bounded_failover_only() -> None:
