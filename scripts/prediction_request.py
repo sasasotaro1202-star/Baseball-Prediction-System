@@ -354,70 +354,118 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
     timeout_seconds = int(policy.get("max_runtime_seconds", 5400))
-    try:
-        rc, stdout, stderr = _run(command, timeout_seconds)
-    except subprocess.TimeoutExpired as exc:
-        output = {
-            "execution_status": "GENERATION_TIMEOUT",
-            "pit_status": "UNKNOWN",
-            "predictions": [],
-            "error": "prediction generation command exceeded bounded runtime",
-            "stderr": str(exc),
-        }
-        out = _write_result(
-            result_dir=result_dir,
-            request=request,
-            request_id=request_id,
-            fingerprint=fingerprint,
-            target_date=target_date,
-            competition_id=competition_id,
-            lane=lane,
-            source_commit=source_commit,
-            status="GENERATION_TIMEOUT",
-            output=output,
-        )
-        print(json.dumps({"result_path": str(out), "generation_status": "GENERATION_TIMEOUT"}, ensure_ascii=False))
-        return 1
 
-    output_paths = policy.get("output_paths", {}).get(competition_id, {})
-    path_template = output_paths.get(lane) if isinstance(output_paths, dict) else None
-    if not path_template:
-        path_template = _default_output_template(competition_id, lane)
-    if path_template:
-        generated_value = Path(str(path_template).replace("{target_date}", target_date))
-        generated_path = generated_value if generated_value.is_absolute() else request_root / generated_value
-    else:
-        generated_path = None
-    if generated_path is None or not generated_path.exists():
-        # Production/other routes are expected to return their JSON on stdout
-        # when they don't use the shared results path.
+    def execute_lane(run_command: list[str], run_lane: str) -> tuple[int, dict[str, Any], str]:
         try:
-            output = json.loads(stdout)
-        except json.JSONDecodeError:
-            output = {
-                "execution_status": "GENERATION_OUTPUT_UNVERIFIABLE",
+            run_rc, run_stdout, run_stderr = _run(run_command, timeout_seconds)
+        except subprocess.TimeoutExpired as exc:
+            return 1, {
+                "execution_status": "GENERATION_TIMEOUT",
                 "pit_status": "UNKNOWN",
                 "predictions": [],
-                "stderr": stderr[-4000:],
-                "stdout_tail": stdout[-4000:],
-            }
-    else:
-        output = _load_generated_output(generated_path)
+                "error": "prediction generation command exceeded bounded runtime",
+                "stderr": str(exc),
+            }, str(exc)
 
-    if rc != 0 and str(output.get("execution_status", "")).strip() not in {
+        run_output_paths = policy.get("output_paths", {}).get(competition_id, {})
+        run_path_template = (
+            run_output_paths.get(run_lane)
+            if isinstance(run_output_paths, dict)
+            else None
+        )
+        if not run_path_template:
+            run_path_template = _default_output_template(competition_id, run_lane)
+        if run_path_template:
+            run_generated_value = Path(
+                str(run_path_template).replace("{target_date}", target_date)
+            )
+            run_generated_path = (
+                run_generated_value
+                if run_generated_value.is_absolute()
+                else request_root / run_generated_value
+            )
+        else:
+            run_generated_path = None
+
+        if run_generated_path is None or not run_generated_path.exists():
+            try:
+                run_output = json.loads(run_stdout)
+            except json.JSONDecodeError:
+                run_output = {
+                    "execution_status": "GENERATION_OUTPUT_UNVERIFIABLE",
+                    "pit_status": "UNKNOWN",
+                    "predictions": [],
+                    "stderr": run_stderr[-4000:],
+                    "stdout_tail": run_stdout[-4000:],
+                }
+        else:
+            run_output = _load_generated_output(run_generated_path)
+
+        if run_rc != 0 and str(run_output.get("execution_status", "")).strip() not in {
+            "BLOCKED_STARTERS",
+            "BLOCKED_PRODUCTION_GATE",
+            "NO_FUTURE_GAMES",
+            "NO_DUE_PREGAME_GAMES",
+        }:
+            run_output = {
+                "execution_status": "GENERATION_FAILED",
+                "pit_status": "UNKNOWN",
+                "predictions": [],
+                "returncode": run_rc,
+                "stderr": run_stderr[-4000:],
+                "stdout_tail": run_stdout[-4000:],
+            }
+
+        return run_rc, run_output, run_stderr
+
+    rc, output, stderr = execute_lane(command, lane)
+
+    # A user request must remain answerable even when the current production
+    # runtime is temporarily blocked (most commonly by starter publication).
+    # This is an explicit research fallback, never a production fallback:
+    # production output is preserved as provenance and the research result stays
+    # RESEARCH_SHADOW / production-ineligible.
+    primary_lane = lane
+    primary_status = str(output.get("execution_status", "")).strip()
+    research_fallback_statuses = {
         "BLOCKED_STARTERS",
         "BLOCKED_PRODUCTION_GATE",
-        "NO_FUTURE_GAMES",
-        "NO_DUE_PREGAME_GAMES",
-    }:
-        output = {
-            "execution_status": "GENERATION_FAILED",
-            "pit_status": "UNKNOWN",
-            "predictions": [],
-            "returncode": rc,
-            "stderr": stderr[-4000:],
-            "stdout_tail": stdout[-4000:],
-        }
+        "BLOCKED_NO_CURRENT_PRODUCTION_RUNTIME",
+        "GENERATION_FAILED",
+        "GENERATION_TIMEOUT",
+    }
+    if (
+        lane == "CURRENT_PRODUCTION_RUNTIME"
+        and isinstance(research_template, list)
+        and not output.get("predictions")
+        and primary_status in research_fallback_statuses
+    ):
+        research_command = _format_command(research_template, target_date)
+        fallback_rc, fallback_output, fallback_stderr = execute_lane(
+            research_command,
+            "VALIDATED_RESEARCH_SHADOW",
+        )
+        fallback_status = str(fallback_output.get("execution_status", "")).strip()
+        if fallback_status in {"RESEARCH_SHADOW_EXECUTED", "NO_FUTURE_GAMES", "NO_DUE_PREGAME_GAMES"}:
+            fallback_output["user_fallback_from_lane"] = primary_lane
+            fallback_output["user_fallback_reason"] = primary_status
+            fallback_output["primary_production_status"] = primary_status
+            if stderr:
+                fallback_output["primary_production_stderr_tail"] = stderr[-4000:]
+            lane = "VALIDATED_RESEARCH_SHADOW"
+            rc, output, stderr = fallback_rc, fallback_output, fallback_stderr
+        else:
+            output = {
+                "execution_status": "GENERATION_FAILED",
+                "pit_status": "UNKNOWN",
+                "predictions": [],
+                "error": "production lane was blocked and its explicit research fallback also failed",
+                "primary_production_status": primary_status,
+                "primary_production_stderr_tail": stderr[-4000:],
+                "research_fallback_status": fallback_status,
+                "research_fallback_stderr_tail": fallback_stderr[-4000:],
+            }
+            rc = fallback_rc if fallback_rc != 0 else 1
 
     _validate_generated_output(output, request, lane)
     final_status = str(output.get("execution_status", "UNKNOWN"))
