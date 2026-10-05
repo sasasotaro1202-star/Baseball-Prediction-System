@@ -269,7 +269,7 @@ def test_autonomous_control_plane_is_single_heartbeat_not_workflow_run_driven():
 def test_actions_recovery_is_singleton():
     from research.project_governance import WORKFLOW_CONTRACTS
 
-    path = ".github/workflows/baseball_actions_recovery_canonical.yml"
+    path = ".github/workflows/baseball_actions_recovery.yml"
     contract = WORKFLOW_CONTRACTS[path]
     assert contract["monitor"] is False
     assert "group: baseball-actions-recovery" in contract["required"]
@@ -277,7 +277,7 @@ def test_actions_recovery_is_singleton():
 
 
 def test_actions_recovery_covers_zero_job_research_workflows():
-    workflow = Path(".github/workflows/baseball_actions_recovery_canonical.yml").read_text(encoding="utf-8")
+    workflow = Path(".github/workflows/baseball_actions_recovery.yml").read_text(encoding="utf-8")
     assert "NPB Game-Script Auto Research" in workflow
     assert "Baseball Game Script Lab" in workflow
     assert ".github/workflows/npb_game_script_autoresearch_canonical.yml" in workflow
@@ -508,7 +508,7 @@ def test_user_prediction_results_are_persisted():
 
 
 def test_user_prediction_workflow_is_in_recovery_surface():
-    workflow = Path(".github/workflows/baseball_actions_recovery_canonical.yml").read_text(encoding="utf-8")
+    workflow = Path(".github/workflows/baseball_actions_recovery.yml").read_text(encoding="utf-8")
     assert "Baseball User Prediction Request" in workflow
     assert "Install repository prediction dependencies" in workflow
     assert "Generate requested prediction through repository router" in workflow
@@ -517,7 +517,7 @@ def test_user_prediction_workflow_is_in_recovery_surface():
 
 def test_stable_actions_recovery_workflow_is_separate_from_legacy_registration():
     stable = Path(".github/workflows/baseball_actions_recovery.yml")
-    legacy = Path(".github/workflows/baseball_actions_recovery_canonical.yml")
+    legacy = Path(".github/workflows/baseball_actions_recovery.yml")
     assert stable.is_file()
     text = stable.read_text(encoding="utf-8")
     assert "workflow_run:" in text
