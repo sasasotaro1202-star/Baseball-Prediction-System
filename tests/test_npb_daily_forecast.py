@@ -71,3 +71,14 @@ def test_loader_can_use_shared_pbp_cache():
     finally:
         import shutil
         shutil.rmtree(data_dir, ignore_errors=True)
+
+def test_daily_workflow_uses_explicit_fast_model_profile():
+    workflow = (
+        (ROOT / ".github" / "workflows" / "npb_daily_early_research.yml")
+        .read_text(encoding="utf-8")
+    )
+    assert 'BASEBALL_FAST_OOS: "1"' in workflow
+    assert 'BASEBALL_FAST_MODEL_POOL_NPB: "Logistic,HistGB,ExtraTrees,HierarchicalDrawResult"' in workflow
+    assert 'BASEBALL_SCORE_FAST_VALIDATION: "1"' in workflow
+    assert 'BASEBALL_FAST_SCORE_MODEL_POOL_NPB: "Poisson,HistPoisson"' in workflow
+
