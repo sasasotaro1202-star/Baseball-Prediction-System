@@ -210,7 +210,7 @@ PY
         run: |
           set -euo pipefail
           mkdir -p data/pbp
-          if grep -q '^need_research=0
+          if grep -q '^need_research=0$' results/research_decision.txt; then
             echo "No recomputation required; cached data is not touched."
             exit 0
           fi
