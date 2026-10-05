@@ -21,170 +21,6 @@ jobs:
       GH_REPO: sasasotaro1202-star/Baseball-Prediction-System
       CANDIDATE_WORKFLOW: baseball_candidate_oos.yml
     steps:
-      - name: Checkout for autonomous control-plane execution
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-          fetch-depth: 1
-
-      - name: Validate autonomous control-plane contract
-        shell: bash
-        run: |
-          set -euo pipefail
-          python -m py_compile research/autonomous_control_plane.py
-          python - <<'PY'
-from pathlib import Path
-
-workflow = Path(".github/workflows/baseball_candidate_oos_watchdog.yml").read_text(encoding="utf-8")
-required = [
-    "actions: write",
-    "cron: '*/15 * * * *'",
-    "baseball_autonomous_control_plane.yml",
-    "gh workflow run",
-    "gh run cancel",
-    "python -m research.autonomous_control_plane",
-    "max-dispatches-per-cycle",
-    "if: always()",
-]
-for token in required:
-    if token not in workflow:
-        raise SystemExit(f"missing autonomous control-plane contract token: {token}")
-forbidden_tokens = (
-    "continue-on-error:" + " true",
-    "|" + "| true",
-)
-if any(token in workflow for token in forbidden_tokens):
-    raise SystemExit("failure masking is forbidden in the autonomous watchdog")
-print("autonomous control-plane contract: PASS")
-PY
-
-      - name: Bootstrap and execute canonical autonomous control plane
-        id: control_plane_heartbeat
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-
-          CONTROL_WORKFLOW="baseball_autonomous_control_plane.yml"
-          CURRENT_SHA="$(gh api "repos/${GH_REPO}/git/ref/heads/main" --jq '.object.sha')"
-          test -n "${CURRENT_SHA}"
-
-          CONTROL_STATE="$(gh api "repos/${GH_REPO}/actions/workflows/${CONTROL_WORKFLOW}" --jq '.state // "unknown"')"
-          case "${CONTROL_STATE}" in
-            active)
-              ;;
-            disabled_manually|disabled_inactivity)
-              echo "Canonical control plane is ${CONTROL_STATE}; enabling exact allowlisted workflow."
-              gh workflow enable "${CONTROL_WORKFLOW}" --repo "${GH_REPO}"
-              ;;
-            *)
-              echo "Canonical control plane state is unverifiable: ${CONTROL_STATE}" >&2
-              exit 1
-              ;;
-          esac
-
-          runs="$(gh run list --repo "${GH_REPO}" --workflow "${CONTROL_WORKFLOW}" --branch main --limit 30 --json databaseId,status,conclusion,createdAt,updatedAt,headSha,event)"
-          test -n "${runs}"
-
-          now_epoch="$(date +%s)"
-          active="$(printf '%s' "${runs}" | jq -c '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | sort_by(.createdAt) | reverse | .[0] // {}')"
-          active_id="$(printf '%s' "${active}" | jq -r '.databaseId // empty')"
-          active_status="$(printf '%s' "${active}" | jq -r '.status // empty')"
-          active_created="$(printf '%s' "${active}" | jq -r '.createdAt // empty')"
-          active_sha="$(printf '%s' "${active}" | jq -r '.headSha // empty')"
-
-          active_age_minutes=0
-          if [ -n "${active_created}" ]; then
-            active_age_minutes=$(( (now_epoch - $(date -d "${active_created}" +%s)) / 60 ))
-          fi
-
-          dispatch_24h="$(printf '%s' "${runs}" | jq '[.[] | select(.event == "workflow_dispatch") | select((.createdAt | fromdateiso8601) >= (now - 86400))] | length')"
-
-          bootstrap=0
-          reason="control_plane_active_or_recent"
-          if [ "${dispatch_24h}" -ge 3 ]; then
-            reason="control_plane_bootstrap_daily_cap_reached"
-          elif [ -n "${active_id}" ] && [ -n "${active_sha}" ] && [ "${active_sha}" != "${CURRENT_SHA}" ]; then
-            bootstrap=1
-            reason="control_plane_active_on_superseded_sha"
-          elif [ -n "${active_id}" ] && { [ "${active_status}" = "queued" ] || [ "${active_status}" = "pending" ] || [ "${active_status}" = "waiting" ] || [ "${active_status}" = "requested" ]; } && [ "${active_age_minutes}" -ge 20 ]; then
-            bootstrap=1
-            reason="control_plane_scheduler_stuck"
-          elif [ -n "${active_id}" ] && [ "${active_status}" = "in_progress" ] && [ "${active_age_minutes}" -ge 15 ]; then
-            bootstrap=1
-            reason="control_plane_runtime_stale"
-          else
-            latest="$(printf '%s' "${runs}" | jq -c 'sort_by(.createdAt) | last // {}')"
-            latest_id="$(printf '%s' "${latest}" | jq -r '.databaseId // empty')"
-            latest_created="$(printf '%s' "${latest}" | jq -r '.createdAt // empty')"
-            latest_status="$(printf '%s' "${latest}" | jq -r '.status // empty')"
-            latest_sha="$(printf '%s' "${latest}" | jq -r '.headSha // empty')"
-            latest_age_minutes=999999
-            if [ -n "${latest_created}" ]; then
-              latest_age_minutes=$(( (now_epoch - $(date -d "${latest_created}" +%s)) / 60 ))
-            fi
-            if [ -z "${latest_id}" ]; then
-              bootstrap=1
-              reason="control_plane_no_history"
-            elif [ -n "${latest_sha}" ] && [ "${latest_sha}" != "${CURRENT_SHA}" ]; then
-              bootstrap=1
-              reason="control_plane_latest_on_superseded_sha"
-            elif [ "${latest_status}" = "completed" ] && [ "${latest_age_minutes}" -ge 20 ]; then
-              bootstrap=1
-              reason="control_plane_heartbeat_stale"
-            fi
-          fi
-
-          echo "control_plane_bootstrap=${bootstrap}"
-          echo "control_plane_reason=${reason}"
-
-          if [ "${bootstrap}" -eq 1 ]; then
-            if [ -n "${active_id}" ]; then
-              echo "Cancelling stale/superseded control-plane run ${active_id}"
-              gh run cancel "${active_id}" --repo "${GH_REPO}"
-            fi
-            gh workflow run "${CONTROL_WORKFLOW}" --repo "${GH_REPO}" --ref main
-
-            verified=0
-            for attempt in 1 2 3 4 5 6; do
-              sleep 2
-              fresh="$(gh run list --repo "${GH_REPO}" --workflow "${CONTROL_WORKFLOW}" --branch main --limit 10 --json databaseId,status,conclusion,createdAt,event)"
-              new_id="$(printf '%s' "${fresh}" | jq -r --argjson cutoff "${now_epoch}" '[.[] | select(.event == "workflow_dispatch") | select((.createdAt | fromdateiso8601) >= $cutoff)] | sort_by(.createdAt) | reverse | .[0].databaseId // empty')"
-              active_after="$(printf '%s' "${fresh}" | jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
-              echo "control-plane dispatch verification ${attempt}/6: new_run=${new_id:-<none>} active=${active_after}"
-              if [ -n "${new_id}" ] || [ "${active_after}" -gt 0 ]; then
-                verified=1
-                break
-              fi
-            done
-            test "${verified}" -eq 1
-            echo "bootstrapped=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "bootstrapped=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Run canonical autonomous control plane
-        id: control_plane_execute
-        timeout-minutes: 5
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_SHA: ${{ github.sha }}
-          PYTHONUNBUFFERED: "1"
-        run: |
-          set -euo pipefail
-          if [ "${{ steps.control_plane_heartbeat.outputs.bootstrapped }}" = "true" ]; then
-            cap=1
-          else
-            cap=2
-          fi
-          python -m research.autonomous_control_plane \
-            --repo "${GITHUB_REPOSITORY}" \
-            --output results/forever_control_plane.json \
-            --max-dispatches-per-cycle "${cap}"
-
       - name: Inspect, reconcile, and refresh candidate OOS
         shell: bash
         env:
@@ -203,7 +39,7 @@ PY
             while IFS= read -r changed_path; do
               [ -n "${changed_path}" ] || continue
               case "${changed_path}" in
-                data/experience/*|tests/*|docs/*|README*|PROJECT_INSTRUCTIONS.md|results/*|.github/workflows/baseball_manual_prediction.yml|.github/workflows/baseball_60m_pregame_auto.yml|.github/workflows/baseball_24h_supervisor.yml|.github/workflows/baseball_closed_loop.yml|.github/workflows/baseball_actions_recovery_canonical.yml|.github/workflows/baseball_chat_async_dispatch.yml|.github/workflows/baseball_autonomous_control_plane.yml|.github/workflows/baseball_candidate_oos_watchdog.yml)
+                data/experience/*|tests/*|docs/*|README*|PROJECT_INSTRUCTIONS.md|results/*|.github/workflows/baseball_manual_prediction.yml|.github/workflows/baseball_60m_pregame_auto.yml|.github/workflows/baseball_24h_supervisor.yml|.github/workflows/baseball_closed_loop.yml|.github/workflows/baseball_actions_recovery_canonical.yml|.github/workflows/baseball_chat_async_dispatch.yml|.github/workflows/baseball_candidate_oos_watchdog.yml)
                   ;;
                 *)
                   return 1
@@ -379,33 +215,21 @@ PY
           fi
           echo "Candidate OOS dispatch verified on current main SHA."
 
-      - name: Publish control-plane heartbeat evidence
+      - name: Publish candidate watchdog evidence
         if: always()
         shell: bash
         run: |
-          {
-            echo "## Canonical Autonomous Control Plane"
-            echo "- main_sha: ${GITHUB_SHA}"
-            echo "- bootstrap: ${{ steps.control_plane_heartbeat.outputs.bootstrapped }}"
-            if [ -s results/forever_control_plane.json ]; then
-              python - <<'PY'
-import json
-from pathlib import Path
-obj=json.loads(Path("results/forever_control_plane.json").read_text(encoding="utf-8"))
-print(f"- status: {obj.get('control_plane_status')}")
-print(f"- dispatches: {obj.get('cycle_dispatch_count')}")
-print(f"- heavy_dispatches: {obj.get('cycle_heavy_dispatch_count')}")
-PY
-            else
-              echo "- report: unavailable"
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
+          set -euo pipefail
+          echo "## Baseball Candidate OOS Watchdog" >> "$GITHUB_STEP_SUMMARY"
+          echo "- watchdog_scope: candidate_oos_only" >> "$GITHUB_STEP_SUMMARY"
+          echo "- control_plane_owner: baseball_forever_autopilot.yml" >> "$GITHUB_STEP_SUMMARY"
+          echo "- fail_closed: true" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload control-plane heartbeat evidence
+      - name: Upload candidate watchdog evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: baseball-control-plane-heartbeat-${{ github.run_id }}
-          path: results/forever_control_plane.json
+          name: baseball-candidate-oos-watchdog-${{ github.run_id }}
+          path: results/
           if-no-files-found: warn
-          retention-days: 7
+          retention-days: 14
