@@ -528,19 +528,19 @@ jobs:
             try: print(json.load(open(sys.argv[1],encoding="utf-8")).get("code_fingerprint",""))
             except Exception: print("")
             PY
-)"
+            )"
             previous_validation="$(python - "$previous_json" <<'PY'
             import json, sys
             try: print(json.load(open(sys.argv[1],encoding="utf-8")).get("validation_source_fingerprint",""))
             except Exception: print("")
             PY
-)"
+            )"
             previous_context="$(python - "$previous_json" <<'PY'
             import json, sys
             try: print(json.load(open(sys.argv[1],encoding="utf-8")).get("context_source_fingerprint",""))
             except Exception: print("")
             PY
-)"
+            )"
           fi
 
           mode="FULL_WFO_FALLBACK"
