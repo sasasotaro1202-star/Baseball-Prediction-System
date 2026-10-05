@@ -64,19 +64,6 @@ WORKFLOW_CONTRACTS: dict[str, dict[str, Any]] = {
         "max_age_hours": 10,
         "required": ("schedule:", "production_npb.py"),
     },
-    ".github/workflows/baseball_forever_autopilot.yml": {
-        "monitor": True,
-        "max_age_hours": 1,
-        "required": (
-            "schedule:",
-            'cron: "*/5 * * * *"',
-            "workflow_dispatch: {}",
-            "push:",
-            'paths:\n      - ".github/workflows/baseball_forever_autopilot.yml"',
-            "actions: write",
-            "python -m research.autonomous_control_plane",
-        ),
-    },
     ".github/workflows/baseball_24h_research_autopilot_canonical.yml": {
         "monitor": True,
         "max_age_hours": 30,
