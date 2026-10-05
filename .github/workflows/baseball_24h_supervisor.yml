@@ -2,15 +2,22 @@ name: Baseball 24h Supervisor
 
 on:
   workflow_dispatch:
-  # Supervisor is control-plane only. It is driven by schedule/workflow_run,
-  # not every source/config push, so it cannot consume the runner queue needed
-  # for user-facing predictions.
+  # Keep push coverage intentionally narrow: orchestration changes/bootstrap
+  # only. Normal research/data commits must not create queue churn.
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/baseball_24h_supervisor.yml"
+      - ".github/workflows/baseball_autonomous_control_plane.yml"
+      - ".github/workflows/baseball_actions_recovery.yml"
+      - "research/autonomous_control_plane.py"
+      - "tests/test_autonomous_control_plane.py"
   workflow_run:
     workflows: ["Baseball Closed Loop Research"]
     types: [completed]
   schedule:
-    # Lightweight keep-alive. The supervisor only starts a new cycle when the
-    # canonical closed-loop workflow is absent or has stopped unexpectedly.
+    # Lightweight keep-alive. The supervisor also bootstraps the control plane
+    # if GitHub has not created its first/current run.
     - cron: '*/15 * * * *'
 
 permissions:
@@ -40,6 +47,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TARGET_WORKFLOW: baseball_closed_loop.yml
+          CONTROL_PLANE_WORKFLOW: baseball_autonomous_control_plane.yml
           EVENT_RUN_ID: ${{ github.event.workflow_run.id || '' }}
           EVENT_CONCLUSION: ${{ github.event.workflow_run.conclusion || '' }}
         shell: bash
@@ -73,6 +81,72 @@ jobs:
               fi
             done
           }
+
+          # The autonomous control plane is the single orchestration heartbeat.
+          # This supervisor is its bounded bootstrap/failover path so the first
+          # control-plane cycle does not depend on the control plane supervising itself.
+          test -s ".github/workflows/$CONTROL_PLANE_WORKFLOW"
+
+          control_plane_runs=$(gh_retry run list --repo "$GH_REPO" --workflow "$CONTROL_PLANE_WORKFLOW" --branch main --limit 20 --json databaseId,status,conclusion,createdAt,headSha,event)
+          control_plane_active=$(printf '%s' "$control_plane_runs" | jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')
+          control_plane_dispatch_count=$(printf '%s' "$control_plane_runs" | jq '[.[] | select(.event == "workflow_dispatch") | select(((.createdAt | fromdateiso8601) >= ((now - 86400))))] | length')
+          control_plane_latest=$(printf '%s' "$control_plane_runs" | jq 'sort_by(.createdAt) | last // {}')
+          control_plane_latest_id=$(printf '%s' "$control_plane_latest" | jq -r '.databaseId // empty')
+          control_plane_latest_status=$(printf '%s' "$control_plane_latest" | jq -r '.status // empty')
+          control_plane_latest_conclusion=$(printf '%s' "$control_plane_latest" | jq -r '.conclusion // empty')
+          control_plane_latest_created=$(printf '%s' "$control_plane_latest" | jq -r '.createdAt // empty')
+          control_plane_latest_sha=$(printf '%s' "$control_plane_latest" | jq -r '.headSha // empty')
+          control_plane_latest_age_minutes=999999
+          if [ -n "$control_plane_latest_created" ]; then
+            control_plane_latest_epoch=$(date -d "$control_plane_latest_created" +%s)
+            control_plane_latest_age_minutes=$(( (now_epoch - control_plane_latest_epoch) / 60 ))
+          fi
+          control_plane_dispatch=0
+          control_plane_reason=
+          if [ "$control_plane_active" -gt 0 ]; then
+            echo "Autonomous Control Plane active; bootstrap not required."
+          elif [ "$control_plane_dispatch_count" -ge 3 ]; then
+            echo "Control Plane bootstrap daily cap reached ($control_plane_dispatch_count/3); preserving state."
+            printf '%s\n' 'Control Plane terminal state: BOOTSTRAP_DAILY_CAP.' >> "$GITHUB_STEP_SUMMARY"
+          elif [ -z "$control_plane_latest_id" ]; then
+            control_plane_dispatch=1
+            control_plane_reason='no control-plane run observed on main'
+          elif [ "$control_plane_latest_status" = "completed" ] && [ -n "$control_plane_latest_sha" ] && [ "$control_plane_latest_sha" != "$GITHUB_SHA" ]; then
+            control_plane_dispatch=1
+            control_plane_reason="latest control-plane run is on superseded SHA $control_plane_latest_sha"
+          elif [ "$control_plane_latest_conclusion" = "failure" ] && [ "$control_plane_latest_age_minutes" -ge 15 ]; then
+            control_plane_dispatch=1
+            control_plane_reason="latest control-plane run failed $control_plane_latest_age_minutes minutes ago"
+          elif { [ "$control_plane_latest_conclusion" = "cancelled" ] || [ "$control_plane_latest_conclusion" = "timed_out" ] || [ "$control_plane_latest_conclusion" = "startup_failure" ]; } && [ "$control_plane_latest_age_minutes" -ge 15 ]; then
+            control_plane_dispatch=1
+            control_plane_reason="latest control-plane run ended $control_plane_latest_conclusion"
+          elif [ "$control_plane_latest_conclusion" = "success" ] && [ "$control_plane_latest_age_minutes" -ge 30 ]; then
+            control_plane_dispatch=1
+            control_plane_reason="control-plane heartbeat stale at $control_plane_latest_age_minutes minutes"
+          fi
+
+          if [ "$control_plane_dispatch" -eq 1 ]; then
+            echo "Bootstrapping Autonomous Control Plane: $control_plane_reason"
+            dispatch_epoch=$(date +%s)
+            gh_retry workflow run "$CONTROL_PLANE_WORKFLOW" --repo "$GH_REPO" --ref main
+            control_plane_verified=0
+            for attempt in 1 2 3 4 5; do
+              sleep 2
+              cp_after=$(gh_retry run list --repo "$GH_REPO" --workflow "$CONTROL_PLANE_WORKFLOW" --branch main --limit 10 --json databaseId,status,conclusion,createdAt,event)
+              new_cp_id=$(printf '%s' "$cp_after" | jq -r --argjson cutoff "$dispatch_epoch" '[.[] | select(.event == "workflow_dispatch") | select((.createdAt | fromdateiso8601) >= $cutoff)] | sort_by(.createdAt) | reverse | .[0].databaseId // empty')
+              cp_active_after=$(printf '%s' "$cp_after" | jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')
+              echo "Control Plane bootstrap verification $attempt/5: active=$cp_active_after new_run_id=${new_cp_id:-<none>}"
+              if [ -n "$new_cp_id" ] || [ "$cp_active_after" -gt 0 ]; then
+                control_plane_verified=1
+                break
+              fi
+            done
+            if [ "$control_plane_verified" -ne 1 ]; then
+              echo 'Control Plane dispatch accepted but no current/active run was observed.' >&2
+              exit 1
+            fi
+            printf '%s\n' "Control Plane bootstrap verified: run_id=${new_cp_id:-<active-unresolved>} reason=$control_plane_reason" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
           # The pregame workflow has repeatedly produced GitHub Actions startup
           # failures with zero jobs. Those failures are not reliably emitted as
