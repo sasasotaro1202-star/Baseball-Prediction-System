@@ -83,8 +83,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          failed_steps="$(gh run view "$RUN_ID" --repo "$GH_REPO" --json jobs --jq '[.jobs[].steps[]? | select(.conclusion == "failure") | .name] | join("
-")')"
+          failed_steps="$(gh run view "$RUN_ID" --repo "$GH_REPO" --json jobs --jq '[.jobs[].steps[]? | select(.conclusion == "failure") | .name] | join("\n")')"
           job_count="$(gh run view "$RUN_ID" --repo "$GH_REPO" --json jobs --jq '.jobs | length')"
 
           retryable=0
