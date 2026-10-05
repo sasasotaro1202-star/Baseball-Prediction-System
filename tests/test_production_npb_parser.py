@@ -71,3 +71,30 @@ def test_starter_page_clock_regex_accepts_real_clock():
     import re
 
     assert re.fullmatch(r"\d{1,2}:\d{2}", "18:00")
+
+
+def test_competition_metadata_uses_explicit_game_content_not_navigation():
+    from production_npb import _official_daily_competition_metadata
+
+    html = """
+    <html>
+      <body>
+        <nav><a>セ・パ公式戦</a><a>日本シリーズ</a></nav>
+        <main>
+          <h2>〖JERA セ・リーグ公式戦〗 阪神タイガース vs 広島東洋カープ 24回戦</h2>
+        </main>
+      </body>
+    </html>
+    """
+
+    label = _official_daily_competition_metadata(
+        html,
+        "https://npb.jp/scores/2026/1006/t-c-24/",
+        "2026-10-06",
+    )
+
+    assert label["status"] == "classified"
+    assert label["competition"] == "npb_regular"
+    assert label["stage"] == "regular_season"
+    assert label["source_field"] == "npb_game_content_competition_marker"
+    assert "セ・リーグ公式戦" in label["source_value"]
