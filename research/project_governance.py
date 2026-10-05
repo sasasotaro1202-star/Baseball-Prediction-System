@@ -116,7 +116,7 @@ WORKFLOW_CONTRACTS: dict[str, dict[str, Any]] = {
         "max_age_hours": 30,
         "required": ("schedule:", "research.universal_readiness", "tests/test_universal_readiness.py"),
     },
-    ".github/workflows/baseball_actions_recovery_canonical.yml": {
+    ".github/workflows/baseball_actions_recovery.yml": {
         "monitor": False,
         "max_age_hours": 0,
         "required": (
