@@ -52,7 +52,7 @@ jobs:
           # Exact, historically evidenced ghost registrations only. This is a
           # disable-only repair; active current workflow registrations are never
           # discovered or disabled heuristically.
-          target_ids="375399090 359633887 375842323 375843510"
+          target_ids="375399090 375399444 359633887 375842323 375843510"
 
           workflow_state() {
             local workflow_id="$1"
