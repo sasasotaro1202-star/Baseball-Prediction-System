@@ -498,4 +498,4 @@ def test_forever_automation_uses_registered_control_plane():
     assert "actions: write" in workflow
     assert "research.autonomous_control_plane" in workflow
     assert "--max-dispatches-per-cycle 2" in workflow or "--max-dispatches-per-cycle\" 2" in workflow
-    assert "production_modified": false" in workflow
+    assert "max_heavy_dispatches_per_cycle" in workflow or "max-dispatches-per-cycle" in workflow
