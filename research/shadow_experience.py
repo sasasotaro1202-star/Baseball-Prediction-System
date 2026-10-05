@@ -125,12 +125,20 @@ def reconcile_shadow() -> dict[str, Any]:
     for row in rows:
         _validate_prediction_time_contract(row)
         _validate_prediction_probability_contract(row)
+
+    # UNVERIFIABLE starter snapshots are preserved as research observations but
+    # excluded from PIT-valid performance metrics. This prevents missing starter
+    # evidence from being converted into false PIT PASS by the reconciliation layer.
+    pit_status = df["pit_status"].astype(str).str.upper()
+    unverifiable_rows = int((pit_status == "UNVERIFIABLE").sum())
+    pit_valid_df = df.loc[pit_status == "PASS"].copy()
+
     df["datetime_jst"] = pd.to_datetime(df["datetime_jst"], utc=True, errors="coerce")
     df["prediction_generated_at"] = pd.to_datetime(df["prediction_generated_at"], utc=True, errors="coerce")
     df["prediction_cutoff_utc"] = pd.to_datetime(df["prediction_cutoff_utc"], utc=True, errors="coerce")
     df = df.dropna(subset=["datetime_jst", "prediction_generated_at", "prediction_cutoff_utc", "game_id"]).copy()
 
-    results = _load_cached_results(list(df["datetime_jst"]))
+    results = _load_cached_results(list(pit_valid_df["datetime_jst"]))
     if results.empty:
         payload = {
             "generated_at_utc": generated_at,
@@ -138,6 +146,8 @@ def reconcile_shadow() -> dict[str, Any]:
             "scope": "RESEARCH_SHADOW",
             "production_modified": False,
             "prediction_rows": int(len(df)),
+            "unverifiable_snapshots": unverifiable_rows,
+            "pit_valid_snapshots": int(len(pit_valid_df)),
             "matched_snapshots": 0,
             "canonical_cases": 0,
         }
@@ -145,13 +155,13 @@ def reconcile_shadow() -> dict[str, Any]:
         SUMMARY_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         return payload
 
-    df["date_key"] = df["datetime_jst"].dt.tz_convert("Asia/Tokyo").dt.strftime("%Y-%m-%d")
+    pit_valid_df["date_key"] = pit_valid_df["datetime_jst"].dt.tz_convert("Asia/Tokyo").dt.strftime("%Y-%m-%d")
     results["date_key"] = pd.to_datetime(results["date"], errors="coerce").dt.strftime("%Y-%m-%d")
     for col in ("home", "away"):
-        df[f"{col}_key"] = df[col].astype(str)
+        pit_valid_df[f"{col}_key"] = pit_valid_df[col].astype(str)
         results[f"{col}_key"] = results[col].astype(str)
 
-    merged = df.merge(
+    merged = pit_valid_df.merge(
         results[["date_key", "home_key", "away_key", "home_score", "away_score", "source_url"]],
         on=["date_key", "home_key", "away_key"],
         how="left",
@@ -291,6 +301,8 @@ def reconcile_shadow() -> dict[str, Any]:
         "scope": "RESEARCH_SHADOW",
         "production_modified": False,
         "prediction_rows": int(len(df)),
+        "unverifiable_snapshots": unverifiable_rows,
+        "pit_valid_snapshots": int(len(pit_valid_df)),
         "matched_snapshots": int(len(matched)),
         "canonical_cases": int(len(canonical)),
         "all_snapshot_metrics": all_metrics,
