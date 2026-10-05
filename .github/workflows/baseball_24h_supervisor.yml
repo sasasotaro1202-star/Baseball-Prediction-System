@@ -58,11 +58,7 @@ jobs:
             state="$(gh api "repos/${GH_REPO}/actions/workflows/${workflow_id}" --jq '.state // "unknown"')"
             path="$(gh api "repos/${GH_REPO}/actions/workflows/${workflow_id}" --jq '.path // "unknown"')"
             case "${path}" in
-              .github/workflows/baseball_autonomous_control_plane_canonical.yml|
-              .github/workflows/baseball_24h_research_autopilot_canonical.yml|
-              .github/workflows/baseball_24h_research_keeper_canonical.yml|
-              .github/workflows/npb_game_script_autoresearch_canonical.yml|
-              .github/workflows/baseball_actions_recovery_canonical.yml)
+              .github/workflows/baseball_autonomous_control_plane_canonical.yml|.github/workflows/baseball_24h_research_autopilot_canonical.yml|.github/workflows/baseball_24h_research_keeper_canonical.yml|.github/workflows/npb_game_script_autoresearch_canonical.yml|.github/workflows/baseball_actions_recovery_canonical.yml)
                 ;;
               *)
                 echo "Ghost repair safety guard failed for workflow ${workflow_id}: ${path}" >&2
