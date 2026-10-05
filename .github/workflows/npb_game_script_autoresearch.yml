@@ -211,6 +211,392 @@ PY
           set -euo pipefail
           mkdir -p data/pbp
           if grep -q '^need_research=0
+          current_year=$(TZ=Asia/Tokyo date +%Y)
+          current_month=$(TZ=Asia/Tokyo date +%m)
+          current_month_num=$((10#$current_month))
+          has_current_pbp=1
+          if [ "$current_month_num" -lt 3 ]; then has_current_pbp=0; fi
+          if [ "$current_month_num" -gt 10 ]; then current_month_num=10; fi
+          required_file() {
+            local name=$1
+            grep -Fq "$(printf '%s\t' "$name")" results/pbp_release_manifest.tsv
+          }
+          download_if_needed() {
+            local name=$1
+            local digest
+            digest=$(awk -F '\t' -v n="$name" '$1==n {print $2; exit}' results/pbp_release_manifest.tsv)
+            test -n "$digest"
+            local target="data/pbp/$name"
+            local wanted
+            wanted=$(printf '%s' "$digest" | sed 's/^sha256://')
+            if [ -s "$target" ] && [ "$(sha256sum "$target" | awk '{print $1}')" = "$wanted" ]; then
+              echo "cache hit: $name"
+            else
+              echo "download/update: $name"
+              gh release download pbp --repo armstjc/Nippon-Baseball-Data-Repository --pattern "$name" --dir data/pbp --clobber
+              test -s "$target"
+              test "$(sha256sum "$target" | awk '{print $1}')" = "$wanted"
+            fi
+          }
+          for year in 2022 2023 2024 2025; do
+            for m in $(seq 3 10); do
+              file="$year-$(printf '%02d' "$m")_pbp.csv"
+              required_file "$file" || { echo "Missing release asset: $file" >&2; exit 1; }
+              download_if_needed "$file"
+            done
+          done
+          if [ "$has_current_pbp" -eq 1 ]; then
+            for m in $(seq 3 "$current_month_num"); do
+              current_file="$current_year-$(printf '%02d' "$m")_pbp.csv"
+              required_file "$current_file" || { echo "Current-season release asset missing: $current_file" >&2; exit 1; }
+              download_if_needed "$current_file"
+            done
+          else
+            echo "No in-season current-year PBP is expected yet."
+          fi
+          find data/pbp -maxdepth 1 -type f -name '*_pbp.csv' | wc -l | awk '{print "staged_pbp_file_count="$1}' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run chronological Game-Script WFO or preserve unchanged evidence
+        timeout-minutes: 90
+        run: |
+          set -euo pipefail
+          if grep -q '^need_research=0$' results/research_decision.txt; then
+            python - <<'PY'
+import json
+from pathlib import Path
+reason = next((x.split("=",1)[1] for x in Path("results/research_decision.txt").read_text().splitlines() if x.startswith("reason=")), "unchanged")
+obj = {
+    "schema_version": "game-script-v4",
+    "status": "RESEARCH_SCREENING_UNCHANGED",
+    "candidate_role": "CHALLENGER_RESEARCH",
+    "pit_status": "UNVERIFIABLE_HISTORICAL_PBP_AVAILABILITY",
+    "production_eligible": False,
+    "decision": "HOLD_RESEARCH_ONLY",
+    "reason": reason,
+    "git_sha": Path(".git/HEAD").read_text(encoding="utf-8").strip(),
+    "source_fingerprint": Path("results/source_fingerprint.txt").read_text(encoding="utf-8").strip(),
+    "validation_source_fingerprint": Path("results/validation_source_fingerprint.txt").read_text(encoding="utf-8").strip(),
+    "context_source_fingerprint": Path("results/context_source_fingerprint.txt").read_text(encoding="utf-8").strip(),
+    "code_fingerprint": Path("results/code_fingerprint.txt").read_text(encoding="utf-8").strip(),
+    "reproducibility": {
+        "production_promotion": "FORBIDDEN",
+        "unchanged_source": "NO_RECOMPUTATION",
+    },
+}
+obj["git_sha"] = __import__("os").environ.get("GITHUB_SHA", obj["git_sha"])
+Path("results/game_script_screening.json").write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+PY
+            exit 0
+          fi
+
+          research_mode=$(awk -F= '$1=="research_mode"{print $2; exit}' results/research_decision.txt)
+          prev_code=$(awk -F= '$1=="prev_code"{print $2; exit}' results/research_decision.txt)
+          current_code=$(awk -F= '$1=="current_code"{print $2; exit}' results/research_decision.txt)
+          prev_validation_source=$(awk -F= '$1=="prev_validation_source"{print $2; exit}' results/research_decision.txt)
+          current_validation_source=$(awk -F= '$1=="current_validation_source"{print $2; exit}' results/research_decision.txt)
+          if [ "$research_mode" = "SKIP_UNCHANGED" ]; then
+            echo "Unchanged: no expensive research execution."
+            exit 0
+          fi
+          simulations=$(jq -r '.inputs.simulations // "600"' "$GITHUB_EVENT_PATH")
+          max_validation_games=$(jq -r '.inputs.max_validation_games // "160"' "$GITHUB_EVENT_PATH")
+          max_shadow_games=$(jq -r '.inputs.max_shadow_games // "60"' "$GITHUB_EVENT_PATH")
+          current_month=$(TZ=Asia/Tokyo date +%Y-%m)
+          shadow_start="$current_month-01"
+          shadow_end=$(TZ=Asia/Tokyo date +%Y-%m-%d)
+          mkdir -p results
+          previous_checkpoint=$(find .previous_evidence -type f -name 'game_script_checkpoint.json' -print -quit || true)
+          if [ -n "$previous_checkpoint" ] && [ -s "$previous_checkpoint" ] && [ "$prev_code" = "$current_code" ] && [ "$prev_validation_source" = "$current_validation_source" ]; then
+            cp "$previous_checkpoint" results/game_script_checkpoint.json
+          else
+            echo "Checkpoint not reused because Game-Script code fingerprint changed or no compatible checkpoint exists."
+          fi
+          extra_mode=()
+          if [ "$research_mode" = "SHADOW_REFRESH_ONLY" ]; then
+            extra_mode+=(--shadow-only)
+          fi
+          python -m research.game_script_engine "${extra_mode[@]}"             --data-glob 'data/pbp/*.csv'             --development-end 2024-12-31             --validation-start 2025-01-01             --validation-end 2025-12-31             --shadow-start "$shadow_start"             --shadow-end "$shadow_end"             --max-validation-games "$max_validation_games"             --max-shadow-games "$max_shadow_games"             --simulations "$simulations"             --seed 42             --checkpoint-path results/game_script_checkpoint.json             --checkpoint-every 1             --output results/game_script_screening.json
+          python - <<'PY'
+import json, os
+from pathlib import Path
+p=Path("results/game_script_screening.json")
+obj=json.loads(p.read_text(encoding="utf-8"))
+obj["git_sha"]=os.environ["GITHUB_SHA"]
+obj["source_fingerprint"]=Path("results/source_fingerprint.txt").read_text(encoding="utf-8").strip()
+obj["code_fingerprint"]=Path("results/code_fingerprint.txt").read_text(encoding="utf-8").strip()
+p.write_text(json.dumps(obj,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+PY
+
+      - name: Verify evidence and summarize
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          test -s results/game_script_screening.json
+          test -s results/pbp_release_manifest.tsv
+          test -s results/source_fingerprint.txt
+          test -s results/validation_source_fingerprint.txt
+          test -s results/context_source_fingerprint.txt
+          test -s results/code_fingerprint.txt
+          python - <<'PY'
+import json, math
+from pathlib import Path
+obj=json.loads(Path("results/game_script_screening.json").read_text(encoding="utf-8"))
+assert obj.get("status") in {"RESEARCH_SCREENING_ONLY","RESEARCH_SCREENING_UNCHANGED"}
+assert obj.get("decision") == "HOLD_RESEARCH_ONLY"
+assert str(obj.get("pit_status","")).startswith("UNVERIFIABLE")
+assert obj.get("production_eligible") is False
+assert obj.get("git_sha")
+assert obj.get("source_fingerprint")
+assert obj.get("validation_source_fingerprint")
+assert obj.get("context_source_fingerprint")
+assert obj.get("code_fingerprint")
+if obj["status"] == "RESEARCH_SCREENING_ONLY":
+    v=obj["aggregate"]["validation"]
+    assert v["rows"] > 0
+    for key in ("accuracy","logloss","brier","ece","score_mae","top1_exact","top4_exact","low_le_6_logloss","low_le_6_brier"):
+        assert isinstance(v[key],(int,float)) and math.isfinite(v[key])
+    ids=[x["game_id"] for x in obj.get("validation_cases",[])]
+    assert len(ids) == v["rows"] and len(set(ids)) == len(ids)
+print(json.dumps({
+    "status": obj["status"],
+    "decision": obj["decision"],
+    "pit_status": obj["pit_status"],
+    "validation": obj.get("aggregate",{}).get("validation",{}),
+    "latest_validation_30": obj.get("aggregate",{}).get("latest_validation_30",{}),
+    "ablation": obj.get("ablation",{}),
+    "recent_shadow": obj.get("recent_shadow",{}),
+    "source_fingerprint": obj.get("source_fingerprint",""),
+}, ensure_ascii=False, indent=2))
+PY
+          {
+            echo "### Game-Script v4"
+            python - <<'PY'
+import json
+from pathlib import Path
+o=json.loads(Path("results/game_script_screening.json").read_text())
+print("- status: " + str(o["status"]))
+print("- decision: " + str(o["decision"]))
+print("- PIT: " + str(o["pit_status"]))
+print("- production_eligible: " + str(o["production_eligible"]))
+if "aggregate" in o:
+    v=o["aggregate"].get("validation",{})
+    print("- validation rows: " + str(v.get("rows","")))
+    print("- LogLoss: " + str(v.get("logloss","")))
+    print("- Accuracy: " + str(v.get("accuracy","")))
+    print("- Brier: " + str(v.get("brier","")))
+    print("- ECE: " + str(v.get("ece","")))
+    print("- Score MAE: " + str(v.get("score_mae","")))
+    print("- Top-4: " + str(v.get("top4_exact","")))
+PY
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload research evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: npb-game-script-autoresearch
+          path: |
+            results/game_script_screening.json
+            results/game_script_checkpoint.json
+            results/pbp_release_manifest.tsv
+            results/source_fingerprint.txt
+            results/validation_source_fingerprint.txt
+            results/context_source_fingerprint.txt
+            results/code_fingerprint.txt
+            results/research_decision.txt
+            results/previous_run.txt
+            research/game_script_common.py
+            research/game_script_wfo.py
+            research/game_script_engine.py
+            tests/test_game_script_engine.py
+            tests/test_game_script_automation_contract.py
+          if-no-files-found: warn
+          retention-days: 45
+ results/research_decision.txt; then
+            echo "No recomputation required; cached data is not touched."
+            exit 0
+          fi
+          current_year=$(TZ=Asia/Tokyo date +%Y)
+          current_month=$(TZ=Asia/Tokyo date +%m)
+          current_month_num=$((10#$current_month))
+          has_current_pbp=1
+          if [ "$current_month_num" -lt 3 ]; then has_current_pbp=0; fi
+          if [ "$current_month_num" -gt 10 ]; then current_month_num=10; fi
+          required_file() {
+            local name=$1
+            grep -Fq "$(printf '%s\t' "$name")" results/pbp_release_manifest.tsv
+          }
+          download_if_needed() {
+            local name=$1
+            local digest
+            digest=$(awk -F '\t' -v n="$name" '$1==n {print $2; exit}' results/pbp_release_manifest.tsv)
+            test -n "$digest"
+            local target="data/pbp/$name"
+            local wanted
+            wanted=$(printf '%s' "$digest" | sed 's/^sha256://')
+            if [ -s "$target" ] && [ "$(sha256sum "$target" | awk '{print $1}')" = "$wanted" ]; then
+              echo "cache hit: $name"
+            else
+              echo "download/update: $name"
+              gh release download pbp --repo armstjc/Nippon-Baseball-Data-Repository --pattern "$name" --dir data/pbp --clobber
+              test -s "$target"
+              test "$(sha256sum "$target" | awk '{print $1}')" = "$wanted"
+            fi
+          }
+          for year in 2022 2023 2024 2025; do
+            for m in $(seq 3 10); do
+              file="$year-$(printf '%02d' "$m")_pbp.csv"
+              required_file "$file" || { echo "Missing release asset: $file" >&2; exit 1; }
+              download_if_needed "$file"
+            done
+          done
+          if [ "$has_current_pbp" -eq 1 ]; then
+            for m in $(seq 3 "$current_month_num"); do
+              current_file="$current_year-$(printf '%02d' "$m")_pbp.csv"
+              required_file "$current_file" || { echo "Current-season release asset missing: $current_file" >&2; exit 1; }
+              download_if_needed "$current_file"
+            done
+          else
+            echo "No in-season current-year PBP is expected yet."
+          fi
+          find data/pbp -maxdepth 1 -type f -name '*_pbp.csv' | wc -l | awk '{print "staged_pbp_file_count="$1}' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run chronological Game-Script WFO or preserve unchanged evidence
+        timeout-minutes: 90
+        run: |
+          set -euo pipefail
+          if grep -q '^need_research=0$' results/research_decision.txt; then
+            python - <<'PY'
+import json
+from pathlib import Path
+reason = next((x.split("=",1)[1] for x in Path("results/research_decision.txt").read_text().splitlines() if x.startswith("reason=")), "unchanged")
+obj = {
+    "schema_version": "game-script-v4",
+    "status": "RESEARCH_SCREENING_UNCHANGED",
+    "candidate_role": "CHALLENGER_RESEARCH",
+    "pit_status": "UNVERIFIABLE_HISTORICAL_PBP_AVAILABILITY",
+    "production_eligible": False,
+    "decision": "HOLD_RESEARCH_ONLY",
+    "reason": reason,
+    "git_sha": Path(".git/HEAD").read_text(encoding="utf-8").strip(),
+    "source_fingerprint": Path("results/source_fingerprint.txt").read_text(encoding="utf-8").strip(),
+    "code_fingerprint": Path("results/code_fingerprint.txt").read_text(encoding="utf-8").strip(),
+    "reproducibility": {
+        "production_promotion": "FORBIDDEN",
+        "unchanged_source": "NO_RECOMPUTATION",
+    },
+}
+obj["git_sha"] = __import__("os").environ.get("GITHUB_SHA", obj["git_sha"])
+Path("results/game_script_screening.json").write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+PY
+            exit 0
+          fi
+
+          simulations=$(jq -r '.inputs.simulations // "600"' "$GITHUB_EVENT_PATH")
+          max_validation_games=$(jq -r '.inputs.max_validation_games // "160"' "$GITHUB_EVENT_PATH")
+          max_shadow_games=$(jq -r '.inputs.max_shadow_games // "60"' "$GITHUB_EVENT_PATH")
+          current_month=$(TZ=Asia/Tokyo date +%Y-%m)
+          shadow_start="$current_month-01"
+          shadow_end=$(TZ=Asia/Tokyo date +%Y-%m-%d)
+          mkdir -p results
+          previous_checkpoint=$(find .previous_evidence -type f -name 'game_script_checkpoint.json' -print -quit || true)
+          if [ -n "$previous_checkpoint" ] && [ -s "$previous_checkpoint" ] && [ "$prev_code" = "$current_code" ]; then
+            cp "$previous_checkpoint" results/game_script_checkpoint.json
+          else
+            echo "Checkpoint not reused because Game-Script code fingerprint changed or no compatible checkpoint exists."
+          fi
+          python -m research.game_script_engine             --data-glob 'data/pbp/*.csv'             --development-end 2024-12-31             --validation-start 2025-01-01             --validation-end 2025-12-31             --shadow-start "$shadow_start"             --shadow-end "$shadow_end"             --max-validation-games "$max_validation_games"             --max-shadow-games "$max_shadow_games"             --simulations "$simulations"             --seed 42             --checkpoint-path results/game_script_checkpoint.json             --checkpoint-every 1             --output results/game_script_screening.json
+          python - <<'PY'
+import json, os
+from pathlib import Path
+p=Path("results/game_script_screening.json")
+obj=json.loads(p.read_text(encoding="utf-8"))
+obj["git_sha"]=os.environ["GITHUB_SHA"]
+obj["source_fingerprint"]=Path("results/source_fingerprint.txt").read_text(encoding="utf-8").strip()
+obj["code_fingerprint"]=Path("results/code_fingerprint.txt").read_text(encoding="utf-8").strip()
+p.write_text(json.dumps(obj,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+PY
+
+      - name: Verify evidence and summarize
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          test -s results/game_script_screening.json
+          test -s results/pbp_release_manifest.tsv
+          test -s results/source_fingerprint.txt
+          test -s results/code_fingerprint.txt
+          python - <<'PY'
+import json, math
+from pathlib import Path
+obj=json.loads(Path("results/game_script_screening.json").read_text(encoding="utf-8"))
+assert obj.get("status") in {"RESEARCH_SCREENING_ONLY","RESEARCH_SCREENING_UNCHANGED"}
+assert obj.get("decision") == "HOLD_RESEARCH_ONLY"
+assert str(obj.get("pit_status","")).startswith("UNVERIFIABLE")
+assert obj.get("production_eligible") is False
+assert obj.get("git_sha")
+assert obj.get("source_fingerprint")
+assert obj.get("code_fingerprint")
+if obj["status"] == "RESEARCH_SCREENING_ONLY":
+    v=obj["aggregate"]["validation"]
+    assert v["rows"] > 0
+    for key in ("accuracy","logloss","brier","ece","score_mae","top1_exact","top4_exact","low_le_6_logloss","low_le_6_brier"):
+        assert isinstance(v[key],(int,float)) and math.isfinite(v[key])
+    ids=[x["game_id"] for x in obj.get("validation_cases",[])]
+    assert len(ids) == v["rows"] and len(set(ids)) == len(ids)
+print(json.dumps({
+    "status": obj["status"],
+    "decision": obj["decision"],
+    "pit_status": obj["pit_status"],
+    "validation": obj.get("aggregate",{}).get("validation",{}),
+    "latest_validation_30": obj.get("aggregate",{}).get("latest_validation_30",{}),
+    "ablation": obj.get("ablation",{}),
+    "recent_shadow": obj.get("recent_shadow",{}),
+    "source_fingerprint": obj.get("source_fingerprint",""),
+}, ensure_ascii=False, indent=2))
+PY
+          {
+            echo "### Game-Script v4"
+            python - <<'PY'
+import json
+from pathlib import Path
+o=json.loads(Path("results/game_script_screening.json").read_text())
+print("- status: " + str(o["status"]))
+print("- decision: " + str(o["decision"]))
+print("- PIT: " + str(o["pit_status"]))
+print("- production_eligible: " + str(o["production_eligible"]))
+if "aggregate" in o:
+    v=o["aggregate"].get("validation",{})
+    print("- validation rows: " + str(v.get("rows","")))
+    print("- LogLoss: " + str(v.get("logloss","")))
+    print("- Accuracy: " + str(v.get("accuracy","")))
+    print("- Brier: " + str(v.get("brier","")))
+    print("- ECE: " + str(v.get("ece","")))
+    print("- Score MAE: " + str(v.get("score_mae","")))
+    print("- Top-4: " + str(v.get("top4_exact","")))
+PY
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload research evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: npb-game-script-autoresearch
+          path: |
+            results/game_script_screening.json
+            results/game_script_checkpoint.json
+            results/pbp_release_manifest.tsv
+            results/source_fingerprint.txt
+            results/code_fingerprint.txt
+            results/research_decision.txt
+            results/previous_run.txt
+            research/game_script_common.py
+            research/game_script_wfo.py
+            research/game_script_engine.py
+            tests/test_game_script_engine.py
+            tests/test_game_script_automation_contract.py
+          if-no-files-found: warn
+          retention-days: 45
+ results/research_decision.txt; then
             echo "No recomputation required; cached data is not touched."
             exit 0
           fi
