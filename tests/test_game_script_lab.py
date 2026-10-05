@@ -50,6 +50,15 @@ def test_fit_ids_are_explicit_and_simulation_is_valid():
     assert np.isclose(p.sum(),1.0)
 
 
+def test_page_identity_recovers_state_when_serial_is_missing():
+    raw=sample()
+    raw["page"] = raw["fiveDigitSerialNumber"].astype(str) + "01"
+    raw = raw.drop(columns=["fiveDigitSerialNumber"])
+    halves = build_half_innings(raw, resolve_columns(raw))
+    assert len(halves) == 48
+    assert set(halves["half"]) == {"T", "B"}
+
+
 def test_missing_inning_identity_fails_closed():
     raw=sample().drop(columns=["fiveDigitSerialNumber"])
     with pytest.raises(ValueError):
