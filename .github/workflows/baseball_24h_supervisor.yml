@@ -53,7 +53,7 @@ jobs:
           # Exact, historically evidenced ghost registrations only. This is a
           # disable-only repair; active current workflow registrations are never
           # discovered or disabled heuristically.
-          target_ids="374504043 375399090 375399444 359633887 375842323 375843510"
+          target_ids="374504043 375853241 375399090 375399444 359633887 375842323 375843510"
 
           workflow_state() {
             local workflow_id="$1"
@@ -75,7 +75,7 @@ jobs:
             fi
             path="$(gh api "repos/${GH_REPO}/actions/workflows/${workflow_id}" --jq '.path // "unknown"')"
             case "${path}" in
-              .github/workflows/baseball_autonomous_control_plane_canonical.yml|.github/workflows/baseball_24h_research_autopilot_canonical.yml|.github/workflows/baseball_24h_research_keeper_canonical.yml|.github/workflows/npb_game_script_autoresearch_canonical.yml|.github/workflows/baseball_actions_recovery_canonical.yml|.github/workflows/baseball_actions_recovery.yml|.github/workflows/baseball_actions_recovery_v2.yml|.github/workflows/baseball_actions_recovery_20261006.yml|.github/workflows/baseball_autonomous_control_plane.yml)
+              .github/workflows/baseball_autonomous_control_plane_canonical.yml|.github/workflows/baseball_24h_research_autopilot_canonical.yml|.github/workflows/baseball_24h_research_keeper_canonical.yml|.github/workflows/npb_game_script_autoresearch_canonical.yml|.github/workflows/baseball_actions_recovery_canonical.yml|.github/workflows/baseball_actions_recovery.yml|.github/workflows/baseball_actions_recovery_v2.yml|.github/workflows/baseball_actions_recovery_20261006.yml|.github/workflows/baseball_autonomous_control_plane.yml|.github/workflows/baseball_autonomous_control_plane_stable.yml)
                 ;;
               *)
                 echo "Ghost repair safety guard failed for workflow ${workflow_id}: ${path}" >&2
