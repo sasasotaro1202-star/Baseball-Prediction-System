@@ -54,5 +54,6 @@ def test_game_script_lab_uses_explicit_token_environment():
 
 def test_game_script_autoresearch_decision_guard_is_closed_and_well_formed():
     text = _read("npb_game_script_autoresearch.yml")
-    assert "if grep -q '^need_research=0' not in text
+    malformed = "if grep -q '^need_research=0'" + "\n"
+    assert malformed not in text
     assert "if grep -q '^need_research=0$' results/research_decision.txt; then" in text
