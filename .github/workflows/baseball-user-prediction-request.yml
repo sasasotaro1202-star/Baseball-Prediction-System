@@ -255,37 +255,3 @@ jobs:
             echo "Baseball user prediction generation failed; evidence was preserved." >&2
             exit "$rc"
           fi
-
-      - name: Validate and upload request result
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: baseball-user-prediction-${{ github.run_id }}
-          path: ${{ steps.generate.outputs.result_path }}
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Commit immutable request result
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add prediction_requests/results
-          if git diff --cached --quiet; then
-            echo "No new request result to commit."
-            exit 0
-          fi
-          git commit -m "Archive baseball prediction request result"
-          for attempt in 1 2 3; do
-            if git fetch origin main && git push origin HEAD:main; then
-              exit 0
-            fi
-            git fetch origin main
-            if ! git rebase origin/main; then
-              git rebase --abort
-              echo "request-result push conflict could not be reconciled safely" >&2
-              exit 1
-            fi
-          done
-          echo "bounded request-result push recovery exhausted" >&2
-          exit 1
