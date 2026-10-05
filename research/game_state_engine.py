@@ -380,7 +380,29 @@ def evaluate_from_files(
                 nh, no, nb, runs, scorer = t
                 key = _state_key(int(a["inning"]), str(a["half"]), int(a["outs"]), _base_mask(a), int(round(float(a["home_score"]) - float(a["away_score"]))))
                 outcome = (nh, no, nb, runs, scorer); exact[key][outcome] += 1; by_state[(key[0], key[1], key[2], key[3])][outcome] += 1; by_half[key[1]][outcome] += 1; transitions += 1
-    if transitions < 100: raise ValueError(f"insufficient valid transitions: {transitions} < 100")
+    if transitions < 100:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "status": "BLOCKED",
+            "pit_status": PIT_STATUS,
+            "production_eligible": False,
+            "decision": "HOLD_RESEARCH_ONLY",
+            "reason": f"Insufficient valid state transitions after strict normalization: {transitions} < 100. This is a data/identity/reconstruction blocker, not a performance result.",
+            "blocker": {
+                "type": "INSUFFICIENT_VALID_TRANSITIONS",
+                "observed": int(transitions),
+                "required_minimum": 100,
+            },
+            "development_end": development_end,
+            "validation_start": validation_start,
+            "validation_end": validation_end,
+            "holdout_start": holdout_start,
+            "input_files": [str(p) for p in files],
+            "input_file_count": len(files),
+            "games_available": int(len(games)),
+            "production_promotion": "FORBIDDEN",
+            "evidence_level": "E0_BLOCKED",
+        }
     kernel = TransitionKernel(exact, by_state, by_half, transitions)
     games_df = pd.DataFrame(games).drop_duplicates("game_id").sort_values(["game_date", "game_id"]).reset_index(drop=True)
     if games_df.empty: raise ValueError("no games available")
@@ -428,7 +450,21 @@ def main(argv: list[str] | None = None) -> int:
     if not files: raise SystemExit(f"no PBP files matched: {a.data_glob}")
     result = evaluate_from_files(files, development_end=a.development_end, validation_start=a.validation_start, validation_end=a.validation_end, holdout_start=a.holdout_start, max_validation_games=max(1,a.max_validation_games), max_holdout_games=max(1,a.max_holdout_games), simulations=max(1,a.simulations), seed=a.seed)
     out = Path(a.output); out.parent.mkdir(parents=True, exist_ok=True); out.write_text(json.dumps(result, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")
-    print(json.dumps({k: result[k] for k in ("status", "pit_status", "production_eligible", "decision", "aggregate", "delta_vs_poisson")}, ensure_ascii=False, indent=2)); return 0
+    print(json.dumps(
+        {
+            "status": result.get("status"),
+            "pit_status": result.get("pit_status"),
+            "production_eligible": result.get("production_eligible"),
+            "decision": result.get("decision"),
+            "reason": result.get("reason"),
+            "aggregate": result.get("aggregate", {}),
+            "delta_vs_poisson": result.get("delta_vs_poisson", {}),
+            "blocker": result.get("blocker", {}),
+        },
+        ensure_ascii=False,
+        indent=2,
+    ))
+    return 0
 
 
 if __name__ == "__main__":
