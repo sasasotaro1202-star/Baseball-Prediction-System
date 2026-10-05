@@ -24,6 +24,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TARGET: baseball_24h_research_autopilot.yml
           CONTROL_WORKFLOW: baseball_autonomous_control_plane.yml
+          SUPERVISOR_WORKFLOW: baseball_24h_supervisor.yml
         shell: bash
         run: |
           set -euo pipefail
@@ -50,8 +51,24 @@ jobs:
           echo "current_main_sha=${current_sha}"
 
           # The autonomous control plane owns normal dispatch/recovery. This
-          # keeper is an emergency failover only and must not create a second
-          # dispatch loop while the 15-minute heartbeat is healthy.
+          # keeper is an emergency failover only. Supervisor health is checked
+          # first so the keeper cannot race the primary supervisor for ownership.
+          supervisor_runs="$(gh_retry run list --repo "$GH_REPO" --workflow "$SUPERVISOR_WORKFLOW" --branch main --limit 10 --json databaseId,status,conclusion,createdAt)"
+          supervisor_active="$(printf '%s' "$supervisor_runs" | jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+          supervisor_latest="$(printf '%s' "$supervisor_runs" | jq -c 'sort_by(.createdAt) | last // empty')"
+          supervisor_latest_conclusion="$(printf '%s' "$supervisor_latest" | jq -r '.conclusion // empty')"
+          supervisor_latest_created="$(printf '%s' "$supervisor_latest" | jq -r '.createdAt // empty')"
+          supervisor_latest_age_minutes=999999
+          if [ -n "$supervisor_latest_created" ]; then
+            supervisor_latest_age_minutes=$(( (now_epoch - $(date -d "$supervisor_latest_created" +%s)) / 60 ))
+          fi
+          if [ "$supervisor_active" -gt 0 ] ||
+             { [ "$supervisor_latest_conclusion" = "success" ] && [ "$supervisor_latest_age_minutes" -lt 20 ]; }; then
+            echo "Primary supervisor is healthy/active; keeper remains passive to preserve single-writer ownership."
+            exit 0
+          fi
+
+          echo "Primary supervisor is absent/stale; keeper may enter bounded failover ownership."
           control_runs="$(gh_retry run list             --repo "${GH_REPO}"             --workflow baseball_autonomous_control_plane.yml             --branch main             --limit 10             --json databaseId,status,conclusion,createdAt,updatedAt,headSha,event)"
           control_active="$(printf '%s' "${control_runs}" | jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
           control_latest="$(printf '%s' "${control_runs}" | jq -c 'sort_by(.createdAt) | last // empty')"
