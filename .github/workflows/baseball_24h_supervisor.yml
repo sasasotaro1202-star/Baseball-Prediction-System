@@ -2,15 +2,14 @@ name: Baseball 24h Supervisor
 
 on:
   workflow_dispatch:
-  # Supervisor is control-plane only. It is driven by schedule/workflow_run,
-  # not every source/config push, so it cannot consume the runner queue needed
-  # for user-facing predictions.
-  workflow_run:
-    workflows: ["Baseball Closed Loop Research"]
-    types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/baseball_24h_supervisor.yml"
+      - ".github/workflows/baseball_autonomous_control_plane.yml"
+      - "research/autonomous_control_plane.py"
+      - "research/project_governance.py"
   schedule:
-    # Lightweight keep-alive. The supervisor only starts a new cycle when the
-    # canonical closed-loop workflow is absent or has stopped unexpectedly.
     - cron: '*/15 * * * *'
 
 permissions:
@@ -19,506 +18,101 @@ permissions:
 
 concurrency:
   group: baseball-24h-supervisor
-  # Only supervisor heartbeats may collapse into the newest check. The target
-  # research workflow has its own concurrency policy and is never cancelled here.
   cancel-in-progress: true
 
 jobs:
-  keep-closed-loop-moving:
+  watchdog:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Checkout supervisor context
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        timeout-minutes: 5
         with:
           persist-credentials: false
           fetch-depth: 1
 
-      - name: Recover stale runs and ensure closed loop is active
+      - name: Validate control-plane code
+        run: |
+          set -euo pipefail
+          test -s ".github/workflows/baseball_autonomous_control_plane.yml"
+          test -s "research/autonomous_control_plane.py"
+          python -m py_compile research/autonomous_control_plane.py
+
+      - name: Keep Autonomous Control Plane alive
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TARGET_WORKFLOW: baseball_closed_loop.yml
-          EVENT_RUN_ID: ${{ github.event.workflow_run.id || '' }}
-          EVENT_CONCLUSION: ${{ github.event.workflow_run.conclusion || '' }}
         shell: bash
         run: |
           set -euo pipefail
 
-          test -s ".github/workflows/${TARGET_WORKFLOW}"
-          now_epoch=$(date +%s)
-
+          # Deterministic failures must not enter an unbounded retry loop.
           gh_retry() {
-            local attempt output rc
-            for attempt in 1 2 3 4; do
-              if output="$(gh "$@" 2>&1)"; then
-                printf '%s\n' "$output"
+            local attempt=1
+            while true; do
+              if gh "$@"; then
                 return 0
-              else
-                rc=$?
-                echo "gh retry $attempt/4 failed (rc=${rc}): $output" >&2
-                # Deterministic HTTP client errors must fail closed instead of
-                # consuming the transient retry budget.  408/429 remain retryable.
-                if printf '%s' "$output" | grep -Eq 'HTTP 4[0-9]{2}' &&
-                   ! printf '%s' "$output" | grep -Eq 'HTTP (408|429)'; then
-                  echo "gh deterministic HTTP 4xx; refusing retry." >&2
-                  return "$rc"
-                fi
-                if [ "$attempt" -lt 4 ]; then
-                  sleep $((attempt * 2))
-                else
-                  return "$rc"
-                fi
               fi
+              if [ "$attempt" -ge 3 ]; then
+                return 1
+              fi
+              sleep $((attempt * 5))
+              attempt=$((attempt + 1))
             done
           }
 
-          # The pregame workflow has repeatedly produced GitHub Actions startup
-          # failures with zero jobs. Those failures are not reliably emitted as
-          # workflow_run events, so recovery belongs in this scheduled supervisor.
-          PREGAME_WORKFLOW=baseball_60m_pregame_auto.yml
-          test -s ".github/workflows/${PREGAME_WORKFLOW}"
-
-          # Startup failures with zero jobs are not reliably emitted as
-          # workflow_run events. Observe the complete pregame run ledger from
-          # the scheduled supervisor instead of filtering to push events only;
-          # scheduled runs are the normal production trigger and must be
-          # recoverable when GitHub delays/drops their execution.
-          pregame_api="$(gh_retry api \
-            "repos/${GH_REPO}/actions/runs?branch=main&per_page=100")"
-          test -n "${pregame_api}"
-          pregame_runs="$(printf '%s' "${pregame_api}" | jq --arg workflow "${PREGAME_WORKFLOW}" \
-            '[.workflow_runs[] |
-              select(.path == (".github/workflows/" + $workflow)) |
-              {databaseId: .id, status: .status, conclusion: .conclusion, event: .event,
-               createdAt: .created_at, updatedAt: .updated_at, headBranch: .head_branch}]')"
-          echo "Recent pregame runs (all trigger types):"
-          echo "${pregame_runs}" | jq '.[0:10]'
-          pregame_active="$(printf '%s' "${pregame_runs}" |
-            jq '[.[] | select(.headBranch == "main") |
-              select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
-          echo "Pregame active_count=${pregame_active}"
-
-          latest_failure_json="$(printf '%s' "${pregame_runs}" | jq -c \
-            '.[] | select(.headBranch == "main") |
-            select(.status == "completed" and .conclusion == "failure") |
-            select(((.createdAt | fromdateiso8601) >= ((now - 86400))))' |
-            jq -s 'sort_by(.createdAt) | reverse | .[0] // empty')"
-          latest_failure_id=""
-          latest_failure_created=""
-          latest_failure_job_count=-1
-          if [ -n "${latest_failure_json}" ]; then
-            latest_failure_id="$(printf '%s' "${latest_failure_json}" | jq -r '.databaseId')"
-            latest_failure_created="$(printf '%s' "${latest_failure_json}" | jq -r '.createdAt')"
-            latest_failure_job_count="$(gh_retry run view "${latest_failure_id}" --repo "${GH_REPO}" --json jobs --jq '.jobs | length')"
-            echo "Latest pregame failure ${latest_failure_id}: created=${latest_failure_created} jobs=${latest_failure_job_count}"
-          else
-            echo "No pregame failure in the last 24h."
-          fi
-
-          pregame_dispatch_api="$(gh_retry api \
-            "repos/${GH_REPO}/actions/runs?event=workflow_dispatch&branch=main&per_page=100")"
-          test -n "${pregame_dispatch_api}"
-          pregame_dispatch_runs="$(printf '%s' "${pregame_dispatch_api}" | jq --arg workflow "${PREGAME_WORKFLOW}" \
-            '[.workflow_runs[] | select(.path == (".github/workflows/" + $workflow)) | select(.head_branch == "main") | {databaseId: .id, status: .status, conclusion: .conclusion, createdAt: .created_at, updatedAt: .updated_at}]')"
-          pregame_recovery_attempts_24h="$(printf '%s' "${pregame_dispatch_runs}" |
-            jq '[.[] | select(((.createdAt | fromdateiso8601) >= ((now - 86400))))] | length')"
-          latest_recovery_created="$(printf '%s' "${pregame_dispatch_runs}" |
-            jq -r '[.[] | select(((.createdAt | fromdateiso8601) >= ((now - 86400))))] | sort_by(.createdAt) | reverse | .[0].createdAt // empty')"
-          pregame_recovery_age_minutes=999999
-          if [ -n "${latest_recovery_created}" ]; then
-            latest_recovery_epoch="$(date -d "${latest_recovery_created}" +%s)"
-            pregame_recovery_age_minutes=$(( (now_epoch - latest_recovery_epoch) / 60 ))
-          fi
-          echo "Pregame automatic/manual dispatches in last 24h=${pregame_recovery_attempts_24h}, latest_age=${pregame_recovery_age_minutes}m"
-
-          pregame_latest_json="$(printf '%s' "${pregame_runs}" | jq -c 'sort_by(.createdAt) | last // empty')"
-          pregame_latest_id=""
-          pregame_latest_status=""
-          pregame_latest_conclusion=""
-          pregame_latest_created=""
-          pregame_latest_age_minutes=999999
-          if [ -n "${pregame_latest_json}" ]; then
-            pregame_latest_id="$(printf '%s' "${pregame_latest_json}" | jq -r '.databaseId // empty')"
-            pregame_latest_status="$(printf '%s' "${pregame_latest_json}" | jq -r '.status // empty')"
-            pregame_latest_conclusion="$(printf '%s' "${pregame_latest_json}" | jq -r '.conclusion // empty')"
-            pregame_latest_created="$(printf '%s' "${pregame_latest_json}" | jq -r '.createdAt // empty')"
-            if [ -n "${pregame_latest_created}" ]; then
-              pregame_latest_epoch="$(date -d "${pregame_latest_created}" +%s)"
-              pregame_latest_age_minutes=$(( (now_epoch - pregame_latest_epoch) / 60 ))
+          now_epoch="$(date +%s)"
+          runs="$(gh_retry run list --repo "$GH_REPO" --workflow baseball_autonomous_control_plane.yml --branch main --limit 20 --json databaseId,status,conclusion,createdAt,event)"
+          active="$(printf "%s" "$runs" | jq "[.[] | select(.status == \"queued\" or .status == \"pending\" or .status == \"waiting\" or .status == \"requested\" or .status == \"in_progress\")] | length")"
+          latest="$(printf "%s" "$runs" | jq -c "sort_by(.createdAt) | last // empty")"
+          latest_age=999999
+          if [ -n "$latest" ]; then
+            created="$(printf "%s" "$latest" | jq -r ".createdAt // empty")"
+            if [ -n "$created" ]; then
+              created_epoch="$(date -d "$created" +%s)"
+              latest_age=$(( (now_epoch - created_epoch) / 60 ))
             fi
           fi
-          echo "Latest pregame run: id=${pregame_latest_id:-<none>} status=${pregame_latest_status:-<none>} conclusion=${pregame_latest_conclusion:-<none>} age=${pregame_latest_age_minutes}m"
 
-          pregame_dispatch=0
-          pregame_reason=""
-           pregame_recovery_mode="manual"
-          if [ "${pregame_active}" -gt 0 ]; then
-            echo "Pregame workflow already active; no recovery dispatch."
-          elif [ -n "${latest_failure_id}" ] && [ "${latest_failure_job_count}" -eq 0 ]; then
-            # Keep the existing zero-job startup recovery path authoritative.
-            if [ "${pregame_recovery_attempts_24h}" -ge 3 ]; then
-              echo "Pregame recovery daily cap reached (${pregame_recovery_attempts_24h}/3 dispatches in 24h); refusing further dispatch."
-              printf '%s\n' 'Pregame terminal state: PRE_GAME_ZERO_JOB_DAILY_CAP; parent failure remains authoritative.' >> "$GITHUB_STEP_SUMMARY"
-            elif [ "${pregame_recovery_age_minutes}" -lt 15 ]; then
-              echo "Pregame recovery cooldown active (${pregame_recovery_age_minutes}m since last workflow_dispatch); preserving failure."
-              printf '%s\n' 'Pregame terminal state: PRE_GAME_ZERO_JOB_COOLDOWN; parent failure remains authoritative.' >> "$GITHUB_STEP_SUMMARY"
+          dispatches_24h="$(printf "%s" "$runs" | jq "[.[] | select(.event == \"workflow_dispatch\") | select(((.createdAt | fromdateiso8601) >= ((now - 86400))))] | length")"
+          latest_dispatch="$(printf "%s" "$runs" | jq -r "[.[] | select(.event == \"workflow_dispatch\") | select(((.createdAt | fromdateiso8601) >= ((now - 86400))))] | sort_by(.createdAt) | reverse | .[0].createdAt // empty")"
+          dispatch_age=999999
+          if [ -n "$latest_dispatch" ]; then
+            dispatch_epoch="$(date -d "$latest_dispatch" +%s)"
+            dispatch_age=$(( (now_epoch - dispatch_epoch) / 60 ))
+          fi
+
+          echo "Control Plane active=$active latest_age=${latest_age}m dispatches_24h=$dispatches_24h"
+          recover=0
+          if [ "$active" -eq 0 ] && { [ -z "$latest" ] || [ "$latest_age" -ge 20 ]; }; then
+            recover=1
+          fi
+
+          if [ "$recover" -eq 1 ]; then
+            if [ "$dispatches_24h" -ge 4 ]; then
+              printf "%s\n" "Control Plane watchdog: DAILY_CAP; preserving state." >> "$GITHUB_STEP_SUMMARY"
+            elif [ "$dispatch_age" -lt 15 ]; then
+              printf "%s\n" "Control Plane watchdog: COOLDOWN; preserving state." >> "$GITHUB_STEP_SUMMARY"
             else
-              pregame_dispatch=1
-              pregame_reason="zero-job startup failure ${latest_failure_id}"
-               pregame_recovery_mode="zero_job_startup_recovery"
-            fi
-          elif [ -z "${pregame_latest_id}" ]; then
-            # A missing run ledger can occur after a newly enabled workflow or a
-            # GitHub schedule delivery gap. Bootstrap under the same bounded
-            # dispatch/cooldown budget rather than assuming the scheduler is live.
-            if [ "${pregame_recovery_attempts_24h}" -ge 3 ]; then
-              echo "Pregame bootstrap daily cap reached; refusing speculative dispatch."
-              printf '%s\n' 'Pregame terminal state: PRE_GAME_BOOTSTRAP_DAILY_CAP.' >> "$GITHUB_STEP_SUMMARY"
-            elif [ "${pregame_recovery_age_minutes}" -lt 15 ]; then
-              echo "Pregame bootstrap cooldown active; no dispatch."
-            else
-              pregame_dispatch=1
-              pregame_reason="no pregame run observed on main"
-               pregame_recovery_mode="bootstrap_recovery"
-            fi
-          elif [ "${pregame_latest_status}" = "completed" ] && [ "${pregame_latest_conclusion}" = "success" ] && [ "${pregame_latest_age_minutes}" -ge 15 ]; then
-            # The normal trigger is a 5-minute schedule, but GitHub can delay
-            # scheduled delivery under load. Re-establish a current slot when no
-            # run is active. The bounded cap prevents an outage from becoming a
-            # dispatch loop.
-            if [ "${pregame_recovery_attempts_24h}" -ge 3 ]; then
-              echo "Pregame missed-schedule daily cap reached (${pregame_recovery_attempts_24h}/3); preserving current state."
-              printf '%s\n' 'Pregame terminal state: PRE_GAME_MISSED_SCHEDULE_DAILY_CAP.' >> "$GITHUB_STEP_SUMMARY"
-            elif [ "${pregame_recovery_age_minutes}" -lt 15 ]; then
-              echo "Pregame dispatch cooldown active; no missed-schedule recovery."
-            else
-              pregame_dispatch=1
-              pregame_reason="latest successful pregame run is stale (${pregame_latest_age_minutes}m)"
-               pregame_recovery_mode="missed_schedule_recovery"
-            fi
-          else
-            echo "Latest pregame terminal state is not eligible for speculative restart; preserving authoritative failure/blocked state."
-          if [ "${pregame_dispatch}" -eq 1 ]; then
-            dispatch_epoch="$(date +%s)"
-            echo "Dispatching pregame: ${pregame_reason} recovery_mode=${pregame_recovery_mode} dispatch_epoch=${dispatch_epoch}"
-            gh_retry workflow run "${PREGAME_WORKFLOW}" --repo "${GH_REPO}" --ref main --field recovery_mode="${pregame_recovery_mode}"
-            verified_pregame=0
-            new_pregame_run_id=""
-            for attempt in 1 2 3 4 5; do
-              sleep 3
-              pregame_dispatch_api_after="$(gh_retry api "repos/${GH_REPO}/actions/runs?event=workflow_dispatch&branch=main&per_page=100")"
-              new_pregame_run_id="$(printf "%s" "${pregame_dispatch_api_after}" |
-                jq -r --arg workflow "${PREGAME_WORKFLOW}" --argjson cutoff "${dispatch_epoch}"
-                  '[.workflow_runs[]
-                   | select(.path == (".github/workflows/" + $workflow))
-                   | select(.head_branch == "main")
-                   | select((.created_at | fromdateiso8601) >= $cutoff)
-                  ] | sort_by(.created_at) | reverse | .[0].id // empty')"
-              pregame_active_after="$(printf "%s" "${pregame_dispatch_api_after}" |
-                jq --arg workflow "${PREGAME_WORKFLOW}"
-                  '[.workflow_runs[]
-                   | select(.path == (".github/workflows/" + $workflow))
-                   | select(.head_branch == "main")
-                   | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")]
-                  | length')"
-              echo "Pregame recovery verification ${attempt}/5: active=${pregame_active_after} new_run_id=${new_pregame_run_id:-<none>}"
-              if [ -n "${new_pregame_run_id}" ] || [ "${pregame_active_after}" -gt 0 ]; then
-                verified_pregame=1
-                break
-              fi
-            done
-            if [ "${verified_pregame}" -ne 1 ]; then
-              echo "Pregame workflow_dispatch completed but no new/current run was observed." >&2
-              exit 1
-            fi
-            printf "%s\n" "Pregame dispatch verified: run_id=${new_pregame_run_id:-<active-unresolved>} dispatch_epoch=${dispatch_epoch}" >> "$GITHUB_STEP_SUMMARY"
-          fi
-          fi
-          # Candidate OOS has a separate concurrency group because it is much
-          # more expensive than the lightweight supervisor. A scheduler-stuck
-          # pending/queued candidate must not block the research loop forever.
-          # Only queued/pending/waiting/requested runs older than 30 minutes are
-          # cancelled. In-progress candidate computation is left untouched.
-          CANDIDATE_WORKFLOW=baseball_candidate_oos.yml
-          test -s ".github/workflows/${CANDIDATE_WORKFLOW}"
-
-          candidate_runs="$(gh_retry run list             --repo "${GH_REPO}"             --workflow "${CANDIDATE_WORKFLOW}"             --limit 30             --json databaseId,status,conclusion,createdAt,updatedAt,headSha)"
-          echo "Recent Candidate OOS runs:"
-          echo "${candidate_runs}" | jq '.[0:8]'
-
-          candidate_stale_cancelled=0
-          while IFS= read -r row; do
-            [ -n "${row}" ] || continue
-            cid="$(printf '%s' "${row}" | jq -r '.databaseId')"
-            cstatus="$(printf '%s' "${row}" | jq -r '.status')"
-            ccreated="$(printf '%s' "${row}" | jq -r '.createdAt')"
-            ccreated_epoch="$(date -d "${ccreated}" +%s)"
-            cage_minutes=$(( (now_epoch - ccreated_epoch) / 60 ))
-            echo "Candidate run ${cid}: status=${cstatus} created_age=${cage_minutes}m"
-            if { [ "${cstatus}" = "queued" ] || [ "${cstatus}" = "pending" ] || [ "${cstatus}" = "waiting" ] || [ "${cstatus}" = "requested" ]; } && [ "${cage_minutes}" -ge 30 ]; then
-              echo "Cancelling stale Candidate OOS scheduler-blocked run ${cid} after ${cage_minutes}m."
-              gh_retry run cancel "${cid}" --repo "${GH_REPO}"
-              candidate_stale_cancelled=1
-            fi
-          done < <(printf '%s' "${candidate_runs}" |
-            jq -c '.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested")')
-
-          candidate_active="$(gh_retry run list             --repo "${GH_REPO}"             --workflow "${CANDIDATE_WORKFLOW}"             --limit 30             --json status             --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
-          echo "Candidate OOS active_count=${candidate_active}"
-
-          if [ "${candidate_active}" -eq 0 ] && [ "${candidate_stale_cancelled}" -eq 1 ]; then
-            echo "Dispatching a fresh Candidate OOS cycle after stale scheduler recovery."
-            gh_retry workflow run "${CANDIDATE_WORKFLOW}" --repo "${GH_REPO}" --ref main
-
-            verified_candidate=0
-            for attempt in 1 2 3 4 5; do
-              sleep 3
-              candidate_active_after="$(gh_retry run list                 --repo "${GH_REPO}"                 --workflow "${CANDIDATE_WORKFLOW}"                 --limit 10                 --json status                 --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
-              echo "Candidate dispatch verification ${attempt}/5: active=${candidate_active_after}"
-              if [ "${candidate_active_after}" -gt 0 ]; then
-                verified_candidate=1
-                break
-              fi
-            done
-            if [ "${verified_candidate}" -ne 1 ]; then
-              echo "Candidate OOS dispatch completed but no active run was observed." >&2
-              exit 1
-            fi
-            echo "Candidate OOS stale-run recovery dispatch verified."
-          elif [ "${candidate_active}" -eq 0 ]; then
-            echo "No active Candidate OOS run, but no stale scheduler block was detected; preserving deterministic state."
-          else
-            echo "Candidate OOS already active; no recovery dispatch required."
-          fi
-
-          active_count="$(gh_retry run list             --repo "${GH_REPO}"             --workflow "${TARGET_WORKFLOW}"             --limit 30             --json status             --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
-          echo "Active canonical closed-loop runs after Candidate OOS recovery: ${active_count}"
-
-          if [ "${active_count}" -gt 0 ]; then
-            echo 'Canonical closed-loop already active; no dispatch required.'
-            exit 0
-          fi
-
-          runs_json="$(gh_retry run list             --repo "${GH_REPO}"             --workflow "${TARGET_WORKFLOW}"             --limit 30             --json databaseId,status,conclusion,createdAt,updatedAt,headSha)"
-
-          echo "Recent canonical closed-loop runs:"
-          echo "${runs_json}" | jq '.[0:8]'
-
-          active_count="$(printf '%s' "${runs_json}" | jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
-          echo "active_count=${active_count}"
-
-          # Never cancel a healthy in-progress run. Only an execution that has
-          # exceeded a generous multiple of the canonical 120-minute job budget
-          # is considered genuinely stale.
-          stale_found=0
-          while IFS= read -r row; do
-            [ -n "${row}" ] || continue
-            id="$(printf '%s' "${row}" | jq -r '.databaseId')"
-            status="$(printf '%s' "${row}" | jq -r '.status')"
-            created="$(printf '%s' "${row}" | jq -r '.createdAt')"
-            updated="$(printf '%s' "${row}" | jq -r '.updatedAt')"
-            created_epoch="$(date -d "${created}" +%s)"
-            updated_epoch="$(date -d "${updated}" +%s)"
-            created_age_minutes=$(( (now_epoch - created_epoch) / 60 ))
-            updated_age_minutes=$(( (now_epoch - updated_epoch) / 60 ))
-            echo "Run ${id}: status=${status} created_age=${created_age_minutes}m updated_age=${updated_age_minutes}m"
-
-            if { [ "${status}" = "queued" ] || [ "${status}" = "pending" ] || [ "${status}" = "waiting" ] || [ "${status}" = "requested" ]; } && [ "${created_age_minutes}" -ge 30 ]; then
-              echo "Cancelling stale scheduler-blocked run ${id} after ${created_age_minutes}m."
-              gh_retry run cancel "${id}" --repo "${GH_REPO}"
-              stale_found=1
-            elif [ "${status}" = "in_progress" ] && [ "${updated_age_minutes}" -ge 150 ]; then
-              echo "Cancelling stale in-progress run ${id} after ${updated_age_minutes}m."
-              gh_retry run cancel "${id}" --repo "${GH_REPO}"
-              stale_found=1
-            fi
-          done < <(printf '%s' "${runs_json}" |
-            jq -c '.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")')
-
-          if [ "${stale_found}" -eq 1 ]; then
-            for attempt in 1 2 3 4 5 6 7 8 9 10; do
-              active_after_cancel="$(gh_retry run list                 --repo "${GH_REPO}"                 --workflow "${TARGET_WORKFLOW}"                 --limit 30                 --json status                 --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
-              echo "Stale-cancel drain ${attempt}/10: active=${active_after_cancel}"
-              if [ "${active_after_cancel}" -eq 0 ]; then
-                break
-              fi
-              sleep 5
-            done
-          fi
-
-          if [ "${stale_found}" -eq 1 ]; then
-            # Refresh after cancellation so the dispatch decision uses the live
-            # workflow ledger rather than the pre-cancellation snapshot.
-            runs_json="$(gh_retry run list             --repo "${GH_REPO}"             --workflow "${TARGET_WORKFLOW}"             --limit 30             --json databaseId,status,conclusion,createdAt,updatedAt,headSha)"
-            echo "Run ledger refreshed after stale recovery."
-          fi
-
-          # Automatic restart is limited to interrupted/infrastructure-style
-          # conclusions. Deterministic test/gate failures remain visible and
-          # are handled by the dedicated recovery workflow instead of entering
-          # an infinite retry loop.
-          # Deterministic failures must not enter an unbounded retry loop.
-          # baseball_actions_recovery.yml owns transient failed-job retries.
-          latest="$(printf '%s' "${runs_json}" | jq -r 'sort_by(.createdAt) | last // empty')"
-          latest_id=''
-          latest_conclusion=''
-          latest_created=''
-          latest_age_minutes=999999
-          if [ -n "${latest}" ]; then
-            latest_id="$(printf '%s' "${latest}" | jq -r '.databaseId // empty')"
-            latest_conclusion="$(printf '%s' "${latest}" | jq -r '.conclusion // empty')"
-            latest_created="$(printf '%s' "${latest}" | jq -r '.createdAt // empty')"
-            if [ -n "${latest_created}" ]; then
-              latest_epoch="$(date -d "${latest_created}" +%s)"
-              latest_age_minutes=$(( (now_epoch - latest_epoch) / 60 ))
-            fi
-          fi
-
-          current_main_sha="$(gh_retry api "repos/${GH_REPO}/git/ref/heads/main" --jq ".object.sha")"
-          latest_sha="$(printf '%s' "${latest}" | jq -r '.headSha // empty')"
-
-          # Governance Autopilot is a cheap control-plane audit. Keep it alive
-          # without creating a second expensive research loop. Only recover
-          # missing/stale scheduler state; deterministic governance failures
-          # remain authoritative and are never retried indefinitely.
-          GOVERNANCE_WORKFLOW=baseball_governance_autopilot.yml
-          test -s ".github/workflows/${GOVERNANCE_WORKFLOW}"
-          governance_runs="$(gh_retry run list --repo "${GH_REPO}" --workflow "${GOVERNANCE_WORKFLOW}" --limit 30 --json databaseId,status,conclusion,createdAt,updatedAt,headSha)"
-          governance_active="$(printf '%s' "${governance_runs}" | jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
-          echo "Governance Autopilot active_count=${governance_active}"
-          if [ "${governance_active}" -eq 0 ]; then
-            governance_latest="$(printf '%s' "${governance_runs}" | jq 'sort_by(.createdAt) | last // {}')"
-            governance_latest_created="$(printf '%s' "${governance_latest}" | jq -r '.createdAt // empty')"
-            governance_latest_conclusion="$(printf '%s' "${governance_latest}" | jq -r '.conclusion // empty')"
-            governance_latest_sha="$(printf '%s' "${governance_latest}" | jq -r '.headSha // empty')"
-            governance_latest_age_minutes=999999
-            if [ -n "${governance_latest_created}" ]; then
-              governance_latest_epoch="$(date -d "${governance_latest_created}" +%s)"
-              governance_latest_age_minutes=$(( (now_epoch - governance_latest_epoch) / 60 ))
-            fi
-
-            governance_dispatch=0
-            governance_reason=''
-            if [ -z "${governance_latest_created}" ]; then
-              governance_dispatch=1
-              governance_reason='no Governance Autopilot history'
-            elif [ -n "${governance_latest_sha}" ] && [ "${governance_latest_sha}" != "${current_main_sha}" ]; then
-              governance_dispatch=1
-              governance_reason="latest Governance Autopilot is on superseded SHA ${governance_latest_sha}"
-            elif [ "${governance_latest_conclusion}" = "cancelled" ] || [ "${governance_latest_conclusion}" = "timed_out" ] || [ "${governance_latest_conclusion}" = "startup_failure" ]; then
-              if [ "${governance_latest_age_minutes}" -ge 15 ]; then
-                governance_dispatch=1
-                governance_reason="latest Governance Autopilot ended ${governance_latest_conclusion}"
-              fi
-            elif [ "${governance_latest_conclusion}" = "success" ] && [ "${governance_latest_age_minutes}" -ge 720 ]; then
-              governance_dispatch=1
-              governance_reason="Governance Autopilot is stale at ${governance_latest_age_minutes}m"
-            elif [ "${governance_latest_conclusion}" = "failure" ]; then
-              echo 'Governance Autopilot deterministic failure remains authoritative; no automatic retry.'
-            fi
-
-            if [ "${governance_dispatch}" -eq 1 ]; then
-              echo "Dispatching Governance Autopilot: ${governance_reason}"
-              gh_retry workflow run "${GOVERNANCE_WORKFLOW}" --repo "${GH_REPO}" --ref main
-              governance_verified=0
+              dispatch_epoch="$(date +%s)"
+              gh_retry workflow run baseball_autonomous_control_plane.yml --repo "$GH_REPO" --ref main
+              verified=0
               for attempt in 1 2 3 4 5; do
-                sleep 2
-                governance_active_after="$(gh_retry run list --repo "${GH_REPO}" --workflow "${GOVERNANCE_WORKFLOW}" --limit 10 --json status --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
-                echo "Governance dispatch verification ${attempt}/5: active=${governance_active_after}"
-                if [ "${governance_active_after}" -gt 0 ]; then
-                  governance_verified=1
+                sleep 3
+                after="$(gh_retry run list --repo "$GH_REPO" --workflow baseball_autonomous_control_plane.yml --branch main --limit 20 --json databaseId,status,conclusion,createdAt,event)"
+                active_after="$(printf "%s" "$after" | jq "[.[] | select(.status == \"queued\" or .status == \"pending\" or .status == \"waiting\" or .status == \"requested\" or .status == \"in_progress\")] | length")"
+                new_after="$(printf "%s" "$after" | jq --argjson cutoff "$dispatch_epoch" "[.[] | select(.event == \"workflow_dispatch\") | select((.createdAt | fromdateiso8601) >= $cutoff)] | length")"
+                if [ "$active_after" -gt 0 ] || [ "$new_after" -gt 0 ]; then
+                  verified=1
                   break
                 fi
               done
-              if [ "${governance_verified}" -ne 1 ]; then
-                echo "Governance Autopilot dispatch accepted but active run was not observed." >&2
+              if [ "$verified" -ne 1 ]; then
+                printf "%s\n" "Control Plane watchdog: FAILED_REDISPATCH; fail-closed." >> "$GITHUB_STEP_SUMMARY"
                 exit 1
               fi
+              printf "%s\n" "Control Plane watchdog: REDISPATCH_VERIFIED." >> "$GITHUB_STEP_SUMMARY"
             fi
           else
-            echo 'Governance Autopilot already active; no duplicate dispatch.'
+            printf "%s\n" "Control Plane watchdog: HEALTHY_OR_WITHIN_WINDOW." >> "$GITHUB_STEP_SUMMARY"
           fi
-          dispatch=0
-          reason=''
-          if [ -z "${latest_created}" ]; then
-            dispatch=1
-            reason='no canonical closed-loop history'
-          elif [ -n "${latest_sha}" ] && [ "${latest_sha}" != "${current_main_sha}" ]; then
-            # PIT acquisition commits are append-only evidence. They must not
-            # repeatedly restart the expensive canonical OOS cycle. Compare the
-            # exact SHA range and dispatch only when something outside data/pit/
-            # changed. Any compare/API failure fails closed.
-            compare_json="$(gh_retry api "repos/${GH_REPO}/compare/${latest_sha}...${current_main_sha}")"
-            compare_status="$(printf '%s' "${compare_json}" | jq -r '.status // empty')"
-            if [ "${compare_status}" != "ahead" ] && [ "${compare_status}" != "behind" ] && [ "${compare_status}" != "identical" ]; then
-              echo "Unable to establish a valid main SHA comparison (${latest_sha}...${current_main_sha}); refusing automatic dispatch." >&2
-              exit 1
-            fi
-            non_pit_changes="$(printf '%s' "${compare_json}" | jq '[.files[]?.filename | select(startswith("data/pit/") | not)] | length')"
-            total_changes="$(printf '%s' "${compare_json}" | jq '[.files[]?.filename] | length')"
-            echo "SHA comparison ${latest_sha}...${current_main_sha}: total_changes=${total_changes} non_pit_changes=${non_pit_changes}"
-            if [ "${total_changes}" -eq 0 ]; then
-              dispatch=0
-              reason='main differs only by an identical commit state'
-            elif [ "${non_pit_changes}" -eq 0 ]; then
-              dispatch=0
-              reason='main advanced only through PIT evidence commits'
-            else
-              dispatch=1
-              reason="latest cycle is on superseded SHA ${latest_sha}; executable changes detected on current main ${current_main_sha}"
-            fi
-          elif [ "${latest_conclusion}" = "cancelled" ] || [ "${latest_conclusion}" = "timed_out" ] || [ "${latest_conclusion}" = "startup_failure" ]; then
-            if [ "${latest_age_minutes}" -ge 10 ]; then
-              dispatch=1
-              reason="latest run ended ${latest_conclusion}"
-            fi
-          elif [ "${latest_conclusion}" = "success" ] && [ "${latest_age_minutes}" -ge 15 ]; then
-            dispatch=1
-            reason="successful cycle is stale at ${latest_age_minutes}m"
-          elif [ "${latest_conclusion}" = "failure" ] && [ "${latest_age_minutes}" -ge 10 ] && [ -n "${latest_id}" ]; then
-            # Same-SHA deterministic failures must not loop forever. Only a
-            # proven cooperative OOS stop may resume without a new SHA.
-            set +e
-            failed_log="$(gh_retry run view "${latest_id}" --repo "${GH_REPO}" --log-failed 2>/dev/null)"
-            log_status=$?
-            set -e
-            if [ "${log_status}" -ne 0 ]; then
-              echo "Unable to inspect failed run ${latest_id}; refusing automatic restart without evidence." >&2
-              exit 1
-            fi
-            if printf "%s" "${failed_log}" | grep -Fq "walk-forward incomplete:" && \
-               printf "%s" "${failed_log}" | grep -Fq "time budget reached before block"; then
-              dispatch=1
-              reason="latest run ${latest_id} stopped at cooperative OOS time budget"
-            fi
-          elif [ "${EVENT_RUN_ID}" != "" ] && [ "${EVENT_CONCLUSION}" = "cancelled" ]; then
-            dispatch=1
-            reason="event run ${EVENT_RUN_ID} was cancelled"
-          fi
-          if [ "${dispatch}" -ne 1 ]; then
-            echo "cooldown active: no dispatch needed. latest_conclusion=${latest_conclusion:-<none>} latest_age_minutes=${latest_age_minutes}"
-            exit 0
-          fi
-
-          echo "Dispatching canonical closed loop: ${reason}"
-          gh_retry workflow run "${TARGET_WORKFLOW}" --repo "${GH_REPO}" --ref main
-
-          verified=0
-          for attempt in 1 2 3 4 5; do
-            sleep 3
-            active_after="$(gh_retry run list               --repo "${GH_REPO}"               --workflow "${TARGET_WORKFLOW}"               --limit 10               --json status               --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
-            echo "Dispatch verification ${attempt}/5: active=${active_after}"
-            if [ "${active_after}" -gt 0 ]; then
-              verified=1
-              break
-            fi
-          done
-
-          if [ "${verified}" -ne 1 ]; then
-            echo 'workflow_dispatch completed but no active canonical run was observed' >&2
-            exit 1
-          fi
-          echo 'Canonical closed-loop dispatch verified.'
-
