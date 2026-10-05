@@ -13,7 +13,7 @@ def test_candidate_oos_fails_closed_on_stale_main_snapshot():
     assert 'git fetch --no-tags --prune origin main' in workflow
 
 def test_candidate_oos_watchdog_monitors_all_candidate_dependencies():
-    workflow = (ROOT / '.github' / 'workflows' / 'baseball_candidate_oos_watchdog.yml').read_text(encoding='utf-8')
+    workflow = (ROOT / '.github' / 'workflows' / 'baseball_candidate_oos.yml').read_text(encoding='utf-8')
     for path in (
         'research/real_data_validation.py',
         'research/validation_pipeline.py',
