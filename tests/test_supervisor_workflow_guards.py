@@ -64,7 +64,7 @@ def test_supervisor_monitors_scheduled_pregame_runs_and_recovers_missed_schedule
 
 
 def test_autonomous_control_plane_avoids_workflow_file_push_startup_trigger() -> None:
-    text = _text(ROOT / ".github" / "workflows" / "baseball_autonomous_control_plane_canonical.yml")
+    text = _text(ROOT / ".github" / "workflows" / "baseball_autonomous_control_plane.yml")
 
     trigger = text.split("permissions:", 1)[0]
     assert "push:" not in trigger
@@ -92,7 +92,7 @@ def test_24h_keeper_is_main_scoped_bounded_failover_only() -> None:
     text = _text(ROOT / ".github" / "workflows" / "baseball_24h_research_keeper_canonical.yml")
 
     assert '--branch main' in text
-    assert 'baseball_autonomous_control_plane_canonical.yml' in text
+    assert 'baseball_autonomous_control_plane.yml' in text
     assert 'Control plane is absent/stale; entering bounded 24h-autopilot failover mode.' in text
     assert '24h autopilot already active; failover exits.' in text
     assert 'latest_failure_job_count=' in text
