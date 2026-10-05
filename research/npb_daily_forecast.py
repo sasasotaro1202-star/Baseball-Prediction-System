@@ -6,7 +6,7 @@ changes the checked-in production runtime and never upgrades an UNVERIFIABLE
 starter snapshot into production-quality OOS evidence.
 
 Probe mode is stdlib-only so scheduled runs can skip dependency installation when
-no NPB game is 61-120 minutes from first pitch. Full forecast mode lazily imports
+no NPB game is 15-180 minutes from first pitch. Full forecast mode lazily imports
 the numerical stack and reuses the repository's canonical historical feature/model
 contracts.
 """
@@ -26,9 +26,9 @@ ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
 JST = ZoneInfo("Asia/Tokyo")
 
-EARLY_MIN_LEAD = 61.0
-EARLY_MAX_LEAD = 120.0
-SOURCE = "RESEARCH_DAILY_AUTO_61_120M"
+EARLY_MIN_LEAD = 15.0
+EARLY_MAX_LEAD = 180.0
+SOURCE = "RESEARCH_DAILY_AUTO_15_180M"
 
 
 def _now_utc() -> datetime:
