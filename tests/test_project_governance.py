@@ -513,3 +513,14 @@ def test_user_prediction_workflow_is_in_recovery_surface():
     assert "Install repository prediction dependencies" in workflow
     assert "Generate requested prediction through repository router" in workflow
     assert "Commit immutable request result" in workflow
+
+
+def test_stable_actions_recovery_workflow_is_separate_from_legacy_registration():
+    stable = Path(".github/workflows/baseball_actions_recovery.yml")
+    legacy = Path(".github/workflows/baseball_actions_recovery_canonical.yml")
+    assert stable.is_file()
+    text = stable.read_text(encoding="utf-8")
+    assert "workflow_run:" in text
+    assert "Baseball User Prediction Request" in text
+    assert "cancel-in-progress: true" in text
+    assert not stable.samefile(legacy) if legacy.exists() else True
