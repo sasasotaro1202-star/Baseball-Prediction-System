@@ -4,6 +4,10 @@ name: Baseball Forever Autopilot
 # its first commit can create a live heartbeat even when legacy workflow
 # registrations or scheduled delivery are unhealthy.
 
+# Registration bootstrap: this workflow intentionally has a narrow push trigger so
+# its first commit can create a live heartbeat even when legacy workflow
+# registrations or scheduled delivery are unhealthy.
+
 on:
   workflow_dispatch: {}
   push:
