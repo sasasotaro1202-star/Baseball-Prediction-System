@@ -279,3 +279,28 @@ def test_production_lane_falls_back_to_validated_research_shadow(monkeypatch, tm
     assert result["generation_status"] == "RESEARCH_SHADOW_EXECUTED"
     assert result["prediction_output"]["user_fallback_from_lane"] == "CURRENT_PRODUCTION_RUNTIME"
     assert result["prediction_output"]["primary_production_status"] == "BLOCKED_STARTERS"
+
+
+def test_research_prediction_rejects_unknown_competition_classification():
+    request = {
+        "schema_version": "baseball-prediction-request-v1",
+        "request_id": "r-unknown-competition",
+        "competition_id": "NPB",
+        "target_date": "2026-10-06",
+    }
+    payload = {
+        "execution_status": "RESEARCH_SHADOW_EXECUTED",
+        "scope": "RESEARCH_SHADOW",
+        "production_eligibility": False,
+        "pit_status": "PASS",
+        "predictions": [{
+            "game_id": "g1",
+            "home": "H",
+            "away": "A",
+            "competition": "npb_unknown",
+            "competition_stage": "unknown",
+            "competition_classification_status": "unknown",
+        }],
+    }
+    with pytest.raises(ValueError, match="competition classification must be explicit"):
+        router._validate_generated_output(payload, request, "VALIDATED_RESEARCH_SHADOW")
