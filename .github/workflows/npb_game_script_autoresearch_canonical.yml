@@ -2,6 +2,10 @@
 name: NPB Game-Script Auto Research
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/npb_game_script_autoresearch_canonical.yml"
   schedule:
     - cron: "45 0,6,12,18 * * *"
   workflow_dispatch:
