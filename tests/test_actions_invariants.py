@@ -225,9 +225,11 @@ def test_control_plane_and_v44_triggers_do_not_react_to_unrelated_main_commits()
     control_trigger = control.split("permissions:", 1)[0]
     v44_trigger = v44.split("permissions:", 1)[0]
 
-    # Control-plane heartbeat is schedule/manual driven. Broad main pushes create
-    # recursive orchestration pressure and are intentionally excluded.
-    assert "push:" not in control_trigger
+    # The control plane has a lightweight main-push heartbeat. It must not
+    # reintroduce heavy target execution on push; it only runs the bounded
+    # recovery decision loop. The 15-minute schedule and manual dispatch remain.
+    assert "push:" in control_trigger
+    assert "branches: [main]" in control_trigger
     assert "schedule:" in control_trigger
     assert "workflow_dispatch:" in control_trigger
 
