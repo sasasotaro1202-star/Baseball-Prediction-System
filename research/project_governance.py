@@ -359,20 +359,24 @@ def _supported_workflow_runs(runs: list[dict[str, Any]], workflow_path: str) -> 
     return supported, unsupported
 
 
+def _workflow_runs(repo: str, workflow_path: str) -> list[dict[str, Any]]:
+    """Read Actions history per workflow so high-frequency jobs cannot hide low-frequency lanes."""
+    workflow_id = Path(workflow_path).name
+    payload = _gh_json(
+        [f"repos/{repo}/actions/workflows/{workflow_id}/runs?per_page=50&branch=main"]
+    )
+    runs = payload.get("workflow_runs", [])
+    if not isinstance(runs, list):
+        raise RuntimeError(f"workflow-run payload is not a list: {workflow_path}")
+    return [r for r in runs if isinstance(r, dict)]
+
+
 def action_health(repo: str, now: datetime | None = None) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     current_sha = os.environ.get("GITHUB_SHA", "").strip() or None
 
-    # Do not use the repository-wide latest-100 run page. High-frequency
-    # supervisors/control-plane jobs can evict low-frequency target workflows.
-    # Each governed workflow is queried through its own Actions history endpoint.
-    scoped_runs: dict[str, list[dict[str, Any]]] = {}
-    for workflow_path, contract in WORKFLOW_CONTRACTS.items():
-        if contract.get("monitor"):
-            scoped_runs[workflow_path] = _workflow_runs(repo, workflow_path)
-
     control_path = ".github/workflows/baseball_autonomous_control_plane.yml"
-    control_runs_all = list(scoped_runs.get(control_path, []))
+    control_runs_all = _workflow_runs(repo, control_path)
     control_runs, control_unsupported_runs = _supported_workflow_runs(
         control_runs_all,
         control_path,
@@ -415,7 +419,7 @@ def action_health(repo: str, now: datetime | None = None) -> dict[str, Any]:
         if not contract["monitor"]:
             continue
 
-        matching_all = list(scoped_runs.get(workflow_path, []))
+        matching_all = _workflow_runs(repo, workflow_path)
         matching, unsupported_matching = _supported_workflow_runs(
             matching_all,
             workflow_path,
@@ -497,25 +501,17 @@ def action_health(repo: str, now: datetime | None = None) -> dict[str, Any]:
                         f"age_hours={age_hours:.2f}>{contract['max_age_hours']}"
                     )
 
-        # A run whose event is not declared by the current checked-in workflow
-        # is a stale/legacy trigger artifact. Do not let it override valid current
-        # execution evidence from schedule/manual/workflow_run.
         if state != "DEFERRED" and unsupported_matching:
             reasons.append(
                 f"ignored_unsupported_event_runs={len(unsupported_matching)}"
             )
 
-        # A failure from a superseded main SHA is historical evidence, not a
-        # current-state failure. Keep it visible in the report but do not let it
-        # block governance for the current main revision.
         if state == "FAILED" and current_sha and head_sha and head_sha != current_sha:
             state = "DEFERRED"
             reasons.append("superseded_sha_failure_not_current")
             report["deferred"].append(f"actions_superseded_failure:{workflow_path}")
 
         if state in {"FAILED", "STALE"} and workflow_path != control_path and control_healthy:
-            # The autonomous control plane is the owner of bounded dispatch/recovery.
-            # Governance reports the condition but does not create a second retry loop.
             report["deferred"].append(f"actions_{state.lower()}_owned_by_control_plane:{workflow_path}")
             state = "DEFERRED"
             reasons.append("autonomous_control_plane_owns_recovery")
@@ -544,7 +540,6 @@ def action_health(repo: str, now: datetime | None = None) -> dict[str, Any]:
             "reasons": reasons,
         }
     return report
-
 
 def build_report(*, with_actions: bool, now: datetime | None = None) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
