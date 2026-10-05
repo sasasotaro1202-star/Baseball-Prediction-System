@@ -379,6 +379,7 @@ def main() -> int:
 
     # Last recovery lane: a deterministic PIT-safe direct run-rate forecast.
     if not result.get("predictions") and str(result.get("execution_status", "")) in {
+        "BLOCKED_STARTERS",
         "NO_DUE_GAMES",
         "GENERATION_FAILED",
         "GENERATION_TIMEOUT",
