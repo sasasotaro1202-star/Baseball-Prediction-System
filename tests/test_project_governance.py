@@ -480,3 +480,12 @@ def test_supervisor_ghost_repair_allowlist_covers_all_target_registrations():
     workflow = Path(".github/workflows/baseball_24h_supervisor.yml").read_text(encoding="utf-8")
     assert 'target_ids="375399090 359633887 375842323 375843510"' in workflow
     assert '.github/workflows/baseball_actions_recovery_v2.yml' in workflow
+
+def test_candidate_watchdog_does_not_disable_active_workflow_registrations():
+    workflow = Path(".github/workflows/baseball_candidate_oos_watchdog.yml").read_text(encoding="utf-8")
+    assert "Disable exact known ghost workflow registrations" not in workflow
+    assert "gh workflow disable" not in workflow
+    assert "375399188" not in workflow
+    assert "375399246" not in workflow
+    assert "375399327" not in workflow
+    assert "375399444" not in workflow
