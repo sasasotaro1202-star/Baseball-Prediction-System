@@ -11,9 +11,9 @@ on:
       - Baseball Research Readiness
       - Baseball Candidate OOS Validation
       - Baseball 24h Research Autopilot
-      - .github/workflows/baseball_24h_research_autopilot.yml
+      - .github/workflows/baseball_24h_research_autopilot_canonical.yml
       - NPB Game-Script Auto Research
-      - .github/workflows/npb_game_script_autoresearch.yml
+      - .github/workflows/npb_game_script_autoresearch_canonical.yml
       - Baseball Game Script Lab
       - .github/workflows/baseball_game_script_lab.yml
       - Baseball Scope Frontier Continuous Audit
@@ -233,7 +233,7 @@ PY
           # receive one bounded redispatch, then enter a cooldown to prevent churn.
           zero_job_recovery=0
           case "${WORKFLOW_PATH}" in
-            ".github/workflows/baseball_24h_research_autopilot.yml"|".github/workflows/npb_game_script_autoresearch.yml"|".github/workflows/baseball_game_script_lab.yml")
+            ".github/workflows/baseball_24h_research_autopilot_canonical.yml"|".github/workflows/npb_game_script_autoresearch_canonical.yml"|".github/workflows/baseball_game_script_lab.yml")
               zero_job_recovery=1
               ;;
           esac
