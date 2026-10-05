@@ -13,7 +13,7 @@ on:
       - ".github/workflows/npb_game_script_autoresearch.yml"
       - ".github/workflows/npb_game_script_watchdog.yml"
   schedule:
-    - cron: "45 0 * * *"
+    - cron: "45 0,6,12,18 * * *"
   workflow_dispatch:
     inputs:
       simulations:
@@ -269,7 +269,7 @@ import json
 from pathlib import Path
 reason = next((x.split("=",1)[1] for x in Path("results/research_decision.txt").read_text().splitlines() if x.startswith("reason=")), "unchanged")
 obj = {
-    "schema_version": "game-script-v4",
+    "schema_version": "game-script-v5",
     "status": "RESEARCH_SCREENING_UNCHANGED",
     "candidate_role": "CHALLENGER_RESEARCH",
     "pit_status": "UNVERIFIABLE_HISTORICAL_PBP_AVAILABILITY",
@@ -372,7 +372,7 @@ print(json.dumps({
 }, ensure_ascii=False, indent=2))
 PY
           {
-            echo "### Game-Script v4"
+            echo "### Game-Script v5"
             python - <<'PY'
 import json
 from pathlib import Path
