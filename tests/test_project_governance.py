@@ -287,3 +287,37 @@ def test_actions_recovery_covers_zero_job_research_workflows():
     assert 'case "\\${WORKFLOW_PATH}" in' not in workflow
     assert "ZERO_JOB_COOLDOWN" in workflow
     assert "ZERO_JOB_REDISPATCHED" in workflow
+
+def test_superseded_failure_is_not_a_current_governance_blocker(monkeypatch):
+    from datetime import datetime, timezone
+    from research import project_governance as governance
+
+    monkeypatch.setenv("GITHUB_SHA", "current")
+
+    def fake_gh_json(args):
+        return {
+            "workflow_runs": [{
+                "path": ".github/workflows/baseball_governance_autopilot.yml",
+                "status": "completed",
+                "conclusion": "failure",
+                "created_at": "2026-10-05T09:00:00Z",
+                "updated_at": "2026-10-05T09:01:00Z",
+                "head_sha": "old",
+                "id": 200,
+                "run_number": 200,
+            }]
+        }
+
+    monkeypatch.setattr(governance, "_gh_json", fake_gh_json)
+    report = governance.action_health(
+        "owner/repo",
+        datetime(2026, 10, 5, 10, 0, tzinfo=timezone.utc),
+    )
+    entry = report["workflows"][".github/workflows/baseball_governance_autopilot.yml"]
+    assert entry["state"] == "DEFERRED"
+    assert "superseded_sha_failure_not_current" in entry["reasons"]
+    assert "actions_superseded_failure:.github/workflows/baseball_governance_autopilot.yml" in report["deferred"]
+    assert not any(
+        "actions_failed:.github/workflows/baseball_governance_autopilot.yml" == blocker
+        for blocker in report["blockers"]
+    )
