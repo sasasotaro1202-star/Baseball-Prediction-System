@@ -41,6 +41,62 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
+      - name: Disable known ghost workflow registrations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Exact, historically evidenced ghost registrations only. This is a
+          # disable-only repair; active current workflow registrations are never
+          # discovered or disabled heuristically.
+          target_ids="375399090 375399188 375399246 375399327 375399444"
+
+          for workflow_id in ${target_ids}; do
+            state="$(gh api "repos/${GH_REPO}/actions/workflows/${workflow_id}" --jq '.state // "unknown"')"
+            path="$(gh api "repos/${GH_REPO}/actions/workflows/${workflow_id}" --jq '.path // "unknown"')"
+            case "${path}" in
+              .github/workflows/baseball_autonomous_control_plane_canonical.yml|
+              .github/workflows/baseball_24h_research_autopilot_canonical.yml|
+              .github/workflows/baseball_24h_research_keeper_canonical.yml|
+              .github/workflows/npb_game_script_autoresearch_canonical.yml|
+              .github/workflows/baseball_actions_recovery_canonical.yml)
+                ;;
+              *)
+                echo "Ghost repair safety guard failed for workflow ${workflow_id}: ${path}" >&2
+                exit 1
+                ;;
+            esac
+
+            case "${state}" in
+              active)
+                gh workflow disable "${workflow_id}" --repo "${GH_REPO}"
+                ;;
+              disabled_manually|disabled_inactivity)
+                ;;
+              *)
+                echo "Ghost workflow ${workflow_id} state=${state} is unverifiable/unexpected; fail closed." >&2
+                exit 1
+                ;;
+            esac
+          done
+
+          for workflow_id in ${target_ids}; do
+            state="$(gh api "repos/${GH_REPO}/actions/workflows/${workflow_id}" --jq '.state // "unknown"')"
+            case "${state}" in
+              disabled_manually|disabled_inactivity)
+                ;;
+              *)
+                echo "Ghost workflow ${workflow_id} remains state=${state}; repair incomplete." >&2
+                exit 1
+                ;;
+            esac
+          done
+
+          echo "Known ghost workflow registrations reconciled."
+
       - name: Recover stale runs and ensure closed loop is active
         env:
           GH_TOKEN: ${{ github.token }}
