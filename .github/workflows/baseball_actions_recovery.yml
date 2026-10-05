@@ -197,80 +197,79 @@ jobs:
           # There is no failed job to rerun in that state. For research-control workflows,
           # dispatch one fresh main run, with a cooldown to prevent infinite churn.
           zero_job_recovery=0
-          case "\${WORKFLOW_PATH}" in
+          case "${WORKFLOW_PATH}" in
             ".github/workflows/baseball_24h_research_autopilot.yml"|".github/workflows/npb_game_script_autoresearch.yml"|".github/workflows/baseball_game_script_lab.yml")
               zero_job_recovery=1
               ;;
           esac
 
-          if [ "\${zero_job_recovery}" -eq 1 ]; then
-            job_count="\$(gh_retry run view "\${RUN_ID}" --repo "\${GH_REPO}" --json jobs --jq '.jobs | length')"
-            echo "Zero-job recovery control-plane job_count=\${job_count}"
-            if [ "\${job_count}" -eq 0 ]; then
+          if [ "${zero_job_recovery}" -eq 1 ]; then
+            job_count="$(gh_retry run view "${RUN_ID}" --repo "${GH_REPO}" --json jobs --jq '.jobs | length')"
+            echo "Zero-job recovery control-plane job_count=${job_count}"
+            if [ "${job_count}" -eq 0 ]; then
               recent_zero_job=0
-              recent_runs="\$(gh_retry run list \
-                --repo "\${GH_REPO}" \
-                --workflow "\${WORKFLOW_PATH}" \
+              recent_runs="$(gh_retry run list \
+                --repo "${GH_REPO}" \
+                --workflow "${WORKFLOW_PATH}" \
                 --branch main \
                 --limit 12 \
                 --json databaseId,status,conclusion,createdAt)"
               while IFS= read -r row; do
-                [ -n "\${row}" ] || continue
-                prior_id="\$(printf '%s' "\${row}" | jq -r '.databaseId')"
-                prior_status="\$(printf '%s' "\${row}" | jq -r '.status')"
-                prior_conclusion="\$(printf '%s' "\${row}" | jq -r '.conclusion // empty')"
-                prior_created="\$(printf '%s' "\${row}" | jq -r '.createdAt')"
-                [ "\${prior_id}" = "\${RUN_ID}" ] && continue
-                [ "\${prior_status}" = "completed" ] || continue
-                [ "\${prior_conclusion}" = "failure" ] || continue
-                prior_created_epoch="\$(date -d "\${prior_created}" +%s)"
-                prior_age_minutes=\$(( (now_epoch - prior_created_epoch) / 60 ))
-                if [ "\${prior_age_minutes}" -lt 30 ]; then
-                  prior_job_count="\$(gh_retry run view "\${prior_id}" --repo "\${GH_REPO}" --json jobs --jq '.jobs | length')"
-                  echo "Prior zero-job control-plane failure \${prior_id}: age=\${prior_age_minutes}m jobs=\${prior_job_count}"
-                  if [ "\${prior_job_count}" -eq 0 ]; then
+                [ -n "${row}" ] || continue
+                prior_id="$(printf '%s' "${row}" | jq -r '.databaseId')"
+                prior_status="$(printf '%s' "${row}" | jq -r '.status')"
+                prior_conclusion="$(printf '%s' "${row}" | jq -r '.conclusion // empty')"
+                prior_created="$(printf '%s' "${row}" | jq -r '.createdAt')"
+                [ "${prior_id}" = "${RUN_ID}" ] && continue
+                [ "${prior_status}" = "completed" ] || continue
+                [ "${prior_conclusion}" = "failure" ] || continue
+                prior_created_epoch="$(date -d "${prior_created}" +%s)"
+                prior_age_minutes=$(( (now_epoch - prior_created_epoch) / 60 ))
+                if [ "${prior_age_minutes}" -lt 30 ]; then
+                  prior_job_count="$(gh_retry run view "${prior_id}" --repo "${GH_REPO}" --json jobs --jq '.jobs | length')"
+                  echo "Prior zero-job control-plane failure ${prior_id}: age=${prior_age_minutes}m jobs=${prior_job_count}"
+                  if [ "${prior_job_count}" -eq 0 ]; then
                     recent_zero_job=1
                     break
                   fi
                 fi
-              done < <(printf '%s' "\${recent_runs}" | jq -c '.[]')
+              done < <(printf '%s' "${recent_runs}" | jq -c '.[]')
 
-              if [ "\${recent_zero_job}" -eq 1 ]; then
+              if [ "${recent_zero_job}" -eq 1 ]; then
                 echo "Zero-job recovery cooldown active; preserving parent failure."
-                printf '%s\n' 'Recovery terminal state: ZERO_JOB_COOLDOWN; parent failure remains authoritative.' >> "\$GITHUB_STEP_SUMMARY"
+                printf '%s\n' 'Recovery terminal state: ZERO_JOB_COOLDOWN; parent failure remains authoritative.' >> "$GITHUB_STEP_SUMMARY"
                 exit 0
               fi
 
-              echo "Dispatching one bounded fresh run for \${WORKFLOW_PATH} after zero-job failure."
-              gh_retry workflow run "\${WORKFLOW_PATH}" --repo "\${GH_REPO}" --ref main
+              echo "Dispatching one bounded fresh run for ${WORKFLOW_PATH} after zero-job failure."
+              gh_retry workflow run "${WORKFLOW_PATH}" --repo "${GH_REPO}" --ref main
 
               verified=0
               for dispatch_attempt in 1 2 3 4 5; do
                 sleep 3
-                current_runs="\$(gh_retry run list \
-                  --repo "\${GH_REPO}" \
-                  --workflow "\${WORKFLOW_PATH}" \
+                current_runs="$(gh_retry run list \
+                  --repo "${GH_REPO}" \
+                  --workflow "${WORKFLOW_PATH}" \
                   --branch main \
                   --limit 12 \
                   --json databaseId,status,conclusion,createdAt)"
-                active_or_new="\$(printf '%s' "\${current_runs}" |
-                  jq --arg rid "\${RUN_ID}" '[.[] | select(.databaseId != (\$rid | tonumber)) | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
-                echo "Zero-job recovery verification \${dispatch_attempt}/5: active_or_new=\${active_or_new}"
-                if [ "\${active_or_new}" -gt 0 ]; then
+                active_or_new="$(printf '%s' "${current_runs}" |
+                  jq --arg rid "${RUN_ID}" '[.[] | select(.databaseId != ($rid | tonumber)) | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+                echo "Zero-job recovery verification ${dispatch_attempt}/5: active_or_new=${active_or_new}"
+                if [ "${active_or_new}" -gt 0 ]; then
                   verified=1
                   break
                 fi
               done
-              if [ "\${verified}" -ne 1 ]; then
+              if [ "${verified}" -ne 1 ]; then
                 echo "Zero-job recovery dispatch was accepted but no active run was observed." >&2
-                printf '%s\n' 'Recovery terminal state: FAILED_ZERO_JOB_DISPATCH; parent failure remains authoritative.' >> "\$GITHUB_STEP_SUMMARY"
+                printf '%s\n' 'Recovery terminal state: FAILED_ZERO_JOB_DISPATCH; parent failure remains authoritative.' >> "$GITHUB_STEP_SUMMARY"
                 exit 1
               fi
-              printf '%s\n' "Recovery terminal state: ZERO_JOB_REDISPATCHED:\${WORKFLOW_PATH}; parent failure remains authoritative." >> "\$GITHUB_STEP_SUMMARY"
+              printf '%s\n' "Recovery terminal state: ZERO_JOB_REDISPATCHED:${WORKFLOW_PATH}; parent failure remains authoritative." >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
           fi
-
           # Retry only when every failed step is explicitly classified as
           # transient. A mixed transient + deterministic failure is preserved
           # for diagnosis instead of being accidentally masked by rerunning
