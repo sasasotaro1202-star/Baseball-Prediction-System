@@ -1,0 +1,14 @@
+{
+  "schema_version": "game-script-lab-v1",
+  "min_train_games": 90,
+  "min_oos_games": 60,
+  "retrain_every_games": 60,
+  "simulations_per_game": 2500,
+  "regulation_innings": 12,
+  "prior_strength": 12.0,
+  "outcome_prior_strength": 12.0,
+  "checkpoint_every_games": 10,
+  "seed": 42,
+  "research_only": true,
+  "production_promotion": false
+}
