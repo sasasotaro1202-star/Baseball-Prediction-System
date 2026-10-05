@@ -22,6 +22,13 @@ permissions:
   actions: write
   contents: read
 
+concurrency:
+  # Recovery is a singleton control-plane lane. A burst of workflow_run
+  # failures must not create a recovery queue that starves user predictions
+  # or the main research workflows.
+  group: baseball-actions-recovery
+  cancel-in-progress: true
+
 jobs:
   recover:
     # Recover only transient infrastructure/data-acquisition failures.

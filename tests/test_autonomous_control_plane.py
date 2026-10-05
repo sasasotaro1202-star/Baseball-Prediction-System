@@ -130,6 +130,47 @@ def test_expected_skipped_is_healthy():
     assert result["reason"] == "expected_skipped_state"
 
 
+def test_list_runs_uses_workflow_scoped_history(monkeypatch):
+    from research import autonomous_control_plane as control_plane
+
+    calls = []
+
+    def fake_gh(args):
+        calls.append(list(args))
+        workflow = args[args.index("--workflow") + 1]
+        return (
+            '[{"databaseId": 1, "status": "completed", '
+            '"conclusion": "success", "createdAt": "2026-10-05T00:00:00Z", '
+            '"updatedAt": "2026-10-05T00:01:00Z", "headSha": "current", '
+            '"headBranch": "main", "event": "schedule", "path": "'
+            + workflow
+            + '"}]'
+        )
+
+    monkeypatch.setattr(control_plane, "_gh", fake_gh)
+    rows = control_plane.list_runs("owner/repo")
+
+    assert len(calls) == len(control_plane.TARGETS)
+    assert {call[call.index("--workflow") + 1] for call in calls} == {
+        target.workflow for target in control_plane.TARGETS
+    }
+    assert len(rows) == len(control_plane.TARGETS)
+    assert {row["path"] for row in rows} == {
+        target.workflow for target in control_plane.TARGETS
+    }
+
+
+def test_game_script_lab_is_under_control_plane_supervision():
+    from research.autonomous_control_plane import TARGETS
+
+    targets = {target.workflow: target for target in TARGETS}
+    target = targets[".github/workflows/baseball_game_script_lab.yml"]
+    assert target.heavy is True
+    assert target.max_age_hours <= 8.0
+    assert target.pending_recover_minutes <= 60
+    assert target.max_runtime_hours <= 5.5
+
+
 def test_critical_ci_targets_are_under_control_plane_supervision():
     from research.autonomous_control_plane import TARGETS
     workflows = {target.workflow for target in TARGETS}

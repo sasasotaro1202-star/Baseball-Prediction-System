@@ -209,6 +209,11 @@ def build_half_innings(
         },
         index=raw.index,
     )
+    if columns.serial:
+        work[columns.serial] = raw[columns.serial]
+    if columns.half:
+        work[columns.half] = raw[columns.half]
+
     work = work.dropna(
         subset=["_gid", "_date", "_seq"]
     ).sort_values(

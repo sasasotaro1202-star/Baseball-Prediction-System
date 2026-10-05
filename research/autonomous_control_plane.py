@@ -3,7 +3,8 @@
 The control plane is a scheduler/recovery layer only. It does not promote
 models or rewrite production configuration. Expensive research is bounded to
 one heavy dispatch per cycle, while scheduler-stuck runs are cancelled and
-re-dispatched on the current main snapshot.
+re-dispatched on the current main snapshot. Workflow history is queried
+per-workflow so repository-wide Actions volume cannot hide the latest state.
 """
 from __future__ import annotations
 
@@ -53,10 +54,14 @@ TARGETS = (
     # modify the production runtime; the control plane only recovers queued/stale
     # executions and re-dispatches the current main snapshot.
     Target(".github/workflows/npb_game_state_research.yml", 192.0, True, 60, 2.5),
-    # Daily Game-Script v4 challenger. It remains research-only and is also
+    # Daily Game-Script challenger. It remains research-only and is also
     # protected by its own six-hour watchdog; this target gives the project
     # control plane a second bounded recovery path without production writes.
     Target(".github/workflows/npb_game_script_autoresearch.yml", 30.0, True, 60, 3.0),
+    # PR #204 added a separate six-hour Monte Carlo Game-Script Lab. Keep it
+    # inside the same autonomous heartbeat so a missed schedule cannot leave a
+    # newly-added research lane silently dormant.
+    Target(".github/workflows/baseball_game_script_lab.yml", 8.0, True, 60, 5.5),
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -74,9 +79,62 @@ def _gh(args: list[str]) -> str:
     return result.stdout
 
 def list_runs(repo: str) -> list[dict[str, Any]]:
-    payload = json.loads(_gh(["api", f"repos/{repo}/actions/runs?per_page=100&branch=main"]))
-    runs = payload.get("workflow_runs", [])
-    return [r for r in runs if r.get("head_branch") == "main"]
+    """Return recent main-branch runs with workflow-scoped history.
+
+    A repository-wide 100-run page is unsafe here because the project has many
+    scheduled workflows. High-frequency workflows can evict a low-frequency
+    target from that page and cause false no_recent_history decisions.
+    Querying each controlled workflow independently makes scheduler state
+    deterministic with respect to that target.
+    """
+    rows: list[dict[str, Any]] = []
+    for target in TARGETS:
+        raw = _gh([
+            "run",
+            "list",
+            "--repo",
+            repo,
+            "--workflow",
+            target.workflow,
+            "--branch",
+            "main",
+            "--limit",
+            "50",
+            "--json",
+            "databaseId,status,conclusion,createdAt,updatedAt,headSha,headBranch,event,path",
+        ])
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(
+                f"invalid workflow-run JSON for {target.workflow}: {exc}"
+            ) from exc
+        if not isinstance(payload, list):
+            raise RuntimeError(
+                f"unexpected workflow-run payload for {target.workflow}: "
+                f"{type(payload).__name__}"
+            )
+        for item in payload:
+            if not isinstance(item, dict):
+                raise RuntimeError(
+                    f"workflow-run row is not an object: {target.workflow}"
+                )
+            if item.get("headBranch") != "main":
+                continue
+            rows.append(
+                {
+                    "id": item.get("databaseId"),
+                    "status": item.get("status"),
+                    "conclusion": item.get("conclusion"),
+                    "created_at": item.get("createdAt"),
+                    "updated_at": item.get("updatedAt"),
+                    "head_sha": item.get("headSha"),
+                    "head_branch": item.get("headBranch"),
+                    "event": item.get("event"),
+                    "path": item.get("path") or target.workflow,
+                }
+            )
+    return rows
 
 def current_main_sha(repo: str) -> str:
     value = _gh(["api", f"repos/{repo}/git/ref/heads/main", "--jq", ".object.sha"]).strip()

@@ -264,3 +264,13 @@ def test_autonomous_control_plane_is_single_heartbeat_not_workflow_run_driven():
     assert "cron: '*/15 * * * *'" in workflow
     assert "workflow_run:" not in workflow
     assert "research.autonomous_control_plane" in workflow
+
+
+def test_actions_recovery_is_singleton():
+    from research.project_governance import WORKFLOW_CONTRACTS
+
+    path = ".github/workflows/baseball_actions_recovery.yml"
+    contract = WORKFLOW_CONTRACTS[path]
+    assert contract["monitor"] is False
+    assert "group: baseball-actions-recovery" in contract["required"]
+    assert "cancel-in-progress: true" in contract["required"]

@@ -93,6 +93,8 @@ def test_route_uses_validated_research_shadow_when_production_is_unavailable(mon
         write_json(generated, {
             "execution_status": "RESEARCH_SHADOW_EXECUTED",
             "pit_status": "PASS",
+            "scope": "RESEARCH_SHADOW",
+            "production_eligibility": False,
             "predictions": [{"game_id": "g1", "home": "H", "away": "A"}],
         })
         return 0, "", ""

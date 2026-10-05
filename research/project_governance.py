@@ -119,7 +119,13 @@ WORKFLOW_CONTRACTS: dict[str, dict[str, Any]] = {
     ".github/workflows/baseball_actions_recovery.yml": {
         "monitor": False,
         "max_age_hours": 0,
-        "required": ("workflow_run:", "actions: write", "Re-run failed jobs with bounded recovery"),
+        "required": (
+            "workflow_run:",
+            "actions: write",
+            "Re-run failed jobs with bounded recovery",
+            "group: baseball-actions-recovery",
+            "cancel-in-progress: true",
+        ),
     },
 }
 
