@@ -1,3 +1,4 @@
+from research import autonomous_control_plane as control_plane
 from datetime import datetime, timezone, timedelta
 
 from research.autonomous_control_plane import Target, decide
@@ -43,10 +44,11 @@ def test_deterministic_failure_is_held():
         "created_at": "2026-10-04T07:00:00Z",
         "event": "schedule",
         "id": 1,
+        "job_count": 1,
     }]
     result = decide(Target(".github/workflows/x.yml", 2), runs, now)
     assert result["decision"] == "HOLD"
-    assert result["reason"] == "deterministic_failure_is_authoritative"
+    assert result["reason"] == "deterministic_failure_or_unverifiable_startup_state"
 
 
 def test_dispatch_cap_holds_stale_success():
