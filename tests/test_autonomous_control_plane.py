@@ -299,3 +299,51 @@ def test_control_plane_workflow_preserves_runtime_failure_evidence():
     assert "runtime_failure.json" in workflow
     assert 'PIPESTATUS[0]' in workflow
     assert 'failure_class": "AUTONOMOUS_CONTROL_PLANE_RUNTIME"' in workflow
+
+
+def test_unsupported_push_run_is_ignored_for_canonical_autopilot():
+    now = datetime(2026, 10, 5, 13, 0, tzinfo=timezone.utc)
+    target = Target(".github/workflows/baseball_24h_research_autopilot_canonical.yml", 30.0, heavy=True)
+    runs = [
+        {
+            "path": target.workflow,
+            "head_branch": "main",
+            "status": "completed",
+            "conclusion": "failure",
+            "created_at": "2026-10-05T12:59:00Z",
+            "event": "push",
+            "id": 1,
+            "job_count": 0,
+        },
+        {
+            "path": target.workflow,
+            "head_branch": "main",
+            "status": "completed",
+            "conclusion": "success",
+            "created_at": "2026-10-05T12:00:00Z",
+            "event": "schedule",
+            "id": 2,
+        },
+    ]
+    result = control_plane.decide(target, runs, now, current_sha="sha")
+    assert result["decision"] == "NOOP"
+    assert result["latest_run_id"] == 2
+    assert result["latest_conclusion"] == "success"
+
+
+def test_only_unsupported_push_history_is_treated_as_no_valid_history():
+    now = datetime(2026, 10, 5, 13, 0, tzinfo=timezone.utc)
+    target = Target(".github/workflows/npb_game_script_autoresearch_canonical.yml", 30.0, heavy=True)
+    runs = [{
+        "path": target.workflow,
+        "head_branch": "main",
+        "status": "completed",
+        "conclusion": "failure",
+        "created_at": "2026-10-05T12:00:00Z",
+        "event": "push",
+        "id": 3,
+        "job_count": 0,
+    }]
+    result = control_plane.decide(target, runs, now, current_sha="sha")
+    assert result["decision"] == "DISPATCH"
+    assert result["reason"] == "no_recent_history"
