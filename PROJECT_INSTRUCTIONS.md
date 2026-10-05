@@ -133,7 +133,7 @@ Its contract is:
 - the existing 15-minute Watchdog schedule plus workflow_dispatch, used as the stable registered heartbeat;
 - actions: write / contents: read only;
 - current-main SHA verification before orchestration;
-- direct bootstrap/recovery of the canonical baseball_autonomous_control_plane_canonical.yml when no current run exists, the latest run is stale, or it is on a superseded SHA;
+- direct bootstrap/recovery of the canonical baseball_autonomous_control_plane.yml when no current run exists, the latest run is stale, or it is on a superseded SHA;
 - a bounded daily bootstrap cap and bounded per-cycle dispatch cap;
 - delegation to research.autonomous_control_plane for the normal MONITOR -> DETECT -> TRIAGE -> RECOVERY/DISPATCH loop;
 - no auto-promotion, no production-model mutation, and no masking of deterministic failures;
