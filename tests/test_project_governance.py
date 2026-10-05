@@ -526,4 +526,8 @@ def test_control_plane_owns_automatic_recovery_surface():
     assert ".github/workflows/baseball-user-prediction-request.yml" in Path("research/autonomous_control_plane.py").read_text(encoding="utf-8")
     assert "research.autonomous_control_plane" in control_text
     assert not legacy.exists()
-    assert not stable.exists()
+    assert stable.is_file()
+    stable_text = stable.read_text(encoding="utf-8")
+    assert "workflow_run:" in stable_text
+    assert "Baseball User Prediction Request" in stable_text
+    assert "baseball-actions-recovery-v2" in stable_text
