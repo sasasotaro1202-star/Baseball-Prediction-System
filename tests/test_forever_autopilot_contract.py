@@ -65,3 +65,13 @@ def test_all_actions_are_pinned():
         if re.match(r"^\\s*-\\s*uses:\\s+", line):
             ref = line.rsplit("@", 1)[-1].strip()
             assert re.fullmatch(r"[0-9a-fA-F]{40}", ref), line
+
+
+def test_forever_autopilot_executes_control_plane_locally():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "actions/checkout@" in text
+    assert "research.autonomous_control_plane" in text
+    assert "--max-dispatches-per-cycle 2" in text
+    assert "CONTROL_WORKFLOW" not in text
+    assert "gh workflow run" not in text
+    assert "timeout-minutes: 15" in text
