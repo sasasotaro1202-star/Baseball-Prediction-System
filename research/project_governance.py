@@ -116,17 +116,6 @@ WORKFLOW_CONTRACTS: dict[str, dict[str, Any]] = {
         "max_age_hours": 30,
         "required": ("schedule:", "research.universal_readiness", "tests/test_universal_readiness.py"),
     },
-    ".github/workflows/baseball_actions_recovery.yml": {
-        "monitor": False,
-        "max_age_hours": 0,
-        "required": (
-            "workflow_run:",
-            "actions: write",
-            "Re-run failed jobs with bounded recovery",
-            "group: baseball-actions-recovery",
-            "cancel-in-progress: true",
-        ),
-    },
 }
 
 REQUIRED_SOURCE_PHRASES = (
