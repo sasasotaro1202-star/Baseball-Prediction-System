@@ -329,9 +329,11 @@ def _score_matrix(scores: np.ndarray, max_runs: int) -> np.ndarray:
         raise ValueError("simulator scores must be integer-valued")
     if np.any(scores < 0):
         raise ValueError("simulator scores must be non-negative")
+    if np.any(rounded > max_runs):
+        raise ValueError("simulator score exceeds configured max_runs")
     matrix = np.zeros((max_runs + 1, max_runs + 1), dtype=float)
     for home, away in rounded.astype(int):
-        matrix[min(home, max_runs), min(away, max_runs)] += 1.0
+        matrix[home, away] += 1.0
     matrix /= max(float(matrix.sum()), EPS)
     return matrix
 
@@ -383,25 +385,21 @@ def posterior_predictive_run(
         prediction_cutoff=prediction_cutoff,
     )
     normalized = normalize_scenarios(scenarios)
+    if int(simulations) < len(normalized):
+        raise ValueError("simulations must be at least the number of scenarios")
     rng = np.random.default_rng(int(seed))
-    allocations = rng.multinomial(int(simulations), np.array([s.weight for s in normalized]))
+    # Give every explicit scenario at least one draw so its uncertainty is not
+    # silently removed by a multinomial zero allocation.
+    allocations = np.ones(len(normalized), dtype=int)
+    remaining = int(simulations) - len(normalized)
+    if remaining:
+        allocations += rng.multinomial(
+            remaining, np.array([s.weight for s in normalized], dtype=float)
+        )
 
     all_scores: list[np.ndarray] = []
     scenario_reports: list[dict[str, Any]] = []
     for scenario, count in zip(normalized, allocations):
-        if int(count) <= 0:
-            # A low-weight scenario can legitimately receive zero Monte Carlo
-            # draws. Preserve its probability mass in the uncertainty model,
-            # but mark the sampling evidence as unavailable.
-            scenario_reports.append(
-                {
-                    "scenario_id": scenario.scenario_id,
-                    "weight": float(scenario.weight),
-                    "allocated_simulations": 0,
-                    "outcome_probability": None,
-                }
-            )
-            continue
         child_seed = int(rng.integers(0, 2**63 - 1))
         child = np.random.default_rng(child_seed)
         samples = np.asarray(simulate_fn(scenario, child, int(count)), dtype=float)
@@ -461,19 +459,10 @@ def posterior_predictive_run(
         raise RuntimeError("invalid posterior-predictive class mass")
     class_probs /= class_probs.sum()
 
-    observed_home = (scores[:, 0] > scores[:, 1]).astype(float)
     mc_home_se = math.sqrt(max(EPS, home * (1.0 - home)) / len(scores))
     uncertainty = uncertainty_decomposition(
-        scenario_probabilities=[
-            r["outcome_probability"]["home"]
-            for r in scenario_reports
-            if r["outcome_probability"] is not None
-        ],
-        scenario_weights=[
-            r["weight"]
-            for r in scenario_reports
-            if r["outcome_probability"] is not None
-        ],
+        scenario_probabilities=[r["outcome_probability"]["home"] for r in scenario_reports],
+        scenario_weights=[r["weight"] for r in scenario_reports],
     )
 
     result: dict[str, Any] = {
@@ -504,9 +493,7 @@ def posterior_predictive_run(
         },
         "uncertainty": {
             **uncertainty,
-            "unallocated_scenario_probability": float(
-                sum(r["weight"] for r in scenario_reports if r["outcome_probability"] is None)
-            ),
+            "unallocated_scenario_probability": 0.0,
         },
     }
     if model_probabilities is not None:
