@@ -22,6 +22,12 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+ROOT = Path(__file__).resolve().parents[1]
+# Direct execution of scripts/*.py sets sys.path[0] to scripts/. Ensure the
+# repository root remains importable for canonical model/runtime modules.
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 import production_npb as predictor
 from core.atomic_io import atomic_write_json
 
