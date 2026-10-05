@@ -47,7 +47,7 @@ def test_recovery_is_bounded_and_only_retries_transient_steps():
     _assert_official_actions_are_immutable(text)
     assert "gh_retry() {" in text
     assert "for attempt in 1 2 3 4" in text
-    assert "CONTROL_PLANE_WORKFLOW: baseball_autonomous_control_plane.yml" in text
+    assert "CONTROL_PLANE_WORKFLOW: baseball_autonomous_control_plane_stable.yml" in text
     assert "Deterministic or unverifiable failure detected; fail closed." in text
     assert "gh run rerun" not in text
 
@@ -195,7 +195,7 @@ def test_candidate_oos_watchdog_allows_validated_autonomous_control_plane_contin
 
 
 def test_control_plane_and_v44_triggers_keep_bounded_main_push_scope():
-    control = (ROOT / ".github" / "workflows" / "baseball_autonomous_control_plane.yml").read_text(encoding="utf-8")
+    control = (ROOT / ".github" / "workflows" / "baseball_autonomous_control_plane_stable.yml").read_text(encoding="utf-8")
     v44 = (ROOT / ".github" / "workflows" / "baseball_v44_compatibility.yml").read_text(encoding="utf-8")
     control_trigger = control.split("permissions:", 1)[0]
     v44_trigger = v44.split("permissions:", 1)[0]
@@ -226,7 +226,7 @@ def test_24h_supervisor_avoids_deterministic_failure_retry_loop():
     assert "Deterministic" in text
     assert "gh run rerun" not in text
     assert "gh_retry workflow run" in text
-    assert "CONTROL_PLANE_WORKFLOW: baseball_autonomous_control_plane.yml" in text
+    assert "CONTROL_PLANE_WORKFLOW: baseball_autonomous_control_plane_stable.yml" in text
     trigger = text.split("permissions:", 1)[0]
     assert "push:" in trigger
     assert ".github/workflows/baseball_24h_supervisor.yml" in trigger
@@ -235,7 +235,7 @@ def test_24h_supervisor_avoids_deterministic_failure_retry_loop():
 
 def test_24h_keeper_is_bounded_control_plane_failover():
     text = (ROOT / ".github" / "workflows" / "baseball_24h_research_keeper_canonical.yml").read_text(encoding="utf-8")
-    assert "baseball_autonomous_control_plane.yml" in text
+    assert "baseball_autonomous_control_plane_stable.yml" in text
     assert "--branch main" in text
     assert "Control plane is absent/stale; entering bounded 24h-autopilot failover mode." in text
     assert "DAILY_FAILOVER_CAP" in text
@@ -450,7 +450,7 @@ def test_actions_recovery_binds_retry_to_current_main_snapshot():
 
 
 def test_canonical_autonomous_workflows_guard_unsupported_push_execution():
-    control = (ROOT / ".github" / "workflows" / "baseball_autonomous_control_plane.yml").read_text(encoding="utf-8")
+    control = (ROOT / ".github" / "workflows" / "baseball_autonomous_control_plane_stable.yml").read_text(encoding="utf-8")
     keeper = (ROOT / ".github" / "workflows" / "baseball_24h_research_keeper_canonical.yml").read_text(encoding="utf-8")
     assert "cron: '*/15 * * * *'" in control
     assert "workflow_dispatch: {}" in control
@@ -464,5 +464,5 @@ def test_canonical_actions_recovery_accepts_only_workflow_run_events():
     assert "workflow_run:" in text
     assert "github.event.workflow_run" in text
     assert "TARGET_WORKFLOW: baseball_closed_loop.yml" in text
-    assert "CONTROL_PLANE_WORKFLOW: baseball_autonomous_control_plane.yml" in text
+    assert "CONTROL_PLANE_WORKFLOW: baseball_autonomous_control_plane_stable.yml" in text
 
