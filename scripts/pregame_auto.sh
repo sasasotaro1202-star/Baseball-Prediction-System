@@ -10,7 +10,12 @@ echo "=== Baseball 60m Pregame Auto Prediction ==="
 
 set -euo pipefail
 python -m py_compile prediction/pregame_scheduler.py
-python prediction/pregame_scheduler.py             --min-lead-minutes 50             --preferred-lead-minutes 60             --scan-ahead-minutes 60             --prediction-source AUTO_60M > pregame_scheduler.json
+python prediction/pregame_scheduler.py \
+            --min-lead-minutes "${PREGAME_MIN_LEAD_MINUTES:-50}" \
+            --preferred-lead-minutes "${PREGAME_PREFERRED_LEAD_MINUTES:-60}" \
+            --scan-ahead-minutes "${PREGAME_SCAN_AHEAD_MINUTES:-60}" \
+            --prediction-source "${PREGAME_PREDICTION_SOURCE:-AUTO_60M}" \
+            --research-shadow-source "${PREGAME_RESEARCH_SHADOW_SOURCE:-RESEARCH_SHADOW_AUTO_60M}" > pregame_scheduler.json
 cat pregame_scheduler.json
 python - <<'PY'
 import json
@@ -86,7 +91,11 @@ while IFS= read -r date; do
   [ -n "$date" ] || continue
   echo "=== pregame production/shadow prediction: $date ==="
   if [ -s research_shadow_due_dates.txt ] && grep -qxF "$date" research_shadow_due_dates.txt; then
-    python production_npb.py --date "$date" --data-dir data --pregame-only --research-shadow
+    BASEBALL_FAST_PRODUCTION="${BASEBALL_FAST_PRODUCTION:-0}" \
+    python production_npb.py --date "$date" --data-dir data --pregame-only --research-shadow \
+      --minimum-lead-minutes "${PREGAME_MIN_LEAD_MINUTES:-50}" \
+      --maximum-lead-minutes "${PREGAME_SCAN_AHEAD_MINUTES:-60}" \
+      --preferred-lead-minutes "${PREGAME_PREFERRED_LEAD_MINUTES:-60}"
     output="results/npb_shadow_$date.json"
   else
     python -m prediction.current_production --league NPB --date "$date" --data-dir data --pregame-only
@@ -133,10 +142,13 @@ for path in sorted(list(Path("results").glob("npb_production_*.json")) + list(Pa
     obj = json.loads(path.read_text(encoding="utf-8"))
     if obj.get("execution_status") != "EXECUTED":
         continue
+    import os
+    source_label = os.environ.get("PREGAME_PREDICTION_SOURCE", "AUTO_60M")
+    target_lead = float(os.environ.get("PREGAME_TARGET_LEAD_MINUTES", "60"))
     for pred in obj.get("predictions", []):
-        pred["prediction_source"] = "AUTO_60M"
+        pred["prediction_source"] = source_label
         pred["prediction_schedule"] = "scheduled"
-        pred["prediction_target_lead_minutes"] = 60.0
+        pred["prediction_target_lead_minutes"] = target_lead
     path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 PY
 
