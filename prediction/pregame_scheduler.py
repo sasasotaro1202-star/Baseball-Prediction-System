@@ -449,9 +449,9 @@ def due_games(
                     f"{target_date}T{game['official_start_time']}:00+09:00"
                 ).astimezone(timezone.utc)
                 lead = (start - now).total_seconds() / 60.0
-                source = "RESEARCH_SHADOW_AUTO_60M"
+                source = "RESEARCH_SHADOW_TODAY"
                 if (
-                    float(min_lead_minutes) < lead <= min(float(scan_ahead_minutes), 60.0)
+                    0.0 < lead <= min(float(scan_ahead_minutes), 180.0)
                     and (game["home"], game["away"], source) not in archived_sources
                 ):
                     preferred_cutoff = start - timedelta(minutes=60.0)
