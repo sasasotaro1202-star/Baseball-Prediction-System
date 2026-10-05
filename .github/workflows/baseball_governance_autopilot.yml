@@ -72,11 +72,16 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          if [ -s results/governance/project_governance.json ]; then
-            python - <<'PY'
+          report="results/governance/project_governance.json"
+          if [ ! -s "$report" ] && [ -s results/governance/project_governance_static.json ]; then
+            report="results/governance/project_governance_static.json"
+          fi
+          if [ -s "$report" ]; then
+            python - "$report" <<'PY'
           import json
           from pathlib import Path
-          p=Path("results/governance/project_governance.json")
+          import sys
+p=Path(sys.argv[1])
           d=json.loads(p.read_text(encoding="utf-8"))
           with open(r"${{ github.step_summary }}", "a", encoding="utf-8") as out:
               out.write("## Baseball Governance Autopilot\n")
