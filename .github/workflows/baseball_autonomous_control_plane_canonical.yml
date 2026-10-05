@@ -1,6 +1,10 @@
 name: Baseball Autonomous Control Plane
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/baseball_autonomous_control_plane_canonical.yml"
   workflow_dispatch: {}
   schedule:
     - cron: '*/15 * * * *'
