@@ -145,21 +145,21 @@ jobs:
             try: print(json.load(open(p,encoding="utf-8")).get("code_fingerprint",""))
             except Exception: print("")
             PY
-)
+            )
             prev_validation_source=$(python - "$prev_json_path" <<'PY'
             import json, sys
             p=sys.argv[1]
             try: print(json.load(open(p,encoding="utf-8")).get("validation_source_fingerprint",""))
             except Exception: print("")
             PY
-)
+            )
             prev_context_source=$(python - "$prev_json_path" <<'PY'
             import json, sys
             p=sys.argv[1]
             try: print(json.load(open(p,encoding="utf-8")).get("context_source_fingerprint",""))
             except Exception: print("")
             PY
-)
+            )
             if [ -z "$prev_code" ]; then prev_code="$prev_code_from_json"; fi
           fi
           current_manifest=$(sha256sum results/pbp_release_manifest.tsv | awk '{print $1}')
