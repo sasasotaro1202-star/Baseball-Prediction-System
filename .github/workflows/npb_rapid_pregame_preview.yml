@@ -1,0 +1,75 @@
+name: NPB Rapid Pregame Preview
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    # Every 5 minutes; the scheduler itself is the authoritative due-game gate.
+    - cron: "*/5 * * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: npb-rapid-pregame-preview
+  cancel-in-progress: false
+
+env:
+  PYTHONPATH: .
+  PYTHONUNBUFFERED: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PIT_SAFE_STARTER_DATA: "1"
+  GH_TOKEN: ${{ github.token }}
+  # Research-only rapid lane: an earlier preview, followed by the canonical
+  # 50-60 minute lane. This never changes the production runtime.
+  PREGAME_MIN_LEAD_MINUTES: "75"
+  PREGAME_PREFERRED_LEAD_MINUTES: "90"
+  PREGAME_SCAN_AHEAD_MINUTES: "105"
+  PREGAME_PREDICTION_SOURCE: "RESEARCH_SHADOW_AUTO_RAPID_90M"
+  PREGAME_RESEARCH_SHADOW_SOURCE: "RESEARCH_SHADOW_AUTO_RAPID_90M"
+  PREGAME_TARGET_LEAD_MINUTES: "90"
+  BASEBALL_FAST_PRODUCTION: "1"
+  BASEBALL_FAST_OOS: "1"
+  BASEBALL_FAST_MODEL_POOL_NPB: "Logistic,HistGB,ExtraTrees,HierarchicalDrawResult"
+  BASEBALL_SCORE_FAST_VALIDATION: "1"
+  BASEBALL_FAST_SCORE_MODEL_POOL_NPB: "Poisson,HistPoisson"
+  BASEBALL_SCORE_REGRESSION_MAX_ITER: "250"
+  BASEBALL_SCORE_HIST_MAX_ITER: "100"
+  BASEBALL_TIME_BUDGET_SEC: "1800"
+  BASEBALL_HARD_CAP_SEC: "2400"
+
+jobs:
+  rapid:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Syntax-check rapid pregame automation
+        run: bash -n scripts/pregame_auto.sh
+
+      - name: Run rapid pregame research shadow
+        run: bash scripts/pregame_auto.sh
+
+      - name: Upload rapid scheduler and prediction evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: npb-rapid-pregame-preview
+          path: |
+            pregame_scheduler.json
+            due_dates.txt
+            research_shadow_due_dates.txt
+            results/npb_shadow_*.json
+          if-no-files-found: warn
+          retention-days: 7
