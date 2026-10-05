@@ -121,7 +121,7 @@ content = Path(sys.argv[1]).read_text(encoding="utf-8")
 event = sys.argv[2].strip()
 declared = set()
 for raw in content.splitlines():
-    match = re.match(r"^  ([A-Za-z0-9_-]+):\\s*(?:\\{\\})?\\s*(?:#.*)?$", raw)
+    match = re.match(r"^  ([A-Za-z0-9_-]+):\s*(?:\{\})?\s*(?:#.*)?$", raw)
     if match:
         declared.add(match.group(1))
 raise SystemExit(0 if not event or event in declared else 1)
