@@ -89,6 +89,21 @@ def test_terminal_completion_requires_final_row_evidence():
     assert set(normalized["complete_status"])=={"UNKNOWN"}
 
 
+def test_half_boundary_requires_clean_restart():
+    a=canonicalize_pbp_frame(_toy_game()).iloc[2].to_dict()
+    invalid={**a,"half":"B","outs":1,"base1":"runner"}
+    valid={**a,"half":"B","outs":0,"base1":0,"base2":0,"base3":0}
+    assert _transition(a,invalid) is None
+    assert _transition(a,valid) is not None
+
+
+def test_within_half_rejects_three_out_jump():
+    a=canonicalize_pbp_frame(_toy_game()).iloc[0].to_dict()
+    b={**a,"outs":3}
+    assert _transition(a,b) is None
+
+
+
 def test_research_status_remains_non_production_without_pit_proof():
-    assert SCHEMA_VERSION=="game-script-v4"
+    assert SCHEMA_VERSION=="game-script-v5"
     assert PIT_STATUS.startswith("UNVERIFIABLE")
