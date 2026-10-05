@@ -61,3 +61,20 @@ def test_supervisor_monitors_scheduled_pregame_runs_and_recovers_missed_schedule
     assert 'pregame_latest_age_minutes}" -ge 15' in text
     assert 'Pregame missed-schedule daily cap reached' in text
     assert 'pregame_recovery_attempts_24h}" -ge 3' in text
+
+
+def test_supervisor_is_a_small_secondary_watchdog() -> None:
+    text = _text(SUPERVISOR)
+    assert len(text.splitlines()) <= 140
+    assert "CONTROL_PLANE_WORKFLOW=baseball_autonomous_control_plane.yml" in text
+    assert "gh_retry workflow run baseball_autonomous_control_plane.yml" in text
+    assert "cancel-in-progress: true" in text
+
+
+def test_supervisor_uses_bounded_recovery() -> None:
+    text = _text(SUPERVISOR)
+    assert "dispatches_24h" in text
+    assert "dispatch_age" in text
+    assert '"$dispatches_24h" -ge 4' in text
+    assert '"$dispatch_age" -lt 15' in text
+    assert "FAILED_REDISPATCH" in text
