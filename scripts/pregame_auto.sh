@@ -10,7 +10,7 @@ echo "=== Baseball 60m Pregame Auto Prediction ==="
 
 set -euo pipefail
 python -m py_compile prediction/pregame_scheduler.py
-python prediction/pregame_scheduler.py             --min-lead-minutes 50             --preferred-lead-minutes 60             --scan-ahead-minutes 60             --prediction-source AUTO_60M > pregame_scheduler.json
+python prediction/pregame_scheduler.py             --min-lead-minutes 50             --preferred-lead-minutes 60             --scan-ahead-minutes 180             --prediction-source AUTO_60M > pregame_scheduler.json
 cat pregame_scheduler.json
 python - <<'PY'
 import json
