@@ -515,12 +515,15 @@ def test_user_prediction_workflow_is_in_recovery_surface():
     assert "Commit immutable request result" in workflow
 
 
-def test_stable_actions_recovery_workflow_is_separate_from_legacy_registration():
+
+
+def test_control_plane_owns_automatic_recovery_surface():
+    control = Path(".github/workflows/baseball_autonomous_control_plane.yml")
+    legacy = Path(".github/workflows/baseball_actions_recovery_canonical.yml")
     stable = Path(".github/workflows/baseball_actions_recovery.yml")
-    legacy = Path(".github/workflows/baseball_actions_recovery.yml")
-    assert stable.is_file()
-    text = stable.read_text(encoding="utf-8")
-    assert "workflow_run:" in text
-    assert "Baseball User Prediction Request" in text
-    assert "cancel-in-progress: true" in text
+    assert control.is_file()
+    control_text = control.read_text(encoding="utf-8")
+    assert ".github/workflows/baseball-user-prediction-request.yml" in Path("research/autonomous_control_plane.py").read_text(encoding="utf-8")
+    assert "research.autonomous_control_plane" in control_text
     assert not legacy.exists()
+    assert not stable.exists()
