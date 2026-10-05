@@ -252,17 +252,15 @@ PY
             --argjson cancel "$request_cancel" \
             '{schema_version:1,status:"EXECUTED",current_main_sha:$current,event_sha:$event,request_id:$request_id,result_exists:($result_exists==1),latest_run_id:$latest_id,latest_status:$latest_status,latest_conclusion:$latest_conclusion,latest_head_sha:$latest_sha,latest_age_minutes:$age,workflow_runs_24h:$dispatch_count,decision:$reason,bootstrapped:($bootstrap==1),cancelled_stale_run:($cancel==1),verified_rerun_run:$verified,run_attempt_before_rerun:$rerun_attempt,fail_closed:true,production_mutation:false}' > results/forever_autopilot/request_watchdog.json
 
+          control_status="UNVERIFIABLE"
+          if [ -s results/control_plane/forever_autonomous_control_plane.json ]; then
+            control_status="$(python -c 'import json; from pathlib import Path; print(json.loads(Path("results/control_plane/forever_autonomous_control_plane.json").read_text(encoding="utf-8")).get("control_plane_status", "UNVERIFIABLE"))')"
+          fi
           jq -n \
             --arg current "$current_sha" \
             --arg event "$EVENT_SHA" \
-            --arg control_status "$(python - <<'PY' 2>/dev/null || true
-import json
-from pathlib import Path
-p=Path('results/control_plane/forever_autonomous_control_plane.json')
-print(json.loads(p.read_text(encoding='utf-8')).get('control_plane_status','UNVERIFIABLE') if p.exists() else 'UNVERIFIABLE')
-PY
-            )" \
-            '{schema_version:1,status:"EXECUTED",current_main_sha:$current,event_sha:$event,control_plane_status:$control_status,request_watchdog: true,fail_closed:true,auto_promotion:false}' > results/forever_autopilot/heartbeat.json
+            --arg control_status "$control_status" \
+            '{schema_version:1,status:"EXECUTED",current_main_sha:$current,event_sha:$event,control_plane_status:$control_status,request_watchdog:true,fail_closed:true,auto_promotion:false}' > results/forever_autopilot/heartbeat.json
 
       - name: Upload heartbeat evidence
         if: always()
