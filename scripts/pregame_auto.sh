@@ -133,12 +133,17 @@ import json
 from pathlib import Path
 for path in sorted(list(Path("results").glob("npb_production_*.json")) + list(Path("results").glob("npb_shadow_*.json"))):
     obj = json.loads(path.read_text(encoding="utf-8"))
-    if obj.get("execution_status") != "EXECUTED":
+    status = obj.get("execution_status")
+    if status not in {"EXECUTED", "RESEARCH_SHADOW_EXECUTED"}:
         continue
+    shadow = status == "RESEARCH_SHADOW_EXECUTED"
     for pred in obj.get("predictions", []):
-        pred["prediction_source"] = "AUTO_60M"
-        pred["prediction_schedule"] = "scheduled"
-        pred["prediction_target_lead_minutes"] = 60.0
+        pred["prediction_source"] = "RESEARCH_SHADOW_TODAY" if shadow else "AUTO_60M"
+        pred["prediction_schedule"] = "today_auto_preview" if shadow else "scheduled"
+        pred["prediction_request_mode"] = "scheduled"
+        pred["prediction_target_lead_minutes"] = float(
+            pred.get("preferred_prediction_target_lead_minutes", 60.0)
+        )
     path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 PY
 
