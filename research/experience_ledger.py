@@ -205,7 +205,6 @@ def _validate_prediction_time_contract(row: dict[str, Any]) -> None:
         "datetime_jst",
         "prediction_cutoff_utc",
         "prediction_generated_at",
-        "starter_evidence_observed_at_utc",
         "pit_status",
     )
     missing = [key for key in required if row.get(key) in (None, "")]
@@ -215,21 +214,23 @@ def _validate_prediction_time_contract(row: dict[str, Any]) -> None:
             + ", ".join(missing)
         )
 
+    pit_status = str(row["pit_status"]).upper().strip()
+    if pit_status not in {"PASS", "UNVERIFIABLE"}:
+        raise ValueError("prediction snapshot has unsupported PIT status: " + pit_status)
+
     try:
         game_time = pd.Timestamp(row["datetime_jst"])
         cutoff = pd.Timestamp(row["prediction_cutoff_utc"])
         generated = pd.Timestamp(row["prediction_generated_at"])
-        observed = pd.Timestamp(row["starter_evidence_observed_at_utc"])
     except Exception as exc:
         raise ValueError("prediction snapshot contains invalid PIT timestamps") from exc
 
-    if any(ts.tzinfo is None for ts in (game_time, cutoff, generated, observed)):
+    if any(ts.tzinfo is None for ts in (game_time, cutoff, generated)):
         raise ValueError("prediction snapshot PIT timestamps must be timezone-aware")
 
     game_time = game_time.tz_convert("UTC")
     cutoff = cutoff.tz_convert("UTC")
     generated = generated.tz_convert("UTC")
-    observed = observed.tz_convert("UTC")
 
     if not cutoff < game_time:
         raise ValueError("prediction snapshot information cutoff is not pregame")
@@ -237,12 +238,38 @@ def _validate_prediction_time_contract(row: dict[str, Any]) -> None:
         raise ValueError(
             "prediction snapshot generation time is inconsistent with information cutoff"
         )
-    if observed > cutoff:
-        raise ValueError(
-            "prediction snapshot starter evidence was observed after information cutoff"
-        )
-    if str(row["pit_status"]).upper() != "PASS":
-        raise ValueError("prediction snapshot is not PIT PASS")
+
+    if pit_status == "PASS":
+        observed_raw = row.get("starter_evidence_observed_at_utc")
+        if observed_raw in (None, ""):
+            raise ValueError(
+                "PIT PASS prediction snapshot requires starter_evidence_observed_at_utc"
+            )
+        try:
+            observed = pd.Timestamp(observed_raw)
+        except Exception as exc:
+            raise ValueError("prediction snapshot contains invalid starter evidence timestamp") from exc
+        if observed.tzinfo is None:
+            raise ValueError("prediction snapshot PIT timestamps must be timezone-aware")
+        observed = observed.tz_convert("UTC")
+        if observed > cutoff:
+            raise ValueError(
+                "prediction snapshot starter evidence was observed after information cutoff"
+            )
+    else:
+        # UNVERIFIABLE snapshots are archiveable research evidence but must remain
+        # outside PIT-valid performance/OOS metrics. Do not invent an observation
+        # time merely to satisfy a schema requirement.
+        starter_status = str(row.get("starter_evidence_status") or "").strip().lower()
+        if starter_status not in {
+            "not_yet_public_or_unverifiable",
+            "unverifiable",
+            "source_failed",
+        }:
+            raise ValueError(
+                "UNVERIFIABLE prediction snapshot must declare an explicit "
+                "unverifiable starter evidence status"
+            )
 
 
 def _revision_metadata(
