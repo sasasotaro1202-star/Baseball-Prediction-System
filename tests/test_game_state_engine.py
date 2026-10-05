@@ -9,6 +9,7 @@ from research.game_state_engine import (
     _transition,
     canonicalize_pbp_frame,
     fit_transition_kernel,
+    evaluate_from_files,
     simulate_game,
 )
 
@@ -131,3 +132,20 @@ def test_sampling_keeps_observed_support():
 
 def test_pit_status_is_not_production_eligible():
     assert PIT_STATUS.startswith("UNVERIFIABLE")
+
+def test_insufficient_pit_screening_transitions_are_explicitly_blocked(tmp_path):
+    raw = _frame(1)
+    raw["addedRuns"] = np.nan
+    path = tmp_path / "insufficient.csv"
+    raw.to_csv(path, index=False)
+
+    result = evaluate_from_files([path], simulations=5)
+
+    assert result["status"] == "RESEARCH_SCREENING_BLOCKED"
+    assert result["decision"] == "HOLD_RESEARCH_ONLY"
+    assert result["production_eligible"] is False
+    assert result["pit_status"].startswith("UNVERIFIABLE")
+    assert result["kernel"]["transitions"] == 0
+    assert "insufficient valid PIT-screening transitions" in result["reason"]
+    assert result["aggregate"] == {}
+    assert result["evaluation_rows"] == {"candidate": [], "baseline": []}
