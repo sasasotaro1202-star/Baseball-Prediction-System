@@ -36,6 +36,7 @@ TARGETS = (
     Target(".github/workflows/baseball_v44_compatibility.yml", 12.0, pending_recover_minutes=30, max_runtime_hours=0.75),
     Target(".github/workflows/baseball_24h_supervisor.yml", 1.0, pending_recover_minutes=30, max_runtime_hours=0.25),
     Target(".github/workflows/baseball-production-runtime-health.yml", 2.0, pending_recover_minutes=30, max_runtime_hours=0.5),
+    Target(".github/workflows/baseball-user-prediction-request.yml", 2.0, pending_recover_minutes=30, max_runtime_hours=1.5),
     Target(".github/workflows/baseball_candidate_oos_watchdog.yml", 2.0, pending_recover_minutes=30, max_runtime_hours=0.5),
     Target(".github/workflows/baseball_research_readiness.yml", 6.0, pending_recover_minutes=45, max_runtime_hours=0.75),
     Target(".github/workflows/baseball_research_preflight.yml", 6.0, pending_recover_minutes=45, max_runtime_hours=0.75),
