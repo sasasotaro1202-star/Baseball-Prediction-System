@@ -302,7 +302,7 @@ def _workflow_declares_event(workflow_path: str, event: str) -> bool:
         return True
     return bool(
         re.search(
-            rf"(?m)^  {re.escape(event)}:\s*(?:\{\})?\s*(?:#.*)?$",
+            rf"(?m)^  {re.escape(event)}:\s*(?:\{\{\}\})?\s*(?:#.*)?$",
             text,
         )
     )
