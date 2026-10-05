@@ -54,8 +54,20 @@ jobs:
           # discovered or disabled heuristically.
           target_ids="375399090 359633887 375842323 375843510"
 
+          workflow_state() {
+            local workflow_id="$1"
+            local response
+            if response="$(gh api "repos/${GH_REPO}/actions/workflows/${workflow_id}" 2>&1)"; then
+              printf "%s\n" "$response" | jq -r '.state // "unknown"'
+            elif printf "%s" "$response" | grep -Eq 'HTTP 404|Not Found'; then
+              printf "%s\n" "deleted"
+            else
+              printf "%s\n" "$response" >&2
+              return 1
+            fi
+          }
           for workflow_id in ${target_ids}; do
-            state="$(gh api "repos/${GH_REPO}/actions/workflows/${workflow_id}" --jq '.state // "unknown"')"
+            state="$(workflow_state "${workflow_id}")"
             path="$(gh api "repos/${GH_REPO}/actions/workflows/${workflow_id}" --jq '.path // "unknown"')"
             case "${path}" in
               .github/workflows/baseball_autonomous_control_plane_canonical.yml|.github/workflows/baseball_24h_research_autopilot_canonical.yml|.github/workflows/baseball_24h_research_keeper_canonical.yml|.github/workflows/npb_game_script_autoresearch_canonical.yml|.github/workflows/baseball_actions_recovery_canonical.yml|.github/workflows/baseball_actions_recovery.yml|.github/workflows/baseball_actions_recovery_v2.yml|.github/workflows/baseball_actions_recovery_20261006.yml)
@@ -80,7 +92,7 @@ jobs:
           done
 
           for workflow_id in ${target_ids}; do
-            state="$(gh api "repos/${GH_REPO}/actions/workflows/${workflow_id}" --jq '.state // "unknown"')"
+            state="$(workflow_state "${workflow_id}")"
             case "${state}" in
               disabled_manually|disabled_inactivity|deleted)
                 ;;
