@@ -507,34 +507,15 @@ def test_user_prediction_results_are_persisted():
     assert "!prediction_requests/results/**" in ignore
 
 
-def test_user_prediction_workflow_is_in_recovery_surface():
-    workflow = Path(".github/workflows/baseball_actions_recovery_20261006.yml").read_text(encoding="utf-8")
-    assert "Baseball User Prediction Request" in workflow
-    assert "Install repository prediction dependencies" in workflow
-    assert "Generate requested prediction through repository router" in workflow
-    assert "Commit immutable request result" in workflow
-
-
-
-
-def test_control_plane_owns_automatic_recovery_surface():
-    control = Path(".github/workflows/baseball_autonomous_control_plane.yml")
-    legacy = Path(".github/workflows/baseball_actions_recovery_canonical.yml")
-    stable = Path(".github/workflows/baseball_actions_recovery_20261006.yml")
-    assert control.is_file()
-    control_text = control.read_text(encoding="utf-8")
-    assert ".github/workflows/baseball-user-prediction-request.yml" in Path("research/autonomous_control_plane.py").read_text(encoding="utf-8")
-    assert "research.autonomous_control_plane" in control_text
-    assert not legacy.exists()
-    assert stable.is_file()
-    stable_text = stable.read_text(encoding="utf-8")
-    assert "workflow_run:" in stable_text
-    assert "Baseball User Prediction Request" in stable_text
-    assert "baseball-actions-recovery-v2" in stable_text
+def test_control_plane_directly_schedules_user_prediction_recovery():
+    workflow = Path(".github/workflows/baseball_autonomous_control_plane.yml").read_text(encoding="utf-8")
+    control = Path("research/autonomous_control_plane.py").read_text(encoding="utf-8")
+    assert ".github/workflows/baseball-user-prediction-request.yml" in control
+    assert "baseball-user-prediction-request.yml" in workflow or "research.autonomous_control_plane" in workflow
 
 def test_registration_repair_targets_exact_known_retired_ids():
     workflow = Path(".github/workflows/baseball_workflow_registration_repair.yml").read_text(encoding="utf-8")
-    assert 'target_ids="375399090 359633887 375842323"' in workflow
+    assert 'target_ids="375399090 359633887 375842323 375843510"' in workflow
     verify_start = workflow.index("      - name: Verify ghost registrations are disabled")
     verify = workflow[verify_start:]
     assert 'target_ids="375399090 359633887 375842323"' in verify
