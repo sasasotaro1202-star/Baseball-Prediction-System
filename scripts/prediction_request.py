@@ -150,6 +150,26 @@ def _validate_generated_output(payload: dict[str, Any], request: dict[str, Any],
                 if not str(pred.get(key, "")).strip():
                     raise ValueError(f"prediction row missing {key}")
 
+            # Competition / phase identity is part of the prediction contract.
+            # Never infer a missing or UNKNOWN classification from team names
+            # or calendar position, even in the research lane.
+            classification_status = str(
+                pred.get("competition_classification_status", "")
+            ).strip().lower()
+            competition = str(pred.get("competition", "")).strip().lower()
+            stage = str(pred.get("competition_stage", "")).strip().lower()
+            competition_key = str(pred.get("competition_key", "")).strip()
+            if (
+                classification_status != "classified"
+                or not competition_key
+                or not competition
+                or competition.endswith("_unknown")
+                or stage in {"", "unknown"}
+            ):
+                raise ValueError(
+                    "competition classification must be explicit and non-UNKNOWN"
+                )
+
 
 def _find_cached(result_dir: Path, fingerprint: str, lane: str, max_age_seconds: int) -> Path | None:
     if not result_dir.exists():
