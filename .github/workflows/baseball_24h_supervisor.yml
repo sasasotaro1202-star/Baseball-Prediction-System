@@ -204,9 +204,8 @@ jobs:
               sleep 2
               cp_after=$(gh_retry run list --repo "$GH_REPO" --workflow "$CONTROL_PLANE_WORKFLOW" --branch main --limit 10 --json databaseId,status,conclusion,createdAt,event)
               new_cp_id=$(printf '%s' "$cp_after" | jq -r --argjson cutoff "$dispatch_epoch" '[.[] | select(.event == "workflow_dispatch") | select((.createdAt | fromdateiso8601) >= $cutoff)] | sort_by(.createdAt) | reverse | .[0].databaseId // empty')
-              cp_active_after=$(printf '%s' "$cp_after" | jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')
-              echo "Control Plane bootstrap verification $attempt/5: active=$cp_active_after new_run_id=${new_cp_id:-<none>}"
-              if [ -n "$new_cp_id" ] || [ "$cp_active_after" -gt 0 ]; then
+              echo "Control Plane bootstrap verification $attempt/5: new_dispatch_run=${new_cp_id:-<none>}"
+              if [ -n "$new_cp_id" ]; then
                 control_plane_verified=1
                 break
               fi
