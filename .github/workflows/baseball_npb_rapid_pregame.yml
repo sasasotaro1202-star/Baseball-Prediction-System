@@ -236,7 +236,7 @@ jobs:
               fi
             else
               git reset --hard origin/main
-              python -m research.shadow_experience --reconcile >/dev/null || true
+              python -m research.shadow_experience --reconcile >/dev/null
               git add data/experience/research_shadow
               if git diff --cached --quiet; then
                 exit 0
