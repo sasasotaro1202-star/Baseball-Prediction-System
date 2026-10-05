@@ -282,6 +282,39 @@ def _parse_time(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
+def _workflow_declares_event(workflow_path: str, event: str) -> bool:
+    """Return whether the checked-in workflow declares the observed event.
+
+    GitHub can retain legacy push-triggered run records after a workflow has
+    moved to schedule/manual execution. Such a run is historical evidence, not
+    valid current execution evidence, when the current workflow no longer
+    declares that event. Missing event metadata is treated as unknown and
+    therefore retained for backward compatibility with older API payloads.
+    """
+    if not event:
+        return True
+    path = ROOT / workflow_path
+    if not path.is_file():
+        return True
+    try:
+        text = _read(path)
+    except OSError:
+        return True
+    pattern = r"(?m)^  " + re.escape(event) + r":\s*(?:\{\})?\s*(?:#.*)?$"
+    return bool(re.search(pattern, text))
+
+def _supported_workflow_runs(runs: list[dict[str, Any]], workflow_path: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    supported: list[dict[str, Any]] = []
+    unsupported: list[dict[str, Any]] = []
+    for run in runs:
+        event = str(run.get("event", "")).strip()
+        if _workflow_declares_event(workflow_path, event):
+            supported.append(run)
+        else:
+            unsupported.append(run)
+    return supported, unsupported
+
+
 def action_health(repo: str, now: datetime | None = None) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     payload = _gh_json([f"repos/{repo}/actions/runs?per_page=100&branch=main"])
@@ -289,11 +322,16 @@ def action_health(repo: str, now: datetime | None = None) -> dict[str, Any]:
     current_sha = os.environ.get("GITHUB_SHA", "").strip() or None
 
     control_path = ".github/workflows/baseball_autonomous_control_plane.yml"
-    control_runs = [
+    control_runs_all = [
         r for r in runs
         if str(r.get("path", "")).lstrip("/") == control_path
     ]
+    control_runs, control_unsupported_runs = _supported_workflow_runs(
+        control_runs_all,
+        control_path,
+    )
     control_runs.sort(key=lambda r: r.get("created_at", ""), reverse=True)
+    control_unsupported_runs.sort(key=lambda r: r.get("created_at", ""), reverse=True)
     control = control_runs[0] if control_runs else None
     control_age_hours = None
     control_healthy = False
@@ -316,7 +354,9 @@ def action_health(repo: str, now: datetime | None = None) -> dict[str, Any]:
             "run_id": control.get("id") if control else None,
             "status": control.get("status") if control else None,
             "conclusion": control.get("conclusion") if control else None,
+            "event": control.get("event") if control else None,
             "age_hours": round(control_age_hours, 3) if control_age_hours is not None else None,
+            "ignored_unsupported_event_runs": len(control_unsupported_runs),
         },
         "workflows": {},
         "blockers": [],
@@ -327,11 +367,23 @@ def action_health(repo: str, now: datetime | None = None) -> dict[str, Any]:
         if not contract["monitor"]:
             continue
 
-        matching = [
+        matching_all = [
             r for r in runs
             if str(r.get("path", "")).lstrip("/") == workflow_path
         ]
+        matching, unsupported_matching = _supported_workflow_runs(
+            matching_all,
+            workflow_path,
+        )
         matching.sort(key=lambda r: r.get("created_at", ""), reverse=True)
+        unsupported_matching.sort(key=lambda r: r.get("created_at", ""), reverse=True)
+
+        if unsupported_matching:
+            newest_unsupported = unsupported_matching[0]
+            report["deferred"].append(
+                "actions_ignored_unsupported_event:"
+                f"{workflow_path}:{newest_unsupported.get('event') or 'UNKNOWN'}"
+            )
 
         if not matching:
             entry = {
@@ -347,7 +399,16 @@ def action_health(repo: str, now: datetime | None = None) -> dict[str, Any]:
                 "age_hours": None,
                 "reasons": [],
             }
-            if workflow_path != control_path and control_healthy:
+            if unsupported_matching:
+                entry["state"] = "DEFERRED"
+                entry["reasons"] = [
+                    "only_unsupported_event_runs",
+                    f"ignored_run_event={unsupported_matching[0].get('event') or 'UNKNOWN'}",
+                ]
+                report["deferred"].append(
+                    f"actions_only_unsupported_event_runs:{workflow_path}"
+                )
+            elif workflow_path != control_path and control_healthy:
                 entry["state"] = "DEFERRED"
                 entry["reasons"] = ["awaiting_autonomous_control_plane_reconciliation"]
                 report["deferred"].append(f"actions_no_recent_run:{workflow_path}")
@@ -363,6 +424,7 @@ def action_health(repo: str, now: datetime | None = None) -> dict[str, Any]:
         status = latest.get("status")
         conclusion = latest.get("conclusion")
         head_sha = latest.get("head_sha")
+        event = latest.get("event")
 
         state = "HEALTHY"
         reasons: list[str] = []
@@ -390,6 +452,22 @@ def action_health(repo: str, now: datetime | None = None) -> dict[str, Any]:
                         f"age_hours={age_hours:.2f}>{contract['max_age_hours']}"
                     )
 
+        # A run whose event is not declared by the current checked-in workflow
+        # is a stale/legacy trigger artifact. Do not let it override valid current
+        # execution evidence from schedule/manual/workflow_run.
+        if state != "DEFERRED" and unsupported_matching:
+            reasons.append(
+                f"ignored_unsupported_event_runs={len(unsupported_matching)}"
+            )
+
+        # A failure from a superseded main SHA is historical evidence, not a
+        # current-state failure. Keep it visible in the report but do not let it
+        # block governance for the current main revision.
+        if state == "FAILED" and current_sha and head_sha and head_sha != current_sha:
+            state = "DEFERRED"
+            reasons.append("superseded_sha_failure_not_current")
+            report["deferred"].append(f"actions_superseded_failure:{workflow_path}")
+
         if state in {"FAILED", "STALE"} and workflow_path != control_path and control_healthy:
             # The autonomous control plane is the owner of bounded dispatch/recovery.
             # Governance reports the condition but does not create a second retry loop.
@@ -408,6 +486,7 @@ def action_health(repo: str, now: datetime | None = None) -> dict[str, Any]:
             "run_number": latest.get("run_number"),
             "status": status,
             "conclusion": conclusion,
+            "event": event,
             "created_at": latest.get("created_at"),
             "updated_at": latest.get("updated_at"),
             "head_sha": head_sha,
