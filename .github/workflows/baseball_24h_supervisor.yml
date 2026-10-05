@@ -236,6 +236,62 @@ jobs:
             fi
             printf "%s\n" "Pregame dispatch verified: run_id=${new_pregame_run_id:-<active-unresolved>} dispatch_epoch=${dispatch_epoch}" >> "$GITHUB_STEP_SUMMARY"
           fi
+           # Watch the watcher: keep the Autonomous Control Plane heartbeat alive.
+           # This is a lightweight second-line watchdog; it never touches models.
+           CONTROL_PLANE_WORKFLOW=baseball_autonomous_control_plane.yml
+           test -s ".github/workflows/${CONTROL_PLANE_WORKFLOW}"
+           control_runs="$(gh_retry run list --repo "${GH_REPO}" --workflow "${CONTROL_PLANE_WORKFLOW}" --branch main --limit 20 --json databaseId,status,conclusion,createdAt,event)"
+           control_active="$(printf "%s" "${control_runs}" | jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+           control_latest="$(printf "%s" "${control_runs}" | jq -c 'sort_by(.createdAt) | last // empty')"
+           control_age_minutes=999999
+           if [ -n "${control_latest}" ]; then
+             control_created="$(printf "%s" "${control_latest}" | jq -r ".createdAt // empty")"
+             if [ -n "${control_created}" ]; then
+               control_created_epoch="$(date -d "${control_created}" +%s)"
+               control_age_minutes=$(( (now_epoch - control_created_epoch) / 60 ))
+             fi
+           fi
+           control_dispatches_24h="$(printf "%s" "${control_runs}" | jq '[.[] | select(.event == "workflow_dispatch") | select(((.createdAt | fromdateiso8601) >= ((now - 86400))))] | length')"
+           latest_control_dispatch="$(printf "%s" "${control_runs}" | jq -r '[.[] | select(.event == "workflow_dispatch") | select(((.createdAt | fromdateiso8601) >= ((now - 86400))))] | sort_by(.createdAt) | reverse | .[0].createdAt // empty')"
+           control_dispatch_age_minutes=999999
+           if [ -n "${latest_control_dispatch}" ]; then
+             control_dispatch_epoch="$(date -d "${latest_control_dispatch}" +%s)"
+             control_dispatch_age_minutes=$(( (now_epoch - control_dispatch_epoch) / 60 ))
+           fi
+           echo "Control Plane active=${control_active} age=${control_age_minutes}m dispatches_24h=${control_dispatches_24h}"
+           control_recover=0
+           if [ "${control_active}" -eq 0 ] && { [ -z "${control_latest}" ] || [ "${control_age_minutes}" -ge 20 ]; }; then
+             control_recover=1
+           fi
+           if [ "${control_recover}" -eq 1 ]; then
+             if [ "${control_dispatches_24h}" -ge 4 ]; then
+               printf "%s
+" "Control Plane watchdog daily cap reached; preserving state." >> "$GITHUB_STEP_SUMMARY"
+             elif [ "${control_dispatch_age_minutes}" -lt 15 ]; then
+               echo "Control Plane watchdog cooldown active."
+             else
+               dispatch_epoch="$(date +%s)"
+               gh_retry workflow run "${CONTROL_PLANE_WORKFLOW}" --repo "${GH_REPO}" --ref main
+               verified_control=0
+               for attempt in 1 2 3 4 5; do
+                 sleep 3
+                 after="$(gh_retry run list --repo "${GH_REPO}" --workflow "${CONTROL_PLANE_WORKFLOW}" --branch main --limit 20 --json databaseId,status,conclusion,createdAt,event)"
+                 active_after="$(printf "%s" "${after}" | jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+                 new_after="$(printf "%s" "${after}" | jq --argjson cutoff "${dispatch_epoch}" '[.[] | select(.event == "workflow_dispatch") | select((.createdAt | fromdateiso8601) >= $cutoff)] | length')"
+                 if [ "${active_after}" -gt 0 ] || [ "${new_after}" -gt 0 ]; then
+                   verified_control=1
+                   break
+                 fi
+               done
+               if [ "${verified_control}" -ne 1 ]; then
+                 echo "Control Plane watchdog dispatch not observed." >&2
+                 printf "%s
+" "Control Plane terminal state: FAILED_REDISPATCH; supervisor remains fail-closed." >> "$GITHUB_STEP_SUMMARY"
+                 exit 1
+               fi
+             fi
+           fi
+
           # Candidate OOS has a separate concurrency group because it is much
           # more expensive than the lightweight supervisor. A scheduler-stuck
           # pending/queued candidate must not block the research loop forever.
