@@ -419,7 +419,10 @@ jobs:
           mkdir -p .previous_evidence
           delegated_id="$(awk -F= '$1=="dedicated_success_id"{print $2; exit}' results/delegation_decision.txt)"
           if [ -n "$delegated_id" ]; then
-            gh run download "$delegated_id" --repo "$GITHUB_REPOSITORY" --dir .previous_evidence 2>/dev/null || true
+            if ! gh run download "$delegated_id" --repo "$GITHUB_REPOSITORY" --dir .previous_evidence 2>/dev/null; then
+              echo "Dedicated evidence download failed for run $delegated_id; falling back to the auxiliary evidence source." >&2
+              rm -rf .previous_evidence/*
+            fi
           fi
           if ! find .previous_evidence -type f -name 'game_script_checkpoint.json' -print -quit | grep -q .; then
             autopilot_id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow baseball_24h_research_autopilot.yml --branch main --limit 20 --json databaseId,conclusion \
