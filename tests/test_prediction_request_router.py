@@ -208,3 +208,72 @@ def test_current_production_rejects_unverifiable_pit():
     }
     with pytest.raises(ValueError, match="current production prediction must have PIT PASS"):
         router._validate_generated_output(payload, request, "CURRENT_PRODUCTION_RUNTIME")
+
+
+def test_production_lane_falls_back_to_validated_research_shadow(monkeypatch, tmp_path):
+    request = {
+        "schema_version": "baseball-prediction-request-v1",
+        "request_id": "r-prod-fallback",
+        "competition_id": "NPB",
+        "target_date": "today",
+    }
+    write_json(tmp_path / "request.json", request)
+    write_json(tmp_path / "policy.json", {
+        "result_directory": "prediction_requests/results",
+        "max_runtime_seconds": 10,
+        "production_commands": {"NPB": ["python", "prod.py", "{target_date}"]},
+        "validated_research_shadow_commands": {"NPB": ["python", "shadow.py", "{target_date}"]},
+    })
+    write_json(tmp_path / "runtime.json", {
+        "runtimes": {
+            "NPB": {
+                "formal_adoption_status": "CURRENT_PRODUCTION",
+                "entrypoint": "production_npb",
+                "model_version": "prod-v1",
+                "contract": "NPB_HOME_DRAW_AWAY_V1",
+            }
+        }
+    })
+    monkeypatch.setattr(router, "POLICY_PATH", tmp_path / "policy.json")
+    monkeypatch.setattr(router, "RUNTIME_PATH", tmp_path / "runtime.json")
+    monkeypatch.setattr(router, "_today_jst", lambda: "2026-10-05")
+
+    calls = []
+
+    def fake_run(command, timeout_seconds):
+        calls.append(command)
+        if command[1] == "prod.py":
+            generated = tmp_path / "results/npb_production_2026-10-05.json"
+            generated.parent.mkdir(parents=True, exist_ok=True)
+            write_json(generated, {
+                "execution_status": "BLOCKED_STARTERS",
+                "pit_status": "NOT_RUN",
+                "predictions": [],
+            })
+            return 0, "", "starter data unavailable"
+        generated = tmp_path / "results/npb_shadow_2026-10-05.json"
+        generated.parent.mkdir(parents=True, exist_ok=True)
+        write_json(generated, {
+            "execution_status": "RESEARCH_SHADOW_EXECUTED",
+            "scope": "RESEARCH_SHADOW",
+            "production_eligibility": False,
+            "pit_status": "UNVERIFIABLE",
+            "predictions": [{"game_id": "g1", "home": "H", "away": "A"}],
+        })
+        return 0, "", ""
+
+    monkeypatch.setattr(router, "_run", fake_run)
+    monkeypatch.chdir(tmp_path)
+    rc = router.main(["--request-file", str(tmp_path / "request.json")])
+
+    assert rc == 0
+    assert len(calls) == 2
+    assert calls[0][0:2] == ["python", "prod.py"]
+    assert calls[1][0:2] == ["python", "shadow.py"]
+    result = json.loads(
+        (tmp_path / "prediction_requests/results/r-prod-fallback.json").read_text(encoding="utf-8")
+    )
+    assert result["generation_lane"] == "VALIDATED_RESEARCH_SHADOW"
+    assert result["generation_status"] == "RESEARCH_SHADOW_EXECUTED"
+    assert result["prediction_output"]["user_fallback_from_lane"] == "CURRENT_PRODUCTION_RUNTIME"
+    assert result["prediction_output"]["primary_production_status"] == "BLOCKED_STARTERS"
