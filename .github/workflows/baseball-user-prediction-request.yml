@@ -154,14 +154,19 @@ jobs:
           fi
           echo "PIT-safe NPB history staged: $count monthly PBP file(s) for target=$target. cache_hit=${{ steps.npb-history-cache.outputs.cache-hit }}" >> "$GITHUB_STEP_SUMMARY"
 
+
       - name: Generate requested prediction through repository router
         id: generate
         env:
           GITHUB_SHA: ${{ github.sha }}
           REQUEST_FILE: ${{ github.event.inputs.request_file || 'prediction_requests/inbox/active.json' }}
+        continue-on-error: true
         run: |
           set -euo pipefail
+          set +e
           python scripts/prediction_request.py --request-file "$REQUEST_FILE"
+          rc=$?
+          set -e
           request_id="$(python - "$REQUEST_FILE" <<'PY'
           import json, sys
           with open(sys.argv[1], encoding="utf-8") as fh:
@@ -173,8 +178,83 @@ jobs:
           PY
           )"
           result="prediction_requests/results/${request_id}.json"
-          test -s "$result"
           echo "result_path=$result" >> "$GITHUB_OUTPUT"
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          if [ -s "$result" ]; then
+            echo "Router evidence:"
+            cat "$result"
+          else
+            echo "Router produced no result file (rc=$rc)." >&2
+          fi
+          exit "$rc"
+
+      - name: Upload request result and failure evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: baseball-user-prediction-${{ github.run_id }}
+          path: ${{ steps.generate.outputs.result_path }}
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Commit immutable request result
+        if: always()
+        shell: bash
+        env:
+          REQUEST_FILE: ${{ github.event.inputs.request_file || 'prediction_requests/inbox/active.json' }}
+        run: |
+          set -euo pipefail
+          request_id="$(python - "$REQUEST_FILE" <<'PY'
+          import json, sys
+          with open(sys.argv[1], encoding="utf-8") as fh:
+              obj = json.load(fh)
+          value = str(obj.get("request_id", "")).strip()
+          if not value:
+              raise SystemExit("request_id missing")
+          print(value)
+          PY
+          )"
+          result="prediction_requests/results/${request_id}.json"
+          if [ ! -s "$result" ]; then
+            echo "No immutable request result to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$result"
+          if git diff --cached --quiet; then
+            echo "No new request result to commit."
+            exit 0
+          fi
+          git commit -m "Archive baseball prediction request result"
+          for attempt in 1 2 3; do
+            if git fetch origin main && git push origin HEAD:main; then
+              exit 0
+            fi
+            git fetch origin main
+            if ! git rebase origin/main; then
+              git rebase --abort
+              echo "request-result push conflict could not be reconciled safely" >&2
+              exit 1
+            fi
+          done
+          echo "bounded request-result push recovery exhausted" >&2
+          exit 1
+
+      - name: Preserve request failure status after evidence capture
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rc="${{ steps.generate.outputs.exit_code }}"
+          if [ -z "$rc" ]; then
+            echo "prediction generation step did not expose an exit code" >&2
+            exit 1
+          fi
+          if [ "$rc" -ne 0 ]; then
+            echo "Baseball user prediction generation failed; evidence was preserved." >&2
+            exit "$rc"
+          fi
 
       - name: Validate and upload request result
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
