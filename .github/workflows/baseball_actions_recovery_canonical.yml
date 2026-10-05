@@ -308,7 +308,7 @@ PY
           while IFS= read -r step; do
             [ -n "${step}" ] || continue
             case "${step}" in
-              'Install research dependencies'|'Install dependencies'|'Install production dependencies'|'Install control-plane test dependency'|'Acquire current PIT observations'|'Install acquisition dependencies'|'Run PIT acquisition'|'Commit PIT observations'|'Acquire PIT-safe public NPB PBP data'|'Stage historical NPB PBP release data'|'Restore immutable historical NPB PBP and official-result cache'|'Restore chronological OOS checkpoints'|'Install minimal research dependencies'|'Install'|'Setup Python'|'Install lightweight research dependencies')
+              'Install research dependencies'|'Install dependencies'|'Install production dependencies'|'Install control-plane test dependency'|'Install repository prediction dependencies'|'Resolve NPB historical source snapshot for cache'|'Restore NPB historical PBP cache'|'Stage PIT-safe NPB history for prediction router'|'Generate requested prediction through repository router'|'Commit immutable request result'|'Acquire current PIT observations'|'Install acquisition dependencies'|'Run PIT acquisition'|'Commit PIT observations'|'Acquire PIT-safe public NPB PBP data'|'Stage historical NPB PBP release data'|'Restore immutable historical NPB PBP and official-result cache'|'Restore chronological OOS checkpoints'|'Install minimal research dependencies'|'Install'|'Setup Python'|'Install lightweight research dependencies')
                 retryable=$((retryable + 1))
                 ;;
               *)
