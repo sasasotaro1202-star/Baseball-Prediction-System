@@ -198,7 +198,7 @@ def test_no_run_is_deferred_when_autonomous_control_plane_is_active(monkeypatch)
 
     def fake_gh_json(args):
         endpoint = args[0]
-        if "baseball_autonomous_control_plane.yml/runs" in endpoint:
+        if "baseball_autonomous_control_plane_stable.yml/runs" in endpoint:
             return {"workflow_runs": [{
                 "path": ".github/workflows/baseball_autonomous_control_plane_stable.yml",
                 "status": "in_progress",
@@ -308,7 +308,7 @@ def test_unsupported_current_push_run_does_not_override_valid_scheduled_run(monk
 
     def fake_gh_json(args):
         endpoint = args[0]
-        if "baseball_autonomous_control_plane.yml/runs" in endpoint:
+        if "baseball_autonomous_control_plane_stable.yml/runs" in endpoint:
             return {"workflow_runs": [{
                 "path": ".github/workflows/baseball_autonomous_control_plane_stable.yml",
                 "status": "in_progress",
@@ -391,7 +391,7 @@ def test_action_health_uses_workflow_scoped_history(monkeypatch):
         endpoint = args[0]
         observed.append(endpoint)
         assert "/actions/workflows/" in endpoint
-        if "baseball_autonomous_control_plane.yml/runs" in endpoint:
+        if "baseball_autonomous_control_plane_stable.yml/runs" in endpoint:
             return {
                 "workflow_runs": [{
                     "path": ".github/workflows/baseball_autonomous_control_plane_stable.yml",
