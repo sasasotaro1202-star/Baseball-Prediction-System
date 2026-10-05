@@ -1,0 +1,191 @@
+name: NPB Daily Early Research Forecast
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: "JST target date; blank means today in JST."
+        required: false
+        default: ""
+        type: string
+  schedule:
+    - cron: "*/15 * * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: npb-daily-early-research-forecast
+  cancel-in-progress: false
+
+env:
+  PYTHONPATH: .
+  PYTHONUNBUFFERED: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  forecast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97b97f0e
+        with:
+          python-version: "3.12"
+
+      - name: Probe official NPB slate
+        env:
+          TARGET_DATE: ${{ inputs.target_date }}
+        run: |
+          set -euo pipefail
+          target_args=()
+          if [ -n "${TARGET_DATE}" ]; then
+            target_args+=(--target-date "${TARGET_DATE}")
+          fi
+          python -m research.npb_daily_forecast --probe-only "${target_args[@]}" > daily_forecast_probe.json
+          cat daily_forecast_probe.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          obj=json.loads(Path("daily_forecast_probe.json").read_text(encoding="utf-8"))
+          if obj.get("production_modified"):
+              raise SystemExit("probe must never modify production")
+          due = bool(obj.get("due"))
+          Path("daily_forecast_due.txt").write_text("1\n" if due else "0\n", encoding="utf-8")
+          print("early_research_due=", due)
+          PY
+
+      - name: Install numerical dependencies
+        run: |
+          set -euo pipefail
+          if [ "$(cat daily_forecast_due.txt)" != "1" ]; then
+            echo "No game in 61-120 minute early research window; skipping dependency installation."
+            exit 0
+          fi
+          python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
+
+      - name: Run PIT-governed early research forecast
+        env:
+          TARGET_DATE: ${{ inputs.target_date }}
+          BASEBALL_TIME_BUDGET_SEC: "2400"
+          BASEBALL_HARD_CAP_SEC: "3000"
+          BASEBALL_SCORE_FAST_VALIDATION: "1"
+          BASEBALL_FAST_SCORE_MODEL_POOL_NPB: "Poisson,HistPoisson"
+          BASEBALL_SCORE_REGRESSION_MAX_ITER: "300"
+          BASEBALL_SCORE_HIST_MAX_ITER: "120"
+          BASEBALL_CATBOOST_DETERMINISTIC: "1"
+        run: |
+          set -euo pipefail
+          if [ "$(cat daily_forecast_due.txt)" != "1" ]; then
+            exit 0
+          fi
+          target_args=()
+          if [ -n "${TARGET_DATE}" ]; then
+            target_args+=(--target-date "${TARGET_DATE}")
+          fi
+          mkdir -p results
+          python -m research.npb_daily_forecast "${target_args[@]}" --simulations 10000
+          output="$(ls -1t results/npb_daily_research_forecast_*.json | head -n 1)"
+          test -s "${output}"
+          python - "${output}" <<'PY'
+          import json
+          import sys
+          from datetime import datetime
+          from pathlib import Path
+          obj=json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          if obj.get("execution_status") != "RESEARCH_SHADOW_EXECUTED":
+              raise SystemExit("unexpected research forecast execution status")
+          if obj.get("production_modified"):
+              raise SystemExit("research forecast claims production modification")
+          for pred in obj.get("predictions", []):
+              generated=datetime.fromisoformat(pred["prediction_generated_at"].replace("Z","+00:00"))
+              cutoff=datetime.fromisoformat(pred["prediction_cutoff_utc"].replace("Z","+00:00"))
+              start=datetime.fromisoformat(pred["datetime_jst"].replace("Z","+00:00"))
+              if cutoff >= start:
+                  raise SystemExit("prediction cutoff is not pregame")
+              if generated < cutoff:
+                  raise SystemExit("prediction generated before recorded cutoff")
+              if pred.get("production_eligible") is not False:
+                  raise SystemExit("daily research forecast must remain non-production")
+              if pred.get("starter_pit_status") not in {"PASS","UNVERIFIABLE"}:
+                  raise SystemExit("unexpected starter PIT status")
+              probs=[float(pred[k]) for k in ("home_win_pct","draw_pct","away_win_pct")]
+              if abs(sum(probs)-100.0)>0.02 or any(x<0 or x>100 for x in probs):
+                  raise SystemExit("invalid NPB probability vector")
+              script=pred.get("game_script") or {}
+              if int(script.get("simulations",0)) < 1000:
+                  raise SystemExit("game-script simulator did not run enough samples")
+          print("early research forecast integrity: PASS")
+          PY
+
+      - name: Archive research forecast and reconcile experience
+        if: always()
+        env:
+          GH_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ "$(cat daily_forecast_due.txt)" != "1" ]; then
+            exit 0
+          fi
+          output="$(ls -1t results/npb_daily_research_forecast_*.json | head -n 1)"
+          python -m research.shadow_experience --archive "${output}" --run-id "${GH_RUN_ID}"
+          python -m research.shadow_experience --reconcile
+
+      - name: Persist shadow evidence
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ ! -d data/experience/research_shadow ]; then
+            echo "No research-shadow directory."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/experience/research_shadow
+          if git diff --cached --quiet; then
+            echo "No new research-shadow evidence to commit."
+            exit 0
+          fi
+          for attempt in 1 2 3; do
+            git fetch origin main
+            if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+              git reset --hard origin/main
+            fi
+            # Recompute only the current run's archive after a push race; prior
+            # snapshots remain append-only and are never rewritten in-place.
+            if [ -n "$(find results -maxdepth 1 -name 'npb_daily_research_forecast_*.json' -print -quit)" ]; then
+              output="$(ls -1t results/npb_daily_research_forecast_*.json | head -n 1)"
+              python -m research.shadow_experience --archive "${output}" --run-id "${GH_RUN_ID}" || true
+              python -m research.shadow_experience --reconcile || true
+            fi
+            git add data/experience/research_shadow
+            if git diff --cached --quiet; then
+              echo "No new research-shadow evidence to commit after reconciliation."
+              exit 0
+            fi
+            git commit -m "Archive NPB early research forecast evidence"
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            sleep $((attempt * 3))
+          done
+          echo "bounded research-shadow persistence recovery exhausted" >&2
+          exit 1
+
+      - name: Upload forecast evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: npb-daily-early-research-${{ github.run_id }}
+          path: |
+            daily_forecast_probe.json
+            daily_forecast_due.txt
+            results/npb_daily_research_forecast_*.json
+          if-no-files-found: warn
+          retention-days: 14
