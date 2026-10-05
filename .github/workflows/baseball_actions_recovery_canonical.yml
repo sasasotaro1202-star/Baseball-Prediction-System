@@ -39,7 +39,7 @@ jobs:
     # Recover only transient infrastructure/data-acquisition failures.
     # Deterministic code/test/lifecycle failures must remain visible instead
     # of being masked by automatic retries.
-    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.head_branch == 'main' && (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'timed_out' || github.event.workflow_run.conclusion == 'startup_failure')) && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch == 'main' && (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'timed_out' || github.event.workflow_run.conclusion == 'startup_failure') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
