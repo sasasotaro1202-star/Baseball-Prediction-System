@@ -75,7 +75,8 @@ def test_state_score_reconstruction_ignores_corrupted_intermediate_labels():
 
 def test_jst_date_boundary_is_inclusive():
     end=boundary("2024-12-31",end_of_day=True)
-    ts=pd.Timestamp("2024-12-31T18:00:00Z")
+    # End-of-day means 23:59:59.999999999 JST, i.e. 14:59:59.999999999 UTC.
+    ts=pd.Timestamp("2024-12-31T12:00:00Z")
     assert ts<=end
 
 
