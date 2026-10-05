@@ -531,3 +531,18 @@ def test_control_plane_owns_automatic_recovery_surface():
     assert "workflow_run:" in stable_text
     assert "Baseball User Prediction Request" in stable_text
     assert "baseball-actions-recovery-v2" in stable_text
+
+def test_registration_repair_targets_exact_known_retired_ids():
+    workflow = Path(".github/workflows/baseball_workflow_registration_repair.yml").read_text(encoding="utf-8")
+    assert 'target_ids="375399090 359633887 375842323"' in workflow
+    verify_start = workflow.index("      - name: Verify ghost registrations are disabled")
+    verify = workflow[verify_start:]
+    assert 'target_ids="375399090 359633887 375842323"' in verify
+    assert '.github/workflows/baseball_actions_recovery_v2.yml' in workflow
+    assert '.github/workflows/baseball_actions_recovery.yml' in workflow
+
+
+def test_supervisor_ghost_repair_allowlist_covers_all_target_registrations():
+    workflow = Path(".github/workflows/baseball_24h_supervisor.yml").read_text(encoding="utf-8")
+    assert 'target_ids="375399090 359633887 375842323"' in workflow
+    assert '.github/workflows/baseball_actions_recovery_v2.yml' in workflow
