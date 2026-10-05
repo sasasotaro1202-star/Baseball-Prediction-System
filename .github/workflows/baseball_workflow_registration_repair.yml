@@ -45,7 +45,7 @@ jobs:
             printf 'workflow_id=%s state=%s path=%s name=%s\n' "${workflow_id}" "${state}" "${path}" "${name}"
 
             case "${path}" in
-              .github/workflows/baseball_autonomous_control_plane_canonical.yml|.github/workflows/baseball_24h_research_autopilot_canonical.yml|.github/workflows/baseball_24h_research_keeper_canonical.yml|.github/workflows/npb_game_script_autoresearch_canonical.yml|.github/workflows/baseball_actions_recovery_canonical.yml)
+              .github/workflows/baseball_autonomous_control_plane_canonical.yml|.github/workflows/baseball_24h_research_autopilot_canonical.yml|.github/workflows/baseball_24h_research_keeper_canonical.yml|.github/workflows/npb_game_script_autoresearch_canonical.yml|.github/workflows/baseball_actions_recovery_canonical.yml|.github/workflows/baseball_actions_recovery.yml)
                 ;;
               *)
                 echo "Safety guard: workflow ${workflow_id} path is outside the known ghost allowlist; refusing mutation." >&2
