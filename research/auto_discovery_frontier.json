@@ -165,18 +165,18 @@
     "discovered_records_touched": 0,
     "failures": [],
     "focus_scopes": [
-      "Israel_Minors",
-      "Japan_Elementary",
-      "Japan_U23",
-      "LMB",
-      "MiLB_Rookie",
-      "Netherlands_Baseball",
-      "Netherlands_Youth",
-      "WBC_PlayerPrior",
-      "Argentina_LAB",
-      "AsianGames_2026",
-      "Australia_U16",
-      "Australia_U18"
+      "Australia_Womens",
+      "Australia_Womens_U16",
+      "Brazil_Infantil",
+      "Brazil_Junior",
+      "Brazil_Juvenil",
+      "Brazil_PreInfantil",
+      "CPBL",
+      "Canada_BaseballQuebec",
+      "Canada_ICBA",
+      "Canada_WomensBaseball",
+      "CapeCod",
+      "Colombia_LPBC"
     ],
     "policy": {
       "free_only": true,
@@ -186,8 +186,8 @@
     "query_count": 24,
     "result_budget_per_scope_platform": 5,
     "rotation_period_hours": 6,
-    "rotation_slot": 82923,
-    "run_at": "2026-10-04T21:25:30+00:00",
+    "rotation_slot": 82924,
+    "run_at": "2026-10-05T05:33:31+00:00",
     "selected_by_scope": {
       "MLB": [
         "AUTO_474af25a2cfd50a8"
@@ -705,7 +705,41 @@
         ]
       },
       "selected_count": 1
+    },
+    {
+      "discovered_records_touched": 0,
+      "failures": [],
+      "focus_scopes": [
+        "Australia_Womens",
+        "Australia_Womens_U16",
+        "Brazil_Infantil",
+        "Brazil_Junior",
+        "Brazil_Juvenil",
+        "Brazil_PreInfantil",
+        "CPBL",
+        "Canada_BaseballQuebec",
+        "Canada_ICBA",
+        "Canada_WomensBaseball",
+        "CapeCod",
+        "Colombia_LPBC"
+      ],
+      "policy": {
+        "free_only": true,
+        "production_promotion": false,
+        "unknown_pit": "FAIL_CLOSED"
+      },
+      "query_count": 24,
+      "result_budget_per_scope_platform": 5,
+      "rotation_period_hours": 6,
+      "rotation_slot": 82924,
+      "run_at": "2026-10-05T05:33:31+00:00",
+      "selected_by_scope": {
+        "MLB": [
+          "AUTO_474af25a2cfd50a8"
+        ]
+      },
+      "selected_count": 1
     }
   ],
-  "updated_at": "2026-10-04T21:25:30+00:00"
+  "updated_at": "2026-10-05T05:33:31+00:00"
 }
