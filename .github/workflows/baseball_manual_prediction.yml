@@ -263,8 +263,15 @@ jobs:
               )
               if generated >= game_time:
                   raise SystemExit("manual prediction was generated at/after first pitch")
-              if pred.get("pit_status") != "PASS":
-                  raise SystemExit("manual prediction is not PIT PASS")
+              is_research = obj.get("execution_status") == "RESEARCH_SHADOW_EXECUTED"
+              pred_pit = str(pred.get("pit_status", "")).strip().upper()
+              if is_research:
+                  if obj.get("production_eligibility") is not False:
+                      raise SystemExit("research-shadow manual prediction incorrectly claims production eligibility")
+                  if pred_pit not in {"PASS", "UNVERIFIABLE"}:
+                      raise SystemExit("research-shadow manual prediction has invalid PIT status")
+              elif pred_pit != "PASS":
+                  raise SystemExit("manual production prediction is not PIT PASS")
               if "prediction_target_lead_minutes" not in pred:
                   raise SystemExit("manual prediction is missing target lead metadata")
               # The canonical NPB runtime emits probabilities under the
