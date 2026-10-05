@@ -72,7 +72,7 @@ WORKFLOW_CONTRACTS: dict[str, dict[str, Any]] = {
     ".github/workflows/baseball_autonomous_control_plane.yml": {
         "monitor": True,
         "max_age_hours": 2,
-        "required": ("schedule:", "cron: '*/15 * * * *'", "actions: write", "research.autonomous_control_plane"),
+        "required": ("schedule:", "cron: '*/15 * * * *'", "push:", "branches: [main]", "actions: write", "research.autonomous_control_plane"),
     },
     ".github/workflows/baseball_governance_autopilot.yml": {
         "monitor": True,
