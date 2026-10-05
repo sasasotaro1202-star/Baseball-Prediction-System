@@ -130,9 +130,9 @@ The repository must remain capable of progressing autonomously on GitHub Actions
 
 Architecture:
 - `.github/workflows/baseball_forever_autopilot.yml` is the lightweight 5-minute liveness/bootstrap layer.
-- `.github/workflows/baseball_autonomous_control_plane_stable.yml` is the single normal orchestration heartbeat, schedule/workflow_dispatch only, with bounded dispatch and no production mutation.
-- `.github/workflows/baseball_24h_supervisor.yml` is the bounded failover/reconciliation layer for the control plane and the closed loop.
-- `.github/workflows/baseball_24h_research_keeper_canonical.yml` is an emergency passive failover for the 24h research lane; it must not race the primary supervisor.
+- `.github/workflows/baseball_forever_autopilot.yml` is the single normal orchestration heartbeat, schedule/workflow_dispatch plus its narrow self-push bootstrap, and it executes the bounded control plane locally with no production mutation.
+- `.github/workflows/baseball_24h_supervisor.yml` is the bounded failover/reconciliation layer for the forever heartbeat and the closed loop.
+- `.github/workflows/baseball_24h_research_keeper_canonical.yml` is an emergency passive failover for the 24h research lane; it must not race the primary supervisor or the forever heartbeat.
 
 The forever contract is:
 - current-main SHA verification before orchestration;
