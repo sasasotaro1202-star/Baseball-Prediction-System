@@ -109,7 +109,7 @@ def _parse_state(
 ) -> tuple[int | None, str | None]:
     if columns.page:
         raw = str(row.get(columns.page, "")).strip()
-        match = re.match(r"^(\\d{1,2})([TBtb12])", raw)
+        match = re.match(r"^(\d{1,2})([TBtb12])", raw)
         if match:
             return (
                 int(match.group(1)),
