@@ -345,6 +345,7 @@ def due_games(
     scan_ahead_minutes: float = 60.0,
     preferred_lead_minutes: float = 30.0,
     prediction_source: str | None = None,
+    research_shadow_source: str = "RESEARCH_SHADOW_AUTO_60M",
 ) -> dict:
     now = now_utc or datetime.now(timezone.utc)
     if now.tzinfo is None:
@@ -449,9 +450,11 @@ def due_games(
                     f"{target_date}T{game['official_start_time']}:00+09:00"
                 ).astimezone(timezone.utc)
                 lead = (start - now).total_seconds() / 60.0
-                source = "RESEARCH_SHADOW_AUTO_60M"
+                source = str(research_shadow_source or "RESEARCH_SHADOW_AUTO_60M").strip()
+                if not source:
+                    raise ValueError("research_shadow_source must not be empty")
                 if (
-                    float(min_lead_minutes) < lead <= min(float(scan_ahead_minutes), 60.0)
+                    float(min_lead_minutes) < lead <= float(scan_ahead_minutes)
                     and (game["home"], game["away"], source) not in archived_sources
                 ):
                     preferred_cutoff = start - timedelta(minutes=60.0)
@@ -511,6 +514,7 @@ def due_games(
         "preferred_lead_minutes": float(preferred_lead_minutes),
         "scan_ahead_minutes": float(scan_ahead_minutes),
         "prediction_source": str(prediction_source or "") or None,
+        "research_shadow_source": str(research_shadow_source or "").strip() or None,
         "runtimes": sorted([league for league, _ in enabled]),
         "research_active": sorted(research_active),
         "due_games": due,
@@ -544,12 +548,18 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Optional stable source label used to prevent duplicate scheduled slots.",
     )
+    parser.add_argument(
+        "--research-shadow-source",
+        default="RESEARCH_SHADOW_AUTO_60M",
+        help="Stable research-shadow source label used to prevent duplicate rapid/regular shadow slots.",
+    )
     args = parser.parse_args(argv)
     result = due_games(
         min_lead_minutes=args.min_lead_minutes,
         preferred_lead_minutes=args.preferred_lead_minutes,
         scan_ahead_minutes=args.scan_ahead_minutes,
         prediction_source=args.prediction_source,
+        research_shadow_source=args.research_shadow_source,
     )
     if args.dates_only:
         print(",".join(result["due_dates"]))
