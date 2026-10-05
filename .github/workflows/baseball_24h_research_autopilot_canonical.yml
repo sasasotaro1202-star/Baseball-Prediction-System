@@ -72,7 +72,7 @@ jobs:
           import re
           from pathlib import Path
 
-          workflow = Path('.github/workflows/baseball_24h_research_autopilot.yml').read_text(encoding='utf-8')
+          workflow = Path('.github/workflows/baseball_24h_research_autopilot_canonical.yml').read_text(encoding='utf-8')
           paths = sorted(set(re.findall(r'tests/[A-Za-z0-9_.-]+\.py', workflow)))
           if not paths:
               raise SystemExit('24h autopilot has no targeted test paths')
@@ -393,12 +393,12 @@ jobs:
           sha256sum results/pbp_release_manifest.tsv | awk '{print $1}' > results/source_fingerprint.txt
           awk -F '\t' '$1 ~ /^(2022|2023|2024|2025)-[0-9]{2}_pbp\\.csv$/ {print}' results/pbp_release_manifest.tsv | sha256sum | awk '{print $1}' > results/validation_source_fingerprint.txt
           awk -F '\t' '$1 ~ /^2026-[0-9]{2}_pbp\\.csv$/ {print}' results/pbp_release_manifest.tsv | sha256sum | awk '{print $1}' > results/context_source_fingerprint.txt
-          code_files=(research/game_script_common.py research/game_script_wfo.py research/game_script_engine.py tests/test_game_script_engine.py tests/test_game_script_automation_contract.py .github/workflows/npb_game_script_autoresearch.yml .github/workflows/npb_game_script_watchdog.yml docs/GAME_SCRIPT_V5.md)
+          code_files=(research/game_script_common.py research/game_script_wfo.py research/game_script_engine.py tests/test_game_script_engine.py tests/test_game_script_automation_contract.py .github/workflows/npb_game_script_autoresearch_canonical.yml .github/workflows/npb_game_script_watchdog.yml docs/GAME_SCRIPT_V5.md)
           (for f in "${code_files[@]}"; do sha256sum "$f"; done) | sha256sum | awk '{print $1}' > results/code_fingerprint.txt
 
           dedicated_query_status="PASS"
           dedicated_query_rc=0
-          if dedicated_json="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow npb_game_script_autoresearch.yml --branch main --limit 20 --json databaseId,conclusion,createdAt,headSha 2>results/dedicated_query_error.log)"; then
+          if dedicated_json="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow npb_game_script_autoresearch_canonical.yml --branch main --limit 20 --json databaseId,conclusion,createdAt,headSha 2>results/dedicated_query_error.log)"; then
             dedicated_json="${dedicated_json:-[]}"
           else
             dedicated_query_rc=$?
@@ -440,7 +440,7 @@ jobs:
           if ! find .previous_evidence -type f -name 'game_script_checkpoint.json' -print -quit | grep -q .; then
             autopilot_query_status="PASS"
             autopilot_query_rc=0
-            if autopilot_json="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow baseball_24h_research_autopilot.yml --branch main --limit 20 --json databaseId,conclusion --jq '[.[] | select(.conclusion=="success")] | .[0].databaseId // empty' 2>results/autopilot_query_error.log)"; then
+            if autopilot_json="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow baseball_24h_research_autopilot_canonical.yml --branch main --limit 20 --json databaseId,conclusion --jq '[.[] | select(.conclusion=="success")] | .[0].databaseId // empty' 2>results/autopilot_query_error.log)"; then
               autopilot_id="${autopilot_json}"
             else
               autopilot_query_rc=$?
@@ -557,7 +557,7 @@ Path("results/game_script_fallback.json").write_text(json.dumps({
   "decision":"NOOP_DELEGATED_RECENT_SUCCESS",
   "pit_status":"UNVERIFIABLE_HISTORICAL_PBP_AVAILABILITY",
   "production_eligible":False,
-  "delegation_source":"npb_game_script_autoresearch.yml",
+  "delegation_source":"npb_game_script_autoresearch_canonical.yml",
   "git_sha":os.environ["GITHUB_SHA"],
   "source_fingerprint":Path("results/source_fingerprint.txt").read_text().strip(),
   "validation_source_fingerprint":Path("results/validation_source_fingerprint.txt").read_text().strip(),
