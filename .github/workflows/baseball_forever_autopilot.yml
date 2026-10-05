@@ -31,7 +31,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           EVENT_SHA: ${{ github.sha }}
-          CONTROL_WORKFLOW: baseball_autonomous_control_plane.yml
+          CONTROL_WORKFLOW: baseball_autonomous_control_plane_stable.yml
           REQUEST_WORKFLOW: baseball-user-prediction-request.yml
           REQUEST_FILE: prediction_requests/inbox/active.json
           REQUEST_STALE_MINUTES: "20"
