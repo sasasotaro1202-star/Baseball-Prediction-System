@@ -52,7 +52,7 @@ jobs:
           # Exact, historically evidenced ghost registrations only. This is a
           # disable-only repair; active current workflow registrations are never
           # discovered or disabled heuristically.
-          target_ids="375399090"
+          target_ids="375399090 359633887"
 
           for workflow_id in ${target_ids}; do
             state="$(gh api "repos/${GH_REPO}/actions/workflows/${workflow_id}" --jq '.state // "unknown"')"
