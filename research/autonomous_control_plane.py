@@ -66,6 +66,24 @@ TARGETS = (
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# GitHub may retain stale/legacy run records after a workflow trigger is changed.
+# Such events are never valid scheduler evidence for these canonical autonomous lanes.
+SUPPORTED_EVENTS_BY_WORKFLOW = {
+    ".github/workflows/baseball_autonomous_control_plane_canonical.yml": frozenset({"schedule", "workflow_dispatch"}),
+    ".github/workflows/baseball_24h_research_autopilot_canonical.yml": frozenset({"schedule", "workflow_dispatch"}),
+    ".github/workflows/npb_game_script_autoresearch_canonical.yml": frozenset({"schedule", "workflow_dispatch"}),
+    ".github/workflows/baseball_24h_research_keeper_canonical.yml": frozenset({"schedule", "workflow_dispatch"}),
+    ".github/workflows/baseball_actions_recovery_canonical.yml": frozenset({"workflow_run"}),
+}
+
+
+def supported_event(workflow: str, event: str | None) -> bool:
+    allowed = SUPPORTED_EVENTS_BY_WORKFLOW.get(workflow)
+    if allowed is None or not event:
+        return True
+    return event in allowed
+
+
 def workflow_cli_ref(workflow: str) -> str:
     """Return the GitHub CLI workflow identifier for a canonical workflow path."""
     return Path(workflow).name
@@ -236,7 +254,12 @@ def dispatch_count(runs: list[dict[str, Any]], workflow: str, now: datetime) -> 
     )
 
 def _matching(runs: list[dict[str, Any]], workflow: str) -> list[dict[str, Any]]:
-    result = [r for r in runs if str(r.get("path", "")).lstrip("/") == workflow]
+    result = [
+        r
+        for r in runs
+        if str(r.get("path", "")).lstrip("/") == workflow
+        and supported_event(workflow, str(r.get("event", "")) or None)
+    ]
     result.sort(key=lambda r: r.get("created_at", ""), reverse=True)
     return result
 
