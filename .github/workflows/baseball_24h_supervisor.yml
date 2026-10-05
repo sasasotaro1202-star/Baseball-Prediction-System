@@ -194,25 +194,32 @@ jobs:
           fi
 
           if [ "$control_plane_dispatch" -eq 1 ]; then
-            echo "Bootstrapping Autonomous Control Plane: $control_plane_reason"
-            dispatch_epoch=$(date +%s)
-            gh_retry workflow run "$CONTROL_PLANE_WORKFLOW" --repo "$GH_REPO" --ref main
-            control_plane_verified=0
-            for attempt in 1 2 3 4 5; do
-              sleep 2
-              cp_after=$(gh_retry run list --repo "$GH_REPO" --workflow "$CONTROL_PLANE_WORKFLOW" --branch main --limit 10 --json databaseId,status,conclusion,createdAt,event)
-              new_cp_id=$(printf '%s' "$cp_after" | jq -r --argjson cutoff "$dispatch_epoch" '[.[] | select(.event == "workflow_dispatch") | select((.createdAt | fromdateiso8601) >= $cutoff)] | sort_by(.createdAt) | reverse | .[0].databaseId // empty')
-              echo "Control Plane bootstrap verification $attempt/5: new_dispatch_run=${new_cp_id:-<none>}"
-              if [ -n "$new_cp_id" ]; then
-                control_plane_verified=1
-                break
+            if [ -z "$control_plane_latest_id" ]; then
+              echo "No existing forever heartbeat run to rerun; preserving state for the next scheduled heartbeat."
+              printf "%s\n" "Forever heartbeat recovery deferred: no existing run to rerun." >> "$GITHUB_STEP_SUMMARY"
+            elif [ -n "$control_plane_latest_sha" ] && [ "$control_plane_latest_sha" != "$GITHUB_SHA" ]; then
+              echo "Latest forever heartbeat is superseded; refusing to rerun stale code."
+              printf "%s\n" "Forever heartbeat recovery deferred: superseded SHA=${control_plane_latest_sha}." >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "Rerunning current-main forever heartbeat: $control_plane_reason"
+              previous_attempt="$(gh_retry api "repos/${GH_REPO}/actions/runs/${control_plane_latest_id}" --jq .run_attempt)"
+              gh_retry run rerun "${control_plane_latest_id}" --repo "${GH_REPO}"
+              verified=0
+              for attempt in 1 2 3 4 5; do
+                sleep 2
+                next_attempt="$(gh_retry api "repos/${GH_REPO}/actions/runs/${control_plane_latest_id}" --jq .run_attempt)"
+                echo "Forever rerun verification ${attempt}/5: run_id=${control_plane_latest_id} attempt=${next_attempt}"
+                if [ "${next_attempt}" -gt "${previous_attempt}" ]; then
+                  verified=1
+                  break
+                fi
+              done
+              if [ "${verified}" -ne 1 ]; then
+                echo "Forever heartbeat rerun accepted but run attempt did not advance." >&2
+                exit 1
               fi
-            done
-            if [ "$control_plane_verified" -ne 1 ]; then
-              echo 'Control Plane dispatch accepted but no current/active run was observed.' >&2
-              exit 1
+              printf "%s\n" "Forever heartbeat rerun verified: run_id=${control_plane_latest_id} attempt=${next_attempt} reason=$control_plane_reason" >> "$GITHUB_STEP_SUMMARY"
             fi
-            printf '%s\n' "Control Plane bootstrap verified: run_id=${new_cp_id:-<active-unresolved>} reason=$control_plane_reason" >> "$GITHUB_STEP_SUMMARY"
           fi
 
           # The pregame workflow has repeatedly produced GitHub Actions startup
