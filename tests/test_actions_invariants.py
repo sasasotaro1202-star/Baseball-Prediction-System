@@ -232,7 +232,7 @@ def test_control_plane_and_v44_triggers_keep_bounded_main_push_scope():
     assert "branches: [main]" in control_trigger
     assert '"research/autonomous_control_plane.py"' in control_trigger
     assert '"tests/test_autonomous_control_plane.py"' in control_trigger
-    assert '"\.github/workflows/baseball_actions_recovery.yml"' in control_trigger
+    assert '".github/workflows/baseball_actions_recovery.yml"' in control_trigger
     assert "schedule:" in control_trigger
     assert "workflow_dispatch:" in control_trigger
 
