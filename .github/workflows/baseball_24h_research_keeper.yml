@@ -18,71 +18,174 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Check 24h autopilot state
+      - name: Failover-check 24h autopilot
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TARGET: baseball_24h_research_autopilot.yml
-          CURRENT_SHA: ${{ github.sha }}
         shell: bash
         run: |
           set -euo pipefail
+
           gh_retry() {
             local attempt out rc
             for attempt in 1 2 3 4; do
-              if out="$(gh "$@" 2>&1)"; then printf '%s\n' "$out"; return 0; fi
+              if out="$(gh "$@" 2>&1)"; then
+                printf '%s\n' "$out"
+                return 0
+              fi
               rc=$?
               echo "gh attempt ${attempt}/4 failed rc=${rc}: ${out}" >&2
-              [ "$attempt" -lt 4 ] && sleep $((attempt * 2))
+              if [ "${attempt}" -lt 4 ]; then
+                sleep $((attempt * 2))
+              else
+                return "${rc}"
+              fi
             done
-            return "$rc"
           }
-          runs="$(gh_retry run list --repo "$GH_REPO" --workflow "$TARGET" --limit 30 --json databaseId,status,conclusion,createdAt,updatedAt,headSha)"
-          active="$(printf '%s' "$runs" | jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
-          echo "active=${active}"
-          if [ "$active" -gt 0 ]; then
-            echo '24h autopilot already active.'
+
+          now_epoch="$(date +%s)"
+          current_sha="$(gh_retry api "repos/${GH_REPO}/git/ref/heads/main" --jq '.object.sha')"
+          echo "current_main_sha=${current_sha}"
+
+          # The autonomous control plane owns normal dispatch/recovery. This
+          # keeper is an emergency failover only and must not create a second
+          # dispatch loop while the 15-minute heartbeat is healthy.
+          control_runs="$(gh_retry run list             --repo "${GH_REPO}"             --workflow baseball_autonomous_control_plane.yml             --branch main             --limit 10             --json databaseId,status,conclusion,createdAt,updatedAt,headSha)"
+          control_active="$(printf '%s' "${control_runs}" | jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+          control_latest="$(printf '%s' "${control_runs}" | jq -c 'sort_by(.createdAt) | last // empty')"
+
+          if [ "${control_active}" -gt 0 ]; then
+            echo "Autonomous control plane is active; keeper remains passive."
             exit 0
           fi
-          # Count only the current consecutive failure streak from the newest
-          # autopilot run. Historical failures cannot keep the breaker open after
-          # a neutral/cancelled/skipped run or any other non-failure conclusion.
-          # Breaker state is scoped to the immutable research snapshot SHA.
-          # Failures from superseded code must not block recovery on new code.
-          failure_streak="$(printf '%s' "$runs" | jq --arg sha "$CURRENT_SHA" '
-            sort_by(.createdAt)
-            | reverse
-            | reduce .[] as $r ({streak: 0, done: false};
-                if .done then .
-                elif $r.headSha != $sha then .done = true
-                elif $r.conclusion == "failure" then .streak += 1
-                else .done = true
-                end
-              )
-            | .streak
-          ')"
-          latest_failure_run="$(printf '%s' "$runs" | jq -r --arg sha "$CURRENT_SHA" '
-            sort_by(.createdAt) | reverse
-            | map(select(.headSha == $sha and .conclusion == "failure"))
-            | .[0].databaseId // empty
-          ')"
-          echo "latest_failure_run=${latest_failure_run:-<none>}"
-          echo "consecutive_failure_streak=${failure_streak}"
-          if [ "$failure_streak" -ge 3 ]; then
-            echo 'Circuit breaker open: three or more consecutive failed autopilot runs.' >&2
+
+          control_healthy_recent=0
+          if [ -n "${control_latest}" ]; then
+            control_conclusion="$(printf '%s' "${control_latest}" | jq -r '.conclusion // empty')"
+            control_created="$(printf '%s' "${control_latest}" | jq -r '.createdAt // empty')"
+            if [ "${control_conclusion}" = "success" ] && [ -n "${control_created}" ]; then
+              control_age_minutes=$(( (now_epoch - $(date -d "${control_created}" +%s)) / 60 ))
+              if [ "${control_age_minutes}" -lt 25 ]; then
+                control_healthy_recent=1
+                echo "Recent healthy control-plane heartbeat: age=${control_age_minutes}m."
+              fi
+            fi
+          fi
+          if [ "${control_healthy_recent}" -eq 1 ]; then
+            echo "Normal control-plane ownership confirmed; keeper remains passive."
+            exit 0
+          fi
+
+          echo "Control plane is absent/stale; entering bounded 24h-autopilot failover mode."
+
+          runs="$(gh_retry run list             --repo "${GH_REPO}"             --workflow "${TARGET}"             --branch main             --limit 30             --json databaseId,status,conclusion,createdAt,updatedAt,headSha,event)"
+          active="$(printf '%s' "${runs}" | jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+          echo "24h autopilot active=${active}"
+          if [ "${active}" -gt 0 ]; then
+            echo '24h autopilot already active; failover exits.'
+            exit 0
+          fi
+
+          latest="$(printf '%s' "${runs}" | jq -c 'sort_by(.createdAt) | last // empty')"
+          latest_created=""
+          latest_conclusion=""
+          latest_sha=""
+          latest_id=""
+          if [ -n "${latest}" ]; then
+            latest_created="$(printf '%s' "${latest}" | jq -r '.createdAt // empty')"
+            latest_conclusion="$(printf '%s' "${latest}" | jq -r '.conclusion // empty')"
+            latest_sha="$(printf '%s' "${latest}" | jq -r '.headSha // empty')"
+            latest_id="$(printf '%s' "${latest}" | jq -r '.databaseId // empty')"
+          fi
+
+          age_minutes=999999
+          if [ -n "${latest_created}" ]; then
+            age_minutes=$(( (now_epoch - $(date -d "${latest_created}" +%s)) / 60 ))
+          fi
+          echo "latest_id=${latest_id:-<none>} latest_conclusion=${latest_conclusion:-<none>} latest_age_minutes=${age_minutes} latest_sha=${latest_sha:-<none>}"
+
+          # Only workflow_dispatch runs count against the emergency dispatch
+          # budget. The cap prevents an outage from becoming an infinite queue.
+          dispatch_attempts_24h="$(printf '%s' "${runs}" | jq '[.[] | select(.event == "workflow_dispatch") | select((.createdAt | fromdateiso8601) >= (now - 86400))] | length')"
+          echo "failover_dispatch_attempts_24h=${dispatch_attempts_24h}"
+          if [ "${dispatch_attempts_24h}" -ge 3 ]; then
+            echo 'Failover daily cap reached; preserving the authoritative state.' >&2
+            printf '%s\n' 'Keeper terminal state: DAILY_FAILOVER_CAP; parent failures remain authoritative.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          dispatch=0
+          reason=""
+
+          if [ -z "${latest_id}" ]; then
+            if [ "${age_minutes}" -ge 15 ]; then
+              dispatch=1
+              reason="no main-branch 24h autopilot history"
+            fi
+          elif [ "${latest_sha}" != "${current_sha}" ]; then
+            # A completed/terminal run on superseded code is never treated as
+            # current evidence. The failover may start a fresh current-main run.
+            if [ "${age_minutes}" -ge 15 ]; then
+              dispatch=1
+              reason="latest 24h run is on superseded SHA ${latest_sha}"
+            fi
+          elif [ "${latest_conclusion}" = "failure" ]; then
+            job_count="$(gh_retry run view "${latest_id}" --repo "${GH_REPO}" --json jobs --jq '.jobs | length')"
+            echo "latest_failure_job_count=${job_count}"
+            if [ "${job_count}" -eq 0 ] && [ "${age_minutes}" -ge 15 ]; then
+              dispatch=1
+              reason="zero-job startup failure ${latest_id}"
+            else
+              # A real job failure is deterministic/unverifiable from this
+              # layer; do not bypass it with an automatic full rerun.
+              echo 'Deterministic or unverifiable failure detected; fail closed.'
+              printf '%s\n' 'Keeper terminal state: DETERMINISTIC_FAILURE_OR_UNVERIFIABLE; no bypass dispatch.' >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          elif [ "${latest_conclusion}" = "cancelled" ] || [ "${latest_conclusion}" = "timed_out" ] || [ "${latest_conclusion}" = "startup_failure" ]; then
+            if [ "${age_minutes}" -ge 15 ]; then
+              dispatch=1
+              reason="recoverable infrastructure conclusion: ${latest_conclusion}"
+            fi
+          elif [ "${latest_conclusion}" = "success" ]; then
+            # The regular schedule is daily. The keeper only backfills when
+            # the 24h window is materially due and the main control plane is
+            # unavailable, avoiding five-minute duplicate dispatch churn.
+            if [ "${age_minutes}" -ge 1440 ]; then
+              dispatch=1
+              reason="latest successful 24h cycle is at least 24h old"
+            fi
+          elif [ -z "${latest_conclusion}" ] && [ "${age_minutes}" -ge 15 ]; then
+            dispatch=1
+            reason="terminal state has no conclusion and is stale"
+          fi
+
+          if [ "${dispatch}" -ne 1 ]; then
+            echo "No failover dispatch required."
+            exit 0
+          fi
+
+          echo "Failover dispatching ${TARGET}: ${reason}"
+          gh_retry workflow run "${TARGET}" --repo "${GH_REPO}" --ref main
+
+          verified=0
+          for attempt in 1 2 3 4 5 6; do
+            sleep 3
+            current_runs="$(gh_retry run list               --repo "${GH_REPO}"               --workflow "${TARGET}"               --branch main               --limit 12               --json databaseId,status,conclusion,createdAt,headSha,event)"
+            active_after="$(printf '%s' "${current_runs}" | jq --arg sha "${current_sha}" '[.[] | select(.headSha == $sha) | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+            echo "failover dispatch verification ${attempt}/6 current_sha_active=${active_after}"
+            if [ "${active_after}" -gt 0 ]; then
+              verified=1
+              break
+            fi
+          done
+
+          if [ "${verified}" -ne 1 ]; then
+            echo 'Failover dispatch accepted but current-main active run was not observed.' >&2
+            printf '%s\n' 'Keeper terminal state: FAILED_FAILOVER_DISPATCH_VERIFICATION.' >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
-          latest="$(printf '%s' "$runs" | jq 'sort_by(.createdAt) | last // {}')"
-          latest_conclusion="$(printf '%s' "$latest" | jq -r '.conclusion // empty')"
-          echo "latest_conclusion=${latest_conclusion:-<none>}"
-          echo 'No active 24h run; dispatching a fresh research window.'
-          gh_retry workflow run "$TARGET" --repo "$GH_REPO" --ref main
-          verified=0
-          for i in 1 2 3 4 5; do
-            sleep 3
-            active_after="$(gh_retry run list --repo "$GH_REPO" --workflow "$TARGET" --limit 10 --json status --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
-            echo "dispatch verification ${i}/5 active=${active_after}"
-            if [ "$active_after" -gt 0 ]; then verified=1; break; fi
-          done
-          test "$verified" -eq 1
-          echo '24h research autopilot dispatch verified.'
+
+          printf '%s\n' "Keeper terminal state: FAILOVER_REDISPATCHED; reason=${reason}." >> "$GITHUB_STEP_SUMMARY"
+          echo '24h research autopilot failover dispatch verified.'
