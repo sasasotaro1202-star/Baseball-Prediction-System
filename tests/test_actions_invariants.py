@@ -500,3 +500,21 @@ def test_actions_recovery_binds_retry_to_current_main_snapshot():
     assert 'current_main_sha="$(gh_retry api "repos/${GH_REPO}/git/ref/heads/main" --jq .object.sha)"' in recovery
     assert "SUPERSEDED_OR_UNVERIFIABLE_SHA" in recovery
     assert "contents/${WORKFLOW_PATH}?ref=${current_main_sha}" in recovery
+
+def test_legacy_push_startup_guard_is_present_in_all_zero_job_lanes():
+    guard = "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'"
+    expected_counts = {
+        ".github/workflows/npb_game_script_autoresearch.yml": 1,
+        ".github/workflows/baseball_24h_research_keeper.yml": 1,
+        ".github/workflows/baseball_autonomous_control_plane.yml": 1,
+        ".github/workflows/baseball_24h_research_autopilot.yml": 6,
+    }
+    for relpath, expected_count in expected_counts.items():
+        text = (ROOT / relpath).read_text(encoding="utf-8")
+        assert text.count(guard) == expected_count, (
+            f"{relpath} guard count mismatch: "
+            f"expected {expected_count}, got {text.count(guard)}"
+        )
+
+    recovery = (ROOT / ".github" / "workflows" / "baseball_actions_recovery.yml").read_text(encoding="utf-8")
+    assert "github.event_name == 'workflow_run'" in recovery
