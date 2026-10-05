@@ -190,6 +190,13 @@ def test_autonomous_control_plane_is_governed():
     assert ".github/workflows/baseball_autonomous_control_plane.yml" in WORKFLOW_CONTRACTS
 
 
+def test_autonomous_control_plane_requires_main_push_heartbeat():
+    from research.project_governance import WORKFLOW_CONTRACTS
+    required = WORKFLOW_CONTRACTS[".github/workflows/baseball_autonomous_control_plane.yml"]["required"]
+    assert "push:" in required
+    assert "branches: [main]" in required
+
+
 def test_no_run_is_deferred_when_autonomous_control_plane_is_active(monkeypatch):
     from datetime import datetime, timezone
     from research import project_governance as governance
