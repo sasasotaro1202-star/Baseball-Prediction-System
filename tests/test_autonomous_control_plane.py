@@ -292,7 +292,7 @@ def test_dispatch_verification_is_workflow_scoped(monkeypatch):
 
 def test_control_plane_workflow_preserves_runtime_failure_evidence():
     workflow = (
-        __import__("pathlib").Path(".github/workflows/baseball_autonomous_control_plane.yml")
+        __import__("pathlib").Path(".github/workflows/baseball_autonomous_control_plane_canonical.yml")
         .read_text(encoding="utf-8")
     )
     assert "control_plane_runtime.log" in workflow
