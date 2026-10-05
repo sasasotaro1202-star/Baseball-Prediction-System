@@ -78,6 +78,8 @@ jobs:
           key: npb-game-script-pbp-v1-linux
 
       - name: Stage validated NPB PBP assets
+        env:
+          GH_TOKEN: ${{ github.token }}
         timeout-minutes: 20
         run: |
           set -euo pipefail
@@ -118,11 +120,22 @@ jobs:
               download_if_needed "$year-$(printf '%02d' "$m")_pbp.csv"
             done
           done
-          for m in $(seq 3 "$current_month_num"); do
-            download_if_needed "$current_year-$(printf '%02d' "$m")_pbp.csv"
-          done
+          # The current-month PBP release may lag the game day. Prior
+          # current-season months are required; the current month is optional.
+          if [ "$current_month_num" -gt 3 ]; then
+            for m in $(seq 3 "$((current_month_num - 1))"); do
+              download_if_needed "$current_year-$(printf '%02d' "$m")_pbp.csv"
+            done
+          fi
+          current_month_file="$current_year-$(printf '%02d' "$current_month_num")_pbp.csv"
+          if awk -F '\t' -v n="$current_month_file" '$1==n {found=1} END{exit(found ? 0 : 1)}' results/pbp_release_manifest.tsv; then
+            download_if_needed "$current_month_file"
+          else
+            echo "Current-month PBP asset not published yet: $current_month_file"
+          fi
           find data/pbp -maxdepth 1 -type f -name '*_pbp.csv' | sort > results/staged_pbp_files.txt
-          test "$(wc -l < results/staged_pbp_files.txt)" -ge 10
+          test "$(wc -l < results/staged_pbp_files.txt)" -ge 30
+          echo "staged_pbp_file_count=$(wc -l < results/staged_pbp_files.txt)"
 
       - name: Install numerical dependencies
         run: |
