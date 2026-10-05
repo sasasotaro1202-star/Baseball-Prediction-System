@@ -1,0 +1,265 @@
+name: NPB Rapid 60-90m Research Forecast
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/npb_rapid_pregame.py"
+      - "scripts/npb_fast_prediction.py"
+      - ".github/workflows/baseball_npb_rapid_pregame.yml"
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: npb-rapid-pregame
+  # Do not cancel an already-running forecast: the first completed snapshot
+  # can be archived and later scheduled runs will deduplicate by source/game.
+  cancel-in-progress: false
+
+env:
+  PYTHONPATH: .
+  PYTHONUNBUFFERED: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  rapid:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Detect rapid 60-90m due games
+        id: due
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile prediction/pregame_scheduler.py scripts/npb_rapid_pregame.py
+          python scripts/npb_rapid_pregame.py             --min-lead-minutes 60             --max-lead-minutes 90             --prediction-source RESEARCH_SHADOW_AUTO_90M             > rapid_pregame_scheduler.json
+          cat rapid_pregame_scheduler.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          obj = json.loads(Path("rapid_pregame_scheduler.json").read_text(encoding="utf-8"))
+          if obj.get("status") not in {"DUE", "NO_DUE_GAMES"}:
+              raise SystemExit("unexpected rapid scheduler status")
+          rows = obj.get("due_games", [])
+          for row in rows:
+              lead = float(row["lead_minutes"])
+              if not 60.0 < lead <= 90.0:
+                  raise SystemExit("rapid scheduler emitted a game outside 60-90m")
+              if row.get("prediction_source") != "RESEARCH_SHADOW_AUTO_90M":
+                  raise SystemExit("rapid scheduler emitted an unexpected source")
+              if row.get("prediction_eligibility") != "RESEARCH_SHADOW_PIT_SAFE_STARTERS_REQUIRED":
+                  raise SystemExit("rapid scheduler emitted unsafe eligibility")
+          Path("rapid_due_dates.txt").write_text(
+              "\n".join(str(x) for x in obj.get("due_dates", []))
+              + ("\n" if obj.get("due_dates") else ""),
+              encoding="utf-8",
+          )
+          PY
+          if [ -s rapid_due_dates.txt ]; then
+            echo "due=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "due=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Restore NPB historical PBP cache
+        if: steps.due.outputs.due == 'true'
+        id: npb_cache
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag_sha="$(gh api repos/armstjc/Nippon-Baseball-Data-Repository/git/ref/tags/pbp --jq '.object.sha')"
+          test -n "$tag_sha"
+          echo "tag_sha=$tag_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Cache NPB historical PBP
+        if: steps.due.outputs.due == 'true'
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809
+        with:
+          path: data/*_pbp.csv
+          key: ${{ runner.os }}-npb-pbp-${{ steps.npb_cache.outputs.tag_sha }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-npb-pbp-${{ steps.npb_cache.outputs.tag_sha }}-
+
+      - name: Install prediction dependencies
+        if: steps.due.outputs.due == 'true'
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check             --retries 10 --timeout 120 --prefer-binary -r requirements.txt
+
+      - name: Stage PIT-safe NPB historical PBP
+        if: steps.due.outputs.due == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p data
+          target="$(TZ=Asia/Tokyo date +%Y-%m-%d)"
+          year="${target%%-*}"
+          month="${target:5:2}"
+          month_num=$((10#$month))
+          if [ "$month_num" -le 2 ]; then
+            exit 0
+          fi
+          for m in $(seq 2 $((month_num - 1))); do
+            mm=$(printf "%02d" "$m")
+            f="data/$year-$mm"_pbp.csv
+            if [ -s "$f" ]; then
+              continue
+            fi
+            gh release download pbp               --repo armstjc/Nippon-Baseball-Data-Repository               --pattern "$year-$mm"_pbp.csv               --dir data               --clobber
+            test -s "$f"
+          done
+          test "$(find data -maxdepth 1 -type f -name '*_pbp.csv' | wc -l | tr -d ' ')" -ge 1
+
+      - name: Run bounded fast NPB research-shadow forecast
+        if: steps.due.outputs.due == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          date="$(head -n 1 rapid_due_dates.txt)"
+          python scripts/npb_fast_prediction.py             --date "$date"             --data-dir data             --research-shadow             --minimum-lead-minutes 0             > results/npb_fast_stdout.log             2> results/npb_fast_stderr.log
+          source_output="results/npb_shadow_$date.json"
+          output="results/npb_rapid_shadow_$date.json"
+          test -s "$source_output"
+          cp "$source_output" "$output"
+
+          python - "$output" "rapid_pregame_scheduler.json" <<'PY'
+          import json
+          import sys
+          from datetime import datetime
+          from pathlib import Path
+
+          output_path = Path(sys.argv[1])
+          scheduler_path = Path(sys.argv[2])
+          obj = json.loads(output_path.read_text(encoding="utf-8"))
+          sched = json.loads(scheduler_path.read_text(encoding="utf-8"))
+          due = {str(row["game_id"]): row for row in sched.get("due_games", [])}
+          if obj.get("execution_status") != "RESEARCH_SHADOW_EXECUTED":
+              status = str(obj.get("execution_status"))
+              if status == "BLOCKED_STARTERS":
+                  print("Official starters are not yet available; preserving fail-closed state.")
+                  raise SystemExit(0)
+              raise SystemExit("rapid forecast did not execute: " + status)
+
+          preds = [p for p in obj.get("predictions", []) if str(p.get("game_id", "")) in due]
+          if len(preds) != len(due):
+              raise SystemExit(
+                  f"rapid prediction coverage mismatch: due={len(due)} predictions={len(preds)}"
+              )
+
+          for pred in preds:
+              game_id = str(pred["game_id"])
+              cutoff = datetime.fromisoformat(pred["prediction_cutoff_utc"].replace("Z", "+00:00"))
+              generated = datetime.fromisoformat(pred["prediction_generated_at"].replace("Z", "+00:00"))
+              observed = datetime.fromisoformat(pred["starter_evidence_observed_at_utc"].replace("Z", "+00:00"))
+              start = datetime.fromisoformat(pred["datetime_jst"].replace("Z", "+00:00"))
+              lead = (start - generated).total_seconds() / 60.0
+              if not generated < start:
+                  raise SystemExit(f"{game_id}: generated at/after first pitch")
+              if not observed <= cutoff:
+                  raise SystemExit(f"{game_id}: starter evidence observed after cutoff")
+              if not cutoff < start:
+                  raise SystemExit(f"{game_id}: cutoff is not pregame")
+              if pred.get("pit_status") != "PASS":
+                  raise SystemExit(f"{game_id}: PIT status is not PASS")
+              if not 60.0 < lead <= 90.0:
+                  raise SystemExit(f"{game_id}: realized lead outside 60-90m")
+              pred["prediction_source"] = "RESEARCH_SHADOW_AUTO_90M"
+              pred["prediction_schedule"] = "scheduled"
+              pred["prediction_target_lead_minutes"] = 90.0
+
+          obj["predictions"] = preds
+          obj["rapid_pregame_window"] = "60_TO_90_MINUTES"
+          obj["scope"] = "RESEARCH_SHADOW"
+          obj["production_eligibility"] = False
+          obj["execution_status"] = "RESEARCH_SHADOW_EXECUTED"
+          output_path.write_text(
+              json.dumps(obj, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Archive rapid research-shadow experience
+        if: steps.due.outputs.due == 'true' && hashFiles('results/npb_rapid_shadow_*.json') != ''
+        run: |
+          set -euo pipefail
+          date="$(head -n 1 rapid_due_dates.txt)"
+          output="results/npb_rapid_shadow_$date.json"
+          if [ -s "$output" ] && grep -q '"execution_status": "RESEARCH_SHADOW_EXECUTED"' "$output"; then
+            python -m research.shadow_experience --archive "$output" --run-id "$GITHUB_RUN_ID"
+          else
+            echo "No executed rapid shadow result to archive."
+          fi
+
+      - name: Commit immutable rapid-shadow experience
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -d data/experience/research_shadow ]; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/experience/research_shadow
+          if git diff --cached --quiet; then
+            echo "No new rapid-shadow experience to commit."
+            exit 0
+          fi
+          git commit -m "Archive rapid NPB research forecast"
+          for attempt in 1 2 3; do
+            git fetch origin main
+            if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ]; then
+              if git push origin HEAD:main; then
+                exit 0
+              fi
+            else
+              git reset --hard origin/main
+              python -m research.shadow_experience --reconcile >/dev/null || true
+              git add data/experience/research_shadow
+              if git diff --cached --quiet; then
+                exit 0
+              fi
+              git commit -m "Archive rapid NPB research forecast (recovered)"
+              if git push origin HEAD:main; then
+                exit 0
+              fi
+            fi
+          done
+          echo "bounded rapid-shadow experience push recovery exhausted" >&2
+          exit 1
+
+      - name: Upload rapid forecast evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: npb-rapid-pregame-${{ github.run_id }}
+          path: |
+            rapid_pregame_scheduler.json
+            rapid_due_dates.txt
+            results/npb_rapid_shadow_*.json
+            results/npb_fast_stdout.log
+            results/npb_fast_stderr.log
+          if-no-files-found: warn
+          retention-days: 14
