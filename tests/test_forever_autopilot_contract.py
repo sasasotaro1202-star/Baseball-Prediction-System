@@ -31,8 +31,8 @@ def test_forever_autopilot_has_independent_bootstrap_heartbeat():
 def test_forever_autopilot_has_bounded_retry_and_current_main_gate():
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "gh_retry() {" in text
-    assert '[ "\${current_sha}" != "\${EVENT_SHA}" ]' in text
-    assert 'EVENT_SHA: \${{ github.sha }}' in text
+    assert '[ "${current_sha}" != "${EVENT_SHA}" ]' in text
+    assert 'EVENT_SHA: ${{ github.sha }}' in text
     assert "actions/setup-python@" in text
     assert "pytest>=8.3,<9" in text
 
@@ -42,8 +42,8 @@ def test_forever_autopilot_never_masks_failures():
     assert "continue-on-error: true" not in text
     assert "|| true" not in text
     assert "set +e" in text
-    assert 'if [ "\${rc}" -ne 0 ]; then' in text
-    assert 'exit "\${rc}"' in text
+    assert 'if [ "${rc}" -ne 0 ]; then' in text
+    assert 'exit "${rc}"' in text
 
 
 def test_forever_autopilot_is_bounded():
