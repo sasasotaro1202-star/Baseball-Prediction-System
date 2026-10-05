@@ -493,9 +493,13 @@ def test_legacy_push_startup_guard_is_present_in_all_zero_job_lanes():
         ".github/workflows/baseball_autonomous_control_plane.yml": 1,
         ".github/workflows/baseball_24h_research_autopilot.yml": 6,
     }
+    event_guard = "github.event_name == 'workflow_run'"
     for relpath, expected_count in expected_counts.items():
         text = (ROOT / relpath).read_text(encoding="utf-8")
         assert text.count(guard) == expected_count, (
             f"{relpath} guard count mismatch: "
             f"expected {expected_count}, got {text.count(guard)}"
         )
+
+    recovery = (ROOT / ".github" / "workflows" / "baseball_actions_recovery.yml").read_text(encoding="utf-8")
+    assert event_guard in recovery
