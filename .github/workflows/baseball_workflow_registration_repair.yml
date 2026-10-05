@@ -35,7 +35,7 @@ jobs:
           # produce startup/push failures with zero jobs after workflow renames.
           # Only these exact historical IDs are touched; no active research or
           # production workflow is discovered/disabled heuristically.
-          target_ids="375399090 359633887"
+          target_ids="375399090 359633887 375842323"
 
           printf '%s\n' "Checking known ghost workflow registrations..."
           for workflow_id in ${target_ids}; do
@@ -45,7 +45,7 @@ jobs:
             printf 'workflow_id=%s state=%s path=%s name=%s\n' "${workflow_id}" "${state}" "${path}" "${name}"
 
             case "${path}" in
-              .github/workflows/baseball_autonomous_control_plane_canonical.yml|.github/workflows/baseball_24h_research_autopilot_canonical.yml|.github/workflows/baseball_24h_research_keeper_canonical.yml|.github/workflows/npb_game_script_autoresearch_canonical.yml|.github/workflows/baseball_actions_recovery_canonical.yml|.github/workflows/baseball_actions_recovery.yml)
+              .github/workflows/baseball_autonomous_control_plane_canonical.yml|.github/workflows/baseball_24h_research_autopilot_canonical.yml|.github/workflows/baseball_24h_research_keeper_canonical.yml|.github/workflows/npb_game_script_autoresearch_canonical.yml|.github/workflows/baseball_actions_recovery_canonical.yml|.github/workflows/baseball_actions_recovery.yml|.github/workflows/baseball_actions_recovery_v2.yml)
                 ;;
               *)
                 echo "Safety guard: workflow ${workflow_id} path is outside the known ghost allowlist; refusing mutation." >&2
@@ -74,7 +74,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          target_ids="375399090 375399188 375399246 375399327 375399444"
+          target_ids="375399090 359633887 375842323"
           for workflow_id in ${target_ids}; do
             state="$(gh api "repos/${GH_REPO}/actions/workflows/${workflow_id}" --jq '.state // "unknown"')"
             case "${state}" in
