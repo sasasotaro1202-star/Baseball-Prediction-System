@@ -225,16 +225,12 @@ def test_control_plane_and_v44_triggers_keep_bounded_main_push_scope():
     control_trigger = control.split("permissions:", 1)[0]
     v44_trigger = v44.split("permissions:", 1)[0]
 
-    # Control-plane heartbeat is schedule-driven, with a narrowly scoped main
-    # push trigger only for its own control/recovery contract changes. Broad
-    # repository pushes remain excluded to prevent queue churn.
-    assert "push:" in control_trigger
-    assert "branches: [main]" in control_trigger
-    assert '"research/autonomous_control_plane.py"' in control_trigger
-    assert '"tests/test_autonomous_control_plane.py"' in control_trigger
-    assert '".github/workflows/baseball_actions_recovery.yml"' in control_trigger
+    # The control plane stays schedule/manual-driven. Its bounded keeper is the
+    # failover path; removing push avoids GitHub workflow-file startup churn.
+    assert "push:" not in control_trigger
     assert "schedule:" in control_trigger
     assert "workflow_dispatch:" in control_trigger
+    assert "baseball_24h_research_keeper.yml" not in control_trigger
 
     # v4.4 compatibility remains automatic for code/test changes, but excludes
     # append-only experience/data churn and unrelated documentation updates.
@@ -243,7 +239,6 @@ def test_control_plane_and_v44_triggers_keep_bounded_main_push_scope():
     assert "'**.py'" in v44_trigger
     assert "'tests/**'" in v44_trigger
     assert "data/experience" not in v44_trigger
-
 
 def test_npb_production_never_scores_started_games_and_accepts_empty_future_state():
     production = (ROOT / ".github" / "workflows" / "npb-production.yml").read_text(encoding="utf-8")
