@@ -30,6 +30,11 @@ The router selects:
 
 The request-generation workflow never promotes research to production and never bypasses PIT/eligibility gates.
 
+## Automatic recovery
+A user request must not stop at a blocked preferred runtime. The repository router may escalate from the preferred production lane to the validated research-shadow lane when the preferred lane produces no prediction for a known operational reason. The NPB fast lane additionally escalates to the starter-uncertainty-aware daily research implementation and, when that fails, to a PIT-safe emergency direct-run-rate research fallback.
+
+All fallback outputs are explicitly research-only. Production gates, PIT rules and adoption status are unchanged. If every registered lane fails, the result must be recorded as GENERATION_FAILED/UNAVAILABLE with failure evidence; no independent forecast may be substituted silently.
+
 ## Result
 
 The immutable result is written to:
