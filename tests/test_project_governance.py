@@ -425,3 +425,60 @@ def test_workflow_dispatch_empty_mapping_is_supported():
         ".github/workflows/baseball_autonomous_control_plane_canonical.yml",
         "workflow_dispatch",
     )
+
+
+def test_action_health_uses_workflow_scoped_history(monkeypatch):
+    from datetime import datetime, timezone
+    from research import project_governance as governance
+
+    monkeypatch.setenv("GITHUB_SHA", "current")
+    observed = []
+
+    def fake_gh_json(args):
+        endpoint = args[0]
+        observed.append(endpoint)
+        assert "/actions/workflows/" in endpoint
+        if "baseball_autonomous_control_plane_canonical.yml/runs" in endpoint:
+            return {
+                "workflow_runs": [{
+                    "path": ".github/workflows/baseball_autonomous_control_plane_canonical.yml",
+                    "status": "in_progress",
+                    "conclusion": None,
+                    "created_at": "2026-10-05T09:59:00Z",
+                    "updated_at": "2026-10-05T09:59:00Z",
+                    "head_sha": "current",
+                    "id": 401,
+                    "run_number": 401,
+                    "event": "schedule",
+                }]
+            }
+        if "npb-production.yml/runs" in endpoint:
+            return {
+                "workflow_runs": [{
+                    "path": ".github/workflows/npb-production.yml",
+                    "status": "completed",
+                    "conclusion": "success",
+                    "created_at": "2026-10-05T09:55:00Z",
+                    "updated_at": "2026-10-05T09:56:00Z",
+                    "head_sha": "current",
+                    "id": 402,
+                    "run_number": 402,
+                    "event": "schedule",
+                }]
+            }
+        return {"workflow_runs": []}
+
+    monkeypatch.setattr(governance, "_gh_json", fake_gh_json)
+    report = governance.action_health(
+        "owner/repo",
+        datetime(2026, 10, 5, 10, 0, tzinfo=timezone.utc),
+    )
+
+    assert report["query_strategy"] == "workflow_scoped_actions_history"
+    assert report["control_plane"]["state"] == "HEALTHY"
+    assert report["workflows"][".github/workflows/npb-production.yml"]["state"] == "HEALTHY"
+    assert any("baseball_closed_loop.yml/runs" in endpoint for endpoint in observed)
+    assert not any(
+        blocker.startswith("actions_no_recent_run:")
+        for blocker in report["blockers"]
+    )
