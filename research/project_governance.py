@@ -300,13 +300,8 @@ def _workflow_declares_event(workflow_path: str, event: str) -> bool:
         text = _read(path)
     except OSError:
         return True
-    return bool(
-        re.search(
-            rf"(?m)^  {re.escape(event)}:\s*(?:\{\{\}\})?\s*(?:#.*)?$",
-            text,
-        )
-    )
-
+    pattern = r"(?m)^  " + re.escape(event) + r":\s*(?:\{\})?\s*(?:#.*)?$"
+    return bool(re.search(pattern, text))
 
 def _supported_workflow_runs(runs: list[dict[str, Any]], workflow_path: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     supported: list[dict[str, Any]] = []
