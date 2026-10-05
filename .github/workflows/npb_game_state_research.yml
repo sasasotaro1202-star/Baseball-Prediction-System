@@ -155,24 +155,34 @@ jobs:
           from pathlib import Path
 
           obj = json.loads(Path("results/game_state_screening.json").read_text(encoding="utf-8"))
-          assert obj.get("status") == "RESEARCH_SCREENING_ONLY"
+          status = obj.get("status")
+          assert status in {"RESEARCH_SCREENING_ONLY", "RESEARCH_SCREENING_BLOCKED"}
           assert obj.get("decision") == "HOLD_RESEARCH_ONLY"
           assert obj.get("pit_status", "").startswith("UNVERIFIABLE")
           assert obj.get("production_eligible") is False
 
-          aggregate = obj.get("aggregate", {})
-          for model in ("candidate", "poisson_baseline"):
-              for phase in ("validation", "holdout"):
-                  row = aggregate[model][phase]
-                  assert row["rows"] > 0
-                  for metric in ("accuracy", "logloss", "brier", "ece", "score_mae", "top1_exact", "top4_exact"):
-                      assert isinstance(row[metric], (int, float))
-                      assert row[metric] == row[metric]
+          if status == "RESEARCH_SCREENING_BLOCKED":
+              kernel = obj.get("kernel", {})
+              assert int(kernel.get("transitions", 0)) < 100
+              assert "insufficient valid PIT-screening transitions" in obj.get("reason", "")
+              assert obj.get("aggregate") == {}
+              assert obj.get("evaluation_rows") == {"candidate": [], "baseline": []}
+          else:
+              aggregate = obj.get("aggregate", {})
+              for model in ("candidate", "poisson_baseline"):
+                  for phase in ("validation", "holdout"):
+                      row = aggregate[model][phase]
+                      assert row["rows"] > 0
+                      for metric in ("accuracy", "logloss", "brier", "ece", "score_mae", "top1_exact", "top4_exact"):
+                          assert isinstance(row[metric], (int, float))
+                          assert row[metric] == row[metric]
           print(json.dumps({
               "status": obj["status"],
               "decision": obj["decision"],
               "pit_status": obj["pit_status"],
-              "aggregate": aggregate,
+              "reason": obj.get("reason"),
+              "kernel": obj.get("kernel", {}),
+              "aggregate": obj.get("aggregate", {}),
               "delta_vs_poisson": obj.get("delta_vs_poisson", {}),
           }, ensure_ascii=False, indent=2))
           PY
