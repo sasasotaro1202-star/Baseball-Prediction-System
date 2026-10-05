@@ -2,6 +2,7 @@ name: Baseball 24h Supervisor
 
 on:
   # Push is deliberately limited to supervisor/control-plane infrastructure.
+  # Stable control-plane dispatch is verified by the scheduled supervisor.
   # It bootstraps the autonomous control plane immediately after changes while
   # normal 15-minute schedule supervision remains authoritative.
   push:
