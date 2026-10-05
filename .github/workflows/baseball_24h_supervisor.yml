@@ -70,7 +70,7 @@ jobs:
               active)
                 gh workflow disable "${workflow_id}" --repo "${GH_REPO}"
                 ;;
-              disabled_manually|disabled_inactivity)
+              disabled_manually|disabled_inactivity|deleted)
                 ;;
               *)
                 echo "Ghost workflow ${workflow_id} state=${state} is unverifiable/unexpected; fail closed." >&2
