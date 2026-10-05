@@ -3,7 +3,8 @@
 The control plane is a scheduler/recovery layer only. It does not promote
 models or rewrite production configuration. Expensive research is bounded to
 one heavy dispatch per cycle, while scheduler-stuck runs are cancelled and
-re-dispatched on the current main snapshot.
+re-dispatched on the current main snapshot. Workflow history is queried
+per-workflow so repository-wide Actions volume cannot hide the latest state.
 """
 from __future__ import annotations
 
@@ -57,6 +58,10 @@ TARGETS = (
     # protected by its own six-hour watchdog; this target gives the project
     # control plane a second bounded recovery path without production writes.
     Target(".github/workflows/npb_game_script_autoresearch.yml", 30.0, True, 60, 3.0),
+    # PR #204 added a separate six-hour Monte Carlo Game-Script Lab. Keep it
+    # inside the same autonomous heartbeat so a missed schedule cannot leave a
+    # newly-added research lane silently dormant.
+    Target(".github/workflows/baseball_game_script_lab.yml", 8.0, True, 60, 5.5),
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -74,9 +79,62 @@ def _gh(args: list[str]) -> str:
     return result.stdout
 
 def list_runs(repo: str) -> list[dict[str, Any]]:
-    payload = json.loads(_gh(["api", f"repos/{repo}/actions/runs?per_page=100&branch=main"]))
-    runs = payload.get("workflow_runs", [])
-    return [r for r in runs if r.get("head_branch") == "main"]
+    """Return recent main-branch runs with workflow-scoped history.
+
+    A repository-wide 100-run page is unsafe here because the project has many
+    scheduled workflows. High-frequency workflows can evict a low-frequency
+    target from that page and cause false no_recent_history decisions.
+    Querying each controlled workflow independently makes scheduler state
+    deterministic with respect to that target.
+    """
+    rows: list[dict[str, Any]] = []
+    for target in TARGETS:
+        raw = _gh([
+            "run",
+            "list",
+            "--repo",
+            repo,
+            "--workflow",
+            target.workflow,
+            "--branch",
+            "main",
+            "--limit",
+            "50",
+            "--json",
+            "databaseId,status,conclusion,createdAt,updatedAt,headSha,headBranch,event,path",
+        ])
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(
+                f"invalid workflow-run JSON for {target.workflow}: {exc}"
+            ) from exc
+        if not isinstance(payload, list):
+            raise RuntimeError(
+                f"unexpected workflow-run payload for {target.workflow}: "
+                f"{type(payload).__name__}"
+            )
+        for item in payload:
+            if not isinstance(item, dict):
+                raise RuntimeError(
+                    f"workflow-run row is not an object: {target.workflow}"
+                )
+            if item.get("headBranch") != "main":
+                continue
+            rows.append(
+                {
+                    "id": item.get("databaseId"),
+                    "status": item.get("status"),
+                    "conclusion": item.get("conclusion"),
+                    "created_at": item.get("createdAt"),
+                    "updated_at": item.get("updatedAt"),
+                    "head_sha": item.get("headSha"),
+                    "head_branch": item.get("headBranch"),
+                    "event": item.get("event"),
+                    "path": item.get("path") or target.workflow,
+                }
+            )
+    return rows
 
 def current_main_sha(repo: str) -> str:
     value = _gh(["api", f"repos/{repo}/git/ref/heads/main", "--jq", ".object.sha"]).strip()
@@ -168,144 +226,3 @@ def decide(
 
         result["reason"] = "active_run"
         return result
-
-    if not matching:
-        if attempts >= cap:
-            result["decision"], result["reason"] = "HOLD", "dispatch_cap_reached_without_history"
-        else:
-            result["decision"], result["reason"] = "DISPATCH", "no_recent_history"
-        return result
-
-    latest = matching[0]
-    result["latest_run_id"] = latest.get("id")
-    result["latest_status"] = latest.get("status")
-    result["latest_conclusion"] = latest.get("conclusion")
-    age_minutes = max(0.0, (now - parse_time(latest["created_at"])).total_seconds() / 60.0)
-    result["latest_age_minutes"] = round(age_minutes, 2)
-
-    if attempts >= cap:
-        result["decision"], result["reason"] = "HOLD", "dispatch_cap_reached"
-        return result
-
-    conclusion = latest.get("conclusion")
-    if conclusion == "skipped" and target.skip_is_healthy:
-        result["reason"] = "expected_skipped_state"
-    elif conclusion in RECOVERABLE and age_minutes >= 15:
-        result["decision"], result["reason"] = "DISPATCH", f"recoverable_terminal_state:{conclusion}"
-    elif conclusion == "success" and age_minutes >= target.max_age_hours * 60:
-        result["decision"], result["reason"] = "DISPATCH", "stale_success"
-    elif conclusion == "failure":
-        result["decision"], result["reason"] = "HOLD", "deterministic_failure_is_authoritative"
-    elif conclusion == "skipped":
-        result["reason"] = "skipped_within_controlled_state"
-    elif conclusion is None and age_minutes >= target.max_age_hours * 60:
-        result["decision"], result["reason"] = "DISPATCH", "stale_non_success_terminal_state"
-    else:
-        result["reason"] = "within_window"
-    return result
-
-def _active_for(runs: list[dict[str, Any]], workflow: str) -> list[dict[str, Any]]:
-    return [r for r in _matching(runs, workflow) if r.get("status") in ACTIVE]
-
-def cancel_run(repo: str, run_id: int) -> None:
-    _gh(["run", "cancel", str(run_id), "--repo", repo])
-    for _ in range(6):
-        time.sleep(2)
-        runs = list_runs(repo)
-        if not any(int(r.get("id", -1)) == int(run_id) and r.get("status") in ACTIVE for r in runs):
-            return
-    raise RuntimeError(f"cancel accepted but run remained active: {run_id}")
-
-def dispatch_and_verify(repo: str, target: Target, dispatch_epoch: int) -> int:
-    _gh(["workflow", "run", target.workflow, "--repo", repo, "--ref", "main"])
-    for _ in range(6):
-        time.sleep(2)
-        runs = list_runs(repo)
-        recent = [
-            r
-            for r in runs
-            if str(r.get("path", "")).lstrip("/") == target.workflow
-            and r.get("event") == "workflow_dispatch"
-            and parse_time(r["created_at"]).timestamp() >= dispatch_epoch
-        ]
-        if recent:
-            return int(recent[0]["id"])
-    raise RuntimeError(f"dispatch accepted but no new run observed: {target.workflow}")
-
-def run(repo: str, output: Path, max_dispatches_per_cycle: int = 2) -> dict[str, Any]:
-    now = datetime.now(timezone.utc)
-    runs = list_runs(repo)
-    main_sha = current_main_sha(repo)
-    decisions = [
-        decide(target, runs, now, max_dispatches_per_cycle, main_sha)
-        for target in TARGETS
-    ]
-    dispatched = 0
-    heavy_dispatched = 0
-
-    for item, target in zip(decisions, TARGETS):
-        if item["decision"] not in {"DISPATCH", "RECOVER"}:
-            continue
-        if dispatched >= max_dispatches_per_cycle:
-            item["decision"], item["reason"] = "HOLD", "cycle_dispatch_cap_reached"
-            continue
-        if target.heavy and heavy_dispatched >= 1:
-            item["decision"], item["reason"] = "HOLD", "heavy_dispatch_cap_reached"
-            continue
-
-        if item["decision"] == "RECOVER" and item.get("latest_run_id") is not None:
-            cancel_run(repo, int(item["latest_run_id"]))
-            item["recovered_run_id"] = int(item["latest_run_id"])
-
-        epoch = int(time.time())
-        run_id = dispatch_and_verify(repo, target, epoch)
-        item["decision"] = "DISPATCHED"
-        item["dispatched_run_id"] = run_id
-        dispatched += 1
-        if target.heavy:
-            heavy_dispatched += 1
-
-    blockers = [
-        x
-        for x in decisions
-        if x["decision"] == "HOLD"
-        and x["reason"] == "deterministic_failure_is_authoritative"
-    ]
-    report = {
-        "schema_version": 2,
-        "generated_at": now.isoformat(),
-        "git_commit": os.environ.get("GITHUB_SHA") or None,
-        "current_main_sha": main_sha,
-        "repository": repo,
-        "control_plane_status": "EXECUTED_WITH_BLOCKERS" if blockers else "EXECUTED",
-        "cycle_dispatch_count": dispatched,
-        "cycle_heavy_dispatch_count": heavy_dispatched,
-        "targets": decisions,
-        "deterministic_failure_targets": [x["workflow"] for x in blockers],
-        "safety_contract": {
-            "production_modified": False,
-            "auto_promotion": False,
-            "fail_closed": True,
-            "max_heavy_dispatches_per_cycle": 1,
-        },
-    }
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return report
-
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", ""))
-    parser.add_argument("--output", default="results/control_plane/autonomous_control_plane.json")
-    parser.add_argument("--max-dispatches-per-cycle", type=int, default=2)
-    args = parser.parse_args()
-    if not args.repo:
-        raise SystemExit("GITHUB_REPOSITORY is required")
-    if args.max_dispatches_per_cycle < 1:
-        raise SystemExit("--max-dispatches-per-cycle must be >= 1")
-    report = run(args.repo, ROOT / args.output, args.max_dispatches_per_cycle)
-    print(json.dumps(report, ensure_ascii=False, indent=2))
-    return 0
-
-if __name__ == "__main__":
-    raise SystemExit(main())
