@@ -317,6 +317,23 @@ def model_disagreement_summary(
     }
 
 
+def _allocate_scenarios(simulations: int, weights: np.ndarray) -> np.ndarray:
+    """Allocate draws proportionally with at least one draw per scenario."""
+    n = len(weights)
+    if simulations < n:
+        raise ValueError("simulations must be at least the number of scenarios")
+    remaining = simulations - n
+    if remaining == 0:
+        return np.ones(n, dtype=int)
+    raw = remaining * weights
+    base = np.floor(raw).astype(int)
+    remainder = raw - base
+    extra = remaining - int(base.sum())
+    order = np.argsort(-remainder, kind="mergesort")
+    base[order[:extra]] += 1
+    return base + 1
+
+
 def _score_matrix(scores: np.ndarray, max_runs: int) -> np.ndarray:
     if scores.ndim != 2 or scores.shape[1] != 2:
         raise ValueError("simulator output must have shape (n, 2)")
@@ -388,14 +405,11 @@ def posterior_predictive_run(
     if int(simulations) < len(normalized):
         raise ValueError("simulations must be at least the number of scenarios")
     rng = np.random.default_rng(int(seed))
-    # Give every explicit scenario at least one draw so its uncertainty is not
-    # silently removed by a multinomial zero allocation.
-    allocations = np.ones(len(normalized), dtype=int)
-    remaining = int(simulations) - len(normalized)
-    if remaining:
-        allocations += rng.multinomial(
-            remaining, np.array([s.weight for s in normalized], dtype=float)
-        )
+    # Stratified deterministic allocation preserves the declared scenario
+    # mixture and still leaves the inner game simulation stochastic.
+    allocations = _allocate_scenarios(
+        int(simulations), np.array([s.weight for s in normalized], dtype=float)
+    )
 
     all_scores: list[np.ndarray] = []
     scenario_reports: list[dict[str, Any]] = []
