@@ -20,7 +20,7 @@ The model uses recency-weighted team offense/defense strength as a weak conditio
 
 ## PIT policy
 
-Historical PBP is not assumed to be historically publication-time verifiable. Therefore every v4 screening result is:
+Historical PBP is not assumed to be historically publication-time verifiable. Therefore every v5 screening result is:
 
 `pit_status=UNVERIFIABLE_HISTORICAL_PBP_AVAILABILITY`
 
@@ -92,7 +92,7 @@ A code or historical-validation change invalidates the checkpoint and forces a f
 
 ## Redundant automation path
 
-The existing `Baseball 24h Research Autopilot` also contains an auxiliary Game-Script v4 fallback lane. It checks for a recent successful dedicated v4 run; when one exists it records a no-op delegation result, avoiding duplicate expensive computation. When the dedicated lane is absent or stale, the fallback downloads and verifies the same PBP release assets and runs either:
+The existing `Baseball 24h Research Autopilot` also contains an auxiliary Game-Script v5 fallback lane. It checks for a recent successful dedicated v5 run; when one exists it records a no-op delegation result, avoiding duplicate expensive computation. When the dedicated lane is absent or stale, the fallback downloads and verifies the same PBP release assets and runs either:
 
 `FULL_WFO_FALLBACK`
 
