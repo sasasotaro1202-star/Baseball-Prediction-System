@@ -1218,7 +1218,16 @@ def predict(
     X,y,meta=bt.build_features(hist)
     if len(X) != len(hist) or len(y) != len(hist):
         raise RuntimeError("Chronological feature contract failed: feature/label row count mismatch.")
-    fitted, validation_scores, _=bt.fit_ensemble(X,y,"NPB")
+    fast_shadow = bool(
+        research_shadow
+        and __import__("os").environ.get("BASEBALL_FAST_PRODUCTION", "0") == "1"
+    )
+    fitted, validation_scores, _=bt.fit_ensemble(
+        X,
+        y,
+        "NPB",
+        fast_oos=fast_shadow,
+    )
     if not fitted:
         raise RuntimeError("Production ensemble fitting failed.")
 
@@ -1711,6 +1720,24 @@ def main():
         action="store_true",
         help="Explicit research-only PIT-safe forecast lane; never unlocks production.",
     )
+    ap.add_argument(
+        "--minimum-lead-minutes",
+        type=float,
+        default=None,
+        help="Optional lower lead-time bound for pregame selection.",
+    )
+    ap.add_argument(
+        "--maximum-lead-minutes",
+        type=float,
+        default=None,
+        help="Optional upper lead-time bound for pregame selection.",
+    )
+    ap.add_argument(
+        "--preferred-lead-minutes",
+        type=float,
+        default=None,
+        help="Optional preferred lead-time target recorded in prediction metadata.",
+    )
     args=ap.parse_args()
     print(json.dumps(
         predict(
@@ -1718,8 +1745,9 @@ def main():
             args.data_dir,
             pregame_only=args.pregame_only,
             research_shadow=args.research_shadow,
-            minimum_lead_minutes=(0.0 if args.research_shadow and not args.pregame_only else None),
-            preferred_lead_minutes=(60.0 if args.pregame_only else None),
+            minimum_lead_minutes=args.minimum_lead_minutes,
+            maximum_lead_minutes=args.maximum_lead_minutes,
+            preferred_lead_minutes=args.preferred_lead_minutes,
         ),
         ensure_ascii=False,
         indent=2,
