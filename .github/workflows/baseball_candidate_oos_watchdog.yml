@@ -57,7 +57,7 @@ workflow = Path(".github/workflows/baseball_candidate_oos_watchdog.yml").read_te
 required = [
     "actions: write",
     "cron: '*/15 * * * *'",
-    "baseball_autonomous_control_plane_canonical.yml",
+    "baseball_autonomous_control_plane.yml",
     "gh workflow run",
     "gh run cancel",
     "python -m research.autonomous_control_plane",
@@ -80,7 +80,7 @@ PY
         run: |
           set -euo pipefail
 
-          CONTROL_WORKFLOW="baseball_autonomous_control_plane_canonical.yml"
+          CONTROL_WORKFLOW="baseball_autonomous_control_plane.yml"
           CURRENT_SHA="$(gh api "repos/${GH_REPO}/git/ref/heads/main" --jq '.object.sha')"
           test -n "${CURRENT_SHA}"
 
@@ -217,7 +217,7 @@ PY
             while IFS= read -r changed_path; do
               [ -n "${changed_path}" ] || continue
               case "${changed_path}" in
-                data/experience/*|tests/*|docs/*|README*|PROJECT_INSTRUCTIONS.md|results/*|.github/workflows/baseball_manual_prediction.yml|.github/workflows/baseball_60m_pregame_auto.yml|.github/workflows/baseball_24h_supervisor.yml|.github/workflows/baseball_closed_loop.yml|.github/workflows/baseball_actions_recovery_canonical.yml|.github/workflows/baseball_chat_async_dispatch.yml|.github/workflows/baseball_autonomous_control_plane_canonical.yml|.github/workflows/baseball_candidate_oos_watchdog.yml)
+                data/experience/*|tests/*|docs/*|README*|PROJECT_INSTRUCTIONS.md|results/*|.github/workflows/baseball_manual_prediction.yml|.github/workflows/baseball_60m_pregame_auto.yml|.github/workflows/baseball_24h_supervisor.yml|.github/workflows/baseball_closed_loop.yml|.github/workflows/baseball_actions_recovery_canonical.yml|.github/workflows/baseball_chat_async_dispatch.yml|.github/workflows/baseball_autonomous_control_plane.yml|.github/workflows/baseball_candidate_oos_watchdog.yml)
                   ;;
                 *)
                   return 1
