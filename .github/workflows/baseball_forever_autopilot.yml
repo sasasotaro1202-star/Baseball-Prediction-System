@@ -30,6 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          EVENT_SHA: ${{ github.sha }}
           CONTROL_WORKFLOW: baseball_autonomous_control_plane_canonical.yml
           STALE_MINUTES: "20"
           FAILURE_COOLDOWN_MINUTES: "10"
@@ -63,6 +64,12 @@ jobs:
           now="$(date -u +%s)"
           current_sha="$(gh_retry api "repos/$GH_REPO/git/ref/heads/main" --jq '.object.sha')"
           test -n "$current_sha"
+          if [ "$current_sha" != "$EVENT_SHA" ]; then
+            echo "event snapshot is superseded; refusing orchestration"
+            exit 0
+          fi
+
+          mkdir -p results/forever_autopilot
 
           runs="$(gh_retry api "repos/$GH_REPO/actions/workflows/$CONTROL_WORKFLOW/runs?branch=main&per_page=50")"
           test -n "$runs"
@@ -182,6 +189,21 @@ jobs:
             fi
           fi
 
+          jq -n \
+            --arg current "$current_sha" \
+            --arg event "$EVENT_SHA" \
+            --arg latest_id "$latest_id" \
+            --arg latest_status "$latest_status" \
+            --arg latest_conclusion "$latest_conclusion" \
+            --arg latest_sha "$latest_sha" \
+            --arg reason "$reason" \
+            --arg verified "$verified_run_id" \
+            --argjson age "$age" \
+            --argjson dispatch_count "$dispatch_count" \
+            --argjson bootstrap "$bootstrap" \
+            --argjson cancel "$cancel" \
+            '{schema_version:1,status:"EXECUTED",current_main_sha:$current,event_sha:$event,latest_control_plane_run:$latest_id,latest_status:$latest_status,latest_conclusion:$latest_conclusion,latest_head_sha:$latest_sha,latest_age_minutes:$age,workflow_dispatch_count_24h:$dispatch_count,decision:$reason,bootstrapped:($bootstrap == 1),cancelled_stale_run:($cancel == 1),verified_dispatch_run:$verified,fail_closed:true,auto_promotion:false}' > results/forever_autopilot/heartbeat.json
+
           {
             echo "## Baseball Forever Autopilot"
             echo "- current_main_sha: $current_sha"
@@ -197,3 +219,12 @@ jobs:
             echo "- fail_closed: true"
             echo "- auto_promotion: false"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload heartbeat evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: baseball-forever-autopilot-${{ github.run_id }}
+          path: results/forever_autopilot/heartbeat.json
+          if-no-files-found: warn
+          retention-days: 14
