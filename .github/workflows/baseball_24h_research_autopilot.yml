@@ -68,17 +68,17 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import re
-          from pathlib import Path
+                    import re
+                    from pathlib import Path
 
-          workflow = Path('.github/workflows/baseball_24h_research_autopilot.yml').read_text(encoding='utf-8')
-          paths = sorted(set(re.findall(r'tests/[A-Za-z0-9_.-]+\.py', workflow)))
-          if not paths:
-              raise SystemExit('24h autopilot has no targeted test paths')
-          missing = [path for path in paths if not Path(path).is_file()]
-          if missing:
-              raise SystemExit('24h autopilot references missing test files: ' + ', '.join(missing))
-          print('targeted_test_paths_ok=', len(paths))
+                    workflow = Path('.github/workflows/baseball_24h_research_autopilot.yml').read_text(encoding='utf-8')
+                    paths = sorted(set(re.findall(r'tests/[A-Za-z0-9_.-]+\.py', workflow)))
+                    if not paths:
+                        raise SystemExit('24h autopilot has no targeted test paths')
+                    missing = [path for path in paths if not Path(path).is_file()]
+                    if missing:
+                        raise SystemExit('24h autopilot references missing test files: ' + ', '.join(missing))
+                    print('targeted_test_paths_ok=', len(paths))
           PY
 
       - name: Compile and targeted tests
@@ -524,45 +524,45 @@ jobs:
           previous_context=""
           if [ -n "$previous_json" ]; then
             previous_code="$(python - "$previous_json" <<'PY'
-import json, sys
-try: print(json.load(open(sys.argv[1],encoding="utf-8")).get("code_fingerprint",""))
-except Exception: print("")
-PY
-)"
+          import json, sys
+          try: print(json.load(open(sys.argv[1],encoding="utf-8")).get("code_fingerprint",""))
+          except Exception: print("")
+          PY
+            )"
             previous_validation="$(python - "$previous_json" <<'PY'
-import json, sys
-try: print(json.load(open(sys.argv[1],encoding="utf-8")).get("validation_source_fingerprint",""))
-except Exception: print("")
-PY
-)"
+          import json, sys
+          try: print(json.load(open(sys.argv[1],encoding="utf-8")).get("validation_source_fingerprint",""))
+          except Exception: print("")
+          PY
+            )"
             previous_context="$(python - "$previous_json" <<'PY'
-import json, sys
-try: print(json.load(open(sys.argv[1],encoding="utf-8")).get("context_source_fingerprint",""))
-except Exception: print("")
-PY
-)"
+          import json, sys
+          try: print(json.load(open(sys.argv[1],encoding="utf-8")).get("context_source_fingerprint",""))
+          except Exception: print("")
+          PY
+            )"
           fi
 
           mode="FULL_WFO_FALLBACK"
           if [ "$delegated_recent" = "1" ] && [ "$previous_context" = "$current_context" ]; then
             python - <<'PY'
-import json, os
-from pathlib import Path
-Path("results/game_script_fallback.json").write_text(json.dumps({
-  "schema_version":"game-script-v5",
-  "status":"RESEARCH_DELEGATED_RECENT",
-  "candidate_role":"CHALLENGER_RESEARCH",
-  "decision":"NOOP_DELEGATED_RECENT_SUCCESS",
-  "pit_status":"UNVERIFIABLE_HISTORICAL_PBP_AVAILABILITY",
-  "production_eligible":False,
-  "delegation_source":"npb_game_script_autoresearch.yml",
-  "git_sha":os.environ["GITHUB_SHA"],
-  "source_fingerprint":Path("results/source_fingerprint.txt").read_text().strip(),
-  "validation_source_fingerprint":Path("results/validation_source_fingerprint.txt").read_text().strip(),
-  "context_source_fingerprint":Path("results/context_source_fingerprint.txt").read_text().strip(),
-  "code_fingerprint":Path("results/code_fingerprint.txt").read_text().strip(),
-},ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
-PY
+          import json, os
+          from pathlib import Path
+          Path("results/game_script_fallback.json").write_text(json.dumps({
+            "schema_version":"game-script-v5",
+            "status":"RESEARCH_DELEGATED_RECENT",
+            "candidate_role":"CHALLENGER_RESEARCH",
+            "decision":"NOOP_DELEGATED_RECENT_SUCCESS",
+            "pit_status":"UNVERIFIABLE_HISTORICAL_PBP_AVAILABILITY",
+            "production_eligible":False,
+            "delegation_source":"npb_game_script_autoresearch.yml",
+            "git_sha":os.environ["GITHUB_SHA"],
+            "source_fingerprint":Path("results/source_fingerprint.txt").read_text().strip(),
+            "validation_source_fingerprint":Path("results/validation_source_fingerprint.txt").read_text().strip(),
+            "context_source_fingerprint":Path("results/context_source_fingerprint.txt").read_text().strip(),
+            "code_fingerprint":Path("results/code_fingerprint.txt").read_text().strip(),
+          },ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+          PY
             exit 0
           fi
 
@@ -599,38 +599,38 @@ PY
           fi
           python -m research.game_script_engine "${args[@]}"
           python - <<'PY'
-import json, os
-from pathlib import Path
-p=Path("results/game_script_screening.json")
-obj=json.loads(p.read_text(encoding="utf-8"))
-obj["git_sha"]=os.environ["GITHUB_SHA"]
-obj["source_fingerprint"]=Path("results/source_fingerprint.txt").read_text().strip()
-obj["validation_source_fingerprint"]=Path("results/validation_source_fingerprint.txt").read_text().strip()
-obj["context_source_fingerprint"]=Path("results/context_source_fingerprint.txt").read_text().strip()
-obj["code_fingerprint"]=Path("results/code_fingerprint.txt").read_text().strip()
-obj["fallback_mode"]=__import__("os").environ.get("GAME_SCRIPT_FALLBACK_MODE","")
-p.write_text(json.dumps(obj,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
-PY
+          import json, os
+          from pathlib import Path
+          p=Path("results/game_script_screening.json")
+          obj=json.loads(p.read_text(encoding="utf-8"))
+          obj["git_sha"]=os.environ["GITHUB_SHA"]
+          obj["source_fingerprint"]=Path("results/source_fingerprint.txt").read_text().strip()
+          obj["validation_source_fingerprint"]=Path("results/validation_source_fingerprint.txt").read_text().strip()
+          obj["context_source_fingerprint"]=Path("results/context_source_fingerprint.txt").read_text().strip()
+          obj["code_fingerprint"]=Path("results/code_fingerprint.txt").read_text().strip()
+          obj["fallback_mode"]=__import__("os").environ.get("GAME_SCRIPT_FALLBACK_MODE","")
+          p.write_text(json.dumps(obj,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+          PY
 
       - name: Verify fallback evidence
         run: |
           set -euo pipefail
           test -s results/game_script_fallback.json || test -s results/game_script_screening.json
           python - <<'PY'
-import json
-from pathlib import Path
-for name in ("game_script_fallback.json","game_script_screening.json"):
-    p=Path("results")/name
-    if not p.exists(): continue
-    o=json.loads(p.read_text())
-    assert str(o.get("pit_status","")).startswith("UNVERIFIABLE")
-    assert o.get("production_eligible") is False
-    assert o.get("source_fingerprint")
-    assert o.get("validation_source_fingerprint")
-    assert o.get("context_source_fingerprint")
-    assert o.get("code_fingerprint")
-    break
-PY
+          import json
+          from pathlib import Path
+          for name in ("game_script_fallback.json","game_script_screening.json"):
+              p=Path("results")/name
+              if not p.exists(): continue
+              o=json.loads(p.read_text())
+              assert str(o.get("pit_status","")).startswith("UNVERIFIABLE")
+              assert o.get("production_eligible") is False
+              assert o.get("source_fingerprint")
+              assert o.get("validation_source_fingerprint")
+              assert o.get("context_source_fingerprint")
+              assert o.get("code_fingerprint")
+              break
+          PY
 
       - name: Preserve fallback evidence
         if: always()
@@ -686,34 +686,34 @@ PY
           export CURRENT_MAIN_SHA="$current_main"
           mkdir -p results/24h
           python - <<'PY'
-          import json, os
-          from pathlib import Path
-          root=Path('evidence')
-          files=sorted(str(p.relative_to(root)) for p in root.rglob('*') if p.is_file()) if root.exists() else []
-          lane_results={
-              'wave1_core_oos': os.environ['W1'],
-              'wave2_frontier': os.environ['W2'],
-              'wave3_candidate_oos': os.environ['W3'],
-              'wave4_meta_research': os.environ['W4'],
-          }
-          manifest={
-              'schema_version':2,
-              'workflow':'Baseball 24h Research Autopilot',
-              'run_id':'${{ github.run_id }}',
-              'research_ref':'${{ env.RESEARCH_REF }}',
-              'current_main_sha':os.environ['CURRENT_MAIN_SHA'],
-              'max_execution_minutes':1440,
-              'status':'COMPLETED' if all(v == 'success' for v in lane_results.values()) and not stale_run else 'PARTIAL_OR_BLOCKED',
-              'lane_results':lane_results,
-              'stale_run':stale_run,
-              'evidence_file_count':len(files),
-              'evidence_files':files[:2000],
-              'research_only':True,
-              'production_changed':False,
-              'promotion_by_workflow':False,
-          }
-          Path('results/24h/closeout_manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
-          print(json.dumps(manifest,ensure_ascii=False,indent=2))
+                    import json, os
+                    from pathlib import Path
+                    root=Path('evidence')
+                    files=sorted(str(p.relative_to(root)) for p in root.rglob('*') if p.is_file()) if root.exists() else []
+                    lane_results={
+                        'wave1_core_oos': os.environ['W1'],
+                        'wave2_frontier': os.environ['W2'],
+                        'wave3_candidate_oos': os.environ['W3'],
+                        'wave4_meta_research': os.environ['W4'],
+                    }
+                    manifest={
+                        'schema_version':2,
+                        'workflow':'Baseball 24h Research Autopilot',
+                        'run_id':'${{ github.run_id }}',
+                        'research_ref':'${{ env.RESEARCH_REF }}',
+                        'current_main_sha':os.environ['CURRENT_MAIN_SHA'],
+                        'max_execution_minutes':1440,
+                        'status':'COMPLETED' if all(v == 'success' for v in lane_results.values()) and not stale_run else 'PARTIAL_OR_BLOCKED',
+                        'lane_results':lane_results,
+                        'stale_run':stale_run,
+                        'evidence_file_count':len(files),
+                        'evidence_files':files[:2000],
+                        'research_only':True,
+                        'production_changed':False,
+                        'promotion_by_workflow':False,
+                    }
+                    Path('results/24h/closeout_manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+                    print(json.dumps(manifest,ensure_ascii=False,indent=2))
           PY
       - name: Upload closeout
         if: always()
