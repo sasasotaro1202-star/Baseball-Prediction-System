@@ -1,7 +1,7 @@
 name: Baseball Forever Autopilot
 
 # Single lightweight liveness entrypoint. Normal orchestration remains owned by
-# baseball_autonomous_control_plane_canonical.yml.
+# baseball_autonomous_control_plane.yml.
 on:
   schedule:
     - cron: "*/5 * * * *"
@@ -31,7 +31,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           EVENT_SHA: ${{ github.sha }}
-          CONTROL_WORKFLOW: baseball_autonomous_control_plane_canonical.yml
+          CONTROL_WORKFLOW: baseball_autonomous_control_plane.yml
           STALE_MINUTES: "20"
           FAILURE_COOLDOWN_MINUTES: "10"
           DAILY_DISPATCH_CAP: "6"
