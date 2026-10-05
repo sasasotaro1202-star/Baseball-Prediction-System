@@ -391,10 +391,19 @@ jobs:
           sha256sum results/pbp_release_manifest.tsv | awk '{print $1}' > results/source_fingerprint.txt
           awk -F '\t' '$1 ~ /^(2022|2023|2024|2025)-[0-9]{2}_pbp\\.csv$/ {print}' results/pbp_release_manifest.tsv | sha256sum | awk '{print $1}' > results/validation_source_fingerprint.txt
           awk -F '\t' '$1 ~ /^2026-[0-9]{2}_pbp\\.csv$/ {print}' results/pbp_release_manifest.tsv | sha256sum | awk '{print $1}' > results/context_source_fingerprint.txt
-          code_files=(research/game_script_common.py research/game_script_wfo.py research/game_script_engine.py tests/test_game_script_engine.py tests/test_game_script_automation_contract.py .github/workflows/npb_game_script_autoresearch.yml .github/workflows/npb_game_script_watchdog.yml docs/GAME_SCRIPT_V4.md)
+          code_files=(research/game_script_common.py research/game_script_wfo.py research/game_script_engine.py tests/test_game_script_engine.py tests/test_game_script_automation_contract.py .github/workflows/npb_game_script_autoresearch.yml .github/workflows/npb_game_script_watchdog.yml docs/GAME_SCRIPT_V5.md)
           (for f in "${code_files[@]}"; do sha256sum "$f"; done) | sha256sum | awk '{print $1}' > results/code_fingerprint.txt
 
-          dedicated_json="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow npb_game_script_autoresearch.yml --branch main --limit 20 --json databaseId,conclusion,createdAt,headSha 2>/dev/null || true)"
+          dedicated_query_status="PASS"
+          dedicated_query_rc=0
+          if dedicated_json="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow npb_game_script_autoresearch.yml --branch main --limit 20 --json databaseId,conclusion,createdAt,headSha 2>results/dedicated_query_error.log)"; then
+            dedicated_json="${dedicated_json:-[]}"
+          else
+            dedicated_query_rc=$?
+            dedicated_query_status="UNAVAILABLE"
+            dedicated_json="[]"
+            echo "Dedicated Game-Script run inspection unavailable (rc=${dedicated_query_rc}); fallback lane will remain research-only."
+          fi
           dedicated_success_id="$(echo "$dedicated_json" | jq -r '[.[] | select(.conclusion=="success")] | .[0].databaseId // empty')"
           dedicated_success_created="$(echo "$dedicated_json" | jq -r '[.[] | select(.conclusion=="success")] | .[0].createdAt // empty')"
           dedicated_success_sha="$(echo "$dedicated_json" | jq -r '[.[] | select(.conclusion=="success")] | .[0].headSha // empty')"
@@ -405,7 +414,7 @@ jobs:
             if [ "$age_minutes" -le 1500 ]; then delegated_recent=1; fi
           fi
 
-          printf 'dedicated_success_id=%s\ndedicated_recent=%s\n' "$dedicated_success_id" "$delegated_recent" | tee results/delegation_decision.txt
+          printf 'dedicated_success_id=%s\ndedicated_recent=%s\ndedicated_query_status=%s\ndedicated_query_rc=%s\n' "$dedicated_success_id" "$delegated_recent" "$dedicated_query_status" "$dedicated_query_rc" | tee results/delegation_decision.txt
 
       - name: Restore previous Game-Script evidence
         if: ${{ always() }}
@@ -415,15 +424,45 @@ jobs:
           set -euo pipefail
           mkdir -p .previous_evidence
           delegated_id="$(awk -F= '$1=="dedicated_success_id"{print $2; exit}' results/delegation_decision.txt)"
+          delegated_download_status="NOT_REQUESTED"
+          delegated_download_rc=0
           if [ -n "$delegated_id" ]; then
-            gh run download "$delegated_id" --repo "$GITHUB_REPOSITORY" --dir .previous_evidence 2>/dev/null || true
+            if gh run download "$delegated_id" --repo "$GITHUB_REPOSITORY" --dir .previous_evidence 2>results/dedicated_download_error.log; then
+              delegated_download_status="PASS"
+            else
+              delegated_download_rc=$?
+              delegated_download_status="FAILED"
+              echo "Dedicated Game-Script evidence download failed (rc=${delegated_download_rc}); continuing without delegated evidence."
+            fi
           fi
           if ! find .previous_evidence -type f -name 'game_script_checkpoint.json' -print -quit | grep -q .; then
-            autopilot_id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow baseball_24h_research_autopilot.yml --branch main --limit 20 --json databaseId,conclusion \
-              --jq '[.[] | select(.conclusion=="success")] | .[0].databaseId // empty' 2>/dev/null || true)"
-            if [ -n "$autopilot_id" ]; then
-              gh run download "$autopilot_id" --repo "$GITHUB_REPOSITORY" --name npb-game-script-fallback --dir .previous_evidence 2>/dev/null || true
+            autopilot_query_status="PASS"
+            autopilot_query_rc=0
+            if autopilot_json="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow baseball_24h_research_autopilot.yml --branch main --limit 20 --json databaseId,conclusion --jq '[.[] | select(.conclusion=="success")] | .[0].databaseId // empty' 2>results/autopilot_query_error.log)"; then
+              autopilot_id="${autopilot_json}"
+            else
+              autopilot_query_rc=$?
+              autopilot_query_status="UNAVAILABLE"
+              autopilot_id=""
+              echo "Autopilot fallback evidence inspection unavailable (rc=${autopilot_query_rc}); no prior fallback evidence will be restored."
             fi
+            if [ -n "$autopilot_id" ]; then
+              if gh run download "$autopilot_id" --repo "$GITHUB_REPOSITORY" --name npb-game-script-fallback --dir .previous_evidence 2>results/autopilot_download_error.log; then
+                autopilot_download_status="PASS"
+              else
+                autopilot_download_rc=$?
+                autopilot_download_status="FAILED"
+                echo "Autopilot Game-Script fallback evidence download failed (rc=${autopilot_download_rc}); continuing without restore."
+              fi
+            else
+              autopilot_download_status="NOT_REQUESTED"
+              autopilot_download_rc=0
+            fi
+          else
+            autopilot_query_status="NOT_REQUESTED"
+            autopilot_query_rc=0
+            autopilot_download_status="NOT_REQUESTED"
+            autopilot_download_rc=0
           fi
 
       - name: Stage only the PBP needed for Game-Script
@@ -479,7 +518,7 @@ jobs:
           current_code="$(tr -d '[:space:]' < results/code_fingerprint.txt)"
           current_validation="$(tr -d '[:space:]' < results/validation_source_fingerprint.txt)"
           current_context="$(tr -d '[:space:]' < results/context_source_fingerprint.txt)"
-          previous_json="$(find .previous_evidence -type f -name 'game_script_screening.json' -print -quit || true)"
+          previous_json="$(find .previous_evidence -type f -name 'game_script_screening.json' -print -quit)"
           previous_code=""
           previous_validation=""
           previous_context=""
@@ -510,7 +549,7 @@ PY
 import json, os
 from pathlib import Path
 Path("results/game_script_fallback.json").write_text(json.dumps({
-  "schema_version":"game-script-v4",
+  "schema_version":"game-script-v5",
   "status":"RESEARCH_DELEGATED_RECENT",
   "candidate_role":"CHALLENGER_RESEARCH",
   "decision":"NOOP_DELEGATED_RECENT_SUCCESS",
@@ -527,7 +566,7 @@ PY
             exit 0
           fi
 
-          checkpoint="$(find .previous_evidence -type f -name 'game_script_checkpoint.json' -print -quit || true)"
+          checkpoint="$(find .previous_evidence -type f -name 'game_script_checkpoint.json' -print -quit)"
           if [ "$delegated_recent" = "1" ] && [ "$previous_context" != "$current_context" ] && [ -n "$checkpoint" ] && [ "$previous_code" = "$current_code" ] && [ "$previous_validation" = "$current_validation" ]; then
             echo "Dedicated run is recent but current-season PBP changed; forcing shadow refresh."
             cp "$checkpoint" results/game_script_checkpoint.json
