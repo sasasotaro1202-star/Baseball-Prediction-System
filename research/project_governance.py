@@ -82,7 +82,7 @@ WORKFLOW_CONTRACTS: dict[str, dict[str, Any]] = {
         "max_age_hours": 30,
         "required": ("schedule:", "workflow_dispatch:"),
     },
-    ".github/workflows/baseball_autonomous_control_plane_canonical.yml": {
+    ".github/workflows/baseball_autonomous_control_plane.yml": {
         "monitor": True,
         "max_age_hours": 2,
         "required": ("schedule:", "cron: '*/15 * * * *'", "actions: write", "research.autonomous_control_plane"),
@@ -90,7 +90,7 @@ WORKFLOW_CONTRACTS: dict[str, dict[str, Any]] = {
     ".github/workflows/baseball_forever_autopilot.yml": {
         "monitor": True,
         "max_age_hours": 1,
-        "required": ("schedule:", "cron: \"*/5 * * * *\"", "actions: write", "baseball_autonomous_control_plane_canonical.yml"),
+        "required": ("schedule:", "cron: \"*/5 * * * *\"", "actions: write", "baseball_autonomous_control_plane.yml"),
     },
     ".github/workflows/baseball_governance_autopilot.yml": {
         "monitor": True,
@@ -371,7 +371,7 @@ def action_health(repo: str, now: datetime | None = None) -> dict[str, Any]:
         if contract.get("monitor"):
             scoped_runs[workflow_path] = _workflow_runs(repo, workflow_path)
 
-    control_path = ".github/workflows/baseball_autonomous_control_plane_canonical.yml"
+    control_path = ".github/workflows/baseball_autonomous_control_plane.yml"
     control_runs_all = list(scoped_runs.get(control_path, []))
     control_runs, control_unsupported_runs = _supported_workflow_runs(
         control_runs_all,
