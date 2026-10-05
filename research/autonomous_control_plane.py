@@ -349,6 +349,14 @@ def decide(
         return result
 
     conclusion = latest.get("conclusion")
+    latest_sha = str(latest.get("head_sha") or "")
+    # A terminal result belongs to the snapshot that produced it. A failed
+    # run from an older main revision must never block the current revision;
+    # re-evaluate the target on current main instead.
+    if current_sha and latest_sha and latest_sha != current_sha:
+        result["decision"], result["reason"] = "DISPATCH", "latest_run_on_superseded_sha"
+        return result
+
     if conclusion == "skipped" and target.skip_is_healthy:
         result["reason"] = "expected_skipped_state"
     elif conclusion in RECOVERABLE and age_minutes >= 15:
