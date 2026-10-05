@@ -219,15 +219,20 @@ def test_candidate_oos_watchdog_allows_validated_autonomous_control_plane_contin
     assert "Keeping queued candidate run" in text
 
 
-def test_control_plane_and_v44_triggers_do_not_react_to_unrelated_main_commits():
+def test_control_plane_and_v44_triggers_keep_bounded_main_push_scope():
     control = (ROOT / ".github" / "workflows" / "baseball_autonomous_control_plane.yml").read_text(encoding="utf-8")
     v44 = (ROOT / ".github" / "workflows" / "baseball_v44_compatibility.yml").read_text(encoding="utf-8")
     control_trigger = control.split("permissions:", 1)[0]
     v44_trigger = v44.split("permissions:", 1)[0]
 
-    # Control-plane heartbeat is schedule/manual driven. Broad main pushes create
-    # recursive orchestration pressure and are intentionally excluded.
-    assert "push:" not in control_trigger
+    # Control-plane heartbeat is schedule-driven, with a narrowly scoped main
+    # push trigger only for its own control/recovery contract changes. Broad
+    # repository pushes remain excluded to prevent queue churn.
+    assert "push:" in control_trigger
+    assert "branches: [main]" in control_trigger
+    assert '"research/autonomous_control_plane.py"' in control_trigger
+    assert '"tests/test_autonomous_control_plane.py"' in control_trigger
+    assert '"\.github/workflows/baseball_actions_recovery.yml"' in control_trigger
     assert "schedule:" in control_trigger
     assert "workflow_dispatch:" in control_trigger
 
@@ -277,17 +282,16 @@ def test_24h_supervisor_avoids_deterministic_failure_retry_loop():
 
 
 
-def test_24h_keeper_uses_consecutive_failure_streak():
+def test_24h_keeper_is_bounded_control_plane_failover():
     text = (ROOT / ".github" / "workflows" / "baseball_24h_research_keeper.yml").read_text(encoding="utf-8")
-    assert "failure_streak" in text
-    assert "consecutive_failure_streak" in text
-    assert "sort_by(.createdAt)" in text
-    assert "reverse" in text
-    assert "reduce .[] as $r" in text
-    assert 'elif $r.conclusion == "failure"' in text
-    assert ".done = true" in text
-    assert "three or more consecutive failed autopilot runs" in text
-    assert "recent_failures_24h" not in text
+
+    assert "baseball_autonomous_control_plane.yml" in text
+    assert "--branch main" in text
+    assert "Control plane is absent/stale; entering bounded 24h-autopilot failover mode." in text
+    assert "DAILY_FAILOVER_CAP" in text
+    assert "latest_failure_job_count=" in text
+    assert "latest successful 24h cycle is at least 24h old" in text
+    assert "consecutive_failure_streak" not in text
 
 
 def test_24h_research_autopilot_uses_current_commit_snapshot_and_no_push_trigger():
