@@ -73,6 +73,18 @@ def test_autonomous_control_plane_avoids_workflow_file_push_startup_trigger() ->
     assert "workflow_run:" not in trigger
 
 
+def test_keeper_recovers_control_plane_before_24h_failover() -> None:
+    text = _text(ROOT / ".github" / "workflows" / "baseball_24h_research_keeper.yml")
+
+    assert "First recovery tier: restore the canonical control plane itself." in text
+    assert "control_dispatch_attempts_24h" in text
+    assert 'control_dispatch_attempts_24h}" -lt 2' in text
+    assert 'control_dispatch_cooldown_minutes}" -ge 15' in text
+    assert "CONTROL_PLANE_RECOVERED" in text
+    assert "CONTROL_PLANE_RECOVERY_UNVERIFIED" in text
+    assert text.index("CONTROL_PLANE_RECOVERED") < text.index("24h-autopilot failover mode")
+
+
 def test_24h_keeper_is_main_scoped_bounded_failover_only() -> None:
     text = _text(ROOT / ".github" / "workflows" / "baseball_24h_research_keeper.yml")
 
