@@ -1,7 +1,7 @@
 name: Baseball Forever Autopilot
 
 # Single lightweight liveness entrypoint. Normal orchestration remains owned by
-# baseball_autonomous_control_plane.yml.
+# baseball_autonomous_control_plane_stable.yml.
 on:
   schedule:
     - cron: "*/5 * * * *"
@@ -26,7 +26,7 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - name: Reconcile canonical control plane
+      - name: Reconcile stable control plane
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
