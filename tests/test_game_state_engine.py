@@ -8,6 +8,7 @@ from research.game_state_engine import (
     TransitionKernel,
     _transition,
     canonicalize_pbp_frame,
+    evaluate_from_files,
     fit_transition_kernel,
     simulate_game,
 )
@@ -131,3 +132,23 @@ def test_sampling_keeps_observed_support():
 
 def test_pit_status_is_not_production_eligible():
     assert PIT_STATUS.startswith("UNVERIFIABLE")
+def test_evaluate_returns_blocked_when_valid_transitions_are_insufficient(tmp_path):
+    frame = _frame(1)
+    source = tmp_path / "2024-01_pbp.csv"
+    frame.to_csv(source, index=False)
+    result = evaluate_from_files(
+        [source],
+        development_end="2024-12-31",
+        validation_start="2025-01-01",
+        validation_end="2025-12-31",
+        holdout_start="2026-01-01",
+        max_validation_games=10,
+        max_holdout_games=10,
+        simulations=10,
+        seed=1,
+    )
+    assert result["status"] == "BLOCKED"
+    assert result["decision"] == "HOLD_RESEARCH_ONLY"
+    assert result["production_eligible"] is False
+    assert result["blocker"]["type"] == "INSUFFICIENT_VALID_TRANSITIONS"
+    assert result["blocker"]["observed"] < result["blocker"]["required_minimum"]
