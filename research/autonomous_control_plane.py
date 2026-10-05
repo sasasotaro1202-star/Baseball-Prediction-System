@@ -66,6 +66,11 @@ TARGETS = (
 
 ROOT = Path(__file__).resolve().parents[1]
 
+def workflow_cli_ref(workflow: str) -> str:
+    """Return the GitHub CLI workflow identifier for a canonical repository path."""
+    return Path(workflow).name
+
+
 def _gh(args: list[str]) -> str:
     result = subprocess.run(
         ["gh", *args],
@@ -95,7 +100,7 @@ def list_runs(repo: str) -> list[dict[str, Any]]:
             "--repo",
             repo,
             "--workflow",
-            target.workflow,
+            workflow_cli_ref(target.workflow),
             "--branch",
             "main",
             "--limit",
@@ -313,7 +318,7 @@ def cancel_run(repo: str, run_id: int) -> None:
     raise RuntimeError(f"cancel accepted but run remained active: {run_id}")
 
 def dispatch_and_verify(repo: str, target: Target, dispatch_epoch: int) -> int:
-    _gh(["workflow", "run", target.workflow, "--repo", repo, "--ref", "main"])
+    _gh(["workflow", "run", workflow_cli_ref(target.workflow), "--repo", repo, "--ref", "main"])
     for _ in range(6):
         time.sleep(2)
         runs = list_runs(repo)
