@@ -35,7 +35,7 @@ jobs:
           # produce startup/push failures with zero jobs after workflow renames.
           # Only these exact historical IDs are touched; no active research or
           # production workflow is discovered/disabled heuristically.
-          target_ids="374504043 375399090 375399444 359633887 375842323 375843510"
+          target_ids="374504043 375853241 375399090 375399444 359633887 375842323 375843510"
 
           workflow_state() {
             local workflow_id="$1"
@@ -61,7 +61,7 @@ jobs:
             printf 'workflow_id=%s state=%s path=%s name=%s\n' "${workflow_id}" "${state}" "${path}" "${name}"
 
             case "${path}" in
-              .github/workflows/baseball_autonomous_control_plane_canonical.yml|.github/workflows/baseball_24h_research_autopilot_canonical.yml|.github/workflows/baseball_24h_research_keeper_canonical.yml|.github/workflows/npb_game_script_autoresearch_canonical.yml|.github/workflows/baseball_actions_recovery_canonical.yml|.github/workflows/baseball_actions_recovery.yml|.github/workflows/baseball_actions_recovery_v2.yml|.github/workflows/baseball_actions_recovery_20261006.yml|.github/workflows/baseball_autonomous_control_plane.yml)
+              .github/workflows/baseball_autonomous_control_plane_canonical.yml|.github/workflows/baseball_24h_research_autopilot_canonical.yml|.github/workflows/baseball_24h_research_keeper_canonical.yml|.github/workflows/npb_game_script_autoresearch_canonical.yml|.github/workflows/baseball_actions_recovery_canonical.yml|.github/workflows/baseball_actions_recovery.yml|.github/workflows/baseball_actions_recovery_v2.yml|.github/workflows/baseball_actions_recovery_20261006.yml|.github/workflows/baseball_autonomous_control_plane.yml|.github/workflows/baseball_autonomous_control_plane_stable.yml)
                 ;;
               *)
                 echo "Safety guard: workflow ${workflow_id} path is outside the known ghost allowlist; refusing mutation." >&2
