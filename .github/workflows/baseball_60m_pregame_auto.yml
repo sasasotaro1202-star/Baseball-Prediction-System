@@ -1,6 +1,13 @@
 name: Baseball 60m Pregame Auto Prediction
+# Includes a bounded 60-90m rapid research-shadow lane; production remains on the canonical 50-60m PIT slot.
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/pregame_auto.sh"
+      - "scripts/npb_rapid_pregame.py"
+      - ".github/workflows/baseball_60m_pregame_auto.yml"
   workflow_dispatch:
     inputs:
       recovery_mode:
@@ -57,7 +64,12 @@ jobs:
             pregame_scheduler.json
             due_dates.txt
             research_shadow_due_dates.txt
+            rapid_due_dates.txt
+            rapid_pregame_scheduler.json
             results/npb_production_*.json
             results/npb_shadow_*.json
+            results/npb_rapid_shadow_*.json
+            results/npb_fast_stdout.log
+            results/npb_fast_stderr.log
           if-no-files-found: warn
           retention-days: 14
