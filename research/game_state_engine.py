@@ -380,7 +380,32 @@ def evaluate_from_files(
                 nh, no, nb, runs, scorer = t
                 key = _state_key(int(a["inning"]), str(a["half"]), int(a["outs"]), _base_mask(a), int(round(float(a["home_score"]) - float(a["away_score"]))))
                 outcome = (nh, no, nb, runs, scorer); exact[key][outcome] += 1; by_state[(key[0], key[1], key[2], key[3])][outcome] += 1; by_half[key[1]][outcome] += 1; transitions += 1
-    if transitions < 100: raise ValueError(f"insufficient valid transitions: {transitions} < 100")
+    if transitions < 100:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "status": "RESEARCH_SCREENING_BLOCKED",
+            "pit_status": PIT_STATUS,
+            "production_eligible": False,
+            "decision": "HOLD_RESEARCH_ONLY",
+            "reason": f"insufficient valid PIT-screening transitions: {transitions} < 100",
+            "development_end": development_end,
+            "validation_start": validation_start,
+            "validation_end": validation_end,
+            "holdout_start": holdout_start,
+            "input_files": [str(p) for p in files],
+            "input_file_count": len(files),
+            "kernel": {"transitions": int(transitions), "fingerprint": None},
+            "aggregate": {},
+            "delta_vs_poisson": {},
+            "evaluation_rows": {"candidate": [], "baseline": []},
+            "reproducibility": {
+                "seed": int(seed),
+                "simulations": int(simulations),
+                "chronological_order": "game_date_then_game_id",
+                "holdout_tuning": "FORBIDDEN",
+                "kernel_training_boundary": development_end,
+            },
+        }
     kernel = TransitionKernel(exact, by_state, by_half, transitions)
     games_df = pd.DataFrame(games).drop_duplicates("game_id").sort_values(["game_date", "game_id"]).reset_index(drop=True)
     if games_df.empty: raise ValueError("no games available")
