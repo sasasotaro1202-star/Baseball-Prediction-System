@@ -292,7 +292,7 @@ def test_dispatch_verification_is_workflow_scoped(monkeypatch):
 
 def test_control_plane_workflow_preserves_runtime_failure_evidence():
     workflow = (
-        __import__("pathlib").Path(".github/workflows/baseball_autonomous_control_plane_canonical.yml")
+        __import__("pathlib").Path(".github/workflows/baseball_autonomous_control_plane.yml")
         .read_text(encoding="utf-8")
     )
     assert "control_plane_runtime.log" in workflow
@@ -347,3 +347,13 @@ def test_only_unsupported_push_history_is_treated_as_no_valid_history():
     result = control_plane.decide(target, runs, now, current_sha="sha")
     assert result["decision"] == "DISPATCH"
     assert result["reason"] == "no_recent_history"
+
+
+def test_user_prediction_request_is_under_control_plane_supervision():
+    from research.autonomous_control_plane import TARGETS
+
+    targets = {target.workflow: target for target in TARGETS}
+    target = targets[".github/workflows/baseball-user-prediction-request.yml"]
+    assert target.heavy is False
+    assert target.max_age_hours <= 2.0
+    assert target.pending_recover_minutes <= 60
