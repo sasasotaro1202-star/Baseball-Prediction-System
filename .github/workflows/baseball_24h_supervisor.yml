@@ -2,16 +2,6 @@ name: Baseball 24h Supervisor
 
 on:
   workflow_dispatch:
-  # Keep push coverage intentionally narrow: orchestration changes/bootstrap
-  # only. Normal research/data commits must not create queue churn.
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/baseball_24h_supervisor.yml"
-      - ".github/workflows/baseball_autonomous_control_plane.yml"
-      - ".github/workflows/baseball_actions_recovery.yml"
-      - "research/autonomous_control_plane.py"
-      - "tests/test_autonomous_control_plane.py"
   workflow_run:
     workflows: ["Baseball Closed Loop Research"]
     types: [completed]
