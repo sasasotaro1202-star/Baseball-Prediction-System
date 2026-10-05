@@ -149,6 +149,10 @@ jobs:
       - name: Run PIT-governed early research forecast
         env:
           TARGET_DATE: ${{ inputs.target_date }}
+          # Explicit fast research profile: this lane is research-only and never changes production.
+          BASEBALL_FAST_OOS: "1"
+          BASEBALL_FAST_MODEL_POOL_NPB: "Logistic,HistGB,ExtraTrees,HierarchicalDrawResult"
+          BASEBALL_INNER_JOBS: "2"
           BASEBALL_TIME_BUDGET_SEC: "2400"
           BASEBALL_HARD_CAP_SEC: "3000"
           BASEBALL_SCORE_FAST_VALIDATION: "1"
