@@ -46,7 +46,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Deterministic failures must not enter an unbounded retry loop.\n          gh_retry() {
+          # Deterministic failures must not enter an unbounded retry loop.
+          gh_retry() {
             local attempt=1
             while true; do
               if gh "$@"; then
