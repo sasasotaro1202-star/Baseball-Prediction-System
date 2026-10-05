@@ -134,6 +134,38 @@ def list_runs(repo: str) -> list[dict[str, Any]]:
                     "path": item.get("path") or target.workflow,
                 }
             )
+
+    # A terminal failure with zero jobs is a different failure mode from a
+    # real job failure. Keep this explicit so the control plane can recover
+    # scheduler/Actions startup failures without hiding deterministic test or
+    # research failures. Unknown job counts remain fail-closed.
+    latest_by_workflow: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        workflow = str(row.get("path", ""))
+        current = latest_by_workflow.get(workflow)
+        if current is None or str(row.get("created_at", "")) > str(current.get("created_at", "")):
+            latest_by_workflow[workflow] = row
+    for target in TARGETS:
+        row = latest_by_workflow.get(target.workflow)
+        if not row or row.get("conclusion") != "failure" or not row.get("id"):
+            continue
+        raw_jobs = _gh([
+            "run",
+            "view",
+            str(row["id"]),
+            "--repo",
+            repo,
+            "--json",
+            "jobs",
+            "--jq",
+            ".jobs | length",
+        ]).strip()
+        try:
+            row["job_count"] = int(raw_jobs)
+        except ValueError as exc:
+            raise RuntimeError(
+                f"invalid job count for failed workflow {target.workflow}: {raw_jobs!r}"
+            ) from exc
     return rows
 
 def current_main_sha(repo: str) -> str:
@@ -253,7 +285,13 @@ def decide(
     elif conclusion == "success" and age_minutes >= target.max_age_hours * 60:
         result["decision"], result["reason"] = "DISPATCH", "stale_success"
     elif conclusion == "failure":
-        result["decision"], result["reason"] = "HOLD", "deterministic_failure_is_authoritative"
+        job_count = latest.get("job_count")
+        if job_count == 0 and age_minutes >= 15:
+            result["decision"], result["reason"] = "DISPATCH", "startup_failure_no_jobs"
+        else:
+            result["decision"], result["reason"] = "HOLD", "deterministic_failure_or_unverifiable_startup_state"
+            if job_count is not None:
+                result["failure_job_count"] = int(job_count)
     elif conclusion == "skipped":
         result["reason"] = "skipped_within_controlled_state"
     elif conclusion is None and age_minutes >= target.max_age_hours * 60:
@@ -327,7 +365,7 @@ def run(repo: str, output: Path, max_dispatches_per_cycle: int = 2) -> dict[str,
         x
         for x in decisions
         if x["decision"] == "HOLD"
-        and x["reason"] == "deterministic_failure_is_authoritative"
+        and x["reason"] == "deterministic_failure_or_unverifiable_startup_state"
     ]
     report = {
         "schema_version": 2,
