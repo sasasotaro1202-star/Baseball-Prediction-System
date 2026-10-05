@@ -160,7 +160,6 @@ jobs:
         env:
           GITHUB_SHA: ${{ github.sha }}
           REQUEST_FILE: ${{ github.event.inputs.request_file || 'prediction_requests/inbox/active.json' }}
-        continue-on-error: true
         run: |
           set -euo pipefail
           set +e
