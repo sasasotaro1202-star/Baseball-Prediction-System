@@ -482,3 +482,13 @@ def test_gate_workflows_skip_test_only_pushes_to_reduce_duplicate_ci():
         assert "      - 'tests/**'" in trigger
         assert "push:" in trigger
 
+
+
+
+def test_actions_recovery_defers_unsupported_legacy_events_before_retrying():
+    recovery = (ROOT / ".github" / ".github" / "workflows" / "baseball_actions_recovery.yml").read_text(encoding="utf-8")
+    assert "OBSERVED_EVENT: ${{ github.event.workflow_run.event }}" in recovery
+    assert "UNVERIFIABLE_WORKFLOW_DEFINITION" in recovery
+    assert "UNSUPPORTED_EVENT_DEFERRED" in recovery
+    assert "Observed event" in recovery and "declared by the current workflow" in recovery
+    assert "redispatching an unsupported trigger" in recovery
