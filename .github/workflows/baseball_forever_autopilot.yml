@@ -110,11 +110,53 @@ PY
             echo "## Baseball Forever Autopilot" >> "$GITHUB_STEP_SUMMARY"
             echo "- control_plane_status: FAILED_OR_SUPERSEDED" >> "$GITHUB_STEP_SUMMARY"
           fi
-          # The user-request lane is an on-demand workload, so it is not part
-          # of the normal research target list. It is nevertheless supervised
-          # here because a valid request must not be lost to a stale queued run,
-          # transient startup failure, or a failed immutable-result commit.
-          request_id="$(gh_retry api "repos/$GH_REPO/contents/$REQUEST_FILE?ref=main" --jq ".content" | tr -d "\n" | base64 --decode | jq -r ".request_id // empty")"
+      - name: Supervise user prediction request
+        id: request_watchdog
+        if: steps.snapshot.outputs.superseded != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT_SHA: ${{ github.sha }}
+          REQUEST_WORKFLOW: baseball-user-prediction-request.yml
+          REQUEST_FILE: prediction_requests/inbox/active.json
+          REQUEST_STALE_MINUTES: "20"
+          REQUEST_FAILURE_COOLDOWN_MINUTES: "10"
+          REQUEST_DAILY_DISPATCH_CAP: "4"
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh_retry() {
+            local attempt out rc
+            for attempt in 1 2 3 4; do
+              if out="$(gh "$@" 2>&1)"; then
+                printf '%s\n' "$out"
+                return 0
+              fi
+              rc=$?
+              echo "gh attempt $attempt/4 failed rc=$rc: $out" >&2
+              if printf '%s' "$out" | grep -Eq 'HTTP (400|401|403|404)' &&
+                 ! printf '%s' "$out" | grep -Eq 'HTTP (408|409|429)'; then
+                return "$rc"
+              fi
+              if [ "$attempt" -lt 4 ]; then
+                sleep $((attempt * 2))
+              else
+                return "$rc"
+              fi
+            done
+          }
+
+          now="$(date -u +%s)"
+          current_sha="$(gh_retry api "repos/$GH_REPO/git/ref/heads/main" --jq '.object.sha')"
+          test -n "$current_sha"
+          if [ "$current_sha" != "$EVENT_SHA" ]; then
+            echo "current main advanced during this run; preserving fail-closed state" >&2
+            exit 0
+          fi
+
+          mkdir -p results/forever_autopilot
+          request_id="$(gh_retry api "repos/$GH_REPO/contents/$REQUEST_FILE?ref=main" --jq '.content' | tr -d '\n' | base64 --decode | jq -r '.request_id // empty')"
           test -n "$request_id"
           request_result="prediction_requests/results/${request_id}.json"
           request_result_exists=0
@@ -122,21 +164,14 @@ PY
             request_result_exists=1
           fi
 
-          request_runs="$(gh_retry api "repos/$GH_REPO/actions/workflows/$REQUEST_WORKFLOW/runs?branch=main&per_page=20")"
-          request_dispatch_count="$(printf "%s" "$request_runs" | jq --argjson now "$now" '
-            [.workflow_runs[]
-             | select(.event == "push" or .event == "workflow_dispatch")
-             | select((.created_at | fromdateiso8601) >= ($now - 86400))]
-            | length')"
-          request_latest="$(printf "%s" "$request_runs" | jq -c '
-            .workflow_runs
-            | sort_by(.created_at)
-            | reverse
-            | .[0] // {}')"
-          request_latest_id="$(printf "%s" "$request_latest" | jq -r ".id // empty")"
-          request_latest_status="$(printf "%s" "$request_latest" | jq -r ".status // empty")"
-          request_latest_conclusion="$(printf "%s" "$request_latest" | jq -r ".conclusion // empty")"
-          request_latest_created="$(printf "%s" "$request_latest" | jq -r ".created_at // empty")"
+          request_runs="$(gh_retry api "repos/$GH_REPO/actions/workflows/$REQUEST_WORKFLOW/runs?branch=main&per_page=30")"
+          request_dispatch_count="$(printf '%s' "$request_runs" | jq --argjson now "$now" '[.workflow_runs[] | select((.created_at | fromdateiso8601) >= ($now - 86400))] | length')"
+          request_latest="$(printf '%s' "$request_runs" | jq -c '.workflow_runs | sort_by(.created_at) | reverse | .[0] // {}')"
+          request_latest_id="$(printf '%s' "$request_latest" | jq -r '.id // empty')"
+          request_latest_status="$(printf '%s' "$request_latest" | jq -r '.status // empty')"
+          request_latest_conclusion="$(printf '%s' "$request_latest" | jq -r '.conclusion // empty')"
+          request_latest_created="$(printf '%s' "$request_latest" | jq -r '.created_at // empty')"
+          request_latest_sha="$(printf '%s' "$request_latest" | jq -r '.head_sha // empty')"
           request_age=999999
           if [ -n "$request_latest_created" ]; then
             request_age=$(( (now - $(date -d "$request_latest_created" +%s)) / 60 ))
@@ -178,78 +213,56 @@ PY
           fi
           if [ "$request_bootstrap" -eq 1 ]; then
             if [ -z "$request_latest_id" ]; then
-              echo "No request run exists to rerun; preserving missing-request state for the next active.json push."
               request_reason="no_existing_request_run_to_rerun"
-            elif [ "$(printf "%s" "$request_latest" | jq -r ".head_sha // empty")" != "$current_sha" ]; then
-              echo "Latest request run is superseded; refusing to rerun stale request code."
+            elif [ "$request_latest_sha" != "$current_sha" ]; then
               request_reason="latest_request_run_superseded"
             else
-              request_rerun_attempt="$(gh_retry api "repos/$GH_REPO/actions/runs/$request_latest_id" --jq ".run_attempt")"
+              request_rerun_attempt="$(gh_retry api "repos/$GH_REPO/actions/runs/$request_latest_id" --jq '.run_attempt')"
               gh_retry run rerun "$request_latest_id" --repo "$GH_REPO"
               for attempt in 1 2 3 4 5; do
                 sleep 2
-                current_attempt="$(gh_retry api "repos/$GH_REPO/actions/runs/$request_latest_id" --jq ".run_attempt")"
+                current_attempt="$(gh_retry api "repos/$GH_REPO/actions/runs/$request_latest_id" --jq '.run_attempt')"
                 if [ "$current_attempt" -gt "$request_rerun_attempt" ]; then
                   request_verified_run_id="$request_latest_id"
                   break
                 fi
               done
               if [ -z "$request_verified_run_id" ]; then
-                echo "Request run rerun accepted but run attempt did not advance." >&2
+                echo "request run rerun accepted but run attempt did not advance" >&2
                 exit 1
               fi
             fi
           fi
 
-          request_watchdog_json="results/forever_autopilot/request_watchdog.json"
           jq -n \
+            --arg current "$current_sha" \
+            --arg event "$EVENT_SHA" \
             --arg request_id "$request_id" \
             --arg latest_id "$request_latest_id" \
             --arg latest_status "$request_latest_status" \
             --arg latest_conclusion "$request_latest_conclusion" \
+            --arg latest_sha "$request_latest_sha" \
             --arg reason "$request_reason" \
             --arg verified "$request_verified_run_id" \
+            --arg rerun_attempt "$request_rerun_attempt" \
             --argjson result_exists "$request_result_exists" \
             --argjson age "$request_age" \
             --argjson dispatch_count "$request_dispatch_count" \
             --argjson bootstrap "$request_bootstrap" \
             --argjson cancel "$request_cancel" \
-            '{schema_version:1,status:"EXECUTED",request_id:$request_id,result_exists:($result_exists==1),latest_run_id:$latest_id,latest_status:$latest_status,latest_conclusion:$latest_conclusion,latest_age_minutes:$age,workflow_dispatch_count_24h:$dispatch_count,decision:$reason,bootstrapped:($bootstrap==1),cancelled_stale_run:($cancel==1),verified_dispatch_run:$verified,fail_closed:true,production_mutation:false}' > "$request_watchdog_json"
+            '{schema_version:1,status:"EXECUTED",current_main_sha:$current,event_sha:$event,request_id:$request_id,result_exists:($result_exists==1),latest_run_id:$latest_id,latest_status:$latest_status,latest_conclusion:$latest_conclusion,latest_head_sha:$latest_sha,latest_age_minutes:$age,workflow_runs_24h:$dispatch_count,decision:$reason,bootstrapped:($bootstrap==1),cancelled_stale_run:($cancel==1),verified_rerun_run:$verified,run_attempt_before_rerun:$rerun_attempt,fail_closed:true,production_mutation:false}' > results/forever_autopilot/request_watchdog.json
 
           jq -n \
             --arg current "$current_sha" \
             --arg event "$EVENT_SHA" \
-            --arg latest_id "$latest_id" \
-            --arg latest_status "$latest_status" \
-            --arg latest_conclusion "$latest_conclusion" \
-            --arg latest_sha "$latest_sha" \
-            --arg reason "$reason" \
-            --arg verified "$verified_run_id" \
-            --argjson age "$age" \
-            --argjson dispatch_count "$dispatch_count" \
-            --argjson bootstrap "$bootstrap" \
-            --argjson cancel "$cancel" \
-            '{schema_version:1,status:"EXECUTED",current_main_sha:$current,event_sha:$event,latest_control_plane_run:$latest_id,latest_status:$latest_status,latest_conclusion:$latest_conclusion,latest_head_sha:$latest_sha,latest_age_minutes:$age,workflow_dispatch_count_24h:$dispatch_count,decision:$reason,bootstrapped:($bootstrap == 1),cancelled_stale_run:($cancel == 1),verified_dispatch_run:$verified,fail_closed:true,auto_promotion:false}' > results/forever_autopilot/heartbeat.json
-
-          {
-            echo "## Baseball Forever Autopilot"
-            echo "- current_main_sha: $current_sha"
-            echo "- latest_control_plane_run: $latest_id"
-            echo "- latest_status: $latest_status"
-            echo "- latest_conclusion: $latest_conclusion"
-            echo "- latest_age_minutes: $age"
-            echo "- workflow_dispatch_count_24h: $dispatch_count"
-            echo "- decision: $reason"
-            echo "- bootstrapped: $bootstrap"
-            echo "- cancelled_stale_run: $cancel"
-            echo "- verified_dispatch_run: $verified_run_id"
-          echo "- request_watchdog_request_id: $request_id"
-          echo "- request_watchdog_decision: $request_reason"
-          echo "- request_watchdog_bootstrapped: $request_bootstrap"
-          echo "- request_watchdog_verified_run: $request_verified_run_id"
-            echo "- fail_closed: true"
-            echo "- auto_promotion: false"
-          } >> "$GITHUB_STEP_SUMMARY"
+            --arg control_status "$(python - <<'PY' 2>/dev/null || true
+import json
+from pathlib import Path
+p=Path('results/control_plane/forever_autonomous_control_plane.json')
+print(json.loads(p.read_text(encoding='utf-8')).get('control_plane_status','UNVERIFIABLE') if p.exists() else 'UNVERIFIABLE')
+PY
+            )" \
+            '{schema_version:1,status:"EXECUTED",current_main_sha:$current,event_sha:$event,control_plane_status:$control_status,request_watchdog: true,fail_closed:true,auto_promotion:false}' > results/forever_autopilot/heartbeat.json
 
       - name: Upload heartbeat evidence
         if: always()
