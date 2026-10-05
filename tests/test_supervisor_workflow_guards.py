@@ -82,6 +82,9 @@ def test_keeper_recovers_control_plane_before_24h_failover() -> None:
     assert '[ "$control_dispatch_cooldown_minutes" -ge 15 ]' in text
     assert "CONTROL_PLANE_RECOVERED" in text
     assert "CONTROL_PLANE_RECOVERY_UNVERIFIED" in text
+    assert "SUPERVISOR_WORKFLOW: baseball_24h_supervisor.yml" in text
+    assert "Primary supervisor is healthy/active; keeper remains passive" in text
+    assert text.index("Primary supervisor is healthy/active") < text.index("First recovery tier: restore the canonical control plane itself.")
     assert text.index("CONTROL_PLANE_RECOVERED") < text.index("24h-autopilot failover mode")
 
 
