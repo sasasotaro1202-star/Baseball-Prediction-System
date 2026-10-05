@@ -30,3 +30,9 @@ def test_zero_job_path_defines_retry_helper_before_first_use():
     assert definition < first_use
     assert "job_count=\"$(gh_retry run view" in workflow
     assert "prior_job_count=\"$(gh_retry run view" in workflow
+
+
+def test_recovery_only_operates_on_main_branch_events():
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    assert "github.event.workflow_run.head_branch == 'main'" in workflow
+    assert "github.event.workflow_run.conclusion == 'failure'" in workflow
