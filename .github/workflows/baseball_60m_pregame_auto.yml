@@ -41,6 +41,8 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
 
       - name: Syntax-check pregame automation
         run: bash -n scripts/pregame_auto.sh
