@@ -109,7 +109,7 @@ def _parse_state(
 ) -> tuple[int | None, str | None]:
     if columns.page:
         raw = str(row.get(columns.page, "")).strip()
-        match = re.match(r"^(\d{1,2})([TBtb12])", raw)
+        match = re.match(r"^(\d{2})([TBtb12])", raw)
         if match:
             return (
                 int(match.group(1)),
@@ -225,6 +225,8 @@ def build_half_innings(
         },
         index=raw.index,
     )
+    if columns.page:
+        work[columns.page] = raw[columns.page]
     if columns.serial:
         work[columns.serial] = raw[columns.serial]
     if columns.half:
