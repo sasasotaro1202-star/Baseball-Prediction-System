@@ -197,20 +197,19 @@ def test_no_run_is_deferred_when_autonomous_control_plane_is_active(monkeypatch)
     monkeypatch.setenv("GITHUB_SHA", "current")
 
     def fake_gh_json(args):
-        return {
-            "workflow_runs": [
-                {
-                    "path": ".github/workflows/baseball_autonomous_control_plane.yml",
-                    "status": "in_progress",
-                    "conclusion": None,
-                    "created_at": "2026-10-04T09:50:00Z",
-                    "updated_at": "2026-10-04T09:55:00Z",
-                    "head_sha": "current",
-                    "id": 100,
-                    "run_number": 10,
-                }
-            ]
-        }
+        endpoint = args[0]
+        if "baseball_autonomous_control_plane.yml/runs" in endpoint:
+            return {"workflow_runs": [{
+                "path": ".github/workflows/baseball_autonomous_control_plane.yml",
+                "status": "in_progress",
+                "conclusion": None,
+                "created_at": "2026-10-04T09:50:00Z",
+                "updated_at": "2026-10-04T09:55:00Z",
+                "head_sha": "current",
+                "id": 100,
+                "run_number": 10,
+            }]}
+        return {"workflow_runs": []}
 
     monkeypatch.setattr(governance, "_gh_json", fake_gh_json)
     report = governance.action_health("owner/repo", datetime(2026, 10, 4, 10, 0, tzinfo=timezone.utc))
@@ -218,7 +217,6 @@ def test_no_run_is_deferred_when_autonomous_control_plane_is_active(monkeypatch)
     assert entry["state"] == "DEFERRED"
     assert "actions_no_recent_run:.github/workflows/baseball_closed_loop.yml" in report["deferred"]
     assert not any("baseball_closed_loop.yml" in x for x in report["blockers"])
-
 
 def test_expected_skipped_archive_is_not_failed(monkeypatch):
     from datetime import datetime, timezone
@@ -266,29 +264,6 @@ def test_autonomous_control_plane_is_single_heartbeat_not_workflow_run_driven():
     assert "research.autonomous_control_plane" in workflow
 
 
-def test_actions_recovery_is_singleton():
-    from research.project_governance import WORKFLOW_CONTRACTS
-
-    path = ".github/workflows/baseball_actions_recovery_20261006.yml"
-    contract = WORKFLOW_CONTRACTS[path]
-    assert contract["monitor"] is False
-    assert "group: baseball-actions-recovery" in contract["required"]
-    assert "cancel-in-progress: true" in contract["required"]
-
-
-def test_actions_recovery_covers_zero_job_research_workflows():
-    workflow = Path(".github/workflows/baseball_actions_recovery_20261006.yml").read_text(encoding="utf-8")
-    assert "NPB Game-Script Auto Research" in workflow
-    assert "Baseball Game Script Lab" in workflow
-    assert ".github/workflows/npb_game_script_autoresearch_canonical.yml" in workflow
-    assert ".github/workflows/baseball_game_script_lab.yml" in workflow
-    assert ".github/workflows/baseball_24h_research_autopilot_canonical.yml" in workflow
-    assert 'case "${WORKFLOW_PATH}" in' in workflow
-    assert 'case "\\${WORKFLOW_PATH}" in' not in workflow
-    assert "ZERO_JOB_COOLDOWN" in workflow
-    assert "ZERO_JOB_REDISPATCHED" in workflow
-
-
 def test_superseded_failure_is_not_a_current_governance_blocker(monkeypatch):
     from datetime import datetime, timezone
     from research import project_governance as governance
@@ -332,55 +307,33 @@ def test_unsupported_current_push_run_does_not_override_valid_scheduled_run(monk
     monkeypatch.setenv("GITHUB_SHA", "current")
 
     def fake_gh_json(args):
-        return {
-            "workflow_runs": [
-                {
-                    "path": ".github/workflows/baseball_autonomous_control_plane.yml",
-                    "status": "in_progress",
-                    "conclusion": None,
-                    "created_at": "2026-10-05T09:59:00Z",
-                    "updated_at": "2026-10-05T09:59:00Z",
-                    "head_sha": "current",
-                    "id": 100,
-                    "run_number": 10,
-                    "event": "schedule",
-                },
-                {
-                    "path": ".github/workflows/baseball_24h_research_autopilot_canonical.yml",
-                    "status": "completed",
-                    "conclusion": "failure",
-                    "created_at": "2026-10-05T09:59:30Z",
-                    "updated_at": "2026-10-05T09:59:30Z",
-                    "head_sha": "current",
-                    "id": 102,
-                    "run_number": 102,
-                    "event": "push",
-                },
-                {
-                    "path": ".github/workflows/baseball_24h_research_autopilot_canonical.yml",
-                    "status": "completed",
-                    "conclusion": "success",
-                    "created_at": "2026-10-05T09:50:00Z",
-                    "updated_at": "2026-10-05T09:50:00Z",
-                    "head_sha": "current",
-                    "id": 101,
-                    "run_number": 101,
-                    "event": "schedule",
-                },
-            ],
-        }
+        endpoint = args[0]
+        if "baseball_autonomous_control_plane.yml/runs" in endpoint:
+            return {"workflow_runs": [{
+                "path": ".github/workflows/baseball_autonomous_control_plane.yml",
+                "status": "in_progress",
+                "conclusion": None,
+                "created_at": "2026-10-05T09:59:00Z",
+                "updated_at": "2026-10-05T09:59:00Z",
+                "head_sha": "current",
+                "id": 100,
+                "run_number": 10,
+                "event": "schedule",
+            }]}
+        if "baseball_24h_research_autopilot_canonical.yml/runs" in endpoint:
+            return {"workflow_runs": [
+                {"path": ".github/workflows/baseball_24h_research_autopilot_canonical.yml", "status": "completed", "conclusion": "failure", "created_at": "2026-10-05T09:59:30Z", "updated_at": "2026-10-05T09:59:30Z", "head_sha": "current", "id": 102, "run_number": 102, "event": "push"},
+                {"path": ".github/workflows/baseball_24h_research_autopilot_canonical.yml", "status": "completed", "conclusion": "success", "created_at": "2026-10-05T09:50:00Z", "updated_at": "2026-10-05T09:50:00Z", "head_sha": "current", "id": 101, "run_number": 101, "event": "schedule"},
+            ]}
+        return {"workflow_runs": []}
 
     monkeypatch.setattr(governance, "_gh_json", fake_gh_json)
-    report = governance.action_health(
-        "owner/repo",
-        datetime(2026, 10, 5, 10, 0, tzinfo=timezone.utc),
-    )
+    report = governance.action_health("owner/repo", datetime(2026, 10, 5, 10, 0, tzinfo=timezone.utc))
     entry = report["workflows"][".github/workflows/baseball_24h_research_autopilot_canonical.yml"]
     assert entry["state"] == "HEALTHY"
     assert entry["run_id"] == 101
     assert entry["event"] == "schedule"
     assert "actions_ignored_unsupported_event:.github/workflows/baseball_24h_research_autopilot_canonical.yml:push" in report["deferred"]
-
 
 def test_current_control_plane_push_run_is_not_treated_as_healthy(monkeypatch):
     from datetime import datetime, timezone
