@@ -521,3 +521,8 @@ def test_canonical_actions_recovery_accepts_only_workflow_run_events():
     text = (ROOT / ".github/workflows/baseball_actions_recovery_canonical.yml").read_text(encoding="utf-8")
     assert "github.event_name == 'workflow_run'" in text
     assert "github.event.workflow_run.head_branch == 'main'" in text
+
+def test_pregame_context_workflow_runs_pytest_for_pytest_style_tests():
+    workflow = (ROOT / ".github" / "workflows" / "baseball_pregame_context.yml").read_text(encoding="utf-8")
+    assert "python -m pytest -q tests/test_npb_pregame_context.py" in workflow
+    assert "python -m unittest discover -s tests -p 'test_npb_pregame_context.py' -v" not in workflow
