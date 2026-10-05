@@ -61,15 +61,12 @@ def test_top_before_bottom():
     assert inning_one[-1] == "B"
 
 
-def test_reconstructed_state_score_ignores_final_score_label():
+def test_reconstructed_state_rejects_inconsistent_final_score_label():
     raw = _frame(1)
     raw["home_total_runs"] = 9
     raw["away_total_runs"] = 8
     normalized = canonicalize_pbp_frame(raw)
-    assert not normalized.empty
-    first = normalized.iloc[0]
-    assert int(first["state_home_score"]) == 0
-    assert int(first["state_away_score"]) == 0
+    assert normalized.empty
 
 def test_score_reversal_is_rejected():
     current = {
@@ -84,7 +81,7 @@ def test_score_reversal_is_rejected():
         "on_2b": 0,
         "on_3b": 0,
     }
-    nxt = {**current, "outs": 2, "home_score": 0}
+    nxt = {**current, "outs": 2, "state_home_score": 0}
     assert _transition(current, nxt) is None
 
 
