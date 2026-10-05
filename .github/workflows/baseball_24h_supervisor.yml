@@ -110,7 +110,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TARGET_WORKFLOW: baseball_closed_loop.yml
-          CONTROL_PLANE_WORKFLOW: baseball_autonomous_control_plane.yml
+          CONTROL_PLANE_WORKFLOW: baseball_autonomous_control_plane_stable.yml
           EVENT_RUN_ID: ${{ github.event.workflow_run.id || '' }}
           EVENT_CONCLUSION: ${{ github.event.workflow_run.conclusion || '' }}
         shell: bash
