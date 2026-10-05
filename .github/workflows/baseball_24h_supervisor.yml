@@ -8,7 +8,7 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/baseball_24h_supervisor.yml"
-      - ".github/workflows/baseball_autonomous_control_plane_canonical.yml"
+      - ".github/workflows/baseball_autonomous_control_plane.yml"
       - "research/autonomous_control_plane.py"
   workflow_dispatch:
   workflow_run:
@@ -46,7 +46,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TARGET_WORKFLOW: baseball_closed_loop.yml
-          CONTROL_PLANE_WORKFLOW: baseball_autonomous_control_plane_canonical.yml
+          CONTROL_PLANE_WORKFLOW: baseball_autonomous_control_plane.yml
           EVENT_RUN_ID: ${{ github.event.workflow_run.id || '' }}
           EVENT_CONCLUSION: ${{ github.event.workflow_run.conclusion || '' }}
         shell: bash
