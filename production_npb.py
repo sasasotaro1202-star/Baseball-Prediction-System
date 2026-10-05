@@ -745,6 +745,30 @@ def _situation_tags(xrow: pd.DataFrame, regime_label: str) -> list[str]:
     tags.append(f"trend:{side(float(row.get('run_trend_gap_20', 0.0)), 0.12)}")
     return tags
 
+class _VisibleOfficialContentParser(HTMLParser):
+    """Collect visible game-content text while excluding navigation chrome."""
+
+    _excluded = {"script", "style", "noscript", "template", "nav", "header", "footer"}
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._excluded_depth = 0
+        self.parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        if tag.lower() in self._excluded:
+            self._excluded_depth += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() in self._excluded and self._excluded_depth:
+            self._excluded_depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if not self._excluded_depth:
+            value = _clean_name(data)
+            if value:
+                self.parts.append(value)
+
 def _official_daily_competition_metadata(
     page_html: str,
     source_url: str,
@@ -772,6 +796,33 @@ def _official_daily_competition_metadata(
             out["source_field"] = "npb_daily_schedule_heading"
             out["source_value"] = heading
             return out
+    # Some first-party game pages expose the explicit competition marker in
+    # the main content but not in an h1-h6 schedule heading. Read only visible
+    # content outside navigation chrome; navigation links are intentionally
+    # excluded because they enumerate unrelated competitions.
+    content_parser = _VisibleOfficialContentParser()
+    content_parser.feed(page_html)
+    visible_content = _clean_name(" ".join(content_parser.parts))
+    content_markers = (
+        "セ・リーグ公式戦",
+        "パ・リーグ公式戦",
+        "セ・パ公式戦",
+        "セ・パ交流戦",
+        "クライマックスシリーズ",
+        "日本シリーズ",
+    )
+    for marker in content_markers:
+        if marker not in visible_content:
+            continue
+        label = classify_npb(marker)
+        if label.status != "classified":
+            continue
+        out = label.as_dict()
+        out["source_url"] = source_url
+        out["source_field"] = "npb_game_content_competition_marker"
+        out["source_value"] = marker
+        out["retrieved_at_utc"] = datetime.now(timezone.utc).isoformat()
+        return out
     # The date-detail game page can omit a Japanese competition heading (and the
     # English page uses different headings). Reconcile against NPB's explicit
     # annual regular-season schedule page, but only when both the exact target
