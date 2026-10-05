@@ -106,7 +106,11 @@ required = [
 for token in required:
     if token not in workflow:
         raise SystemExit(f"missing autonomous control-plane contract token: {token}")
-if "continue-on-error: true" in workflow or "|| true" in workflow:
+forbidden_tokens = (
+    "continue-on-error:" + " true",
+    "|" + "| true",
+)
+if any(token in workflow for token in forbidden_tokens):
     raise SystemExit("failure masking is forbidden in the autonomous watchdog")
 print("autonomous control-plane contract: PASS")
 PY
