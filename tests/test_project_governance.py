@@ -274,3 +274,16 @@ def test_actions_recovery_is_singleton():
     assert contract["monitor"] is False
     assert "group: baseball-actions-recovery" in contract["required"]
     assert "cancel-in-progress: true" in contract["required"]
+
+
+def test_actions_recovery_covers_zero_job_research_workflows():
+    workflow = Path(".github/workflows/baseball_actions_recovery.yml").read_text(encoding="utf-8")
+    assert "NPB Game-Script Auto Research" in workflow
+    assert ".github/workflows/npb_game_script_autoresearch.yml" in workflow
+    assert "Baseball Game Script Lab" in workflow
+    assert ".github/workflows/baseball_game_script_lab.yml" in workflow
+    assert ".github/workflows/baseball_24h_research_autopilot.yml" in workflow
+    assert 'case "${WORKFLOW_PATH}" in' in workflow
+    assert 'case "\\${WORKFLOW_PATH}" in' not in workflow
+    assert "ZERO_JOB_COOLDOWN" in workflow
+    assert "ZERO_JOB_REDISPATCHED" in workflow
