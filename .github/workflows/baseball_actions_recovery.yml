@@ -66,6 +66,7 @@ jobs:
           RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
           WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
           WORKFLOW_PATH: ${{ github.event.workflow_run.path }}
+          OBSERVED_EVENT: ${{ github.event.workflow_run.event }}
         run: |
           set -euo pipefail
 
@@ -90,7 +91,38 @@ jobs:
 
           now_epoch="$(date +%s)"
           echo "Workflow=${WORKFLOW_NAME}"
-          echo "Run=${RUN_ID} attempt=${RUN_ATTEMPT} conclusion=${{ github.event.workflow_run.conclusion }}"
+          echo "Run=${RUN_ID} attempt=${RUN_ATTEMPT} event=${OBSERVED_EVENT} conclusion=${{ github.event.workflow_run.conclusion }}"
+
+          # GitHub can retain legacy workflow_run records whose event no
+          # longer exists in the checked-in workflow definition. Such a run
+          # is historical evidence, not a valid recovery target. Fail closed
+          # instead of redispatching an unsupported trigger and creating churn.
+          workflow_file="${GITHUB_WORKSPACE}/${WORKFLOW_PATH}"
+          if [ ! -f "${workflow_file}" ]; then
+            echo "Current workflow definition is unavailable at ${workflow_file}; refusing automatic recovery."
+            printf '%s\\n' 'Recovery terminal state: UNVERIFIABLE_WORKFLOW_DEFINITION; parent failure remains authoritative.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if ! python - "${workflow_file}" "${OBSERVED_EVENT}" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+event = sys.argv[2].strip()
+declared = set()
+for raw in path.read_text(encoding="utf-8").splitlines():
+    match = re.match(r"^  ([A-Za-z0-9_-]+):\\s*(?:\\{\\})?\\s*(?:#.*)?$", raw)
+    if match:
+        declared.add(match.group(1))
+if event and event not in declared:
+    raise SystemExit(1)
+PY
+          then
+            echo "Observed event '${OBSERVED_EVENT}' is not declared by the current workflow; preserving the historical failure without recovery."
+            printf '%s\\n' "Recovery terminal state: UNSUPPORTED_EVENT_DEFERRED:${OBSERVED_EVENT}; parent failure remains authoritative." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
 
           if [ "${RUN_ATTEMPT}" -ge 3 ]; then
             echo 'Recovery limit reached; refusing another automatic rerun.' >&2
