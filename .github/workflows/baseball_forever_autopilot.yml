@@ -32,6 +32,11 @@ jobs:
           GH_REPO: ${{ github.repository }}
           EVENT_SHA: ${{ github.sha }}
           CONTROL_WORKFLOW: baseball_autonomous_control_plane.yml
+          REQUEST_WORKFLOW: baseball-user-prediction-request.yml
+          REQUEST_FILE: prediction_requests/inbox/active.json
+          REQUEST_STALE_MINUTES: "20"
+          REQUEST_FAILURE_COOLDOWN_MINUTES: "10"
+          REQUEST_DAILY_DISPATCH_CAP: "4"
           STALE_MINUTES: "20"
           FAILURE_COOLDOWN_MINUTES: "10"
           DAILY_DISPATCH_CAP: "6"
@@ -189,6 +194,107 @@ jobs:
             fi
           fi
 
+          # The user-request lane is an on-demand workload, so it is not part
+          # of the normal research target list. It is nevertheless supervised
+          # here because a valid request must not be lost to a stale queued run,
+          # transient startup failure, or a failed immutable-result commit.
+          request_id="$(gh_retry api "repos/$GH_REPO/contents/$REQUEST_FILE?ref=main" --jq ".content" | tr -d "\n" | base64 --decode | jq -r ".request_id // empty")"
+          test -n "$request_id"
+          request_result="prediction_requests/results/${request_id}.json"
+          request_result_exists=0
+          if gh_retry api "repos/$GH_REPO/contents/${request_result}?ref=main" --silent >/dev/null 2>&1; then
+            request_result_exists=1
+          fi
+
+          request_runs="$(gh_retry api "repos/$GH_REPO/actions/workflows/$REQUEST_WORKFLOW/runs?branch=main&per_page=20")"
+          request_dispatch_count="$(printf "%s" "$request_runs" | jq --argjson now "$now" '
+            [.workflow_runs[]
+             | select(.event == "push" or .event == "workflow_dispatch")
+             | select((.created_at | fromdateiso8601) >= ($now - 86400))]
+            | length')"
+          request_latest="$(printf "%s" "$request_runs" | jq -c '
+            .workflow_runs
+            | sort_by(.created_at)
+            | reverse
+            | .[0] // {}')"
+          request_latest_id="$(printf "%s" "$request_latest" | jq -r ".id // empty")"
+          request_latest_status="$(printf "%s" "$request_latest" | jq -r ".status // empty")"
+          request_latest_conclusion="$(printf "%s" "$request_latest" | jq -r ".conclusion // empty")"
+          request_latest_created="$(printf "%s" "$request_latest" | jq -r ".created_at // empty")"
+          request_age=999999
+          if [ -n "$request_latest_created" ]; then
+            request_age=$(( (now - $(date -d "$request_latest_created" +%s)) / 60 ))
+          fi
+
+          request_bootstrap=0
+          request_cancel=0
+          request_reason="request_result_present"
+          if [ "$request_result_exists" -eq 1 ]; then
+            request_reason="request_result_present"
+          elif [ "$request_dispatch_count" -ge "$REQUEST_DAILY_DISPATCH_CAP" ]; then
+            request_reason="request_daily_dispatch_cap_reached"
+          elif [ "$request_latest_status" = "queued" ] || [ "$request_latest_status" = "pending" ] || [ "$request_latest_status" = "waiting" ] || [ "$request_latest_status" = "requested" ] || [ "$request_latest_status" = "in_progress" ]; then
+            if [ "$request_age" -ge "$REQUEST_STALE_MINUTES" ]; then
+              request_bootstrap=1
+              request_cancel=1
+              request_reason="stale_request_run"
+            else
+              request_reason="active_request_run"
+            fi
+          elif [ -z "$request_latest_id" ]; then
+            request_bootstrap=1
+            request_reason="no_request_run"
+          elif [ "$request_latest_conclusion" = "failure" ] || [ "$request_latest_conclusion" = "startup_failure" ] || [ "$request_latest_conclusion" = "timed_out" ] || [ "$request_latest_conclusion" = "cancelled" ]; then
+            if [ "$request_age" -ge "$REQUEST_FAILURE_COOLDOWN_MINUTES" ]; then
+              request_bootstrap=1
+              request_reason="recoverable_request_terminal_state"
+            else
+              request_reason="request_failure_cooldown"
+            fi
+          else
+            request_reason="request_run_not_successfully_archived"
+          fi
+
+          request_verified_run_id=""
+          if [ "$request_cancel" -eq 1 ] && [ -n "$request_latest_id" ]; then
+            gh_retry run cancel "$request_latest_id" --repo "$GH_REPO"
+          fi
+          if [ "$request_bootstrap" -eq 1 ]; then
+            dispatch_epoch="$(date -u +%s)"
+            gh_retry workflow run "$REQUEST_WORKFLOW" --repo "$GH_REPO" --ref main
+            for attempt in 1 2 3 4 5; do
+              sleep 2
+              fresh="$(gh_retry api "repos/$GH_REPO/actions/workflows/$REQUEST_WORKFLOW/runs?branch=main&per_page=20")"
+              request_verified_run_id="$(printf "%s" "$fresh" | jq -r --argjson cutoff "$dispatch_epoch" '
+                [.workflow_runs[]
+                 | select(.event == "workflow_dispatch")
+                 | select((.created_at | fromdateiso8601) >= $cutoff)]
+                | sort_by(.created_at)
+                | reverse
+                | .[0].id // empty')"
+              if [ -n "$request_verified_run_id" ]; then break; fi
+            done
+            if [ -z "$request_verified_run_id" ]; then
+              echo "request dispatch accepted but no new request run was observable" >&2
+              exit 1
+            fi
+          fi
+
+          request_watchdog_json="results/forever_autopilot/request_watchdog.json"
+          jq -n \
+            --arg request_id "$request_id" \
+            --arg latest_id "$request_latest_id" \
+            --arg latest_status "$request_latest_status" \
+            --arg latest_conclusion "$request_latest_conclusion" \
+            --arg reason "$request_reason" \
+            --arg verified "$request_verified_run_id" \
+            --argjson result_exists "$request_result_exists" \
+            --argjson age "$request_age" \
+            --argjson dispatch_count "$request_dispatch_count" \
+            --argjson bootstrap "$request_bootstrap" \
+            --argjson cancel "$request_cancel" \
+            '{schema_version:1,status:"EXECUTED",request_id:$request_id,result_exists:($result_exists==1),latest_run_id:$latest_id,latest_status:$latest_status,latest_conclusion:$latest_conclusion,latest_age_minutes:$age,workflow_dispatch_count_24h:$dispatch_count,decision:$reason,bootstrapped:($bootstrap==1),cancelled_stale_run:($cancel==1),verified_dispatch_run:$verified,fail_closed:true,production_mutation:false}' > "$request_watchdog_json"
+
           jq -n \
             --arg current "$current_sha" \
             --arg event "$EVENT_SHA" \
@@ -216,6 +322,10 @@ jobs:
             echo "- bootstrapped: $bootstrap"
             echo "- cancelled_stale_run: $cancel"
             echo "- verified_dispatch_run: $verified_run_id"
+          echo "- request_watchdog_request_id: $request_id"
+          echo "- request_watchdog_decision: $request_reason"
+          echo "- request_watchdog_bootstrapped: $request_bootstrap"
+          echo "- request_watchdog_verified_run: $request_verified_run_id"
             echo "- fail_closed: true"
             echo "- auto_promotion: false"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -225,6 +335,6 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: baseball-forever-autopilot-${{ github.run_id }}
-          path: results/forever_autopilot/heartbeat.json
+          path: results/forever_autopilot/
           if-no-files-found: warn
           retention-days: 14
