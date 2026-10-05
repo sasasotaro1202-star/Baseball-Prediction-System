@@ -1723,15 +1723,28 @@ def main():
         action="store_true",
         help="Explicit research-only PIT-safe forecast lane; never unlocks production.",
     )
+    ap.add_argument(
+        "--rapid-pregame",
+        action="store_true",
+        help="Research-only rapid lane: evaluate future games 15-180 minutes before first pitch.",
+    )
     args=ap.parse_args()
+    if args.rapid_pregame and not args.research_shadow:
+        ap.error("--rapid-pregame requires --research-shadow")
     print(json.dumps(
         predict(
             args.date,
             args.data_dir,
             pregame_only=args.pregame_only,
             research_shadow=args.research_shadow,
-            minimum_lead_minutes=(0.0 if args.research_shadow and not args.pregame_only else None),
-            preferred_lead_minutes=(60.0 if args.pregame_only else None),
+            minimum_lead_minutes=(
+                15.0 if args.rapid_pregame
+                else (0.0 if args.research_shadow and not args.pregame_only else None)
+            ),
+            maximum_lead_minutes=(180.0 if args.rapid_pregame else None),
+            preferred_lead_minutes=(
+                60.0 if args.rapid_pregame or args.pregame_only else None
+            ),
         ),
         ensure_ascii=False,
         indent=2,
