@@ -7,3 +7,7 @@ data/pit/*.jsonl
 # Persist production prediction experience; results/ stays transient.
 !data/experience/
 !data/experience/**
+
+# User-request prediction evidence is intentionally persisted; do not treat it as transient results/.
+!prediction_requests/results/
+!prediction_requests/results/**
