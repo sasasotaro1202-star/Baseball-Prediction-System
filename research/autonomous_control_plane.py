@@ -66,6 +66,11 @@ TARGETS = (
 
 ROOT = Path(__file__).resolve().parents[1]
 
+def workflow_cli_ref(workflow: str) -> str:
+    """Return the GitHub CLI workflow identifier for a canonical workflow path."""
+    return Path(workflow).name
+
+
 def _is_transient_gh_failure(message: str) -> bool:
     lowered = message.lower()
     transient_markers = (
@@ -138,7 +143,7 @@ def list_runs(repo: str) -> list[dict[str, Any]]:
             "--repo",
             repo,
             "--workflow",
-            target.workflow,
+            workflow_cli_ref(target.workflow),
             "--branch",
             "main",
             "--limit",
@@ -367,7 +372,7 @@ def cancel_run(repo: str, run_id: int) -> None:
 
 
 def dispatch_and_verify(repo: str, target: Target, dispatch_epoch: int) -> int:
-    _gh(["workflow", "run", target.workflow, "--repo", repo, "--ref", "main"])
+    _gh(["workflow", "run", workflow_cli_ref(target.workflow), "--repo", repo, "--ref", "main"])
     for _ in range(6):
         time.sleep(2)
         raw = _gh([
