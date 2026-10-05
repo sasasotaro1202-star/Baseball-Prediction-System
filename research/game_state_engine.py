@@ -138,7 +138,10 @@ def _reconstruct_state_scores(frame: pd.DataFrame) -> pd.DataFrame:
                 break
             hs_state.append(home_state)
             as_state.append(away_state)
-        if not valid or not hs_state or hs_state[0] != 0 or as_state[0] != 0:
+        # The first observed PBP row is already *after* its play. A scoring
+        # first play therefore legitimately has state score > 0. The implicit
+        # pre-game state is always 0-0 and is never exposed as a row.
+        if not valid or not hs_state:
             continue
         final_h = float(game["home_score"].iloc[-1])
         final_a = float(game["away_score"].iloc[-1])
@@ -216,7 +219,38 @@ def fit_transition_kernel(pbp: pd.DataFrame, *, min_transitions: int = 100) -> T
     n = 0
     for _, game in frame.groupby("game_id", sort=False):
         rows = game.to_dict("records")
-        for a, b in zip(rows, rows[1:]):
+        pairs = list(zip(rows, rows[1:]))
+        if rows:
+            first = rows[0]
+            pitch_number = first.get("pitch_number")
+            first_pitch = False
+            try:
+                first_pitch = int(float(pitch_number)) <= 1
+            except (TypeError, ValueError):
+                first_pitch = False
+            # Capture the first play only when the dataset itself gives enough
+            # evidence that this is the true game start. Otherwise fail closed
+            # and do not fabricate an initial state.
+            try:
+                can_seed = (
+                    int(first["inning"]) == 1
+                    and str(first["half"]) == "T"
+                    and int(first["outs"]) >= 0
+                    and _base_mask(first) == 0
+                    and first_pitch
+                )
+            except (TypeError, ValueError):
+                can_seed = False
+            if can_seed:
+                initial = dict(first)
+                initial["outs"] = 0
+                initial["state_home_score"] = 0
+                initial["state_away_score"] = 0
+                initial["base1"] = 0
+                initial["base2"] = 0
+                initial["base3"] = 0
+                pairs.insert(0, (initial, first))
+        for a, b in pairs:
             t = _transition(a, b)
             if t is None:
                 continue
@@ -304,59 +338,188 @@ def _aggregate(rows: pd.DataFrame) -> dict[str, float | int]:
     }
 
 
-def simulate_game(kernel: TransitionKernel, *, base_run: float, home_factor: float, away_factor: float, simulations: int = 500, seed: int = 42, max_innings: int = 12) -> dict[str, Any]:
+def simulate_game(
+    kernel: TransitionKernel,
+    *,
+    base_run: float,
+    home_factor: float,
+    away_factor: float,
+    simulations: int = 500,
+    seed: int = 42,
+    max_innings: int = 12,
+    max_steps_per_simulation: int = 4000,
+) -> dict[str, Any]:
     if simulations <= 0:
         raise ValueError("simulations must be positive")
+    if max_steps_per_simulation <= 0:
+        raise ValueError("max_steps_per_simulation must be positive")
+
     rng = np.random.default_rng(int(seed))
     scores: list[tuple[int, int]] = []
     extras = lead_change_games = comebacks = 0
     first_lead: Counter[int] = Counter()
-    sf = {"H": float(np.clip(home_factor ** 0.55, 0.55, 1.45)), "A": float(np.clip(away_factor ** 0.55, 0.55, 1.45))}
+    half_reach: Counter[tuple[int, str]] = Counter()
+    half_lead: dict[tuple[int, str], Counter[str]] = defaultdict(Counter)
+    half_home_score: Counter[tuple[int, str]] = Counter()
+    half_away_score: Counter[tuple[int, str]] = Counter()
+
+    sf = {
+        "H": float(np.clip(home_factor ** 0.55, 0.55, 1.45)),
+        "A": float(np.clip(away_factor ** 0.55, 0.55, 1.45)),
+    }
+
     for _ in range(int(simulations)):
         inning, half, outs, bases, hs, aw = 1, "T", 0, 0, 0, 0
+        steps = 0
         ever_home_trailing = ever_away_trailing = False
-        saw_change = False; first_change: int | None = None; aborted = False
+        saw_change = False
+        first_change: int | None = None
+        aborted = False
+        recorded_halves: set[tuple[int, str]] = set()
+        local_half_records: list[tuple[tuple[int, str], int, int, str]] = []
+
+        def record_current_half() -> None:
+            state_half = (int(inning), str(half))
+            if state_half in recorded_halves:
+                return
+            recorded_halves.add(state_half)
+            lead = "H" if hs > aw else "A" if aw > hs else "D"
+            local_half_records.append((state_half, int(hs), int(aw), lead))
+
         while inning <= max_innings:
-            if hs < aw: ever_home_trailing = True
-            if aw < hs: ever_away_trailing = True
-            if half == "B" and inning >= 9 and hs > aw: break
-            t = kernel.sample(_state_key(inning, half, outs, bases, hs - aw), rng, scoring_factors=sf)
-            if t is None: aborted = True; break
+            steps += 1
+            if steps > max_steps_per_simulation:
+                aborted = True
+                break
+            if hs < aw:
+                ever_home_trailing = True
+            if aw < hs:
+                ever_away_trailing = True
+            if half == "B" and inning >= 9 and hs > aw:
+                record_current_half()
+                break
+
+            t = kernel.sample(
+                _state_key(inning, half, outs, bases, hs - aw),
+                rng,
+                scoring_factors=sf,
+            )
+            if t is None:
+                aborted = True
+                break
+
             nh, no, nb, runs, scorer = t
+            if str(nh) != str(half):
+                record_current_half()
+
             prev = hs - aw
-            if scorer == "H": hs += runs
-            elif scorer == "A": aw += runs
+            if scorer == "H":
+                hs += runs
+            elif scorer == "A":
+                aw += runs
             new = hs - aw
             if prev * new < 0:
                 saw_change = True
                 first_change = first_change if first_change is not None else inning
+
             outs, bases = no, nb
-            inning, half = (inning + 1 if half == "B" and nh == "T" else inning), nh
-        if aborted: continue
+            inning, half = (
+                (inning + 1 if half == "B" and nh == "T" else inning),
+                nh,
+            )
+
+        if aborted:
+            continue
+
+        record_current_half()
         scores.append((hs, aw))
         extras += int(inning > 9)
         lead_change_games += int(saw_change)
-        if saw_change and first_change is not None: first_lead[first_change] += 1
-        comebacks += int((hs > aw and ever_home_trailing) or (aw > hs and ever_away_trailing))
+        if saw_change and first_change is not None:
+            first_lead[first_change] += 1
+        comebacks += int(
+            (hs > aw and ever_home_trailing)
+            or (aw > hs and ever_away_trailing)
+        )
+        for state_half, home_score, away_score, lead in local_half_records:
+            half_reach[state_half] += 1
+            half_lead[state_half][lead] += 1
+            half_home_score[state_half] += home_score
+            half_away_score[state_half] += away_score
+
     valid = len(scores)
     if valid < max(1, math.ceil(simulations * 0.995)):
-        raise RuntimeError(f"simulation coverage below fail-closed threshold: {valid}/{simulations}")
-    matrix = np.zeros((15, 15), dtype=float)
-    for hs, aw in scores: matrix[min(14, hs), min(14, aw)] += 1
-    matrix /= matrix.sum()
-    flat = matrix.ravel(); top4 = np.argsort(-flat, kind="mergesort")[:4]
-    home_win, away_win, draw = float(np.tril(matrix, -1).sum()), float(np.triu(matrix, 1).sum()), float(np.trace(matrix))
-    low = float(sum(matrix[i, j] for i in range(15) for j in range(15) if i + j <= 6))
-    return {
-        "schema_version": SCHEMA_VERSION, "simulations": int(simulations), "valid_simulations": int(valid), "seed": int(seed),
-        "kernel_fingerprint": kernel.fingerprint, "kernel_transitions": kernel.transitions,
-        "home_factor": float(home_factor), "away_factor": float(away_factor), "base_run": float(base_run),
-        "score_distribution": matrix.tolist(), "probabilities": {"home_win": home_win, "draw": draw, "away_win": away_win, "low_le_6": low, "high_ge_7": 1 - low},
-        "top4_exact_score": [{"score": f"{int(i // 15)}-{int(i % 15)}", "probability": float(flat[i])} for i in top4],
-        "extra_inning_probability": float(extras / valid), "lead_change_probability": float(lead_change_games / valid),
-        "comeback_probability": float(comebacks / valid), "first_lead_change_inning_distribution": {str(k): float(v / valid) for k, v in sorted(first_lead.items())},
-    }
+        raise RuntimeError(
+            f"simulation coverage below fail-closed threshold: {valid}/{simulations}"
+        )
 
+    matrix = np.zeros((15, 15), dtype=float)
+    for hs, aw in scores:
+        matrix[min(14, hs), min(14, aw)] += 1
+    matrix /= matrix.sum()
+
+    half_profiles: dict[str, dict[str, float]] = {}
+    for (inn, half_key), reached in sorted(half_reach.items()):
+        denom = float(reached)
+        counts = half_lead[(inn, half_key)]
+        half_profiles[f"{inn}{half_key}"] = {
+            "reach_probability": float(reached / valid),
+            "home_lead_probability": float(counts.get("H", 0) / denom),
+            "tie_probability": float(counts.get("D", 0) / denom),
+            "away_lead_probability": float(counts.get("A", 0) / denom),
+            "mean_home_score": float(half_home_score[(inn, half_key)] / denom),
+            "mean_away_score": float(half_away_score[(inn, half_key)] / denom),
+        }
+
+    flat = matrix.ravel()
+    top4 = np.argsort(-flat, kind="mergesort")[:4]
+    home_win = float(np.tril(matrix, -1).sum())
+    away_win = float(np.triu(matrix, 1).sum())
+    draw = float(np.trace(matrix))
+    low = float(
+        sum(
+            matrix[i, j]
+            for i in range(15)
+            for j in range(15)
+            if i + j <= 6
+        )
+    )
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "simulations": int(simulations),
+        "valid_simulations": int(valid),
+        "seed": int(seed),
+        "max_steps_per_simulation": int(max_steps_per_simulation),
+        "kernel_fingerprint": kernel.fingerprint,
+        "kernel_transitions": kernel.transitions,
+        "home_factor": float(home_factor),
+        "away_factor": float(away_factor),
+        "base_run": float(base_run),
+        "score_distribution": matrix.tolist(),
+        "probabilities": {
+            "home_win": home_win,
+            "draw": draw,
+            "away_win": away_win,
+            "low_le_6": low,
+            "high_ge_7": 1 - low,
+        },
+        "top4_exact_score": [
+            {
+                "score": f"{int(i // 15)}-{int(i % 15)}",
+                "probability": float(flat[i]),
+            }
+            for i in top4
+        ],
+        "extra_inning_probability": float(extras / valid),
+        "lead_change_probability": float(lead_change_games / valid),
+        "comeback_probability": float(comebacks / valid),
+        "first_lead_change_inning_distribution": {
+            str(k): float(v / valid)
+            for k, v in sorted(first_lead.items())
+        },
+        "half_state_profiles": half_profiles,
+    }
 
 def evaluate_from_files(
     paths: Sequence[str | Path], *, development_end: str = "2024-12-31", validation_start: str = "2025-01-01", validation_end: str = "2025-12-31", holdout_start: str = "2026-01-01", max_validation_games: int = 120, max_holdout_games: int = 120, simulations: int = 500, seed: int = 42,
@@ -407,29 +570,3 @@ def evaluate_from_files(
     aggregate = {"candidate": {}, "poisson_baseline": {}}
     for phase in ("validation", "holdout"):
         aggregate["candidate"][phase] = _aggregate(cand_df[cand_df.phase == phase])
-        aggregate["poisson_baseline"][phase] = _aggregate(base_df[base_df.phase == phase])
-    delta = {}
-    for phase in ("validation", "holdout"):
-        b, c = aggregate["poisson_baseline"][phase], aggregate["candidate"][phase]
-        delta[phase] = {"logloss_relative_improvement": float((b["logloss"] - c["logloss"]) / max(1e-12, b["logloss"])), "accuracy_delta": float(c["accuracy"] - b["accuracy"]), "brier_delta": float(c["brier"] - b["brier"]), "ece_delta": float(c["ece"] - b["ece"])}
-    return {
-        "schema_version": SCHEMA_VERSION, "status": "RESEARCH_SCREENING_ONLY", "pit_status": PIT_STATUS, "production_eligible": False, "decision": "HOLD_RESEARCH_ONLY",
-        "reason": "Historical PBP publication/availability timestamps are not proven; this result cannot enter production OOS or promotion evidence.",
-        "development_end": development_end, "validation_start": validation_start, "validation_end": validation_end, "holdout_start": holdout_start,
-        "input_files": [str(p) for p in files], "input_file_count": len(files), "kernel": {"transitions": kernel.transitions, "fingerprint": kernel.fingerprint},
-        "aggregate": aggregate, "delta_vs_poisson": delta, "evaluation_rows": {"candidate": cand_rows, "baseline": base_rows},
-        "reproducibility": {"seed": int(seed), "simulations": int(simulations), "chronological_order": "game_date_then_game_id", "holdout_tuning": "FORBIDDEN", "kernel_training_boundary": development_end},
-    }
-
-
-def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(); p.add_argument("--data-glob", default="data/*_pbp.csv"); p.add_argument("--development-end", default="2024-12-31"); p.add_argument("--validation-start", default="2025-01-01"); p.add_argument("--validation-end", default="2025-12-31"); p.add_argument("--holdout-start", default="2026-01-01"); p.add_argument("--max-validation-games", type=int, default=120); p.add_argument("--max-holdout-games", type=int, default=120); p.add_argument("--simulations", type=int, default=500); p.add_argument("--seed", type=int, default=42); p.add_argument("--output", default="results/game_state_screening.json")
-    a = p.parse_args(argv); files = sorted(Path().glob(a.data_glob));
-    if not files: raise SystemExit(f"no PBP files matched: {a.data_glob}")
-    result = evaluate_from_files(files, development_end=a.development_end, validation_start=a.validation_start, validation_end=a.validation_end, holdout_start=a.holdout_start, max_validation_games=max(1,a.max_validation_games), max_holdout_games=max(1,a.max_holdout_games), simulations=max(1,a.simulations), seed=a.seed)
-    out = Path(a.output); out.parent.mkdir(parents=True, exist_ok=True); out.write_text(json.dumps(result, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")
-    print(json.dumps({k: result[k] for k in ("status", "pit_status", "production_eligible", "decision", "aggregate", "delta_vs_poisson")}, ensure_ascii=False, indent=2)); return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

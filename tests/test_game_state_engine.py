@@ -68,6 +68,25 @@ def test_reconstructed_state_rejects_inconsistent_final_score_label():
     normalized = canonicalize_pbp_frame(raw)
     assert normalized.empty
 
+def test_first_play_can_legitimately_score():
+    raw = _frame(1)
+    raw.loc[0, "pitch_number"] = 1
+    raw.loc[0, "addedRuns"] = 1
+    raw.loc[0, "away_total_runs"] = 1
+    normalized = canonicalize_pbp_frame(raw)
+    assert not normalized.empty
+    first = normalized.iloc[0]
+    assert int(first["state_away_score"]) == 1
+
+def test_simulation_rejects_nonpositive_step_guard():
+    kernel = fit_transition_kernel(_frame(), min_transitions=10)
+    try:
+        simulate_game(kernel, base_run=3.5, home_factor=1.0, away_factor=1.0, simulations=1, max_steps_per_simulation=0)
+    except ValueError as exc:
+        assert "max_steps_per_simulation" in str(exc)
+    else:
+        raise AssertionError("expected max_steps_per_simulation validation")
+
 def test_score_reversal_is_rejected():
     current = {
         "inning": 1,
@@ -110,6 +129,31 @@ def test_simulation_is_reproducible_and_normalized():
     assert abs(
         sum(probabilities[key] for key in ("home_win", "draw", "away_win")) - 1.0
     ) < 1e-9
+
+
+def test_simulation_emits_half_state_profiles():
+    kernel = fit_transition_kernel(_frame(), min_transitions=10)
+    result = simulate_game(
+        kernel,
+        base_run=3.5,
+        home_factor=1.0,
+        away_factor=1.0,
+        simulations=50,
+        seed=9,
+        max_innings=3,
+    )
+    profiles = result["half_state_profiles"]
+    assert "1T" in profiles
+    for profile in profiles.values():
+        assert 0.0 < profile["reach_probability"] <= 1.0
+        assert abs(
+            profile["home_lead_probability"]
+            + profile["tie_probability"]
+            + profile["away_lead_probability"]
+            - 1.0
+        ) < 1e-9
+        assert profile["mean_home_score"] >= 0.0
+        assert profile["mean_away_score"] >= 0.0
 
 
 def test_sampling_keeps_observed_support():
