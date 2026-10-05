@@ -23,6 +23,7 @@ class ColumnMap:
     home_score: str
     away_score: str
     sequence: str
+    page: str | None
     serial: str | None
     half: str | None
 
@@ -90,6 +91,10 @@ def resolve_columns(frame: pd.DataFrame) -> ColumnMap:
                 "serial",
                 "play_serial",
             ],
+        ),
+        page=_first_col(
+            frame.columns,
+            ["page", "Page", "play_page"],
         ),
         half=_first_col(
             frame.columns,
