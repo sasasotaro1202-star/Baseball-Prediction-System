@@ -413,3 +413,15 @@ def test_current_control_plane_push_run_is_not_treated_as_healthy(monkeypatch):
     entry = report["workflows"][".github/workflows/baseball_autonomous_control_plane.yml"]
     assert entry["state"] == "DEFERRED"
     assert "only_unsupported_event_runs" in entry["reasons"]
+
+
+def test_workflow_dispatch_empty_mapping_is_supported():
+    from research import project_governance as governance
+
+    path = Path(".github/workflows/baseball_autonomous_control_plane.yml")
+    workflow = path.read_text(encoding="utf-8")
+    assert "workflow_dispatch: {}" in workflow
+    assert governance._workflow_declares_event(
+        ".github/workflows/baseball_autonomous_control_plane.yml",
+        "workflow_dispatch",
+    )
