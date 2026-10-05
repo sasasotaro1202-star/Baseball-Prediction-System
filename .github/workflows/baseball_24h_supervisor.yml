@@ -82,7 +82,7 @@ jobs:
           for workflow_id in ${target_ids}; do
             state="$(gh api "repos/${GH_REPO}/actions/workflows/${workflow_id}" --jq '.state // "unknown"')"
             case "${state}" in
-              disabled_manually|disabled_inactivity)
+              disabled_manually|disabled_inactivity|deleted)
                 ;;
               *)
                 echo "Ghost workflow ${workflow_id} remains state=${state}; repair incomplete." >&2
