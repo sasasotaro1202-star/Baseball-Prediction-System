@@ -2,12 +2,19 @@ name: Baseball Autonomous Control Plane
 
 on:
   workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/baseball_autonomous_control_plane.yml"
+      - ".github/workflows/baseball_24h_supervisor.yml"
+      - "research/autonomous_control_plane.py"
+      - "tests/test_autonomous_control_plane.py"
   schedule:
     - cron: '*/15 * * * *'
-  # The control plane is intentionally schedule-driven. Target workflow_run
-  # completions are too bursty and caused self-cancellation/queue storms.
-  # The 15-minute loop is the single orchestration heartbeat; target workflows
-  # retain their own workflow_run hooks for evidence-specific tasks.
+  # The 15-minute loop is the primary orchestration heartbeat. The path-limited
+  # push trigger gives immediate recovery after control/config changes without
+  # recreating broad queue churn. The 24h Supervisor redundantly monitors this
+  # workflow and can re-dispatch it when the scheduled heartbeat is missing.
 permissions:
   actions: write
   contents: read
