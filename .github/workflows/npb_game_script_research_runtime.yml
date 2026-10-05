@@ -42,6 +42,7 @@ env:
 
 jobs:
   research:
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
@@ -95,7 +96,7 @@ jobs:
           sha256sum results/pbp_release_manifest.tsv | awk '{print $1}' > results/source_fingerprint.txt
           awk -F '\t' '$1 ~ /^(2022|2023|2024|2025)-[0-9]{2}_pbp\\.csv$/ {print}' results/pbp_release_manifest.tsv | sha256sum | awk '{print $1}' > results/validation_source_fingerprint.txt
           awk -F '\t' '$1 ~ /^2026-[0-9]{2}_pbp\\.csv$/ {print}' results/pbp_release_manifest.tsv | sha256sum | awk '{print $1}' > results/context_source_fingerprint.txt
-          code_files=(research/game_script_common.py research/game_script_wfo.py research/game_script_engine.py tests/test_game_script_engine.py tests/test_game_script_automation_contract.py .github/workflows/npb_game_script_autoresearch.yml .github/workflows/npb_game_script_watchdog.yml docs/GAME_SCRIPT_V5.md)
+          code_files=(research/game_script_common.py research/game_script_wfo.py research/game_script_engine.py tests/test_game_script_engine.py tests/test_game_script_automation_contract.py .github/workflows/npb_game_script_research_runtime.yml .github/workflows/npb_game_script_watchdog.yml docs/GAME_SCRIPT_V5.md)
           for f in "${code_files[@]}"; do test -s "$f"; done
           (for f in "${code_files[@]}"; do sha256sum "$f"; done) | sha256sum | awk '{print $1}' > results/code_fingerprint.txt
           echo "source_fingerprint=$(cat results/source_fingerprint.txt)" >> "$GITHUB_STEP_SUMMARY"

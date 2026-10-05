@@ -21,6 +21,7 @@ env:
 
 jobs:
   wave1-core-oos:
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     name: 24h Wave 1 - Core chronological OOS
     runs-on: ubuntu-latest
     timeout-minutes: 355
@@ -71,7 +72,7 @@ jobs:
           import re
           from pathlib import Path
 
-          workflow = Path('.github/workflows/baseball_24h_research_autopilot.yml').read_text(encoding='utf-8')
+          workflow = Path('.github/workflows/baseball_24h_research_runtime.yml').read_text(encoding='utf-8')
           paths = sorted(set(re.findall(r'tests/[A-Za-z0-9_.-]+\.py', workflow)))
           if not paths:
               raise SystemExit('24h autopilot has no targeted test paths')
@@ -117,7 +118,7 @@ jobs:
   wave2-frontier:
     name: 24h Wave 2 - Frontier game/source expansion
     needs: wave1-core-oos
-    if: always()
+    if: ${{ (always()) && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     timeout-minutes: 355
     steps:
@@ -198,7 +199,7 @@ jobs:
     name: 24h Wave 3 - Candidate OOS / robustness
     needs: wave2-frontier
     # Candidate OOS must fail closed when frontier acquisition fails.
-    if: ${{ always() && needs['wave2-frontier'].result == 'success' }}
+    if: ${{ (always() && needs['wave2-frontier'].result == 'success') && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     timeout-minutes: 355
     steps:
@@ -265,7 +266,7 @@ jobs:
     name: 24h Wave 4 - Meta research / verification
     needs: wave3-candidate-oos
     # Meta-research must not consume candidate evidence from a failed OOS lane.
-    if: ${{ always() && needs['wave3-candidate-oos'].result == 'success' }}
+    if: ${{ (always() && needs['wave3-candidate-oos'].result == 'success') && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     timeout-minutes: 355
     steps:
@@ -339,6 +340,7 @@ jobs:
           retention-days: 2
 
   game-script-v4-fallback:
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     name: 24h Auxiliary - Game-Script v4
     runs-on: ubuntu-latest
     timeout-minutes: 180
@@ -391,7 +393,7 @@ jobs:
           sha256sum results/pbp_release_manifest.tsv | awk '{print $1}' > results/source_fingerprint.txt
           awk -F '\t' '$1 ~ /^(2022|2023|2024|2025)-[0-9]{2}_pbp\\.csv$/ {print}' results/pbp_release_manifest.tsv | sha256sum | awk '{print $1}' > results/validation_source_fingerprint.txt
           awk -F '\t' '$1 ~ /^2026-[0-9]{2}_pbp\\.csv$/ {print}' results/pbp_release_manifest.tsv | sha256sum | awk '{print $1}' > results/context_source_fingerprint.txt
-          code_files=(research/game_script_common.py research/game_script_wfo.py research/game_script_engine.py tests/test_game_script_engine.py tests/test_game_script_automation_contract.py .github/workflows/npb_game_script_autoresearch.yml .github/workflows/npb_game_script_watchdog.yml docs/GAME_SCRIPT_V5.md)
+          code_files=(research/game_script_common.py research/game_script_wfo.py research/game_script_engine.py tests/test_game_script_engine.py tests/test_game_script_automation_contract.py .github/workflows/npb_game_script_research_runtime.yml .github/workflows/npb_game_script_watchdog.yml docs/GAME_SCRIPT_V5.md)
           (for f in "${code_files[@]}"; do sha256sum "$f"; done) | sha256sum | awk '{print $1}' > results/code_fingerprint.txt
 
           dedicated_query_status="PASS"
@@ -655,7 +657,7 @@ PY
   closeout:
     name: 24h Closeout - Evidence manifest
     needs: [wave1-core-oos, wave2-frontier, wave3-candidate-oos, wave4-meta-research]
-    if: always()
+    if: ${{ (always()) && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
