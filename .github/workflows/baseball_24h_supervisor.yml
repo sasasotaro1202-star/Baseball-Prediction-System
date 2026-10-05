@@ -200,7 +200,8 @@ jobs:
             fi
           else
             echo "Latest pregame terminal state is not eligible for speculative restart; preserving authoritative failure/blocked state."
-          if [ "${pregame_dispatch}" -eq 1 ]; then
+          fi
+           if [ "${pregame_dispatch}" -eq 1 ]; then
             dispatch_epoch="$(date +%s)"
             echo "Dispatching pregame: ${pregame_reason} recovery_mode=${pregame_recovery_mode} dispatch_epoch=${dispatch_epoch}"
             gh_retry workflow run "${PREGAME_WORKFLOW}" --repo "${GH_REPO}" --ref main --field recovery_mode="${pregame_recovery_mode}"
@@ -234,7 +235,6 @@ jobs:
               exit 1
             fi
             printf "%s\n" "Pregame dispatch verified: run_id=${new_pregame_run_id:-<active-unresolved>} dispatch_epoch=${dispatch_epoch}" >> "$GITHUB_STEP_SUMMARY"
-          fi
           fi
           # Candidate OOS has a separate concurrency group because it is much
           # more expensive than the lightweight supervisor. A scheduler-stuck
