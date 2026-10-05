@@ -101,11 +101,6 @@ WORKFLOW_CONTRACTS: dict[str, dict[str, Any]] = {
         "max_age_hours": 12,
         "required": ("schedule:", "workflow_dispatch:", "research.experience_learning", "research.experience_learning_gate"),
     },
-    ".github/workflows/baseball_game_script_lab.yml": {
-        "monitor": True,
-        "max_age_hours": 8,
-        "required": ("schedule:", "workflow_dispatch:", "research/game_script_lab.py"),
-    },
     ".github/workflows/project_source_provenance_audit.yml": {
         "monitor": True,
         "max_age_hours": 30,
@@ -124,7 +119,13 @@ WORKFLOW_CONTRACTS: dict[str, dict[str, Any]] = {
     ".github/workflows/baseball_actions_recovery.yml": {
         "monitor": False,
         "max_age_hours": 0,
-        "required": ("workflow_run:", "actions: write", "Re-run failed jobs with bounded recovery"),
+        "required": (
+            "workflow_run:",
+            "actions: write",
+            "Re-run failed jobs with bounded recovery",
+            "group: baseball-actions-recovery",
+            "cancel-in-progress: true",
+        ),
     },
 }
 
