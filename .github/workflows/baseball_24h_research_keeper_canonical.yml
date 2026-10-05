@@ -1,6 +1,10 @@
 name: Baseball 24h Research Keeper
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/baseball_24h_research_keeper_canonical.yml"
   workflow_dispatch:
   schedule:
     - cron: '*/5 * * * *'
