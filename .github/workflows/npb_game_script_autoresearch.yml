@@ -13,7 +13,7 @@ on:
       - ".github/workflows/npb_game_script_autoresearch.yml"
       - ".github/workflows/npb_game_script_watchdog.yml"
   schedule:
-    - cron: "45 0 * * *"
+    - cron: "45 0,6,12,18 * * *"
   workflow_dispatch:
     inputs:
       simulations:
@@ -105,7 +105,7 @@ jobs:
           sha256sum results/pbp_release_manifest.tsv | awk '{print $1}' > results/source_fingerprint.txt
           awk -F '\t' '$1 ~ /^(2022|2023|2024|2025)-[0-9]{2}_pbp\\.csv$/ {print}' results/pbp_release_manifest.tsv | sha256sum | awk '{print $1}' > results/validation_source_fingerprint.txt
           awk -F '\t' '$1 ~ /^2026-[0-9]{2}_pbp\\.csv$/ {print}' results/pbp_release_manifest.tsv | sha256sum | awk '{print $1}' > results/context_source_fingerprint.txt
-          code_files=(research/game_script_common.py research/game_script_wfo.py research/game_script_engine.py tests/test_game_script_engine.py tests/test_game_script_automation_contract.py .github/workflows/npb_game_script_autoresearch.yml .github/workflows/npb_game_script_watchdog.yml docs/GAME_SCRIPT_V4.md)
+          code_files=(research/game_script_common.py research/game_script_wfo.py research/game_script_engine.py tests/test_game_script_engine.py tests/test_game_script_automation_contract.py .github/workflows/npb_game_script_autoresearch.yml .github/workflows/npb_game_script_watchdog.yml docs/GAME_SCRIPT_V5.md)
           for f in "${code_files[@]}"; do test -s "$f"; done
           (for f in "${code_files[@]}"; do sha256sum "$f"; done) | sha256sum | awk '{print $1}' > results/code_fingerprint.txt
           echo "source_fingerprint=$(cat results/source_fingerprint.txt)" >> "$GITHUB_STEP_SUMMARY"
@@ -141,10 +141,10 @@ jobs:
           prev_code=""
           prev_validation_source=""
           prev_context_source=""
-          prev_manifest_path=$(find .previous_evidence -type f -name 'pbp_release_manifest.tsv' -print -quit || true)
-          prev_source_path=$(find .previous_evidence -type f -name 'source_fingerprint.txt' -print -quit || true)
-          prev_code_path=$(find .previous_evidence -type f -name 'code_fingerprint.txt' -print -quit || true)
-          prev_json_path=$(find .previous_evidence -type f -name 'game_script_screening.json' -print -quit || true)
+          prev_manifest_path=$(find .previous_evidence -type f -name 'pbp_release_manifest.tsv' -print -quit )
+          prev_source_path=$(find .previous_evidence -type f -name 'source_fingerprint.txt' -print -quit )
+          prev_code_path=$(find .previous_evidence -type f -name 'code_fingerprint.txt' -print -quit )
+          prev_json_path=$(find .previous_evidence -type f -name 'game_script_screening.json' -print -quit )
           if [ -n "$prev_source_path" ]; then prev_source=$(tr -d '[:space:]' < "$prev_source_path"); fi
           if [ -n "$prev_code_path" ]; then prev_code=$(tr -d '[:space:]' < "$prev_code_path"); fi
           if [ -n "$prev_manifest_path" ]; then prev_manifest=$(sha256sum "$prev_manifest_path" | awk '{print $1}'); fi
@@ -269,7 +269,7 @@ import json
 from pathlib import Path
 reason = next((x.split("=",1)[1] for x in Path("results/research_decision.txt").read_text().splitlines() if x.startswith("reason=")), "unchanged")
 obj = {
-    "schema_version": "game-script-v4",
+    "schema_version": "game-script-v5",
     "status": "RESEARCH_SCREENING_UNCHANGED",
     "candidate_role": "CHALLENGER_RESEARCH",
     "pit_status": "UNVERIFIABLE_HISTORICAL_PBP_AVAILABILITY",
@@ -308,7 +308,7 @@ PY
           shadow_start="$current_month-01"
           shadow_end=$(TZ=Asia/Tokyo date +%Y-%m-%d)
           mkdir -p results
-          previous_checkpoint=$(find .previous_evidence -type f -name 'game_script_checkpoint.json' -print -quit || true)
+          previous_checkpoint=$(find .previous_evidence -type f -name 'game_script_checkpoint.json' -print -quit )
           if [ -n "$previous_checkpoint" ] && [ -s "$previous_checkpoint" ] && [ "$prev_code" = "$current_code" ] && [ "$prev_validation_source" = "$current_validation_source" ]; then
             cp "$previous_checkpoint" results/game_script_checkpoint.json
           else
@@ -372,7 +372,7 @@ print(json.dumps({
 }, ensure_ascii=False, indent=2))
 PY
           {
-            echo "### Game-Script v4"
+            echo "### Game-Script v5"
             python - <<'PY'
 import json
 from pathlib import Path
@@ -502,7 +502,7 @@ PY
           shadow_start="$current_month-01"
           shadow_end=$(TZ=Asia/Tokyo date +%Y-%m-%d)
           mkdir -p results
-          previous_checkpoint=$(find .previous_evidence -type f -name 'game_script_checkpoint.json' -print -quit || true)
+          previous_checkpoint=$(find .previous_evidence -type f -name 'game_script_checkpoint.json' -print -quit )
           if [ -n "$previous_checkpoint" ] && [ -s "$previous_checkpoint" ] && [ "$prev_code" = "$current_code" ]; then
             cp "$previous_checkpoint" results/game_script_checkpoint.json
           else

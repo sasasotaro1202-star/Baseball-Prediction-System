@@ -1,4 +1,4 @@
-"""Chronological WFO evaluator and checkpoint/resume layer for game-script v4."""
+"""Chronological WFO evaluator and checkpoint/resume layer for Game-Script v5."""
 from __future__ import annotations
 
 import hashlib, json

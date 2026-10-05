@@ -298,9 +298,9 @@ def test_24h_research_autopilot_uses_current_commit_snapshot_and_no_push_trigger
     assert "push:" not in trigger
     assert "research/data-integration-20260928" not in text
     assert "RESEARCH_REF: ${{ github.sha }}" in text
-    assert text.count("ref: ${{ github.sha }}") == 5
-    assert text.count("research_snapshot_sha=$actual") == 4
-    assert text.count("Verify research snapshot") == 4
+    assert text.count("ref: ${{ github.sha }}") == 6
+    assert text.count("research_snapshot_sha=$actual") == 5
+    assert text.count("Verify research snapshot") == 5
 
 def test_chat_async_dispatcher_never_polls_workflow_state():
     text = (ROOT / ".github" / "workflows" / "baseball_chat_async_dispatch.yml").read_text(encoding="utf-8")

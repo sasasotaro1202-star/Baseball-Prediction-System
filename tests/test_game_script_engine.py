@@ -75,8 +75,9 @@ def test_state_score_reconstruction_ignores_corrupted_intermediate_labels():
 
 def test_jst_date_boundary_is_inclusive():
     end=boundary("2024-12-31",end_of_day=True)
-    ts=pd.Timestamp("2024-12-31T18:00:00Z")
+    ts=pd.Timestamp("2024-12-31T14:00:00Z")
     assert ts<=end
+    assert pd.Timestamp("2024-12-31T15:00:00Z")>end
 
 
 def test_terminal_completion_requires_final_row_evidence():
@@ -89,6 +90,21 @@ def test_terminal_completion_requires_final_row_evidence():
     assert set(normalized["complete_status"])=={"UNKNOWN"}
 
 
+def test_half_boundary_requires_clean_restart():
+    a=canonicalize_pbp_frame(_toy_game()).iloc[2].to_dict()
+    invalid={**a,"half":"B","outs":1,"base1":"runner"}
+    valid={**a,"half":"B","outs":0,"base1":0,"base2":0,"base3":0}
+    assert _transition(a,invalid) is None
+    assert _transition(a,valid) is not None
+
+
+def test_within_half_rejects_three_out_jump():
+    a=canonicalize_pbp_frame(_toy_game()).iloc[0].to_dict()
+    b={**a,"outs":3}
+    assert _transition(a,b) is None
+
+
+
 def test_research_status_remains_non_production_without_pit_proof():
-    assert SCHEMA_VERSION=="game-script-v4"
+    assert SCHEMA_VERSION=="game-script-v5"
     assert PIT_STATUS.startswith("UNVERIFIABLE")
