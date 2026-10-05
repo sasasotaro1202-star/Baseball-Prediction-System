@@ -64,12 +64,14 @@ def test_supervisor_monitors_scheduled_pregame_runs_and_recovers_missed_schedule
 
 
 def test_supervisor_shell_block_is_valid_bash() -> None:
-    import re
     import subprocess
     text = _text(SUPERVISOR)
-    match = re.search(r"(?ms)^        run:\\s*\|\n((?:^          .*\n|^          \n)*)", text)
-    assert match, "supervisor run block not found"
-    block = "\n".join(line[10:] if len(line) >= 10 else "" for line in match.group(1).splitlines())
+    lines = text.splitlines()
+    start_line = next((i for i, line in enumerate(lines) if line == "        run: |"), None)
+    assert start_line is not None, "supervisor run block not found"
+    end_line = next((i for i in range(start_line + 1, len(lines)) if lines[i].startswith("      - name: ")), len(lines))
+    block_lines = [line[10:] if len(line) >= 10 else "" for line in lines[start_line + 1:end_line]]
+    block = "\n".join(block_lines)
     result = subprocess.run(["bash", "-n"], input=block + "\n", text=True, capture_output=True, check=False)
     assert result.returncode == 0, result.stderr
 
