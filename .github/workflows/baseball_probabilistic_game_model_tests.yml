@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - research/probabilistic-game-model-v1
+  pull_request:
+    branches:
+      - main
     paths:
       - research/probabilistic_game_model.py
       - tests/test_probabilistic_game_model.py
