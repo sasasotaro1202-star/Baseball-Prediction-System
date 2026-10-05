@@ -29,9 +29,9 @@ def test_forever_autopilot_uses_minimal_permissions_and_current_sha_gate():
     assert '[ "$current_sha" != "$EVENT_SHA" ]' in text
 
 
-def test_forever_autopilot_delegates_to_canonical_control_plane():
+def test_forever_autopilot_delegates_to_active_control_plane():
     text = WORKFLOW.read_text(encoding="utf-8")
-    assert "baseball_autonomous_control_plane_canonical.yml" in text
+    assert "baseball_autonomous_control_plane.yml" in text
     assert "gh workflow run" in text
     assert "--ref main" in text
     assert "--max-dispatches-per-cycle" not in text
