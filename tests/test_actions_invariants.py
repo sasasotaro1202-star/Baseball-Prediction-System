@@ -485,6 +485,22 @@ def test_gate_workflows_skip_test_only_pushes_to_reduce_duplicate_ci():
 
 
 
+def test_actions_recovery_defers_unsupported_legacy_events_before_retrying():
+    recovery = (ROOT / ".github" / "workflows" / "baseball_actions_recovery.yml").read_text(encoding="utf-8")
+    assert "OBSERVED_EVENT: ${{ github.event.workflow_run.event }}" in recovery
+    assert "UNVERIFIABLE_WORKFLOW_DEFINITION" in recovery
+    assert "UNSUPPORTED_EVENT_DEFERRED" in recovery
+    assert "Observed event" in recovery and "declared by the current workflow" in recovery
+    assert "redispatch" in recovery
+
+
+def test_actions_recovery_binds_retry_to_current_main_snapshot():
+    recovery = (ROOT / ".github" / "workflows" / "baseball_actions_recovery.yml").read_text(encoding="utf-8")
+    assert "PARENT_SHA: ${{ github.event.workflow_run.head_sha }}" in recovery
+    assert 'current_main_sha="$(gh_retry api "repos/${GH_REPO}/git/ref/heads/main" --jq .object.sha)"' in recovery
+    assert "SUPERSEDED_OR_UNVERIFIABLE_SHA" in recovery
+    assert "contents/${WORKFLOW_PATH}?ref=${current_main_sha}" in recovery
+
 def test_legacy_push_startup_guard_is_present_in_all_zero_job_lanes():
     guard = "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'"
     expected_counts = {
@@ -493,7 +509,6 @@ def test_legacy_push_startup_guard_is_present_in_all_zero_job_lanes():
         ".github/workflows/baseball_autonomous_control_plane.yml": 1,
         ".github/workflows/baseball_24h_research_autopilot.yml": 6,
     }
-    event_guard = "github.event_name == 'workflow_run'"
     for relpath, expected_count in expected_counts.items():
         text = (ROOT / relpath).read_text(encoding="utf-8")
         assert text.count(guard) == expected_count, (
@@ -502,4 +517,4 @@ def test_legacy_push_startup_guard_is_present_in_all_zero_job_lanes():
         )
 
     recovery = (ROOT / ".github" / "workflows" / "baseball_actions_recovery.yml").read_text(encoding="utf-8")
-    assert event_guard in recovery
+    assert "github.event_name == 'workflow_run'" in recovery
