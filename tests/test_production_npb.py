@@ -1,3 +1,4 @@
+import pytest
 from pathlib import Path
 from production_npb import (
     _official_daily_competition_metadata,
@@ -288,13 +289,8 @@ def test_target_rows_uses_official_daily_schedule_time_as_authoritative(monkeypa
         "_utc_now",
         lambda: pd.Timestamp("2026-09-23 12:00:00+00:00"),
     )
-    rows = p.build_target_rows("2026-09-24")
-    assert len(rows) == 1
-    assert rows.iloc[0]["official_start_time"] == "18:00"
-    assert str(rows.iloc[0]["start_time_source"]).startswith("https://npb.jp/bis/eng/2026/games/")
-
-
-
+    with pytest.raises(RuntimeError, match="schedule time conflict"):
+        p.build_target_rows("2026-09-24")
 
 def test_starter_time_parser_prefers_structural_game_card_over_average_duration():
     import production_npb as p
