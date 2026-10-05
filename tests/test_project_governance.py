@@ -523,4 +523,4 @@ def test_stable_actions_recovery_workflow_is_separate_from_legacy_registration()
     assert "workflow_run:" in text
     assert "Baseball User Prediction Request" in text
     assert "cancel-in-progress: true" in text
-    assert not stable.samefile(legacy) if legacy.exists() else True
+    assert not legacy.exists()
