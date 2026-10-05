@@ -1,0 +1,64 @@
+name: Baseball Probabilistic Game Model Tests
+
+on:
+  push:
+    branches:
+      - research/probabilistic-game-model-v1
+  pull_request:
+    branches:
+      - main
+    paths:
+      - research/probabilistic_game_model.py
+      - tests/test_probabilistic_game_model.py
+      - config/probabilistic_game_model.json
+      - .github/workflows/baseball_probabilistic_game_model_tests.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baseball-probabilistic-game-model-tests
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --retries 5 --timeout 120 --prefer-binary -r requirements.txt
+
+      - name: Compile research module
+        run: |
+          set -euo pipefail
+          python -m py_compile research/probabilistic_game_model.py tests/test_probabilistic_game_model.py
+
+      - name: Run focused tests
+        run: |
+          set -euo pipefail
+          python -m pytest -q tests/test_probabilistic_game_model.py
+
+      - name: Publish test result
+        if: always()
+        run: |
+          set -euo pipefail
+          {
+            echo "## Probabilistic Game Model Tests"
+            echo "- module: research/probabilistic_game_model.py"
+            echo "- test suite: tests/test_probabilistic_game_model.py"
+            echo "- status: preserved by the workflow exit code"
+          } >> "$GITHUB_STEP_SUMMARY"

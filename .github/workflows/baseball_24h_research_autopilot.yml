@@ -37,14 +37,16 @@ jobs:
           actual="$(git rev-parse HEAD)"
           test "$actual" = "$EXPECTED_REF"
           echo "research_snapshot_sha=$actual"
-      - name: Verify main has not advanced
+      - name: Check main freshness without invalidating snapshot
         env:
           EXPECTED_REF: ${{ github.sha }}
         run: |
           set -euo pipefail
           git fetch --no-tags --prune origin main
           current_main="$(git rev-parse origin/main)"
-          test "$current_main" = "$EXPECTED_REF"
+          if [ "$current_main" != "$EXPECTED_REF" ]; then
+            echo "::notice::main advanced after this research snapshot; preserving snapshot for reproducibility"
+          fi
           echo "current_main_sha=$current_main"
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:

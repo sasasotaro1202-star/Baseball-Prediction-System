@@ -1,0 +1,39 @@
+{
+  "schema_version": "probabilistic-game-model-v1",
+  "status": "RESEARCH_ONLY",
+  "production_eligible": false,
+  "target_contracts": {
+    "NPB": [
+      "HOME",
+      "DRAW",
+      "AWAY"
+    ],
+    "MLB": [
+      "HOME",
+      "AWAY"
+    ]
+  },
+  "architecture": [
+    "latent_talent",
+    "current_state",
+    "scenario_mixture",
+    "existing_game_state_simulator",
+    "posterior_predictive",
+    "uncertainty_decomposition",
+    "model_disagreement",
+    "calibration"
+  ],
+  "pit": {
+    "required": true,
+    "rule": "available_at <= prediction_cutoff",
+    "unknown_status": "UNVERIFIABLE",
+    "market_features_allowed": false
+  },
+  "simulation": {
+    "default_simulations": 20000,
+    "max_runs": 30,
+    "deterministic_seed_required": true,
+    "mc_error_report_required": true
+  },
+  "adoption": "NO_AUTO_ADOPTION; requires chronological OOS/WFO, calibration, ablation, robustness and frozen holdout"
+}
