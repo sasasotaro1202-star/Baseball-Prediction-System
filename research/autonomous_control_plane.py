@@ -74,7 +74,6 @@ SUPPORTED_EVENTS_BY_WORKFLOW = {
     ".github/workflows/baseball_24h_research_autopilot_canonical.yml": frozenset({"schedule", "workflow_dispatch"}),
     ".github/workflows/npb_game_script_autoresearch_canonical.yml": frozenset({"schedule", "workflow_dispatch"}),
     ".github/workflows/baseball_24h_research_keeper_canonical.yml": frozenset({"schedule", "workflow_dispatch"}),
-    ".github/workflows/baseball_actions_recovery.yml": frozenset({"workflow_run"}),
 }
 
 
