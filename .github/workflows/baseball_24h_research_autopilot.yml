@@ -21,6 +21,7 @@ env:
 
 jobs:
   wave1-core-oos:
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     name: 24h Wave 1 - Core chronological OOS
     runs-on: ubuntu-latest
     timeout-minutes: 355
@@ -117,7 +118,7 @@ jobs:
   wave2-frontier:
     name: 24h Wave 2 - Frontier game/source expansion
     needs: wave1-core-oos
-    if: always()
+    if: ${{ (always()) && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     timeout-minutes: 355
     steps:
@@ -198,7 +199,7 @@ jobs:
     name: 24h Wave 3 - Candidate OOS / robustness
     needs: wave2-frontier
     # Candidate OOS must fail closed when frontier acquisition fails.
-    if: ${{ always() && needs['wave2-frontier'].result == 'success' }}
+    if: ${{ (always() && needs['wave2-frontier'].result == 'success') && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     timeout-minutes: 355
     steps:
@@ -265,7 +266,7 @@ jobs:
     name: 24h Wave 4 - Meta research / verification
     needs: wave3-candidate-oos
     # Meta-research must not consume candidate evidence from a failed OOS lane.
-    if: ${{ always() && needs['wave3-candidate-oos'].result == 'success' }}
+    if: ${{ (always() && needs['wave3-candidate-oos'].result == 'success') && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     timeout-minutes: 355
     steps:
@@ -339,6 +340,7 @@ jobs:
           retention-days: 2
 
   game-script-v4-fallback:
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     name: 24h Auxiliary - Game-Script v4
     runs-on: ubuntu-latest
     timeout-minutes: 180
@@ -655,7 +657,7 @@ PY
   closeout:
     name: 24h Closeout - Evidence manifest
     needs: [wave1-core-oos, wave2-frontier, wave3-candidate-oos, wave4-meta-research]
-    if: always()
+    if: ${{ (always()) && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
