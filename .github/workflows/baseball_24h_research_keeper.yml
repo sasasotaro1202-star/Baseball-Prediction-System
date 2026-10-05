@@ -23,6 +23,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TARGET: baseball_24h_research_autopilot.yml
+          CONTROL_WORKFLOW: baseball_autonomous_control_plane.yml
         shell: bash
         run: |
           set -euo pipefail
@@ -51,9 +52,18 @@ jobs:
           # The autonomous control plane owns normal dispatch/recovery. This
           # keeper is an emergency failover only and must not create a second
           # dispatch loop while the 15-minute heartbeat is healthy.
-          control_runs="$(gh_retry run list             --repo "${GH_REPO}"             --workflow baseball_autonomous_control_plane.yml             --branch main             --limit 10             --json databaseId,status,conclusion,createdAt,updatedAt,headSha)"
+          control_runs="$(gh_retry run list             --repo "${GH_REPO}"             --workflow baseball_autonomous_control_plane.yml             --branch main             --limit 10             --json databaseId,status,conclusion,createdAt,updatedAt,headSha,event)"
           control_active="$(printf '%s' "${control_runs}" | jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
           control_latest="$(printf '%s' "${control_runs}" | jq -c 'sort_by(.createdAt) | last // empty')"
+          control_latest_id="$(printf '%s' "${control_latest}" | jq -r '.databaseId // empty')"
+          control_latest_status="$(printf '%s' "${control_latest}" | jq -r '.status // empty')"
+          control_latest_conclusion="$(printf '%s' "${control_latest}" | jq -r '.conclusion // empty')"
+          control_latest_created="$(printf '%s' "${control_latest}" | jq -r '.createdAt // empty')"
+          control_latest_sha="$(printf '%s' "${control_latest}" | jq -r '.headSha // empty')"
+          control_latest_age_minutes=999999
+          if [ -n "${control_latest_created}" ]; then
+            control_latest_age_minutes=$(( (now_epoch - $(date -d "${control_latest_created}" +%s)) / 60 ))
+          fi
 
           if [ "${control_active}" -gt 0 ]; then
             echo "Autonomous control plane is active; keeper remains passive."
@@ -75,6 +85,102 @@ jobs:
           if [ "${control_healthy_recent}" -eq 1 ]; then
             echo "Normal control-plane ownership confirmed; keeper remains passive."
             exit 0
+          fi
+
+          # First recovery tier: restore the canonical control plane itself.
+          # This keeps one authoritative scheduler while surviving delayed or
+          # dropped schedule delivery. Emergency 24h research failover remains
+          # bounded and is used only when control-plane recovery is unavailable.
+          control_dispatch_attempts_24h="$(printf '%s' "$control_runs" |
+            jq '[.[] |
+              select(.event == "workflow_dispatch") |
+              select((.createdAt | fromdateiso8601) >= (now - 86400))] | length')"
+          control_latest_dispatch_created="$(printf '%s' "$control_runs" |
+            jq -r '[.[] |
+              select(.event == "workflow_dispatch") |
+              select((.createdAt | fromdateiso8601) >= (now - 86400))] |
+              sort_by(.createdAt) | reverse | .[0].createdAt // empty')"
+          control_dispatch_cooldown_minutes=999999
+          if [ -n "$control_latest_dispatch_created" ]; then
+            control_latest_dispatch_epoch="$(date -d "$control_latest_dispatch_created" +%s)"
+            control_dispatch_cooldown_minutes=$(( (now_epoch - control_latest_dispatch_epoch) / 60 ))
+          fi
+          echo "control_dispatch_attempts_24h=$control_dispatch_attempts_24h control_dispatch_cooldown_minutes=$control_dispatch_cooldown_minutes"
+
+          control_failure_zero_jobs=0
+          control_failure_deterministic=0
+          if [ -n "$control_latest" ] && [ "$control_latest_conclusion" = "failure" ]; then
+            control_job_count="$(gh_retry run view "$control_latest_id" --repo "$GH_REPO" --json jobs --jq '.jobs | length')"
+            echo "control_latest_failure_job_count=$control_job_count"
+            if [ "$control_job_count" -eq 0 ]; then
+              control_failure_zero_jobs=1
+            else
+              control_failure_deterministic=1
+            fi
+          fi
+
+          control_recoverable=0
+          if [ -z "$control_latest" ]; then
+            control_recoverable=1
+          elif [ "$control_latest_conclusion" = "cancelled" ] ||
+               [ "$control_latest_conclusion" = "timed_out" ] ||
+               [ "$control_latest_conclusion" = "startup_failure" ]; then
+            control_recoverable=1
+          elif [ "$control_failure_zero_jobs" -eq 1 ]; then
+            control_recoverable=1
+          elif [ "${control_latest_status}" = "completed" ] &&
+               [ -n "${control_latest_sha}" ] &&
+               [ "${control_latest_sha}" != "${current_sha}" ]; then
+            control_recoverable=1
+          elif [ "${control_latest_conclusion}" = "success" ] &&
+               [ "${control_latest_age_minutes}" -ge 25 ]; then
+            control_recoverable=1
+          fi
+
+          if [ "$control_recoverable" -eq 1 ] &&
+             [ "$control_dispatch_attempts_24h" -lt 2 ] &&
+             [ "$control_dispatch_cooldown_minutes" -ge 15 ]; then
+            echo "Control plane is absent/interrupted; attempting bounded control-plane recovery first."
+            dispatch_epoch="$(date +%s)"
+            gh_retry workflow run "$CONTROL_WORKFLOW" --repo "$GH_REPO" --ref main
+
+            control_verified=0
+            new_control_run_id=""
+            for attempt in 1 2 3 4 5 6; do
+              sleep 3
+              current_control_runs="$(gh_retry run list                 --repo "$GH_REPO"                 --workflow "$CONTROL_WORKFLOW"                 --branch main                 --limit 12                 --json databaseId,status,conclusion,createdAt,headSha,event)"
+              new_control_run_id="$(printf '%s' "$current_control_runs" |
+                jq -r --argjson cutoff "$dispatch_epoch" '
+                  [.[] |
+                   select(.event == "workflow_dispatch") |
+                   select((.createdAt | fromdateiso8601) >= $cutoff)] |
+                  sort_by(.createdAt) | reverse | .[0].databaseId // empty')"
+              control_active_after="$(printf '%s' "$current_control_runs" |
+                jq '[.[] |
+                  select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+              echo "Control-plane recovery verification $attempt/6: active=$control_active_after new_run_id=$new_control_run_id"
+              if [ -n "$new_control_run_id" ] || [ "$control_active_after" -gt 0 ]; then
+                control_verified=1
+                break
+              fi
+            done
+
+            if [ "$control_verified" -eq 1 ]; then
+              printf '%s
+' "Keeper terminal state: CONTROL_PLANE_RECOVERED; run_id=$new_control_run_id." >> "$GITHUB_STEP_SUMMARY"
+              echo 'Control-plane recovery dispatch verified; canonical scheduler resumes ownership.'
+              exit 0
+            fi
+
+            printf '%s
+' 'Keeper terminal state: CONTROL_PLANE_RECOVERY_UNVERIFIED; proceeding to bounded emergency failover.' >> "$GITHUB_STEP_SUMMARY"
+            echo 'Control-plane recovery was not observable; emergency failover remains available.'
+          elif [ "$control_failure_deterministic" -eq 1 ]; then
+            echo 'Control-plane deterministic failure detected; no direct retry. Emergency failover may preserve research continuity.'
+            printf '%s
+' 'Keeper terminal state: CONTROL_PLANE_DETERMINISTIC_FAILURE; failover only.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Control-plane recovery cooldown/cap active; evaluating bounded emergency failover.'
           fi
 
           echo "Control plane is absent/stale; entering bounded 24h-autopilot failover mode."
