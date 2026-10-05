@@ -43,7 +43,7 @@ jobs:
       - name: Syntax and unit tests
         run: |
           python -m py_compile data/npb_pregame_context.py
-          python -m unittest discover -s tests -p 'test_npb_pregame_context.py' -v
+          python -m pip install --disable-pip-version-check --retries 5 --timeout 60 pytest && python -m pytest -q tests/test_npb_pregame_context.py
 
       - name: Resolve JST date
         id: date
