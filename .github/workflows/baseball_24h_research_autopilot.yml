@@ -394,7 +394,10 @@ jobs:
           code_files=(research/game_script_common.py research/game_script_wfo.py research/game_script_engine.py tests/test_game_script_engine.py tests/test_game_script_automation_contract.py .github/workflows/npb_game_script_autoresearch.yml .github/workflows/npb_game_script_watchdog.yml docs/GAME_SCRIPT_V4.md)
           (for f in "${code_files[@]}"; do sha256sum "$f"; done) | sha256sum | awk '{print $1}' > results/code_fingerprint.txt
 
-          dedicated_json="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow npb_game_script_autoresearch.yml --branch main --limit 20 --json databaseId,conclusion,createdAt,headSha 2>/dev/null || true)"
+          if ! dedicated_json="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow npb_game_script_autoresearch.yml --branch main --limit 20 --json databaseId,conclusion,createdAt,headSha 2>/dev/null)"; then
+            echo "Unable to inspect dedicated Game-Script history; failing closed." >&2
+            exit 1
+          fi
           dedicated_success_id="$(echo "$dedicated_json" | jq -r '[.[] | select(.conclusion=="success")] | .[0].databaseId // empty')"
           dedicated_success_created="$(echo "$dedicated_json" | jq -r '[.[] | select(.conclusion=="success")] | .[0].createdAt // empty')"
           dedicated_success_sha="$(echo "$dedicated_json" | jq -r '[.[] | select(.conclusion=="success")] | .[0].headSha // empty')"
