@@ -1,8 +1,8 @@
 {
   "schema_version": "baseball-prediction-request-v1",
-  "request_id": "npb-2026-10-05-fast-v3",
+  "request_id": "npb-2026-10-06-all-games-v1",
   "competition_id": "NPB",
-  "target_date": "today",
-  "requested_at_utc": "2026-10-05T09:10:00Z",
+  "target_date": "2026-10-06",
+  "requested_at_utc": "2026-10-05T21:14:43.049Z",
   "force_refresh": true
 }
