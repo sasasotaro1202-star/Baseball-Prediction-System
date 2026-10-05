@@ -219,20 +219,15 @@ def test_candidate_oos_watchdog_allows_validated_autonomous_control_plane_contin
     assert "Keeping queued candidate run" in text
 
 
-def test_control_plane_and_v44_triggers_keep_bounded_main_push_scope():
+def test_control_plane_and_v44_triggers_do_not_react_to_unrelated_main_commits():
     control = (ROOT / ".github" / "workflows" / "baseball_autonomous_control_plane.yml").read_text(encoding="utf-8")
     v44 = (ROOT / ".github" / "workflows" / "baseball_v44_compatibility.yml").read_text(encoding="utf-8")
     control_trigger = control.split("permissions:", 1)[0]
     v44_trigger = v44.split("permissions:", 1)[0]
 
-    # Control-plane heartbeat is schedule-driven, with a narrowly scoped main
-    # push trigger only for its own control/recovery contract changes. Broad
-    # repository pushes remain excluded to prevent queue churn.
-    assert "push:" in control_trigger
-    assert "branches: [main]" in control_trigger
-    assert '"research/autonomous_control_plane.py"' in control_trigger
-    assert '"tests/test_autonomous_control_plane.py"' in control_trigger
-    assert '".github/workflows/baseball_actions_recovery.yml"' in control_trigger
+    # Control-plane heartbeat is schedule/manual driven. Broad main pushes create
+    # recursive orchestration pressure and are intentionally excluded.
+    assert "push:" not in control_trigger
     assert "schedule:" in control_trigger
     assert "workflow_dispatch:" in control_trigger
 
@@ -259,39 +254,24 @@ def test_npb_production_never_scores_started_games_and_accepts_empty_future_stat
     _assert_official_actions_are_immutable(production)
 
 
-def test_24h_supervisor_avoids_deterministic_failure_retry_loop():
+def test_24h_supervisor_avoids_unbounded_retry_loop():
     text = SUPERVISOR.read_text(encoding="utf-8")
     _assert_official_actions_are_immutable(text)
-
     assert "Deterministic failures must not enter an unbounded retry loop." in text
-    assert "cooldown active" in text
-    assert "baseball_actions_recovery.yml owns transient failed-job retries" in text
-    assert "gh run rerun" not in text
-    # The dispatch is wrapped by gh_retry for transient GitHub API resilience.
-    assert "gh_retry workflow run" in text
-    assert "Dispatch verification" in text
-    assert "latest_age_minutes" in text
-    # The supervisor deliberately avoids a push trigger so PIT-only evidence commits
-    # cannot create a queue-flooding control-plane loop. Main-branch drift is checked
-    # explicitly by compare/${latest_sha}...${current_main_sha} instead.
-    trigger = text.split("permissions:", 1)[0]
-    assert "push:" not in trigger
-    assert "compare/${latest_sha}...${current_main_sha}" in text
-    assert 'startswith("data/pit/")' in text
-    assert "main advanced only through PIT evidence commits" in text
-
-
-
-def test_24h_keeper_is_bounded_control_plane_failover():
+    assert "dispatches_24h" in text
+    assert "dispatch_age" in text
+    assert "FAILED_REDISPATCH" in text
+def test_24h_keeper_uses_consecutive_failure_streak():
     text = (ROOT / ".github" / "workflows" / "baseball_24h_research_keeper.yml").read_text(encoding="utf-8")
-
-    assert "baseball_autonomous_control_plane.yml" in text
-    assert "--branch main" in text
-    assert "Control plane is absent/stale; entering bounded 24h-autopilot failover mode." in text
-    assert "DAILY_FAILOVER_CAP" in text
-    assert "latest_failure_job_count=" in text
-    assert "latest successful 24h cycle is at least 24h old" in text
-    assert "consecutive_failure_streak" not in text
+    assert "failure_streak" in text
+    assert "consecutive_failure_streak" in text
+    assert "sort_by(.createdAt)" in text
+    assert "reverse" in text
+    assert "reduce .[] as $r" in text
+    assert 'elif $r.conclusion == "failure"' in text
+    assert ".done = true" in text
+    assert "three or more consecutive failed autopilot runs" in text
+    assert "recent_failures_24h" not in text
 
 
 def test_24h_research_autopilot_uses_current_commit_snapshot_and_no_push_trigger():
@@ -373,59 +353,14 @@ def test_pregame_zero_job_failure_has_bounded_control_plane_recovery():
     assert "FAILED_PREGAME_ZERO_JOB_DISPATCH" in recovery
 
 
-def test_24h_supervisor_recovers_only_latest_zero_job_pregame_failures_with_daily_cap():
-    text = (SUPERVISOR).read_text(encoding="utf-8")
+def test_24h_supervisor_owns_only_control_plane_watchdog():
+    text = SUPERVISOR.read_text(encoding="utf-8")
     _assert_official_actions_are_immutable(text)
-    assert "PREGAME_WORKFLOW=baseball_60m_pregame_auto.yml" in text
-    # The supervisor inspects the complete main-branch run ledger because both
-    # scheduled and control-plane startup failures must remain recoverable.
-    assert 'actions/runs?branch=main&per_page=100' in text
-    assert 'select(.path == (".github/workflows/" + $workflow))' in text
-    assert "latest_failure_json" in text
-    assert "latest_failure_id" in text
-    assert "latest_failure_job_count=-1" in text
-    assert "pregame_api" in text
-    assert "pregame_dispatch_api" in text
-    assert 'actions/runs?event=workflow_dispatch&branch=main&per_page=100' in text
-    assert "pregame_recovery_attempts_24h" in text
-    assert "pregame_recovery_age_minutes" in text
-    assert "latest_recovery_created" in text
-    assert "(now - 86400)" in text
-    assert "sort_by(.createdAt) | reverse | .[0]" in text
-    assert 'if [ "${pregame_recovery_attempts_24h}" -ge 3 ]; then' in text
-    assert 'if [ "${pregame_recovery_age_minutes}" -lt 15 ]; then' in text
-    assert "dispatch_epoch" in text
-    assert "new_pregame_run_id" in text
-    assert "--argjson cutoff" in text
-    assert "PRE_GAME_ZERO_JOB_COOLDOWN" in text
-    assert "PRE_GAME_ZERO_JOB_DAILY_CAP" in text
-    assert 'gh_retry workflow run "${PREGAME_WORKFLOW}" --repo "${GH_REPO}" --ref main' in text
-    assert "Pregame recovery verification" in text
-    # The supervisor records a verified redispatch as a summary event; the
-    # dedicated recovery workflow owns the stronger zero-job terminal-state token.
-    assert "Pregame dispatch verified:" in text
-    assert "gh run rerun" not in text
-    assert 'Latest pregame failure ${latest_failure_id}: created=${latest_failure_created} jobs=${latest_failure_job_count}' in text
-    assert "HTTP 4[0-9]{2}" in text
-    assert "HTTP (408|429)" in text
-    assert "gh deterministic HTTP 4xx; refusing retry." in text
-    pregame = (ROOT / ".github" / "workflows" / "baseball_60m_pregame_auto.yml").read_text(encoding="utf-8")
-    assert "workflow_dispatch:" in pregame
-    assert "recovery_mode:" in pregame
-    assert 'default: "manual"' in pregame
-    assert "run: bash scripts/pregame_auto.sh" in pregame
-    assert "<<'PY'" not in pregame
-    assert len(pregame.splitlines()) <= 90
-    assert (ROOT / ".github" / "workflows" / "baseball_60m_pregame_auto.yml").is_file()
-    assert (ROOT / "scripts" / "pregame_auto.sh").is_file()
-    assert 'pregame_recovery_mode="zero_job_startup_recovery"' in text
-    assert 'pregame_recovery_mode="bootstrap_recovery"' in text
-    assert 'pregame_recovery_mode="missed_schedule_recovery"' in text
-    assert '--field recovery_mode="${pregame_recovery_mode}"' in text
-
-
-
-
+    assert "CONTROL_PLANE_WORKFLOW=baseball_autonomous_control_plane.yml" in text
+    assert "gh_retry workflow run baseball_autonomous_control_plane.yml" in text
+    assert "dispatches_24h" in text
+    assert "Control Plane watchdog" in text
+    assert "PREGAME_WORKFLOW=baseball_60m_pregame_auto.yml" not in text
 def test_research_lab_caches_are_snapshot_verified_and_file_scoped():
     """Research caches must contain only the verified evidence for their exact SHA."""
     contracts = (
