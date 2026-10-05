@@ -37,9 +37,21 @@ jobs:
           # production workflow is discovered/disabled heuristically.
           target_ids="375399090 359633887 375842323 375843510"
 
+          workflow_state() {
+            local workflow_id="$1"
+            local response
+            if response="$(gh api "repos/${GH_REPO}/actions/workflows/${workflow_id}" 2>&1)"; then
+              printf "%s\n" "$response" | jq -r '.state // "unknown"'
+            elif printf "%s" "$response" | grep -Eq 'HTTP 404|Not Found'; then
+              printf "%s\n" "deleted"
+            else
+              printf "%s\n" "$response" >&2
+              return 1
+            fi
+          }
           printf '%s\n' "Checking known ghost workflow registrations..."
           for workflow_id in ${target_ids}; do
-            state="$(gh api "repos/${GH_REPO}/actions/workflows/${workflow_id}" --jq '.state // "unknown"')"
+            state="$(workflow_state "${workflow_id}")"
             path="$(gh api "repos/${GH_REPO}/actions/workflows/${workflow_id}" --jq '.path // "unknown"')"
             name="$(gh api "repos/${GH_REPO}/actions/workflows/${workflow_id}" --jq '.name // "unknown"')"
             printf 'workflow_id=%s state=%s path=%s name=%s\n' "${workflow_id}" "${state}" "${path}" "${name}"
@@ -76,7 +88,7 @@ jobs:
           set -euo pipefail
           target_ids="375399090 359633887 375842323 375843510"
           for workflow_id in ${target_ids}; do
-            state="$(gh api "repos/${GH_REPO}/actions/workflows/${workflow_id}" --jq '.state // "unknown"')"
+            state="$(workflow_state "${workflow_id}")"
             case "${state}" in
               disabled_manually|disabled_inactivity|deleted)
                 ;;
