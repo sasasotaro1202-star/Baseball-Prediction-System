@@ -124,3 +124,9 @@ A probable-pitcher observation from MLB's current official page is not treated a
 
 ## Score-distribution research
 Use `research/score_distribution_pattern_lab.py` for research-only exploration of score-model composition, shared scoring correlation, and mean shrinkage. The canonical targets remain independent: Score Top-4 exact-score, Low<=6, High>=7. Candidate selection is chronological Development OOS only and the newest 20% remains winner-only frozen holdout. No score-pattern result may auto-promote Production.
+
+
+## Probabilistic game model research layer
+The repository now contains a research-only posterior-predictive integration layer in research/probabilistic_game_model.py with an explicit contract in config/probabilistic_game_model.json. It implements auditable normal-normal shrinkage, current-state adjustment, scenario mixtures, Monte Carlo posterior-predictive aggregation, uncertainty decomposition and model-disagreement diagnostics. It is designed to reuse the existing game-state/score simulators rather than duplicate them.
+
+This layer is RESEARCH_ONLY and production_eligible=false. It must not alter Champion/Production state or be treated as performance evidence merely because the module, tests, workflow or simulation artifact exists. Any production consideration requires LOCAL_PIT → chronological OOS/WFO → calibration → ablation → robustness → frozen holdout → release gating. MLB terminal ties are fail-closed unless an explicit extra-inning rule is part of the simulator contract.
