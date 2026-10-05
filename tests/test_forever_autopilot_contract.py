@@ -75,3 +75,9 @@ def test_forever_autopilot_executes_control_plane_locally():
     assert "CONTROL_WORKFLOW" not in text
     assert "gh workflow run" not in text
     assert "timeout-minutes: 15" in text
+
+def test_request_recovery_uses_existing_run_rerun():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert 'gh_retry run rerun "${request_latest_id}" --repo "$GH_REPO"' in text
+    assert 'gh_retry workflow run "$REQUEST_WORKFLOW"' not in text
+    assert "request_run_attempt" in text
