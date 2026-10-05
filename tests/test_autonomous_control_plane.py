@@ -154,7 +154,7 @@ def test_list_runs_uses_workflow_scoped_history(monkeypatch):
 
     assert len(calls) == len(control_plane.TARGETS)
     assert {call[call.index("--workflow") + 1] for call in calls} == {
-        target.workflow for target in control_plane.TARGETS
+        control_plane.workflow_cli_ref(target.workflow) for target in control_plane.TARGETS
     }
     assert len(rows) == len(control_plane.TARGETS)
     assert {row["path"] for row in rows} == {
