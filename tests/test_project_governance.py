@@ -482,3 +482,11 @@ def test_action_health_uses_workflow_scoped_history(monkeypatch):
         blocker.startswith("actions_no_recent_run:")
         for blocker in report["blockers"]
     )
+
+
+def test_forever_heartbeat_is_governed():
+    from research.project_governance import WORKFLOW_CONTRACTS
+    path = ".github/workflows/baseball_forever_autopilot.yml"
+    assert path in WORKFLOW_CONTRACTS
+    assert WORKFLOW_CONTRACTS[path]["monitor"] is True
+    assert WORKFLOW_CONTRACTS[path]["max_age_hours"] <= 1.0
