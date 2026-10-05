@@ -54,7 +54,7 @@ TARGETS = (
     # modify the production runtime; the control plane only recovers queued/stale
     # executions and re-dispatches the current main snapshot.
     Target(".github/workflows/npb_game_state_research.yml", 192.0, True, 60, 2.5),
-    # Daily Game-Script v4 challenger. It remains research-only and is also
+    # Daily Game-Script challenger. It remains research-only and is also
     # protected by its own six-hour watchdog; this target gives the project
     # control plane a second bounded recovery path without production writes.
     Target(".github/workflows/npb_game_script_autoresearch.yml", 30.0, True, 60, 3.0),
@@ -226,3 +226,144 @@ def decide(
 
         result["reason"] = "active_run"
         return result
+
+    if not matching:
+        if attempts >= cap:
+            result["decision"], result["reason"] = "HOLD", "dispatch_cap_reached_without_history"
+        else:
+            result["decision"], result["reason"] = "DISPATCH", "no_recent_history"
+        return result
+
+    latest = matching[0]
+    result["latest_run_id"] = latest.get("id")
+    result["latest_status"] = latest.get("status")
+    result["latest_conclusion"] = latest.get("conclusion")
+    age_minutes = max(0.0, (now - parse_time(latest["created_at"])).total_seconds() / 60.0)
+    result["latest_age_minutes"] = round(age_minutes, 2)
+
+    if attempts >= cap:
+        result["decision"], result["reason"] = "HOLD", "dispatch_cap_reached"
+        return result
+
+    conclusion = latest.get("conclusion")
+    if conclusion == "skipped" and target.skip_is_healthy:
+        result["reason"] = "expected_skipped_state"
+    elif conclusion in RECOVERABLE and age_minutes >= 15:
+        result["decision"], result["reason"] = "DISPATCH", f"recoverable_terminal_state:{conclusion}"
+    elif conclusion == "success" and age_minutes >= target.max_age_hours * 60:
+        result["decision"], result["reason"] = "DISPATCH", "stale_success"
+    elif conclusion == "failure":
+        result["decision"], result["reason"] = "HOLD", "deterministic_failure_is_authoritative"
+    elif conclusion == "skipped":
+        result["reason"] = "skipped_within_controlled_state"
+    elif conclusion is None and age_minutes >= target.max_age_hours * 60:
+        result["decision"], result["reason"] = "DISPATCH", "stale_non_success_terminal_state"
+    else:
+        result["reason"] = "within_window"
+    return result
+
+def _active_for(runs: list[dict[str, Any]], workflow: str) -> list[dict[str, Any]]:
+    return [r for r in _matching(runs, workflow) if r.get("status") in ACTIVE]
+
+def cancel_run(repo: str, run_id: int) -> None:
+    _gh(["run", "cancel", str(run_id), "--repo", repo])
+    for _ in range(6):
+        time.sleep(2)
+        runs = list_runs(repo)
+        if not any(int(r.get("id", -1)) == int(run_id) and r.get("status") in ACTIVE for r in runs):
+            return
+    raise RuntimeError(f"cancel accepted but run remained active: {run_id}")
+
+def dispatch_and_verify(repo: str, target: Target, dispatch_epoch: int) -> int:
+    _gh(["workflow", "run", target.workflow, "--repo", repo, "--ref", "main"])
+    for _ in range(6):
+        time.sleep(2)
+        runs = list_runs(repo)
+        recent = [
+            r
+            for r in runs
+            if str(r.get("path", "")).lstrip("/") == target.workflow
+            and r.get("event") == "workflow_dispatch"
+            and parse_time(r["created_at"]).timestamp() >= dispatch_epoch
+        ]
+        if recent:
+            return int(recent[0]["id"])
+    raise RuntimeError(f"dispatch accepted but no new run observed: {target.workflow}")
+
+def run(repo: str, output: Path, max_dispatches_per_cycle: int = 2) -> dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    runs = list_runs(repo)
+    main_sha = current_main_sha(repo)
+    decisions = [
+        decide(target, runs, now, max_dispatches_per_cycle, main_sha)
+        for target in TARGETS
+    ]
+    dispatched = 0
+    heavy_dispatched = 0
+
+    for item, target in zip(decisions, TARGETS):
+        if item["decision"] not in {"DISPATCH", "RECOVER"}:
+            continue
+        if dispatched >= max_dispatches_per_cycle:
+            item["decision"], item["reason"] = "HOLD", "cycle_dispatch_cap_reached"
+            continue
+        if target.heavy and heavy_dispatched >= 1:
+            item["decision"], item["reason"] = "HOLD", "heavy_dispatch_cap_reached"
+            continue
+
+        if item["decision"] == "RECOVER" and item.get("latest_run_id") is not None:
+            cancel_run(repo, int(item["latest_run_id"]))
+            item["recovered_run_id"] = int(item["latest_run_id"])
+
+        epoch = int(time.time())
+        run_id = dispatch_and_verify(repo, target, epoch)
+        item["decision"] = "DISPATCHED"
+        item["dispatched_run_id"] = run_id
+        dispatched += 1
+        if target.heavy:
+            heavy_dispatched += 1
+
+    blockers = [
+        x
+        for x in decisions
+        if x["decision"] == "HOLD"
+        and x["reason"] == "deterministic_failure_is_authoritative"
+    ]
+    report = {
+        "schema_version": 2,
+        "generated_at": now.isoformat(),
+        "git_commit": os.environ.get("GITHUB_SHA") or None,
+        "current_main_sha": main_sha,
+        "repository": repo,
+        "control_plane_status": "EXECUTED_WITH_BLOCKERS" if blockers else "EXECUTED",
+        "cycle_dispatch_count": dispatched,
+        "cycle_heavy_dispatch_count": heavy_dispatched,
+        "targets": decisions,
+        "deterministic_failure_targets": [x["workflow"] for x in blockers],
+        "safety_contract": {
+            "production_modified": False,
+            "auto_promotion": False,
+            "fail_closed": True,
+            "max_heavy_dispatches_per_cycle": 1,
+        },
+    }
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return report
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", ""))
+    parser.add_argument("--output", default="results/control_plane/autonomous_control_plane.json")
+    parser.add_argument("--max-dispatches-per-cycle", type=int, default=2)
+    args = parser.parse_args()
+    if not args.repo:
+        raise SystemExit("GITHUB_REPOSITORY is required")
+    if args.max_dispatches_per_cycle < 1:
+        raise SystemExit("--max-dispatches-per-cycle must be >= 1")
+    report = run(args.repo, ROOT / args.output, args.max_dispatches_per_cycle)
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    return 0
+
+if __name__ == "__main__":
+    raise SystemExit(main())
