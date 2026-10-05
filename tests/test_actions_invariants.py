@@ -230,7 +230,7 @@ def test_24h_supervisor_avoids_deterministic_failure_retry_loop():
     trigger = text.split("permissions:", 1)[0]
     assert "push:" in trigger
     assert ".github/workflows/baseball_24h_supervisor.yml" in trigger
-    assert ".github/workflows/baseball_autonomous_control_plane.yml" in trigger
+    assert ".github/workflows/baseball_autonomous_control_plane_stable.yml" in trigger
 
 
 def test_24h_keeper_is_bounded_control_plane_failover():
