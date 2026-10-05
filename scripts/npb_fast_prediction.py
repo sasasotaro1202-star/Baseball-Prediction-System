@@ -352,12 +352,21 @@ def main() -> int:
             )
     except Exception as exc:
         primary_error = f"{type(exc).__name__}: {exc}"
-        result = _run_daily_research_fallback(
-            target_date=args.date,
-            data_dir=args.data_dir,
-            minimum_lead_minutes=float(args.minimum_lead_minutes),
-        )
-        result = _normalise_research_output(result, fallback_reason=primary_error)
+        try:
+            result = _run_daily_research_fallback(
+                target_date=args.date,
+                data_dir=args.data_dir,
+                minimum_lead_minutes=float(args.minimum_lead_minutes),
+            )
+            result = _normalise_research_output(result, fallback_reason=primary_error)
+        except Exception as fallback_exc:
+            result = {
+                "execution_status": "GENERATION_FAILED",
+                "pit_status": "UNKNOWN",
+                "predictions": [],
+                "fallback_stage": "DAILY_RESEARCH",
+                "fallback_error": f"{type(fallback_exc).__name__}: {fallback_exc}",
+            }
 
     captured = diagnostics.getvalue()
     if captured:
