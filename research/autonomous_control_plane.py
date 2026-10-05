@@ -42,7 +42,7 @@ TARGETS = (
     Target(".github/workflows/baseball_governance_autopilot.yml", 8.0, pending_recover_minutes=30, max_runtime_hours=0.5),
     Target(".github/workflows/project_source_provenance_audit.yml", 30.0, pending_recover_minutes=60, max_runtime_hours=0.5),
     Target(".github/workflows/baseball_closed_loop.yml", 10.0, True, 45, 3.0),
-    Target(".github/workflows/baseball_24h_research_autopilot.yml", 30.0, True, 60, 7.0),
+    Target(".github/workflows/baseball_24h_research_runtime.yml", 30.0, True, 60, 7.0),
     Target(".github/workflows/npb-production.yml", 10.0, True, 45, 2.0),
     Target(".github/workflows/npb_prediction_experience_archive.yml", 6.0, pending_recover_minutes=60, max_runtime_hours=0.5, skip_is_healthy=True),
     Target(".github/workflows/npb_experience_reconciliation.yml", 30.0, pending_recover_minutes=60, max_runtime_hours=0.5),
@@ -57,7 +57,7 @@ TARGETS = (
     # Daily Game-Script challenger. It remains research-only and is also
     # protected by its own six-hour watchdog; this target gives the project
     # control plane a second bounded recovery path without production writes.
-    Target(".github/workflows/npb_game_script_autoresearch.yml", 30.0, True, 60, 3.0),
+    Target(".github/workflows/npb_game_script_research_runtime.yml", 30.0, True, 60, 3.0),
     # PR #204 added a separate six-hour Monte Carlo Game-Script Lab. Keep it
     # inside the same autonomous heartbeat so a missed schedule cannot leave a
     # newly-added research lane silently dormant.
