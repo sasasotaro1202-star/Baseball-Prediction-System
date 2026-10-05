@@ -104,6 +104,7 @@ while IFS= read -r date; do
   test -s "$output"
   python - "$output" <<'PY'
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -127,7 +128,7 @@ for pred in obj.get("predictions", []):
         raise SystemExit("prediction information cutoff is not pregame")
     if pred.get("pit_status") != "PASS":
         raise SystemExit("prediction is not PIT PASS")
-print("Pregame PIT validation passed; automatic target is approximately 60m before first pitch.")
+print("Pregame PIT validation passed; target lead is configured at %sm before first pitch." % os.environ.get("PREGAME_TARGET_LEAD_MINUTES", "60"))
 PY
 done < due_dates.txt
 
@@ -140,7 +141,7 @@ import json
 from pathlib import Path
 for path in sorted(list(Path("results").glob("npb_production_*.json")) + list(Path("results").glob("npb_shadow_*.json"))):
     obj = json.loads(path.read_text(encoding="utf-8"))
-    if obj.get("execution_status") != "EXECUTED":
+    if obj.get("execution_status") not in {"EXECUTED", "RESEARCH_SHADOW_EXECUTED"}:
         continue
     import os
     source_label = os.environ.get("PREGAME_PREDICTION_SOURCE", "AUTO_60M")
