@@ -146,6 +146,7 @@ def test_list_runs_uses_workflow_scoped_history(monkeypatch):
             '"conclusion": "success", "createdAt": "2026-10-05T00:00:00Z", '
             '"updatedAt": "2026-10-05T00:01:00Z", "headSha": "current", '
             '"headBranch": "main", "event": "schedule", "path": "'
+            + ".github/workflows/"
             + workflow
             + '"}]'
         )
