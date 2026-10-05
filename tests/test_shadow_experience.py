@@ -196,3 +196,66 @@ def test_shadow_reconcile_keeps_horizon_breakdown_case_level(tmp_path, monkeypat
     assert summary["by_horizon"]["30_TO_60M"]["rows"] == 1
     assert set(summary["canonical_by_horizon"]) == {"30_TO_60M"}
     assert summary["canonical_by_horizon"]["30_TO_60M"]["rows"] == 1
+
+def test_shadow_archive_accepts_unverifiable_starter_snapshot_without_fabricating_observation_time(tmp_path, monkeypatch):
+    root = tmp_path / "research_shadow"
+    monkeypatch.setattr(shadow, "SHADOW_ROOT", root)
+    monkeypatch.setattr(shadow, "PRED_DIR", root / "predictions")
+    payload = _prediction()
+    row = payload["predictions"][0]
+    row["starter_evidence_status"] = "not_yet_public_or_unverifiable"
+    row["starter_evidence_observed_at_utc"] = None
+    row["starter_pit_status"] = "UNVERIFIABLE"
+    row["pit_status"] = "UNVERIFIABLE"
+    row["prediction_generated_at"] = "2026-10-03T08:56:00+00:00"
+    input_path = tmp_path / "unverifiable.json"
+    input_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    result = shadow.archive_shadow_output(input_path, run_id="r-unverifiable")
+    assert result["archived"] == 1
+
+    archived = json.loads(
+        (root / "predictions" / "2026-10-03.jsonl").read_text(encoding="utf-8").strip()
+    )
+    assert archived["pit_status"] == "UNVERIFIABLE"
+    assert archived["starter_evidence_observed_at_utc"] is None
+
+
+def test_shadow_reconcile_excludes_unverifiable_snapshots_from_metrics(tmp_path, monkeypatch):
+    root = tmp_path / "research_shadow"
+    pred_dir = root / "predictions"
+    pred_dir.mkdir(parents=True)
+    monkeypatch.setattr(shadow, "SHADOW_ROOT", root)
+    monkeypatch.setattr(shadow, "PRED_DIR", pred_dir)
+    monkeypatch.setattr(shadow, "LEDGER_PATH", root / "shadow_experience_ledger.csv")
+    monkeypatch.setattr(shadow, "LEDGER_JSONL", root / "shadow_experience_ledger.jsonl")
+    monkeypatch.setattr(shadow, "SUMMARY_PATH", root / "shadow_experience_summary.json")
+
+    row = dict(_prediction()["predictions"][0])
+    row["pit_status"] = "UNVERIFIABLE"
+    row["starter_pit_status"] = "UNVERIFIABLE"
+    row["starter_evidence_status"] = "not_yet_public_or_unverifiable"
+    row["starter_evidence_observed_at_utc"] = None
+    pred_dir.joinpath("2026-10-03.jsonl").write_text(
+        json.dumps(row, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        shadow,
+        "_load_cached_results",
+        lambda dates: pd.DataFrame([{
+            "date": "2026-10-03",
+            "home": "東京ヤクルトスワローズ",
+            "away": "読売ジャイアンツ",
+            "home_score": 3,
+            "away_score": 2,
+            "source_url": "test://npb",
+        }]),
+    )
+
+    summary = shadow.reconcile_shadow()
+    assert summary["prediction_rows"] == 1
+    assert summary["unverifiable_snapshots"] == 1
+    assert summary["pit_valid_snapshots"] == 0
+    assert summary["matched_snapshots"] == 0
+    assert summary["canonical_cases"] == 0
+
