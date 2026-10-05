@@ -290,16 +290,12 @@ def test_dispatch_verification_is_workflow_scoped(monkeypatch):
     assert ".github/workflows/x.yml" in list_calls[0]
 
 
-def test_control_plane_workflow_preserves_runtime_failure_evidence():
-    workflow = (
-        __import__("pathlib").Path(".github/workflows/baseball_autonomous_control_plane.yml")
-        .read_text(encoding="utf-8")
-    )
-    assert "control_plane_runtime.log" in workflow
-    assert "runtime_failure.json" in workflow
-    assert 'PIPESTATUS[0]' in workflow
-    assert 'failure_class": "AUTONOMOUS_CONTROL_PLANE_RUNTIME"' in workflow
-
+def test_control_plane_runtime_failure_evidence_contract_is_embedded_in_forever_workflow():
+    workflow = __import__("pathlib").Path(".github/workflows/baseball_forever_autopilot.yml").read_text(encoding="utf-8")
+    assert "forever_runtime.log" in workflow
+    assert "forever_runtime_failure.json" in workflow
+    assert "FOREVER_AUTONOMOUS_CONTROL_PLANE" in workflow
+    assert "research.autonomous_control_plane" in workflow
 
 def test_unsupported_push_run_is_ignored_for_canonical_autopilot():
     now = datetime(2026, 10, 5, 13, 0, tzinfo=timezone.utc)
