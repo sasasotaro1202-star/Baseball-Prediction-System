@@ -302,7 +302,7 @@ def _workflow_declares_event(workflow_path: str, event: str) -> bool:
         return True
     return bool(
         re.search(
-            rf"(?m)^  {re.escape(event)}:\s*(?:#.*)?$",
+            rf"(?m)^  {re.escape(event)}:\s*(?:\{\})?\s*(?:#.*)?$",
             text,
         )
     )
@@ -414,28 +414,6 @@ def action_health(repo: str, now: datetime | None = None) -> dict[str, Any]:
                     f"actions_only_unsupported_event_runs:{workflow_path}"
                 )
             elif workflow_path != control_path and control_healthy:
-                entry["state"] = "DEFERRED"
-                entry["reasons"] = ["awaiting_autonomous_control_plane_reconciliation"]
-                report["deferred"].append(f"actions_no_recent_run:{workflow_path}")
-            else:
-                entry["reasons"] = ["no_recent_run"]
-                report["blockers"].append(f"actions_no_recent_run:{workflow_path}")
-            report["workflows"][workflow_path] = entry
-            continue
-            entry = {
-                "state": "NO_RUN",
-                "run_id": None,
-                "status": None,
-                "conclusion": None,
-                "created_at": None,
-                "updated_at": None,
-                "head_sha": None,
-                "current_sha": current_sha,
-                "sha_relation": "UNKNOWN",
-                "age_hours": None,
-                "reasons": [],
-            }
-            if workflow_path != control_path and control_healthy:
                 entry["state"] = "DEFERRED"
                 entry["reasons"] = ["awaiting_autonomous_control_plane_reconciliation"]
                 report["deferred"].append(f"actions_no_recent_run:{workflow_path}")
