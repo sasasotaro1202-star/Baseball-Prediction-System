@@ -155,26 +155,40 @@ jobs:
           from pathlib import Path
 
           obj = json.loads(Path("results/game_state_screening.json").read_text(encoding="utf-8"))
-          assert obj.get("status") == "RESEARCH_SCREENING_ONLY"
+          status = obj.get("status")
+          assert status in {"RESEARCH_SCREENING_ONLY", "BLOCKED"}
           assert obj.get("decision") == "HOLD_RESEARCH_ONLY"
           assert obj.get("pit_status", "").startswith("UNVERIFIABLE")
           assert obj.get("production_eligible") is False
 
-          aggregate = obj.get("aggregate", {})
-          for model in ("candidate", "poisson_baseline"):
-              for phase in ("validation", "holdout"):
-                  row = aggregate[model][phase]
-                  assert row["rows"] > 0
-                  for metric in ("accuracy", "logloss", "brier", "ece", "score_mae", "top1_exact", "top4_exact"):
-                      assert isinstance(row[metric], (int, float))
-                      assert row[metric] == row[metric]
-          print(json.dumps({
-              "status": obj["status"],
-              "decision": obj["decision"],
-              "pit_status": obj["pit_status"],
-              "aggregate": aggregate,
-              "delta_vs_poisson": obj.get("delta_vs_poisson", {}),
-          }, ensure_ascii=False, indent=2))
+          if status == "BLOCKED":
+              blocker = obj.get("blocker", {})
+              assert blocker.get("type") == "INSUFFICIENT_VALID_TRANSITIONS"
+              assert int(blocker.get("observed", -1)) < int(blocker.get("required_minimum", 100))
+              assert obj.get("production_promotion") == "FORBIDDEN"
+              print(json.dumps({
+                  "status": status,
+                  "decision": obj["decision"],
+                  "pit_status": obj["pit_status"],
+                  "blocker": blocker,
+                  "reason": obj.get("reason"),
+              }, ensure_ascii=False, indent=2))
+          else:
+              aggregate = obj.get("aggregate", {})
+              for model in ("candidate", "poisson_baseline"):
+                  for phase in ("validation", "holdout"):
+                      row = aggregate[model][phase]
+                      assert row["rows"] > 0
+                      for metric in ("accuracy", "logloss", "brier", "ece", "score_mae", "top1_exact", "top4_exact"):
+                          assert isinstance(row[metric], (int, float))
+                          assert row[metric] == row[metric]
+              print(json.dumps({
+                  "status": obj["status"],
+                  "decision": obj["decision"],
+                  "pit_status": obj["pit_status"],
+                  "aggregate": aggregate,
+                  "delta_vs_poisson": obj.get("delta_vs_poisson", {}),
+              }, ensure_ascii=False, indent=2))
           PY
 
       - name: Upload research evidence
