@@ -1,0 +1,87 @@
+name: Baseball Workflow Syntax Audit
+
+"on":
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/**"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/**"
+  schedule:
+    - cron: "29 3 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baseball-workflow-syntax-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  actionlint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install pinned actionlint
+        env:
+          ACTIONLINT_VERSION: "1.7.12"
+          ACTIONLINT_SHA256: "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d"
+        run: |
+          set -euo pipefail
+          archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          gh release download "v${ACTIONLINT_VERSION}" --repo rhysd/actionlint --pattern "${archive}"
+          printf '%s  %s\n' "${ACTIONLINT_SHA256}" "${archive}" | sha256sum -c -
+          tar -xzf "${archive}"
+          test -x actionlint
+          ./actionlint -version
+
+      - name: Validate all workflow definitions
+        run: |
+          set -euo pipefail
+          ./actionlint -color
+
+      - name: Validate controlled autonomous workflow invariants
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          required = {
+              ".github/workflows/baseball_autonomous_control_plane_canonical.yml": "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'",
+              ".github/workflows/baseball_24h_research_keeper_canonical.yml": "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'",
+              ".github/workflows/baseball_24h_research_autopilot_canonical.yml": "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'",
+              ".github/workflows/npb_game_script_autoresearch_canonical.yml": "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'",
+              ".github/workflows/baseball_actions_recovery_canonical.yml": "github.event_name == 'workflow_run'",
+          }
+
+          for relpath, guard in required.items():
+              text = Path(relpath).read_text(encoding="utf-8")
+              if guard not in text:
+                  raise SystemExit(f"missing fail-closed event guard: {relpath}: {guard}")
+              if relpath.endswith("baseball_actions_recovery_canonical.yml"):
+                  if "github.event.workflow_run.head_branch == 'main'" not in text:
+                      raise SystemExit("recovery workflow lost main-branch scope guard")
+              else:
+                  if "schedule:" not in text or "workflow_dispatch" not in text:
+                      raise SystemExit(f"autonomous workflow lost recurring/manual trigger: {relpath}")
+
+          print("controlled autonomous workflow invariants: PASS")
+          PY
+
+      - name: Preserve syntax audit evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: baseball-workflow-syntax-audit-${{ github.run_id }}
+          path: |
+            actionlint_*.tar.gz
+          if-no-files-found: ignore
+          retention-days: 14
