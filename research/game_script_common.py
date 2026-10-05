@@ -8,7 +8,7 @@ from typing import Any, Mapping, Sequence
 import numpy as np
 import pandas as pd
 
-SCHEMA_VERSION = "game-script-v4"
+SCHEMA_VERSION = "game-script-v5"
 PIT_STATUS = "UNVERIFIABLE_HISTORICAL_PBP_AVAILABILITY"
 ALPHA, MIN_SUPPORT, MAX_SCORE_DIFF, MAX_STEPS, SCORE_GRID = 0.5, 24, 8, 420, 31
 
@@ -126,13 +126,35 @@ def _reconstruct_scores(frame:pd.DataFrame)->pd.DataFrame:
 
 
 def _transition(a:Mapping[str,Any],b:Mapping[str,Any])->tuple|None:
+    """Return a legal observed state transition; reject impossible boundary jumps.
+
+    PBP rows can use 0..2 to encode the currently visible outs, so the third
+    out is represented by the transition into the next half-inning.  A half
+    change is therefore legal only when the next state resets to 0 outs and
+    empty bases.  Within a half-inning, the visible out count may increase by
+    at most two (double play) and may never decrease.
+    """
     ai,bi=int(a["inning"]),int(b["inning"]); ah,bh=str(a["half"]),str(b["half"])
-    if not ((ai==bi and ah==bh) or (ai==bi and ah=="T" and bh=="B") or (ah=="B" and bh=="T" and bi==ai+1)): return None
-    if ai==bi and ah==bh and int(b["outs"])<int(a["outs"]): return None
-    if None in (_base(a),_base(b),_count(a),_count(b)): return None
+    same_half = ai==bi and ah==bh
+    top_to_bottom = ai==bi and ah=="T" and bh=="B"
+    bottom_to_next_top = ah=="B" and bh=="T" and bi==ai+1
+    if not (same_half or top_to_bottom or bottom_to_next_top): return None
+
+    ao,bo=int(a["outs"]),int(b["outs"])
+    ba,bb=_base(a),_base(b)
+    if ba is None or bb is None or None in (_count(a),_count(b)): return None
+    if same_half:
+        if bo < ao or bo-ao > 2: return None
+    else:
+        # A new half must start from an empty base/out state.  This prevents
+        # the simulator from learning impossible shortcuts such as 0 outs ->
+        # the opposite half or carrying runners across an inning boundary.
+        if bo != 0 or bb != 0: return None
+
     dh=float(b["state_home_score"])-float(a["state_home_score"]); da=float(b["state_away_score"])-float(a["state_away_score"])
     if dh<0 or da<0 or dh>4 or da>4 or (dh>0 and da>0): return None
-    cb=_count(b); return (bh,max(0,min(2,int(b["outs"]))),_base(b),cb[0],cb[1],int(round(dh+da)),"H" if dh>0 else "A" if da>0 else "N")
+    cb=_count(b)
+    return (bh,bo,bb,cb[0],cb[1],int(round(dh+da)),"H" if dh>0 else "A" if da>0 else "N")
 
 
 class TransitionKernel:
