@@ -266,11 +266,17 @@ def test_24h_supervisor_avoids_deterministic_failure_retry_loop():
     assert "gh_retry workflow run" in text
     assert "Dispatch verification" in text
     assert "latest_age_minutes" in text
-    # The supervisor deliberately avoids a push trigger so PIT-only evidence commits
-    # cannot create a queue-flooding control-plane loop. Main-branch drift is checked
-    # explicitly by compare/${latest_sha}...${current_main_sha} instead.
+    # The supervisor may use a narrowly scoped main push trigger only for
+    # orchestration/bootstrap changes. Normal PIT/data commits remain excluded.
     trigger = text.split("permissions:", 1)[0]
-    assert "push:" not in trigger
+    assert "push:" in trigger
+    assert "branches: [main]" in trigger
+    assert '".github/workflows/baseball_24h_supervisor.yml"' in trigger
+    assert '".github/workflows/baseball_autonomous_control_plane.yml"' in trigger
+    assert '".github/workflows/baseball_actions_recovery.yml"' in trigger
+    assert '"research/autonomous_control_plane.py"' in trigger
+    assert '"tests/test_autonomous_control_plane.py"' in trigger
+    assert "data/pit/" not in trigger
     assert "compare/${latest_sha}...${current_main_sha}" in text
     assert 'startswith("data/pit/")' in text
     assert "main advanced only through PIT evidence commits" in text
