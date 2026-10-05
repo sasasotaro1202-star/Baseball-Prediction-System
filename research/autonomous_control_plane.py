@@ -89,6 +89,10 @@ def workflow_cli_ref(workflow: str) -> str:
     return Path(workflow).name
 
 
+def _is_workflow_dispatch_registration_error(message: str) -> bool:
+    lowered = message.lower()
+    return "workflow does not have" in lowered and "workflow_dispatch" in lowered
+
 def _is_transient_gh_failure(message: str) -> bool:
     lowered = message.lower()
     transient_markers = (
@@ -463,7 +467,16 @@ def run(repo: str, output: Path, max_dispatches_per_cycle: int = 2) -> dict[str,
             item["recovered_run_id"] = int(item["latest_run_id"])
 
         epoch = int(time.time())
-        run_id = dispatch_and_verify(repo, target, epoch)
+        try:
+            run_id = dispatch_and_verify(repo, target, epoch)
+        except RuntimeError as exc:
+            message = str(exc)
+            if _is_workflow_dispatch_registration_error(message):
+                item["decision"] = "HOLD"
+                item["reason"] = "workflow_dispatch_registration_unavailable"
+                item["dispatch_error"] = message
+                continue
+            raise
         item["decision"] = "DISPATCHED"
         item["dispatched_run_id"] = run_id
         dispatched += 1
@@ -474,7 +487,7 @@ def run(repo: str, output: Path, max_dispatches_per_cycle: int = 2) -> dict[str,
         x
         for x in decisions
         if x["decision"] == "HOLD"
-        and x["reason"] == "deterministic_failure_or_unverifiable_startup_state"
+        and x["reason"] in {"deterministic_failure_or_unverifiable_startup_state", "workflow_dispatch_registration_unavailable"}
     ]
     report = {
         "schema_version": 2,
