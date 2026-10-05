@@ -24,7 +24,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TARGET: baseball_24h_research_autopilot_canonical.yml
-          CONTROL_WORKFLOW: baseball_autonomous_control_plane.yml
+          CONTROL_WORKFLOW: baseball_autonomous_control_plane_stable.yml
           SUPERVISOR_WORKFLOW: baseball_24h_supervisor.yml
         shell: bash
         run: |
