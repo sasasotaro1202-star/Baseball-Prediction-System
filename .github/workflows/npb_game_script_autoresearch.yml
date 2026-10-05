@@ -141,10 +141,10 @@ jobs:
           prev_code=""
           prev_validation_source=""
           prev_context_source=""
-          prev_manifest_path=$(find .previous_evidence -type f -name 'pbp_release_manifest.tsv' -print -quit || true)
-          prev_source_path=$(find .previous_evidence -type f -name 'source_fingerprint.txt' -print -quit || true)
-          prev_code_path=$(find .previous_evidence -type f -name 'code_fingerprint.txt' -print -quit || true)
-          prev_json_path=$(find .previous_evidence -type f -name 'game_script_screening.json' -print -quit || true)
+          prev_manifest_path=$(find .previous_evidence -type f -name 'pbp_release_manifest.tsv' -print -quit )
+          prev_source_path=$(find .previous_evidence -type f -name 'source_fingerprint.txt' -print -quit )
+          prev_code_path=$(find .previous_evidence -type f -name 'code_fingerprint.txt' -print -quit )
+          prev_json_path=$(find .previous_evidence -type f -name 'game_script_screening.json' -print -quit )
           if [ -n "$prev_source_path" ]; then prev_source=$(tr -d '[:space:]' < "$prev_source_path"); fi
           if [ -n "$prev_code_path" ]; then prev_code=$(tr -d '[:space:]' < "$prev_code_path"); fi
           if [ -n "$prev_manifest_path" ]; then prev_manifest=$(sha256sum "$prev_manifest_path" | awk '{print $1}'); fi
@@ -308,7 +308,7 @@ PY
           shadow_start="$current_month-01"
           shadow_end=$(TZ=Asia/Tokyo date +%Y-%m-%d)
           mkdir -p results
-          previous_checkpoint=$(find .previous_evidence -type f -name 'game_script_checkpoint.json' -print -quit || true)
+          previous_checkpoint=$(find .previous_evidence -type f -name 'game_script_checkpoint.json' -print -quit )
           if [ -n "$previous_checkpoint" ] && [ -s "$previous_checkpoint" ] && [ "$prev_code" = "$current_code" ] && [ "$prev_validation_source" = "$current_validation_source" ]; then
             cp "$previous_checkpoint" results/game_script_checkpoint.json
           else
@@ -502,7 +502,7 @@ PY
           shadow_start="$current_month-01"
           shadow_end=$(TZ=Asia/Tokyo date +%Y-%m-%d)
           mkdir -p results
-          previous_checkpoint=$(find .previous_evidence -type f -name 'game_script_checkpoint.json' -print -quit || true)
+          previous_checkpoint=$(find .previous_evidence -type f -name 'game_script_checkpoint.json' -print -quit )
           if [ -n "$previous_checkpoint" ] && [ -s "$previous_checkpoint" ] && [ "$prev_code" = "$current_code" ]; then
             cp "$previous_checkpoint" results/game_script_checkpoint.json
           else
