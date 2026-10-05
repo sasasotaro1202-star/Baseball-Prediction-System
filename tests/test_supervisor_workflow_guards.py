@@ -99,3 +99,11 @@ def test_24h_keeper_is_main_scoped_bounded_failover_only() -> None:
     assert 'DAILY_FAILOVER_CAP' in text
     assert 'latest successful 24h cycle is at least 24h old' in text
     assert 'consecutive_failure_streak' not in text
+
+def test_supervisor_recovery_uses_existing_run_rerun():
+    text = SUPERVISOR.read_text(encoding="utf-8")
+    assert 'CONTROL_PLANE_WORKFLOW: baseball_forever_autopilot.yml' in text
+    assert 'gh_retry run rerun "${control_plane_latest_id}" --repo "${GH_REPO}"' in text
+    assert 'gh_retry workflow run "${CONTROL_PLANE_WORKFLOW}"' not in text
+    assert 'run_attempt' in text
+    assert 'current_main_sha' in text
