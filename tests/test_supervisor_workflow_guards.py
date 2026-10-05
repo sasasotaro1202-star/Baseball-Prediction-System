@@ -61,3 +61,26 @@ def test_supervisor_monitors_scheduled_pregame_runs_and_recovers_missed_schedule
     assert 'pregame_latest_age_minutes}" -ge 15' in text
     assert 'Pregame missed-schedule daily cap reached' in text
     assert 'pregame_recovery_attempts_24h}" -ge 3' in text
+
+
+def test_autonomous_control_plane_has_scoped_push_startup_trigger() -> None:
+    text = _text(ROOT / ".github" / "workflows" / "baseball_autonomous_control_plane.yml")
+
+    assert "push:" in text
+    assert "branches: [main]" in text
+    assert 'research/autonomous_control_plane.py' in text
+    assert 'tests/test_autonomous_control_plane.py' in text
+    assert 'workflow_run:' not in text
+
+
+def test_24h_keeper_is_main_scoped_bounded_failover_only() -> None:
+    text = _text(ROOT / ".github" / "workflows" / "baseball_24h_research_keeper.yml")
+
+    assert '--branch main' in text
+    assert 'baseball_autonomous_control_plane.yml' in text
+    assert 'Control plane is absent/stale; entering bounded 24h-autopilot failover mode.' in text
+    assert '24h autopilot already active; failover exits.' in text
+    assert 'latest_failure_job_count=' in text
+    assert 'DAILY_FAILOVER_CAP' in text
+    assert 'latest successful 24h cycle is at least 24h old' in text
+    assert 'consecutive_failure_streak' not in text
