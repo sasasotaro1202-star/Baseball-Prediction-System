@@ -1,0 +1,102 @@
+name: Baseball Workflow Registration Repair
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/baseball_workflow_registration_repair.yml"
+  schedule:
+    - cron: "41 */6 * * *"
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: baseball-workflow-registration-repair
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Repair known ghost workflow registrations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # These workflow registrations are known from repository evidence to
+          # produce startup/push failures with zero jobs after workflow renames.
+          # Only these exact historical IDs are touched; no active research or
+          # production workflow is discovered/disabled heuristically.
+          target_ids="375399090 375399188 375399246 375399327 375399444"
+
+          printf '%s\n' "Checking known ghost workflow registrations..."
+          for workflow_id in ${target_ids}; do
+            state="$(gh api "repos/${GH_REPO}/actions/workflows/${workflow_id}" --jq '.state // "unknown"')"
+            path="$(gh api "repos/${GH_REPO}/actions/workflows/${workflow_id}" --jq '.path // "unknown"')"
+            name="$(gh api "repos/${GH_REPO}/actions/workflows/${workflow_id}" --jq '.name // "unknown"')"
+            printf 'workflow_id=%s state=%s path=%s name=%s\n' "${workflow_id}" "${state}" "${path}" "${name}"
+
+            case "${path}" in
+              .github/workflows/baseball_autonomous_control_plane_canonical.yml|
+              .github/workflows/baseball_24h_research_autopilot_canonical.yml|
+              .github/workflows/baseball_24h_research_keeper_canonical.yml|
+              .github/workflows/npb_game_script_autoresearch_canonical.yml|
+              .github/workflows/baseball_actions_recovery_canonical.yml)
+                ;;
+              *)
+                echo "Safety guard: workflow ${workflow_id} path is outside the known ghost allowlist; refusing mutation." >&2
+                exit 1
+                ;;
+            esac
+
+            if [ "${state}" = "active" ]; then
+              gh workflow disable "${workflow_id}" --repo "${GH_REPO}"
+              echo "disabled workflow_id=${workflow_id}"
+            elif [ "${state}" = "disabled_manually" ] || [ "${state}" = "disabled_inactivity" ]; then
+              echo "already disabled workflow_id=${workflow_id}"
+            elif [ "${state}" = "unknown" ]; then
+              echo "workflow ${workflow_id} state unverifiable; fail closed." >&2
+              exit 1
+            else
+              echo "workflow ${workflow_id} has unexpected state=${state}; fail closed." >&2
+              exit 1
+            fi
+
+          done
+
+      - name: Verify ghost registrations are disabled
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          target_ids="375399090 375399188 375399246 375399327 375399444"
+          for workflow_id in ${target_ids}; do
+            state="$(gh api "repos/${GH_REPO}/actions/workflows/${workflow_id}" --jq '.state // "unknown"')"
+            case "${state}" in
+              disabled_manually|disabled_inactivity)
+                ;;
+              *)
+                echo "Ghost workflow ${workflow_id} remains state=${state}; repair incomplete." >&2
+                exit 1
+                ;;
+            esac
+          done
+          echo "known ghost workflow registrations: disabled"
+
+      - name: Publish repair evidence
+        if: always()
+        run: |
+          {
+            echo "## Baseball Workflow Registration Repair"
+            echo "- target registrations: 5 known canonical ghost IDs"
+            echo "- policy: disable-only, exact allowlist, fail-closed"
+            echo "- production/model/data mutation: none"
+            echo "- timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "${GITHUB_STEP_SUMMARY}"
