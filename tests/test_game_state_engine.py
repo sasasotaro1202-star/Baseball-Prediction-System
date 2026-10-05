@@ -65,6 +65,10 @@ def test_reconstructed_state_score_ignores_final_score_label():
     raw = _frame(1)
     raw["home_total_runs"] = 9
     raw["away_total_runs"] = 8
+    # Keep the actual terminal labels reconciled so the game remains usable;
+    # intermediate total-score labels must not leak into the reconstructed state.
+    raw.loc[raw.index[-1], "home_total_runs"] = 1
+    raw.loc[raw.index[-1], "away_total_runs"] = 1
     normalized = canonicalize_pbp_frame(raw)
     assert not normalized.empty
     first = normalized.iloc[0]
@@ -84,7 +88,7 @@ def test_score_reversal_is_rejected():
         "on_2b": 0,
         "on_3b": 0,
     }
-    nxt = {**current, "outs": 2, "home_score": 0}
+    nxt = {**current, "outs": 2, "state_home_score": 0}
     assert _transition(current, nxt) is None
 
 
