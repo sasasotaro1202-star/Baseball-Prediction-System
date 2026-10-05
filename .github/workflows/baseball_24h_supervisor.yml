@@ -2,15 +2,18 @@ name: Baseball 24h Supervisor
 
 on:
   workflow_dispatch:
-  # Supervisor is control-plane only. It is driven by schedule/workflow_run,
-  # not every source/config push, so it cannot consume the runner queue needed
-  # for user-facing predictions.
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/baseball_24h_supervisor.yml"
+      - ".github/workflows/baseball_autonomous_control_plane.yml"
+      - "research/autonomous_control_plane.py"
+  # The supervisor is control-plane only. It has a redundant 15-minute
+  # heartbeat and a narrow push trigger for immediate recovery after changes.
   workflow_run:
     workflows: ["Baseball Closed Loop Research"]
     types: [completed]
   schedule:
-    # Lightweight keep-alive. The supervisor only starts a new cycle when the
-    # canonical closed-loop workflow is absent or has stopped unexpectedly.
     - cron: '*/15 * * * *'
 
 permissions:
@@ -73,6 +76,83 @@ jobs:
               fi
             done
           }
+
+          # Redundant control-plane heartbeat.
+          # Scheduled delivery can be delayed by GitHub. This lightweight
+          # supervisor keeps the control plane itself alive without creating a
+          # second heavy research scheduler.
+          CONTROL_WORKFLOW=baseball_autonomous_control_plane.yml
+          test -s ".github/workflows/$CONTROL_WORKFLOW"
+
+          control_runs="$(gh_retry run list             --repo "$GH_REPO"             --workflow "$CONTROL_WORKFLOW"             --branch main             --limit 20             --json databaseId,status,conclusion,createdAt,updatedAt,headSha,event)"
+          echo "Recent control-plane runs:"
+          echo "$control_runs" | jq '.[0:8]'
+
+          control_active="$(printf '%s' "$control_runs" |
+            jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+          echo "Control-plane active_count=$control_active"
+
+          control_latest="$(printf '%s' "$control_runs" | jq 'sort_by(.createdAt) | last // {}')"
+          control_latest_created="$(printf '%s' "$control_latest" | jq -r '.createdAt // empty')"
+          control_latest_status="$(printf '%s' "$control_latest" | jq -r '.status // empty')"
+          control_latest_conclusion="$(printf '%s' "$control_latest" | jq -r '.conclusion // empty')"
+          control_latest_age_minutes=999999
+          if [ -n "$control_latest_created" ]; then
+            control_latest_epoch="$(date -d "$control_latest_created" +%s)"
+            control_latest_age_minutes=$(( (now_epoch - control_latest_epoch) / 60 ))
+          fi
+
+          control_dispatch=0
+          control_reason=""
+          if [ "$control_active" -gt 0 ]; then
+            echo "Control plane already active; no heartbeat dispatch."
+          elif [ -z "$control_latest_created" ]; then
+            control_dispatch=1
+            control_reason="no control-plane run history"
+          elif [ "$control_latest_conclusion" = "failure" ] ||                [ "$control_latest_conclusion" = "cancelled" ] ||                [ "$control_latest_conclusion" = "timed_out" ] ||                [ "$control_latest_conclusion" = "startup_failure" ]; then
+            if [ "$control_latest_age_minutes" -ge 15 ]; then
+              control_dispatch=1
+              control_reason="control-plane terminal state $control_latest_conclusion is stale"
+            fi
+          elif [ "$control_latest_status" = "completed" ] &&                [ "$control_latest_conclusion" = "success" ] &&                [ "$control_latest_age_minutes" -ge 20 ]; then
+            control_dispatch=1
+            control_reason="control-plane heartbeat stale at $control_latest_age_minutes minutes"
+          fi
+
+          if [ "$control_dispatch" -eq 1 ]; then
+            echo "Dispatching control plane: $control_reason"
+            dispatch_epoch="$(date +%s)"
+            gh_retry workflow run "$CONTROL_WORKFLOW" --repo "$GH_REPO" --ref main
+
+            control_verified=0
+            new_control_run_id=""
+            for attempt in 1 2 3 4 5; do
+              sleep 3
+              after_control="$(gh_retry run list                 --repo "$GH_REPO"                 --workflow "$CONTROL_WORKFLOW"                 --branch main                 --limit 10                 --json databaseId,status,conclusion,createdAt,event)"
+              new_control_run_id="$(printf '%s' "$after_control" |
+                jq -r --argjson cutoff "$dispatch_epoch" '
+                  [.[] |
+                   select(.event == "workflow_dispatch") |
+                   select((.createdAt | fromdateiso8601) >= $cutoff)] |
+                  sort_by(.createdAt) | reverse | .[0].databaseId // empty')"
+              control_active_after="$(printf '%s' "$after_control" |
+                jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+              echo "Control heartbeat verification $attempt/5: active=$control_active_after new_run_id=$new_control_run_id"
+              if [ -n "$new_control_run_id" ] || [ "$control_active_after" -gt 0 ]; then
+                control_verified=1
+                break
+              fi
+            done
+
+            if [ "$control_verified" -ne 1 ]; then
+              echo "Control-plane heartbeat dispatch accepted but no new/current run was observed; preserving fail-closed state." >&2
+              printf '%s\n' "Control-plane heartbeat UNVERIFIED: $control_reason" >> "$GITHUB_STEP_SUMMARY"
+            else
+              printf '%s\n' "Control-plane heartbeat verified: run_id=$new_control_run_id" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          else
+            echo "Control-plane heartbeat is within its recovery window."
+          fi
 
           # The pregame workflow has repeatedly produced GitHub Actions startup
           # failures with zero jobs. Those failures are not reliably emitted as
