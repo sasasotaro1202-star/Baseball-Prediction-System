@@ -4,13 +4,6 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '23 */6 * * *'
-  push:
-    branches: [main]
-    paths:
-      - 'research/game_script_lab.py'
-      - 'config/game_script_lab.json'
-      - 'tests/test_game_script_lab.py'
-      - '.github/workflows/baseball_game_script_lab.yml'
 
 permissions:
   contents: read

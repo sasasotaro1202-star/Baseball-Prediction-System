@@ -23,6 +23,7 @@ class ColumnMap:
     home_score: str
     away_score: str
     sequence: str
+    page: str | None
     serial: str | None
     half: str | None
 
@@ -81,6 +82,10 @@ def resolve_columns(frame: pd.DataFrame) -> ColumnMap:
 
     return ColumnMap(
         **resolved,
+        page=_first_col(
+            frame.columns,
+            ["page", "Page", "play_page"],
+        ),
         serial=_first_col(
             frame.columns,
             [
@@ -102,6 +107,17 @@ def _parse_state(
     row: pd.Series,
     columns: ColumnMap,
 ) -> tuple[int | None, str | None]:
+    if columns.page:
+        raw = str(row.get(columns.page, "")).strip()
+        match = re.match(r"^(\d{2})([TBtb12])", raw)
+        if match:
+            return (
+                int(match.group(1)),
+                "T"
+                if match.group(2).upper() in {"T", "1"}
+                else "B",
+            )
+
     if columns.serial:
         raw = str(row.get(columns.serial, "")).strip()
         match = re.search(r"(\d{1,2}).{0,1}([TBtb12])", raw)
@@ -209,6 +225,8 @@ def build_half_innings(
         },
         index=raw.index,
     )
+    if columns.page:
+        work[columns.page] = raw[columns.page]
     if columns.serial:
         work[columns.serial] = raw[columns.serial]
     if columns.half:
