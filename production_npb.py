@@ -748,6 +748,7 @@ def _situation_tags(xrow: pd.DataFrame, regime_label: str) -> list[str]:
 def _official_daily_competition_metadata(
     page_html: str,
     source_url: str,
+    target_date: str | None = None,
 ) -> dict[str, str]:
     """Classify competition only from explicit official schedule headings.
 
@@ -771,6 +772,44 @@ def _official_daily_competition_metadata(
             out["source_field"] = "npb_daily_schedule_heading"
             out["source_value"] = heading
             return out
+    # The date-detail game page can omit a Japanese competition heading (and the
+    # English page uses different headings). Reconcile against NPB's explicit
+    # annual regular-season schedule page, but only when both the exact target
+    # date and the explicit "セ・パ公式戦" label are present. No stage is inferred
+    # from team names, navigation links, or calendar position.
+    if target_date:
+        annual_url = f"https://npb.jp/games/{target_date[:4]}/schedule.html"
+        try:
+            annual_html = fetch_text(annual_url)
+        except Exception:
+            annual_html = ""
+        if annual_html:
+            annual_plain = _clean_name(re.sub(r"<[^>]+>", " ", annual_html))
+            month = int(target_date[5:7])
+            day = int(target_date[8:10])
+            date_markers = (
+                f"{month}月{day}日",
+                f"{month}/{day}",
+                target_date.replace("-", "/"),
+            )
+            marker_match = re.search(r"\d{4}年度\s*セ・パ公式戦", annual_plain)
+            date_present = any(marker in annual_plain for marker in date_markers)
+            if marker_match and date_present:
+                value = marker_match.group(0)
+                return {
+                    "league": "NPB",
+                    "competition": "npb_regular",
+                    "stage": "regular_season",
+                    "season_type": "regular_season",
+                    "game_class": "official",
+                    "competition_key": "NPB:npb_regular:regular_season",
+                    "source_field": "npb_annual_schedule_heading",
+                    "source_value": value,
+                    "status": "classified",
+                    "source_url": annual_url,
+                    "retrieved_at_utc": datetime.now(timezone.utc).isoformat(),
+                }
+
     return {
         "league": "NPB",
         "competition": "npb_unknown",
@@ -782,6 +821,7 @@ def _official_daily_competition_metadata(
         "source_value": "",
         "status": "unknown",
         "source_url": source_url,
+        "retrieved_at_utc": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -794,7 +834,7 @@ def _official_daily_start_times(
     url = NPB_DAY_URL.format(year=target_date[:4], date=target_date.replace("-", ""))
     page_html = fetch_text(url)
     if metadata_out is not None:
-        metadata_out.update(_official_daily_competition_metadata(page_html, url))
+        metadata_out.update(_official_daily_competition_metadata(page_html, url, target_date))
     parser = _DailyScheduleTextParser()
     parser.feed(page_html)
     parts = [_clean_name(x) for x in parser.parts if _clean_name(x)]
@@ -916,11 +956,14 @@ def build_target_rows(
         r["competition_metadata_source_value"] = str(
             schedule_metadata.get("source_value") or ""
         )
+        r["competition_metadata_retrieved_at_utc"] = str(
+            schedule_metadata.get("retrieved_at_utc") or ""
+        )
         starter_time = str(r.get("official_start_time") or "").strip()
         pair = (str(r.get("home") or "").strip(), str(r.get("away") or "").strip())
         schedule_time = daily_times.get(pair)
         starter_time = str(r.get("official_start_time") or "").strip()
-        valid_time = bool(re.fullmatch(r"\\d{1,2}:\\d{2}", starter_time))
+        valid_time = bool(re.fullmatch(r"\d{1,2}:\d{2}", starter_time))
         if schedule_time and valid_time and schedule_time != starter_time:
             raise RuntimeError(
                 f"Official NPB schedule time conflict for {pair[0]} vs {pair[1]}: "
