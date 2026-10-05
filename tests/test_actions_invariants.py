@@ -482,3 +482,25 @@ def test_gate_workflows_skip_test_only_pushes_to_reduce_duplicate_ci():
         assert "      - 'tests/**'" in trigger
         assert "push:" in trigger
 
+
+
+def test_legacy_push_startup_guard_is_present_in_all_zero_job_lanes():
+    guard = "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'"
+    workflows = {
+        ".github/workflows/npb_game_script_autoresearch.yml": ["research"],
+        ".github/workflows/baseball_24h_research_keeper.yml": ["keep-alive"],
+        ".github/workflows/baseball_autonomous_control_plane.yml": ["control"],
+        ".github/workflows/baseball_24h_research_autopilot.yml": [
+            "wave1-core-oos",
+            "wave2-frontier",
+            "wave3-candidate-oos",
+            "wave4-meta-research",
+            "game-script-v4-fallback",
+            "closeout",
+        ],
+    }
+    for relpath, job_ids in workflows.items():
+        text = (ROOT / relpath).read_text(encoding="utf-8")
+        for job_id in job_ids:
+            pattern = rf"(?m)^  {re.escape(job_id)}:\n    if: .*{re.escape(guard)}"
+            assert re.search(pattern, text), f"{relpath}:{job_id} lacks legacy-push execution guard"
