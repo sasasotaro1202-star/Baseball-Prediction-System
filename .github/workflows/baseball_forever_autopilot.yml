@@ -1,5 +1,9 @@
 name: Baseball Forever Autopilot
 
+# Registration bootstrap: this workflow intentionally has a narrow push trigger so
+# its first commit can create a live heartbeat even when legacy workflow
+# registrations or scheduled delivery are unhealthy.
+
 on:
   workflow_dispatch: {}
   push:
@@ -64,9 +68,31 @@ jobs:
           bootstrap=0
           reason="healthy_or_active"
 
-          if [ "${active_count}" -gt 0 ]; then
+          active_json="$(printf '%s' "${runs_json}" | jq -c '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | sort_by(.createdAt) | reverse | .[0] // {}')"
+          active_id="$(printf '%s' "${active_json}" | jq -r '.databaseId // empty')"
+          active_status="$(printf '%s' "${active_json}" | jq -r '.status // empty')"
+          active_created="$(printf '%s' "${active_json}" | jq -r '.createdAt // empty')"
+          active_sha="$(printf '%s' "${active_json}" | jq -r '.headSha // empty')"
+          active_age_minutes=0
+          if [ -n "${active_created}" ]; then
+            active_epoch="$(date -d "${active_created}" +%s)"
+            active_age_minutes=$(( (now_epoch - active_epoch) / 60 ))
+          fi
+
+          if [ "${dispatch_24h_count}" -ge 3 ]; then
+            reason="bootstrap_daily_cap_reached"
+          elif [ -n "${active_id}" ] && [ -n "${active_sha}" ] && [ "${active_sha}" != "${current_sha}" ]; then
+            bootstrap=1
+            reason="active_control_plane_on_superseded_sha"
+          elif [ -n "${active_id}" ] && { [ "${active_status}" = "queued" ] || [ "${active_status}" = "pending" ] || [ "${active_status}" = "waiting" ] || [ "${active_status}" = "requested" ]; } && [ "${active_age_minutes}" -ge 20 ]; then
+            bootstrap=1
+            reason="control_plane_scheduler_stuck"
+          elif [ -n "${active_id}" ] && [ "${active_status}" = "in_progress" ] && [ "${active_age_minutes}" -ge 15 ]; then
+            bootstrap=1
+            reason="control_plane_runtime_stale"
+          elif [ "${active_count}" -gt 0 ]; then
             reason="control_plane_active"
-          elif [ "${dispatch_24h_count}" -ge 3 ]; then
+          elif [ -z "${latest_id}" ]; then
             reason="bootstrap_daily_cap_reached"
           elif [ -z "${latest_id}" ]; then
             bootstrap=1
@@ -81,6 +107,10 @@ jobs:
 
           if [ "${bootstrap}" -eq 1 ]; then
             echo "Bootstrapping canonical control plane: ${reason}"
+            if [ -n "${active_id}" ]; then
+              echo "Cancelling stale/superseded control-plane run ${active_id}"
+              gh run cancel "${active_id}" --repo "${GH_REPO}"
+            fi
             gh workflow run "${workflow}" --repo "${GH_REPO}" --ref main
 
             verified=0
