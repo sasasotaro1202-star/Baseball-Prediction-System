@@ -138,7 +138,6 @@ def test_critical_automation_files_are_in_governance_contracts():
         ".github/workflows/npb_prediction_experience_archive.yml",
         ".github/workflows/npb_experience_reconciliation.yml",
         ".github/workflows/npb_experience_learning.yml",
-        ".github/workflows/baseball_game_script_lab.yml",
     ):
         assert path in WORKFLOW_CONTRACTS
 
@@ -267,11 +266,11 @@ def test_autonomous_control_plane_is_single_heartbeat_not_workflow_run_driven():
     assert "research.autonomous_control_plane" in workflow
 
 
-def test_game_script_lab_is_monitored():
+def test_actions_recovery_is_singleton():
     from research.project_governance import WORKFLOW_CONTRACTS
 
-    path = ".github/workflows/baseball_game_script_lab.yml"
-    assert path in WORKFLOW_CONTRACTS
-    assert WORKFLOW_CONTRACTS[path]["monitor"] is True
-    assert WORKFLOW_CONTRACTS[path]["max_age_hours"] <= 8
-    assert "research/game_script_lab.py" in WORKFLOW_CONTRACTS[path]["required"]
+    path = ".github/workflows/baseball_actions_recovery.yml"
+    contract = WORKFLOW_CONTRACTS[path]
+    assert contract["monitor"] is False
+    assert "group: baseball-actions-recovery" in contract["required"]
+    assert "cancel-in-progress: true" in contract["required"]
