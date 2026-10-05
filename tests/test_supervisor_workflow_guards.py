@@ -61,3 +61,23 @@ def test_supervisor_monitors_scheduled_pregame_runs_and_recovers_missed_schedule
     assert 'pregame_latest_age_minutes}" -ge 15' in text
     assert 'Pregame missed-schedule daily cap reached' in text
     assert 'pregame_recovery_attempts_24h}" -ge 3' in text
+
+
+def test_supervisor_shell_block_is_valid_bash() -> None:
+    import re
+    import subprocess
+    text = _text(SUPERVISOR)
+    match = re.search(r"(?ms)^        run:\\s*\|\n((?:^          .*\n|^          \n)*)", text)
+    assert match, "supervisor run block not found"
+    block = "\n".join(line[10:] if len(line) >= 10 else "" for line in match.group(1).splitlines())
+    result = subprocess.run(["bash", "-n"], input=block + "\n", text=True, capture_output=True, check=False)
+    assert result.returncode == 0, result.stderr
+
+def test_supervisor_watchdogs_autonomous_control_plane() -> None:
+    text = _text(SUPERVISOR)
+    assert "CONTROL_PLANE_WORKFLOW=baseball_autonomous_control_plane.yml" in text
+    assert 'gh_retry run list --repo "${GH_REPO}" --workflow "${CONTROL_PLANE_WORKFLOW}"' in text
+    assert 'gh_retry workflow run "${CONTROL_PLANE_WORKFLOW}" --repo "${GH_REPO}" --ref main' in text
+    assert "control_dispatches_24h" in text
+    assert "control_dispatch_age_minutes" in text
+    assert "Control Plane terminal state: FAILED_REDISPATCH" in text
