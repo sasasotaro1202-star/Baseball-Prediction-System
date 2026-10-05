@@ -1,12 +1,6 @@
 name: NPB Game-State Monte Carlo Research
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "research/game_state_engine.py"
-      - "tests/test_game_state_engine.py"
-      - ".github/workflows/npb_game_state_research.yml"
   workflow_dispatch:
     inputs:
       simulations:
