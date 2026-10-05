@@ -1,7 +1,6 @@
 name: Baseball Forever Autopilot
 
-# Single lightweight liveness entrypoint. Normal orchestration remains owned by
-# baseball_autonomous_control_plane_stable.yml.
+# Single lightweight liveness entrypoint. The forever heartbeat is the single orchestration entrypoint; it executes the bounded control plane locally.
 on:
   schedule:
     - cron: "*/5 * * * *"
@@ -23,177 +22,94 @@ jobs:
   heartbeat:
     if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
 
     steps:
-      - name: Reconcile stable control plane
+      - name: Verify current main snapshot
+        id: snapshot
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           EVENT_SHA: ${{ github.sha }}
-          CONTROL_WORKFLOW: baseball_autonomous_control_plane_stable.yml
-          REQUEST_WORKFLOW: baseball-user-prediction-request.yml
-          REQUEST_FILE: prediction_requests/inbox/active.json
-          REQUEST_STALE_MINUTES: "20"
-          REQUEST_FAILURE_COOLDOWN_MINUTES: "10"
-          REQUEST_DAILY_DISPATCH_CAP: "4"
-          STALE_MINUTES: "20"
-          FAILURE_COOLDOWN_MINUTES: "10"
-          DAILY_DISPATCH_CAP: "6"
         shell: bash
         run: |
           set -euo pipefail
 
-          gh_retry() {
-            local attempt out rc
-            for attempt in 1 2 3 4; do
-              if out="$(gh "$@" 2>&1)"; then
-                printf '%s\n' "$out"
-                return 0
-              fi
-              rc=$?
-              echo "gh attempt $attempt/4 failed rc=$rc: $out" >&2
-              if printf '%s' "$out" | grep -Eq 'HTTP (400|401|403|404)' &&
-                 ! printf '%s' "$out" | grep -Eq 'HTTP (408|409|429)'; then
-                echo "deterministic GitHub API error; fail closed" >&2
-                return "$rc"
-              fi
-              if [ "$attempt" -lt 4 ]; then
-                sleep $((attempt * 2))
-              else
-                return "$rc"
-              fi
-            done
-          }
-
-          now="$(date -u +%s)"
-          current_sha="$(gh_retry api "repos/$GH_REPO/git/ref/heads/main" --jq '.object.sha')"
+          current_sha="$(gh api "repos/$GH_REPO/git/ref/heads/main" --jq '.object.sha')"
           test -n "$current_sha"
+          echo "current_main_sha=$current_sha" >> "$GITHUB_OUTPUT"
           if [ "$current_sha" != "$EVENT_SHA" ]; then
             echo "event snapshot is superseded; refusing orchestration"
+            echo "superseded=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          echo "superseded=false" >> "$GITHUB_OUTPUT"
 
-          mkdir -p results/forever_autopilot
+      - name: Checkout current main
+        if: steps.snapshot.outputs.superseded != 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          persist-credentials: false
+          fetch-depth: 1
 
-          runs="$(gh_retry api "repos/$GH_REPO/actions/workflows/$CONTROL_WORKFLOW/runs?branch=main&per_page=50")"
-          test -n "$runs"
-
-          dispatch_count="$(printf '%s' "$runs" | jq --argjson now "$now" '
-            [.workflow_runs[]
-             | select(.event == "workflow_dispatch")
-             | select((.created_at | fromdateiso8601) >= ($now - 86400))]
-            | length')"
-
-          latest="$(printf '%s' "$runs" | jq -c '
-            .workflow_runs
-            | map(select(.head_branch == "main"))
-            | sort_by(.created_at)
-            | reverse
-            | .[0] // {}')"
-
-          latest_id="$(printf '%s' "$latest" | jq -r '.id // empty')"
-          latest_status="$(printf '%s' "$latest" | jq -r '.status // empty')"
-          latest_conclusion="$(printf '%s' "$latest" | jq -r '.conclusion // empty')"
-          latest_sha="$(printf '%s' "$latest" | jq -r '.head_sha // empty')"
-          latest_created="$(printf '%s' "$latest" | jq -r '.created_at // empty')"
-
-          age=999999
-          if [ -n "$latest_created" ]; then
-            age=$(( (now - $(date -d "$latest_created" +%s)) / 60 ))
+      - name: Execute bounded autonomous control plane
+        id: control_plane
+        if: steps.snapshot.outputs.superseded != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          PYTHONUNBUFFERED: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p results/forever_autopilot results/control_plane
+          set +e
+          python -m research.autonomous_control_plane --repo "${GITHUB_REPOSITORY}" --output results/control_plane/forever_autonomous_control_plane.json --max-dispatches-per-cycle 2 > results/control_plane/forever_runtime.log 2>&1
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            python - "$rc" <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+Path("results/control_plane/forever_runtime_failure.json").write_text(json.dumps({
+    "schema_version": 1,
+    "status": "FAILED",
+    "failure_class": "FOREVER_AUTONOMOUS_CONTROL_PLANE",
+    "exit_code": int(sys.argv[1]),
+    "git_commit": os.environ.get("GITHUB_SHA"),
+    "log_path": "results/control_plane/forever_runtime.log",
+}, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")
+PY
+            echo "Autonomous control plane failed; preserving failure evidence." >&2
+            exit "$rc"
           fi
 
-          bootstrap=0
-          cancel=0
-          reason="healthy_or_active"
-
-          if [ "$dispatch_count" -ge "$DAILY_DISPATCH_CAP" ]; then
-            reason="daily_dispatch_cap_reached"
-          elif [ -n "$latest_id" ] &&
-               [ -n "$latest_sha" ] &&
-               [ "$latest_sha" != "$current_sha" ] &&
-               { [ "$latest_status" = "queued" ] || [ "$latest_status" = "pending" ] || [ "$latest_status" = "waiting" ] || [ "$latest_status" = "requested" ] || [ "$latest_status" = "in_progress" ]; }; then
-            bootstrap=1
-            cancel=1
-            reason="active_control_plane_on_superseded_sha"
-          elif [ "$latest_status" = "queued" ] || [ "$latest_status" = "pending" ] || [ "$latest_status" = "waiting" ] || [ "$latest_status" = "requested" ]; then
-            if [ "$age" -ge "$STALE_MINUTES" ]; then
-              bootstrap=1
-              cancel=1
-              reason="scheduler_stuck_queued"
-            else
-              reason="active_queued_run"
-            fi
-          elif [ "$latest_status" = "in_progress" ]; then
-            if [ "$age" -ge "$STALE_MINUTES" ]; then
-              bootstrap=1
-              cancel=1
-              reason="stale_in_progress_run"
-            else
-              reason="active_in_progress_run"
-            fi
-          elif [ -z "$latest_id" ]; then
-            bootstrap=1
-            reason="no_control_plane_run"
-          elif [ -n "$latest_sha" ] && [ "$latest_sha" != "$current_sha" ]; then
-            bootstrap=1
-            reason="latest_run_on_superseded_sha"
-          elif [ "$latest_conclusion" = "success" ] && [ "$age" -ge "$STALE_MINUTES" ]; then
-            bootstrap=1
-            reason="stale_success_heartbeat"
-          elif [ "$latest_conclusion" = "startup_failure" ] ||
-               [ "$latest_conclusion" = "timed_out" ] ||
-               [ "$latest_conclusion" = "cancelled" ]; then
-            if [ "$age" -ge "$FAILURE_COOLDOWN_MINUTES" ]; then
-              bootstrap=1
-              reason="recoverable_terminal_state"
-            else
-              reason="recoverable_failure_cooldown"
-            fi
-          elif [ "$latest_conclusion" = "failure" ]; then
-            job_count="$(gh_retry api "repos/$GH_REPO/actions/runs/$latest_id/jobs?per_page=100" --jq '.jobs | length')"
-            if [ "$job_count" -eq 0 ] && [ "$age" -ge "$FAILURE_COOLDOWN_MINUTES" ]; then
-              bootstrap=1
-              reason="startup_failure_no_jobs"
-            else
-              reason="deterministic_failure_or_unverifiable_startup_state"
-            fi
-          elif [ "$latest_conclusion" = "skipped" ]; then
-            reason="latest_control_plane_skipped"
+      - name: Publish control-plane heartbeat evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -s results/control_plane/forever_autonomous_control_plane.json ]; then
+            python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+import json
+from pathlib import Path
+d=json.loads(Path("results/control_plane/forever_autonomous_control_plane.json").read_text(encoding="utf-8"))
+print("## Baseball Forever Autopilot")
+print(f"- control_plane_status: {d.get('control_plane_status')}")
+print(f"- cycle_dispatch_count: {d.get('cycle_dispatch_count')}")
+print(f"- cycle_heavy_dispatch_count: {d.get('cycle_heavy_dispatch_count')}")
+print(f"- deterministic_failure_targets: {len(d.get('deterministic_failure_targets', []))}")
+print("- fail_closed: true")
+print("- auto_promotion: false")
+PY
+          else
+            echo "## Baseball Forever Autopilot" >> "$GITHUB_STEP_SUMMARY"
+            echo "- control_plane_status: FAILED_OR_SUPERSEDED" >> "$GITHUB_STEP_SUMMARY"
           fi
-
-          if [ "$cancel" -eq 1 ] && [ -n "$latest_id" ]; then
-            echo "cancelling stale/superseded control-plane run: $latest_id"
-            gh_retry run cancel "$latest_id" --repo "$GH_REPO"
-          fi
-
-          verified_run_id=""
-          if [ "$bootstrap" -eq 1 ]; then
-            echo "dispatching canonical control plane: $reason"
-            dispatch_epoch="$(date -u +%s)"
-            gh_retry workflow run "$CONTROL_WORKFLOW" --repo "$GH_REPO" --ref main
-
-            for attempt in 1 2 3 4 5; do
-              sleep 2
-              fresh="$(gh_retry api "repos/$GH_REPO/actions/workflows/$CONTROL_WORKFLOW/runs?branch=main&per_page=20")"
-              verified_run_id="$(printf '%s' "$fresh" | jq -r --argjson cutoff "$dispatch_epoch" '
-                [.workflow_runs[]
-                 | select(.event == "workflow_dispatch")
-                 | select((.created_at | fromdateiso8601) >= $cutoff)]
-                | sort_by(.created_at)
-                | reverse
-                | .[0].id // empty')"
-              if [ -n "$verified_run_id" ]; then
-                break
-              fi
-            done
-
-            if [ -z "$verified_run_id" ]; then
-              echo "dispatch accepted but no new control-plane run was observable" >&2
-              exit 1
-            fi
-          fi
-
           # The user-request lane is an on-demand workload, so it is not part
           # of the normal research target list. It is nevertheless supervised
           # here because a valid request must not be lost to a stale queued run,
