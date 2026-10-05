@@ -41,6 +41,7 @@ jobs:
     # of being masked by automatic retries.
     if: >-
       ${{
+        github.event_name == 'workflow_run' &&
         github.event.workflow_run.head_branch == 'main' &&
         (
           github.event.workflow_run.conclusion == 'failure' ||
