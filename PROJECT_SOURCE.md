@@ -1913,3 +1913,85 @@ starter/lineupがどの程度確定していたか、
 まで制御できるAdaptive Baseball Prediction Intelligenceを構築することである。
 
 === COPY END ===
+
+⸻
+
+86. PROBABILISTIC GAME MODEL RESEARCH LAYER
+
+参考設計として、選手・チームの潜在能力と試合時点の状態を分離し、scenario mixtureからposterior predictive game distributionを生成する研究層を導入する。
+
+基本構造:
+
+latent talent
+→ current state
+→ pre-game scenario mixture
+→ existing game-state simulator
+→ posterior predictive distribution
+→ uncertainty decomposition
+→ model disagreement
+→ calibration
+
+この層は既存のPIT、安全性、target isolation、OOS/WFO、calibration、robustness、holdout規約を置換しない。既存のgame-state simulatorやscore-distribution実装が同等機能を提供する場合はそれをREUSEする。
+
+潜在能力では短期観測値を真の能力へ直接同一視せず、prior + observation + sample sizeによるexplicit shrinkageを研究する。小標本ではpriorへのshrinkageを強くし、観測量が増えるにつれてdata precisionを増加させる。
+
+current stateでは、rest、workload、fatigue、availability等をlatent talentから分離可能なstateとして扱う。state adjustmentは明示的な関数・パラメータとして保存し、observed performanceへ暗黙に埋め込まない。
+
+未知のstarter、lineup、weather、umpire、bullpen state等は、確定値へsilent collapseせず、P(scenario | available information)としてresearch scenario mixtureを構築できるようにする。
+
+posterior predictiveは、scenario weightを明示したMonte Carlo mixtureとして生成する。Monte Carlo sample countによるsampling errorとmodel/data/scenario uncertaintyを別物として報告する。Monte Carlo precisionの向上だけをmodel accuracyの改善とみなさない。
+
+uncertaintyは少なくとも、
+
+* within-scenario outcome variance
+* between-scenario variance
+* model disagreement
+* data/source/PIT uncertainty
+
+を可能な範囲で分離する。confidence marginだけをuncertaintyの唯一指標にしない。
+
+NPBとMLBのtarget semanticsを混在させない。NPBはHOME/DRAW/AWAY、MLBはHOME/AWAYを維持する。MLB simulatorはterminal tieを暗黙にbinary化せず、explicit extra-inning ruleがない場合はfail-closedとする。
+
+research implementation:
+
+* research/probabilistic_game_model.py
+* config/probabilistic_game_model.json
+
+statusはRESEARCH_ONLY / production_eligible=falseから開始する。既存production probability、Champion、calibration、OOS、holdoutを変更しない。
+
+adoptionには通常どおり、LOCAL_PIT → chronological OOS/WFO → calibration → ablation → robustness → frozen holdout → release gateを要求する。architectureの導入自体、simulation outputの存在、unit test green、または外部method claimだけでは性能検証済み・採用済みとはしない。
+
+⸻
+
+87. PROBABILISTIC GAME MODEL INTEGRATION CONTRACT
+
+新しい研究層は、必要な場合に既存のgame-state / score-distribution engineをsimulate_fnとして受け取り、同一のscenario contractで複数世界を統合する。
+
+minimum contract:
+
+* scenario_id
+* normalized scenario weight
+* parameters/provenance
+* prediction_cutoff
+* available_at
+* PIT status
+* target contract
+* simulation seed
+* simulation count
+* score distribution
+* outcome distribution
+* Monte Carlo standard error
+* scenario/epistemic decomposition
+* model disagreement when available
+
+PIT statusがPASSでない場合は研究run自体をunverifiableとして扱えるが、prediction-time evidenceへ自動昇格してはならない。available_at > prediction_cutoff、timestamp欠落、target mismatch、invalid score distribution、terminal MLB tie等はfail-closedする。
+
+この層の出力は勝率だけでなく、score_distribution、Top-4 exact-score、LOW<=6/HIGH>=7、scenario-specific outcomes、uncertainty diagnosticsを保持する。ただし各target/versionは独立した契約として扱う。
+
+⸻
+
+88. RESEARCH STATUS
+
+本層は現時点でARCHITECTURE / IMPLEMENTED / UNIT-TESTEDのresearch capabilityであり、PERFORMANCE_VERIFIED、ADOPTED、PRODUCTIONを意味しない。
+
+performance claimはcurrent mainのchronological OOS/WFO、PIT evidence、calibration、ablation、robustness、frozen holdoutが揃った場合のみ更新する。
