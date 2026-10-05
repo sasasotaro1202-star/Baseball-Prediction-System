@@ -2,10 +2,6 @@ name: Baseball Autonomous Control Plane Stable
 
 on:
   workflow_dispatch: {}
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/baseball_autonomous_control_plane_stable.yml"
   schedule:
     - cron: '*/15 * * * *'
   # The control plane is the single orchestration heartbeat. It is schedule-
@@ -21,7 +17,7 @@ concurrency:
 
 jobs:
   control:
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
