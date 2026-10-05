@@ -425,10 +425,16 @@ jobs:
             fi
           fi
           if ! find .previous_evidence -type f -name 'game_script_checkpoint.json' -print -quit | grep -q .; then
-            autopilot_id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow baseball_24h_research_autopilot.yml --branch main --limit 20 --json databaseId,conclusion \
-              --jq '[.[] | select(.conclusion=="success")] | .[0].databaseId // empty' 2>/dev/null || true)"
+            if ! autopilot_id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow baseball_24h_research_autopilot.yml --branch main --limit 20 --json databaseId,conclusion \
+              --jq '[.[] | select(.conclusion=="success")] | .[0].databaseId // empty' 2>/dev/null)"; then
+              echo "Unable to inspect auxiliary autopilot history; failing closed." >&2
+              exit 1
+            fi
             if [ -n "$autopilot_id" ]; then
-              gh run download "$autopilot_id" --repo "$GITHUB_REPOSITORY" --name npb-game-script-fallback --dir .previous_evidence 2>/dev/null || true
+              if ! gh run download "$autopilot_id" --repo "$GITHUB_REPOSITORY" --name npb-game-script-fallback --dir .previous_evidence 2>/dev/null; then
+                echo "Auxiliary Game-Script evidence download failed for run $autopilot_id." >&2
+                exit 1
+              fi
             fi
           fi
 
@@ -485,7 +491,7 @@ jobs:
           current_code="$(tr -d '[:space:]' < results/code_fingerprint.txt)"
           current_validation="$(tr -d '[:space:]' < results/validation_source_fingerprint.txt)"
           current_context="$(tr -d '[:space:]' < results/context_source_fingerprint.txt)"
-          previous_json="$(find .previous_evidence -type f -name 'game_script_screening.json' -print -quit || true)"
+          previous_json="$(find .previous_evidence -type f -name 'game_script_screening.json' -print -quit)"
           previous_code=""
           previous_validation=""
           previous_context=""
@@ -533,7 +539,7 @@ PY
             exit 0
           fi
 
-          checkpoint="$(find .previous_evidence -type f -name 'game_script_checkpoint.json' -print -quit || true)"
+          checkpoint="$(find .previous_evidence -type f -name 'game_script_checkpoint.json' -print -quit)"
           if [ "$delegated_recent" = "1" ] && [ "$previous_context" != "$current_context" ] && [ -n "$checkpoint" ] && [ "$previous_code" = "$current_code" ] && [ "$previous_validation" = "$current_validation" ]; then
             echo "Dedicated run is recent but current-season PBP changed; forcing shadow refresh."
             cp "$checkpoint" results/game_script_checkpoint.json
