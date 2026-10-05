@@ -127,17 +127,28 @@ def _validate_generated_output(payload: dict[str, Any], request: dict[str, Any],
     if status in usable and not predictions:
         raise ValueError("prediction output claims execution but contains no predictions")
     if status in usable:
-        if str(payload.get("pit_status", "")) != "PASS":
-            raise ValueError("usable GitHub prediction must have PIT PASS")
+        pit_status = str(payload.get("pit_status", "")).strip().upper()
+        expected_research = lane in {
+            "VALIDATED_RESEARCH_SHADOW",
+            "COMPETITION_SPECIFIC_RESEARCH_RUNTIME",
+        }
+        if expected_research:
+            if status != "RESEARCH_SHADOW_EXECUTED":
+                raise ValueError("research lane output must retain RESEARCH_SHADOW_EXECUTED status")
+            if str(payload.get("scope", "")).strip().upper() != "RESEARCH_SHADOW":
+                raise ValueError("research prediction must declare RESEARCH_SHADOW scope")
+            if payload.get("production_eligibility") is not False:
+                raise ValueError("research prediction must explicitly remain production-ineligible")
+            if pit_status not in {"PASS", "UNVERIFIABLE"}:
+                raise ValueError("research prediction must declare PIT PASS or UNVERIFIABLE")
+        elif pit_status != "PASS":
+            raise ValueError("current production prediction must have PIT PASS")
         for pred in predictions:
             if not isinstance(pred, dict):
                 raise ValueError("prediction row must be an object")
             for key in ("game_id", "home", "away"):
                 if not str(pred.get(key, "")).strip():
                     raise ValueError(f"prediction row missing {key}")
-        expected_research = lane in {"VALIDATED_RESEARCH_SHADOW", "COMPETITION_SPECIFIC_RESEARCH_RUNTIME"}
-        if expected_research and status != "RESEARCH_SHADOW_EXECUTED":
-            raise ValueError("research lane output must retain RESEARCH_SHADOW_EXECUTED status")
 
 
 def _find_cached(result_dir: Path, fingerprint: str, lane: str, max_age_seconds: int) -> Path | None:
