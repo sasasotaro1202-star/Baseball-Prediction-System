@@ -35,7 +35,7 @@ jobs:
           # produce startup/push failures with zero jobs after workflow renames.
           # Only these exact historical IDs are touched; no active research or
           # production workflow is discovered/disabled heuristically.
-          target_ids="375399090 359633887 375842323 375843510"
+          target_ids="375399090 375399444 359633887 375842323 375843510"
 
           workflow_state() {
             local workflow_id="$1"
@@ -86,7 +86,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          target_ids="375399090 359633887 375842323 375843510"
+          target_ids="375399090 375399444 359633887 375842323 375843510"
           for workflow_id in ${target_ids}; do
             state="$(workflow_state "${workflow_id}")"
             case "${state}" in
