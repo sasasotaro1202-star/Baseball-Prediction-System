@@ -408,7 +408,7 @@ def test_current_control_plane_push_run_is_not_treated_as_healthy(monkeypatch):
         "owner/repo",
         datetime(2026, 10, 5, 10, 0, tzinfo=timezone.utc),
     )
-    assert report["control_plane"]["state"] == "STALE_OR_FAILED"
+    assert report["control_plane"]["state"] == "NO_RUN"
     assert report["control_plane"]["ignored_unsupported_event_runs"] == 1
     entry = report["workflows"][".github/workflows/baseball_autonomous_control_plane.yml"]
     assert entry["state"] == "DEFERRED"
