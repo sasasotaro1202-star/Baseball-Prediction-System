@@ -35,7 +35,7 @@ jobs:
           # produce startup/push failures with zero jobs after workflow renames.
           # Only these exact historical IDs are touched; no active research or
           # production workflow is discovered/disabled heuristically.
-          target_ids="375399090 375399188 375399246 375399327 375399444"
+          target_ids="375399090"
 
           printf '%s\n' "Checking known ghost workflow registrations..."
           for workflow_id in ${target_ids}; do
@@ -93,7 +93,7 @@ jobs:
         run: |
           {
             echo "## Baseball Workflow Registration Repair"
-            echo "- target registrations: 5 known canonical ghost IDs"
+            echo "- target registrations: 1 known deleted canonical ghost ID"
             echo "- policy: disable-only, exact allowlist, fail-closed"
             echo "- production/model/data mutation: none"
             echo "- timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
