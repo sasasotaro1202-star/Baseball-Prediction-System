@@ -161,10 +161,68 @@ class TransitionKernel:
             if x: return x,lvl
         raise LookupError("no transition support")
     def sample(self,key,rng,factors,profile="rich"):
-        counts,level=self._select(key,profile); outs=list(counts); w=np.array([float(counts[o]) for o in outs],float)
+        """Sample one transition with support-adaptive parent-level smoothing.
+
+        The highest supported state view remains primary, but sparse primary
+        states are shrunk toward the next coarser available view. This keeps
+        rich/count/diff states from overfitting while preserving the existing
+        deterministic hierarchical backoff contract.
+        """
+        ib,h,o,b,d,ball,strike=key
+        candidates=[
+            ("rich", self.views["rich"].get(key)),
+            ("no_count", self.views["no_count"].get((ib,h,o,b,d))),
+            ("no_diff", self.views["no_diff"].get((ib,h,o,b,ball,strike))),
+            ("coarse", self.views["coarse"].get((ib,h,o,b))),
+            ("half", self.views["half"].get(h)),
+            ("global", self.views["global"].get("ALL")),
+        ]
+        if profile=="coarse":
+            candidates=candidates[3:]
+        primary_idx=None
+        for j,(lvl,x) in enumerate(candidates):
+            if x and sum(x.values())>=self.min_support:
+                primary_idx=j
+                break
+        if primary_idx is None:
+            for j,(lvl,x) in enumerate(candidates):
+                if x:
+                    primary_idx=j
+                    break
+        if primary_idx is None:
+            raise LookupError("no transition support")
+        primary_level,primary=candidates[primary_idx]
+        parent=None
+        for _lvl,_x in candidates[primary_idx+1:]:
+            if _x:
+                parent=(_lvl,_x)
+                break
+
+        probs=Counter()
+        primary_support=float(sum(primary.values()))
+        if parent is not None:
+            parent_level,parent_counts=parent
+            parent_support=float(sum(parent_counts.values()))
+            # As support grows, trust the primary state more. At min_support
+            # the shrinkage weight is 0.5; with abundant support it approaches 1.
+            primary_weight=primary_support/(primary_support+float(self.min_support))
+            for outcome,count in primary.items():
+                probs[outcome]+=primary_weight*float(count)/max(1.0,primary_support)
+            for outcome,count in parent_counts.items():
+                probs[outcome]+=(1.0-primary_weight)*float(count)/max(1.0,parent_support)
+        else:
+            for outcome,count in primary.items():
+                probs[outcome]+=float(count)/max(1.0,primary_support)
+
+        outs=list(probs)
+        w=np.array([float(probs[o]) for o in outs],float)
         for i,o in enumerate(outs):
-            s,r=o[-1],int(o[-2]); f=float(np.clip(factors.get(s,1.0),.55,1.50)); w[i]*=f**(.85*r) if r else 1.0
-        p=(w+self.alpha)/(w.sum()+self.alpha*len(w)); i=int(rng.choice(len(outs),p=p)); return outs[i],level,float(-(p*np.log(np.clip(p,1e-12,1))).sum())
+            s,r=o[-1],int(o[-2])
+            f=float(np.clip(factors.get(s,1.0),.55,1.50))
+            w[i]*=f**(.85*r) if r else 1.0
+        p=(w+self.alpha)/(w.sum()+self.alpha*len(w))
+        i=int(rng.choice(len(outs),p=p))
+        return outs[i],primary_level,float(-(p*np.log(np.clip(p,1e-12,1))).sum())
 
 
 class TeamStrength:
