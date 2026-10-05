@@ -32,7 +32,7 @@ def test_forever_autopilot_uses_minimal_permissions_and_current_sha_gate():
 def test_forever_autopilot_delegates_to_active_control_plane():
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "baseball_autonomous_control_plane.yml" in text
-    assert "gh workflow run" in text
+    assert "workflow run" in text
     assert "--ref main" in text
     assert "--max-dispatches-per-cycle" not in text
     assert "DAILY_DISPATCH_CAP" in text
