@@ -499,3 +499,17 @@ def test_forever_automation_uses_registered_control_plane():
     assert "research.autonomous_control_plane" in workflow
     assert "--max-dispatches-per-cycle 2" in workflow or "--max-dispatches-per-cycle\" 2" in workflow
     assert "max_heavy_dispatches_per_cycle" in workflow or "max-dispatches-per-cycle" in workflow
+
+
+def test_user_prediction_results_are_persisted():
+    ignore = Path(".gitignore").read_text(encoding="utf-8")
+    assert "!prediction_requests/results/" in ignore
+    assert "!prediction_requests/results/**" in ignore
+
+
+def test_user_prediction_workflow_is_in_recovery_surface():
+    workflow = Path(".github/workflows/baseball_actions_recovery_canonical.yml").read_text(encoding="utf-8")
+    assert "Baseball User Prediction Request" in workflow
+    assert "Install repository prediction dependencies" in workflow
+    assert "Generate requested prediction through repository router" in workflow
+    assert "Commit immutable request result" in workflow
