@@ -278,6 +278,32 @@ def _gh_json(args: list[str]) -> Any:
     return json.loads(result.stdout)
 
 
+def _workflow_runs(repo: str, workflow_path: str, *, per_page: int = 50) -> list[dict[str, Any]]:
+    """Fetch workflow history independently of repository-wide Actions volume.
+
+    The repository contains high-frequency 5/15-minute heartbeats. A global
+    /actions/runs?per_page=100 page can evict low-frequency production/research
+    workflows and create false NO_RUN blockers. Query each monitored workflow
+    directly so governance observes the complete recent history for that target.
+    """
+    filename = Path(workflow_path).name
+    payload = _gh_json([
+        f"repos/{repo}/actions/workflows/{filename}/runs?per_page={per_page}&branch=main"
+    ])
+    runs = payload.get("workflow_runs")
+    if not isinstance(runs, list):
+        raise RuntimeError(
+            f"invalid workflow-runs payload for {workflow_path}: "
+            f"expected list, got {type(runs).__name__}"
+        )
+    for row in runs:
+        if not isinstance(row, dict):
+            raise RuntimeError(
+                f"workflow-run row is not an object for {workflow_path}"
+            )
+    return runs
+
+
 def _parse_time(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
@@ -317,15 +343,18 @@ def _supported_workflow_runs(runs: list[dict[str, Any]], workflow_path: str) -> 
 
 def action_health(repo: str, now: datetime | None = None) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
-    payload = _gh_json([f"repos/{repo}/actions/runs?per_page=100&branch=main"])
-    runs = payload.get("workflow_runs", [])
     current_sha = os.environ.get("GITHUB_SHA", "").strip() or None
 
+    # Do not use the repository-wide latest-100 run page. High-frequency
+    # supervisors/control-plane jobs can evict low-frequency target workflows.
+    # Each governed workflow is queried through its own Actions history endpoint.
+    scoped_runs: dict[str, list[dict[str, Any]]] = {}
+    for workflow_path, contract in WORKFLOW_CONTRACTS.items():
+        if contract.get("monitor"):
+            scoped_runs[workflow_path] = _workflow_runs(repo, workflow_path)
+
     control_path = ".github/workflows/baseball_autonomous_control_plane_canonical.yml"
-    control_runs_all = [
-        r for r in runs
-        if str(r.get("path", "")).lstrip("/") == control_path
-    ]
+    control_runs_all = list(scoped_runs.get(control_path, []))
     control_runs, control_unsupported_runs = _supported_workflow_runs(
         control_runs_all,
         control_path,
@@ -348,6 +377,7 @@ def action_health(repo: str, now: datetime | None = None) -> dict[str, Any]:
     report: dict[str, Any] = {
         "checked_at": now.isoformat(),
         "repository": repo,
+        "query_strategy": "workflow_scoped_actions_history",
         "control_plane": {
             "workflow": control_path,
             "state": "HEALTHY" if control_healthy else ("NO_RUN" if control is None else "STALE_OR_FAILED"),
@@ -367,10 +397,7 @@ def action_health(repo: str, now: datetime | None = None) -> dict[str, Any]:
         if not contract["monitor"]:
             continue
 
-        matching_all = [
-            r for r in runs
-            if str(r.get("path", "")).lstrip("/") == workflow_path
-        ]
+        matching_all = list(scoped_runs.get(workflow_path, []))
         matching, unsupported_matching = _supported_workflow_runs(
             matching_all,
             workflow_path,
