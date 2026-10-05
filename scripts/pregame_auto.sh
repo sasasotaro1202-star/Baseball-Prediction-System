@@ -86,7 +86,9 @@ while IFS= read -r date; do
   [ -n "$date" ] || continue
   echo "=== pregame production/shadow prediction: $date ==="
   if [ -s research_shadow_due_dates.txt ] && grep -qxF "$date" research_shadow_due_dates.txt; then
-    python production_npb.py --date "$date" --data-dir data --pregame-only --research-shadow
+    # Production remains gated. The research-shadow lane may forecast today's
+    # slate up to 180 minutes ahead, but only with official starters/PIT PASS.
+    python production_npb.py       --date "$date"       --data-dir data       --research-shadow       --minimum-lead-minutes 0       --maximum-lead-minutes 180       --preferred-lead-minutes 60
     output="results/npb_shadow_$date.json"
   else
     python -m prediction.current_production --league NPB --date "$date" --data-dir data --pregame-only
