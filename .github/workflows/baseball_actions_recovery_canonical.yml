@@ -21,6 +21,7 @@ on:
       - Baseball 60m Pregame Auto Prediction
       - .github/workflows/baseball_60m_pregame_auto.yml
       - Baseball Autonomous Control Plane
+      - Baseball User Prediction Request
     types: [completed]
 
 permissions:
