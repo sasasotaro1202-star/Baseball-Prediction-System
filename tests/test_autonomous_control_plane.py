@@ -372,3 +372,12 @@ def test_superseded_terminal_failure_dispatches_current_main():
     result = decide(Target(".github/workflows/x.yml", 12.0), runs, now, cap=2, current_sha="current")
     assert result["decision"] == "DISPATCH"
     assert result["reason"] == "latest_run_on_superseded_sha"
+
+
+def test_workflow_dispatch_registration_error_is_classified_not_transient():
+    assert control_plane._is_workflow_dispatch_registration_error(
+        "HTTP 422: Workflow does not have 'workflow_dispatch' trigger"
+    )
+    assert not control_plane._is_workflow_dispatch_registration_error(
+        "HTTP 502 Bad Gateway"
+    )
