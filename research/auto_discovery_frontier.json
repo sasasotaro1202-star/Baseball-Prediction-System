@@ -165,18 +165,18 @@
     "discovered_records_touched": 0,
     "failures": [],
     "focus_scopes": [
-      "WBSC_U15",
-      "WBSC_U18",
-      "WBSC_U23",
-      "WBSC_WomensBaseball",
-      "WestCoastLeague",
-      "ABL",
-      "Israel_Juveniles",
-      "Israel_Minors",
-      "Japan_Elementary",
-      "Japan_U23",
-      "LMB",
-      "MiLB_Rookie"
+      "Brazil_PreInfantil",
+      "CPBL",
+      "Canada_BaseballQuebec",
+      "Canada_ICBA",
+      "Canada_WomensBaseball",
+      "CapeCod",
+      "Colombia_LPBC",
+      "Czechia_Baseball",
+      "France_D1",
+      "Germany_2BL",
+      "Germany_DBL",
+      "Germany_U18"
     ],
     "policy": {
       "free_only": true,
@@ -186,8 +186,8 @@
     "query_count": 24,
     "result_budget_per_scope_platform": 5,
     "rotation_period_hours": 6,
-    "rotation_slot": 82929,
-    "run_at": "2026-10-06T06:15:43+00:00",
+    "rotation_slot": 82931,
+    "run_at": "2026-10-06T18:19:30+00:00",
     "selected_by_scope": {
       "MLB": [
         "AUTO_474af25a2cfd50a8"
@@ -841,7 +841,41 @@
         ]
       },
       "selected_count": 1
+    },
+    {
+      "discovered_records_touched": 0,
+      "failures": [],
+      "focus_scopes": [
+        "Brazil_PreInfantil",
+        "CPBL",
+        "Canada_BaseballQuebec",
+        "Canada_ICBA",
+        "Canada_WomensBaseball",
+        "CapeCod",
+        "Colombia_LPBC",
+        "Czechia_Baseball",
+        "France_D1",
+        "Germany_2BL",
+        "Germany_DBL",
+        "Germany_U18"
+      ],
+      "policy": {
+        "free_only": true,
+        "production_promotion": false,
+        "unknown_pit": "FAIL_CLOSED"
+      },
+      "query_count": 24,
+      "result_budget_per_scope_platform": 5,
+      "rotation_period_hours": 6,
+      "rotation_slot": 82931,
+      "run_at": "2026-10-06T18:19:30+00:00",
+      "selected_by_scope": {
+        "MLB": [
+          "AUTO_474af25a2cfd50a8"
+        ]
+      },
+      "selected_count": 1
     }
   ],
-  "updated_at": "2026-10-06T06:15:43+00:00"
+  "updated_at": "2026-10-06T18:19:30+00:00"
 }
