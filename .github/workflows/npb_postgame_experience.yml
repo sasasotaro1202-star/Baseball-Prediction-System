@@ -40,17 +40,42 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
 
+      - name: Detect eligible production Experience predictions
+        id: production_predictions
+        run: |
+          set -euo pipefail
+          if python - <<'PY'
+          from research.experience_ledger import _load_predictions
+          pred = _load_predictions()
+          print(f"eligible_prediction_rows={len(pred)}")
+          raise SystemExit(0 if not pred.empty else 7)
+          PY
+          then
+            echo "has_predictions=true" >> "$GITHUB_OUTPUT"
+          else
+            rc=$?
+            if [ "$rc" -eq 7 ]; then
+              echo "No eligible post-epoch production predictions; production Experience derivation will remain untouched."
+              echo "has_predictions=false" >> "$GITHUB_OUTPUT"
+            else
+              exit "$rc"
+            fi
+          fi
+
       - name: Reconcile against official completed NPB results
+        if: steps.production_predictions.outputs.has_predictions == 'true'
         run: |
           set -euo pipefail
           python -m research.experience_ledger --reconcile
 
       - name: Build full snapshot experience and situation rollups
+        if: steps.production_predictions.outputs.has_predictions == 'true'
         run: |
           set -euo pipefail
           python -m research.experience_rollup
 
       - name: Audit immutable prediction evidence
+        if: steps.production_predictions.outputs.has_predictions == 'true'
         env:
           PYTHONPATH: .
           PYTHONUNBUFFERED: "1"
@@ -78,6 +103,7 @@ jobs:
           fi
 
       - name: Validate experience evidence
+        if: steps.production_predictions.outputs.has_predictions == 'true'
         run: |
           set -euo pipefail
           test -s data/experience/experience_summary.json
