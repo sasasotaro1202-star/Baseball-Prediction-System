@@ -184,6 +184,18 @@ jobs:
         if: github.event_name != 'pull_request' && steps.experience_input.outputs.has_experience == 'true'
         run: |
           set -euo pipefail
+          if [ "${{ steps.experience_input.outputs.has_experience }}" != "true" ]; then
+            echo "No eligible Experience input; persistence is deferred."
+            exit 0
+          fi
+          if [ ! -s results/experience_learning_policy.json ]; then
+            echo "Learning policy artifact was not produced; persistence is deferred fail-closed."
+            exit 0
+          fi
+          if [ ! -s results/experience_learning_gate.json ]; then
+            echo "Learning gate artifact was not produced; persistence is deferred fail-closed."
+            exit 0
+          fi
           mkdir -p data/experience
           new_hash="$(python - <<'PY'
           import json
