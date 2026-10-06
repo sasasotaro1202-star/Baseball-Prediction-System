@@ -222,8 +222,9 @@ def test_24h_supervisor_has_bounded_recovery_and_control_plane_rerun():
     _assert_official_actions_are_immutable(text)
     assert "Deterministic" in text
     assert "CONTROL_PLANE_WORKFLOW: baseball_forever_autopilot.yml" in text
-    assert 'gh_retry run rerun "${control_plane_latest_id}" --repo "${GH_REPO}"' in text
-    assert 'gh_retry workflow run "${CONTROL_PLANE_WORKFLOW}"' not in text
+    assert 'gh_retry run rerun "$control_plane_latest_id" --repo "$GH_REPO"' in text
+    assert 'gh_retry workflow run "$CONTROL_PLANE_WORKFLOW" --repo "$GH_REPO" --ref main' in text
+    assert 'control_plane_latest_sha' in text
     trigger = text.split("permissions:", 1)[0]
     assert "push:" in trigger
     assert "schedule:" in trigger
