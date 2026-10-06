@@ -102,6 +102,15 @@ def test_24h_keeper_is_main_scoped_bounded_failover_only() -> None:
     assert 'latest successful 24h cycle is at least 24h old' in text
     assert 'consecutive_failure_streak' not in text
 
+def test_pregame_dispatch_verification_keeps_multiline_jq_commands_intact() -> None:
+    text = _text(SUPERVISOR)
+
+    assert 'jq -r --arg workflow "${PREGAME_WORKFLOW}" --argjson cutoff "${dispatch_epoch}" \\\n' in text
+    assert 'jq --arg workflow "${PREGAME_WORKFLOW}" \\\n' in text
+    assert 'jq -r --arg workflow "${PREGAME_WORKFLOW}" --argjson cutoff "${dispatch_epoch}"\n' not in text
+    assert 'jq --arg workflow "${PREGAME_WORKFLOW}"\n' not in text
+
+
 def test_supervisor_recovery_bootstraps_current_main_and_reruns_current_run():
     text = SUPERVISOR.read_text(encoding="utf-8")
     assert 'CONTROL_PLANE_WORKFLOW: baseball_forever_autopilot.yml' in text
