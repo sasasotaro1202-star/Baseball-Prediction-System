@@ -1,0 +1,87 @@
+name: NPB User Prediction Shadow Experience Archive
+
+on:
+  workflow_run:
+    workflows:
+      - Baseball User Prediction Request
+    types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - "prediction_requests/results/**"
+      - "scripts/archive_user_prediction_experience.py"
+      - "research/shadow_experience.py"
+      - ".github/workflows/npb_user_prediction_experience_archive.yml"
+  schedule:
+    - cron: "15 1,7,13,19 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: npb-user-prediction-shadow-experience-archive
+  cancel-in-progress: false
+
+jobs:
+  archive:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
+
+      - name: Scan and archive user-requested shadow results
+        env:
+          PYTHONPATH: .
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -euo pipefail
+          python scripts/archive_user_prediction_experience.py             --result-dir prediction_requests/results             --run-id "$GITHUB_RUN_ID" > /tmp/user_shadow_archive.json
+          cat /tmp/user_shadow_archive.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit shadow experience archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          for attempt in 1 2 3; do
+            git fetch origin main
+            if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+              git reset --hard origin/main
+            fi
+
+            PYTHONPATH=. PYTHONUNBUFFERED=1               python scripts/archive_user_prediction_experience.py                 --result-dir prediction_requests/results                 --run-id "$GITHUB_RUN_ID" > /tmp/user_shadow_archive.json
+
+            git add data/experience/research_shadow/predictions
+            if git diff --cached --quiet; then
+              echo "No new user-requested shadow predictions to archive."
+              exit 0
+            fi
+
+            git commit -m "Archive user prediction shadow experience"
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+
+            git reset --hard HEAD^
+          done
+
+          echo "shadow experience archive push recovery exhausted" >&2
+          exit 1
