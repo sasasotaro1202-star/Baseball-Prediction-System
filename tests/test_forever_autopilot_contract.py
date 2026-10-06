@@ -52,7 +52,7 @@ def test_forever_autopilot_preserves_failure_evidence_and_never_promotes():
 
 def test_forever_autopilot_request_recovery_is_bounded_and_reuses_existing_run():
     text = WORKFLOW.read_text(encoding="utf-8")
-    assert 'gh_retry run rerun "${request_latest_id}" --repo "$GH_REPO"' in text
+    assert 'gh_retry run rerun "$request_latest_id" --repo "$GH_REPO"' in text
     assert 'gh_retry workflow run "$REQUEST_WORKFLOW"' not in text
     assert "request_rerun_attempt" in text
     assert "REQUEST_DAILY_DISPATCH_CAP" in text
