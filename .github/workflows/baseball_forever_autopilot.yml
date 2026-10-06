@@ -70,6 +70,8 @@ jobs:
           rc=$?
           set -e
           if [ "$rc" -ne 0 ]; then
+            echo "=== autonomous control-plane runtime log (tail) ===" >&2
+            tail -n 200 results/control_plane/forever_runtime.log >&2 || true
             python - "$rc" <<'PY'
           import json
           import os
@@ -267,6 +269,8 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: baseball-forever-autopilot-${{ github.run_id }}
-          path: results/forever_autopilot/
+          path: |
+            results/forever_autopilot/
+            results/control_plane/
           if-no-files-found: warn
           retention-days: 14
