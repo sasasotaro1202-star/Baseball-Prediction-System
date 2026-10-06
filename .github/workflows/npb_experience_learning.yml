@@ -22,6 +22,7 @@ on:
   workflow_run:
     workflows:
       - NPB Prediction Experience Reconciliation
+      - NPB Postgame Experience Reconciliation
     types: [completed]
   schedule:
     - cron: "45 0,6,12,18 * * *"
