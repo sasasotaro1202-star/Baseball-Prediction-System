@@ -145,16 +145,17 @@ def test_list_runs_uses_workflow_scoped_history(monkeypatch):
             '[{"databaseId": 1, "status": "completed", '
             '"conclusion": "success", "createdAt": "2026-10-05T00:00:00Z", '
             '"updatedAt": "2026-10-05T00:01:00Z", "headSha": "current", '
-            '"headBranch": "main", "event": "schedule", "path": "'
-            + ".github/workflows/"
-            + workflow
-            + '"}]'
+            '"headBranch": "main", "event": "schedule"}]'
         )
 
     monkeypatch.setattr(control_plane, "_gh", fake_gh)
     rows = control_plane.list_runs("owner/repo")
 
     assert len(calls) == len(control_plane.TARGETS)
+    assert all("--json" in call for call in calls)
+    json_fields = [call[call.index("--json") + 1] for call in calls]
+    assert all("path" not in fields.split(",") for fields in json_fields)
+    assert control_plane.RUN_LIST_JSON_FIELDS in json_fields
     assert {call[call.index("--workflow") + 1] for call in calls} == {
         control_plane.workflow_cli_ref(target.workflow) for target in control_plane.TARGETS
     }
