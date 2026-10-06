@@ -103,6 +103,7 @@ jobs:
           python -m research.experience_ledger --archive "${file}" --run-id "${RUN_ID}"
 
       - name: Validate archive
+        if: steps.epoch_gate.outputs.eligible == 'true'
         env:
           PYTHONUNBUFFERED: "1"
         run: |
