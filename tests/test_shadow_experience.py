@@ -250,7 +250,7 @@ def test_shadow_reconcile_reports_current_method_separately(tmp_path, monkeypatc
     )
 
     pred_dir.joinpath("2026-10-03.jsonl").write_text(
-        "".join(json.dumps(x, ensure_ascii=False) + "\\n" for x in (early, late)),
+        "".join(json.dumps(x, ensure_ascii=False) + "\n" for x in (early, late)),
         encoding="utf-8",
     )
     monkeypatch.setattr(
@@ -268,7 +268,7 @@ def test_shadow_reconcile_reports_current_method_separately(tmp_path, monkeypatc
 
     summary = shadow.reconcile_shadow()
     assert summary["status"] == "UPDATED"
-    assert summary["current_method_signature"] == early["method_signature"]
+    assert summary["current_method_signature"] == late["method_signature"]
     assert summary["current_method_performance"]["canonical_cases"] == 1
     current = json.loads((root / "current_method_performance.json").read_text(encoding="utf-8"))
     assert current["scope"] == "RESEARCH_SHADOW_CURRENT_METHOD"
