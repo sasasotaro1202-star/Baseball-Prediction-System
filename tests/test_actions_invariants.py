@@ -291,6 +291,9 @@ def test_pregame_experience_persist_skips_absent_optional_shadow_dir():
     assert script.count('if [ -d "$experience_path" ]; then') == 2
     assert script.count('git add "$experience_path"') == 2
     assert 'git add data/experience/predictions/ data/experience/research_shadow/' not in script
+    assert "git reset --hard origin/main" not in script
+    assert "git merge --no-edit origin/main" in script
+    assert "Experience push race produced a merge conflict" in script
     assert "bash scripts/pregame_auto.sh" in workflow
     assert len(workflow.splitlines()) <= 90
 
