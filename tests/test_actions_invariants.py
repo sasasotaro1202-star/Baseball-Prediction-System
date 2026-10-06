@@ -227,7 +227,8 @@ def test_24h_supervisor_has_bounded_recovery_and_control_plane_rerun():
     trigger = text.split("permissions:", 1)[0]
     assert "push:" in trigger
     assert "schedule:" in trigger
-    assert ".github/workflows/baseball_24h_supervisor.yml" in trigger\ndef test_24h_keeper_is_bounded_control_plane_failover():
+    assert ".github/workflows/baseball_24h_supervisor.yml" in trigger
+def test_24h_keeper_is_bounded_control_plane_failover():
     text = (ROOT / ".github" / "workflows" / "baseball_24h_research_keeper_canonical.yml").read_text(encoding="utf-8")
     assert "baseball_forever_autopilot.yml" in text
     assert "schedule:" in text
@@ -303,7 +304,8 @@ def test_pregame_zero_job_failure_has_bounded_control_plane_recovery():
     assert "PRE_GAME_ZERO_JOB_COOLDOWN" in recovery
     assert "pregame_recovery_mode" in recovery
     assert 'gh_retry workflow run "${PREGAME_WORKFLOW}"' in recovery
-    assert "verified_pregame" in recovery\ndef test_24h_supervisor_recovers_zero_job_pregame_with_daily_cap():
+    assert "verified_pregame" in recovery
+def test_24h_supervisor_recovers_zero_job_pregame_with_daily_cap():
     text = SUPERVISOR.read_text(encoding="utf-8")
     _assert_official_actions_are_immutable(text)
     assert "latest_failure_job_count" in text
@@ -311,7 +313,8 @@ def test_pregame_zero_job_failure_has_bounded_control_plane_recovery():
     assert "PRE_GAME_ZERO_JOB_DAILY_CAP" in text
     assert "PRE_GAME_ZERO_JOB_COOLDOWN" in text
     assert 'gh_retry workflow run "${PREGAME_WORKFLOW}" --repo "${GH_REPO}" --ref main' in text
-    assert "verified_pregame" in text\ndef test_research_lab_caches_are_snapshot_verified_and_file_scoped():
+    assert "verified_pregame" in text
+def test_research_lab_caches_are_snapshot_verified_and_file_scoped():
     """Research caches must contain only the verified evidence for their exact SHA."""
     contracts = (
         ("baseball_ultimate_pattern_lab.yml", "ultimate_pattern_lab_${{ matrix.league }}.json", "baseball-ultimate-pattern-v1"),
@@ -402,7 +405,8 @@ def test_canonical_autonomous_workflows_guard_unsupported_push_execution():
     assert "if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}" in control
     assert "push:" not in control.split("permissions:", 1)[0]
     assert "workflow_dispatch:" in keeper
-    assert "schedule:" in keeper\ndef test_canonical_actions_recovery_accepts_only_workflow_run_events():
+    assert "schedule:" in keeper
+def test_canonical_actions_recovery_accepts_only_workflow_run_events():
     text = SUPERVISOR.read_text(encoding="utf-8")
     assert "workflow_run:" in text
     assert "github.event.workflow_run" in text
