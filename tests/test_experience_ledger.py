@@ -8,6 +8,16 @@ import pytest
 import research.experience_ledger as exp
 
 
+@pytest.fixture(autouse=True)
+def _current_experience_epoch(monkeypatch):
+    # Keep historical unit fixtures inside a deliberately old test epoch.
+    monkeypatch.setattr(
+        exp,
+        "_experience_epoch",
+        lambda: pd.Timestamp("2026-09-01T00:00:00+00:00"),
+    )
+
+
 def _prediction(tmp: Path):
     p = {
         "execution_status": "EXECUTED",
@@ -672,3 +682,38 @@ def test_reconcile_records_realized_prediction_horizon(tmp_path, monkeypatch):
     assert ledger.loc[0, "prediction_horizon"] == "3_TO_6H"
     assert summary["by_horizon"]["3_TO_6H"]["rows"] == 1
     assert summary["by_horizon"]["3_TO_6H"]["mean_actual_lead_minutes"] == pytest.approx(4 * 60 + 55)
+
+
+
+def test_archive_quarantines_pre_epoch_prediction(tmp_path, monkeypatch):
+    monkeypatch.setattr(exp, "EXPERIENCE", tmp_path / "experience")
+    monkeypatch.setattr(exp, "PRED_DIR", tmp_path / "experience" / "predictions")
+
+    payload = json.loads(_prediction(tmp_path).read_text(encoding="utf-8"))
+    row = payload["predictions"][0]
+    row["prediction_generated_at"] = "2026-08-31T23:59:00+00:00"
+    row["prediction_cutoff_utc"] = "2026-08-31T23:58:00+00:00"
+    row["starter_evidence_observed_at_utc"] = "2026-08-31T23:57:30+00:00"
+    payload["target_date"] = "2026-08-31"
+    path = tmp_path / "pre-epoch.json"
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    result = exp.archive_production_output(path, run_id="pre-epoch-run")
+    assert result == {"archived": 0, "skipped": 0, "updated": 0}
+    assert not (tmp_path / "experience" / "predictions" / "2026-08-31.jsonl").exists()
+
+
+def test_load_predictions_filters_pre_epoch_history(tmp_path, monkeypatch):
+    pred_dir = tmp_path / "experience" / "predictions"
+    pred_dir.mkdir(parents=True)
+    row = json.loads(_prediction(tmp_path).read_text(encoding="utf-8"))["predictions"][0]
+    row["prediction_generated_at"] = "2026-08-31T23:59:00+00:00"
+    row["prediction_cutoff_utc"] = "2026-08-31T23:58:00+00:00"
+    row["starter_evidence_observed_at_utc"] = "2026-08-31T23:57:30+00:00"
+    pred_dir.joinpath("2026-08-31.jsonl").write_text(
+        json.dumps(row, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(exp, "PRED_DIR", pred_dir)
+
+    loaded = exp._load_predictions()
+    assert loaded.empty
