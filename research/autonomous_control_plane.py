@@ -31,6 +31,10 @@ class Target:
     pending_recover_minutes: int = 45
     max_runtime_hours: float | None = None
     skip_is_healthy: bool = False
+    # Per-target 24h recovery budget. This bounds repeated startup/scheduler
+    # recovery when a workflow is persistently broken while preserving the
+    # normal per-cycle dispatch cap.
+    dispatch_daily_cap: int = 3
 
 TARGETS = (
     Target(".github/workflows/baseball_regression_tests.yml", 12.0, pending_recover_minutes=30, max_runtime_hours=0.75),
@@ -283,6 +287,7 @@ def decide(
         "max_age_hours": target.max_age_hours,
         "heavy": target.heavy,
         "dispatch_attempts_24h": attempts,
+        "dispatch_daily_cap": target.dispatch_daily_cap,
         "decision": "NOOP",
         "reason": "",
         "latest_run_id": None,
@@ -293,6 +298,9 @@ def decide(
 
     if active:
         latest_active = active[0]
+        if attempts >= target.dispatch_daily_cap:
+            result["decision"], result["reason"] = "HOLD", "dispatch_daily_cap_reached_while_active"
+            return result
         created = parse_time(latest_active["created_at"])
         age_minutes = max(0.0, (now - created).total_seconds() / 60.0)
         run_sha = str(latest_active.get("head_sha") or "")
@@ -336,7 +344,9 @@ def decide(
         return result
 
     if not matching:
-        if attempts >= cap:
+        if attempts >= target.dispatch_daily_cap:
+            result["decision"], result["reason"] = "HOLD", "dispatch_daily_cap_reached_without_history"
+        elif attempts >= cap:
             result["decision"], result["reason"] = "HOLD", "dispatch_cap_reached_without_history"
         else:
             result["decision"], result["reason"] = "DISPATCH", "no_recent_history"
@@ -349,6 +359,9 @@ def decide(
     age_minutes = max(0.0, (now - parse_time(latest["created_at"])).total_seconds() / 60.0)
     result["latest_age_minutes"] = round(age_minutes, 2)
 
+    if attempts >= target.dispatch_daily_cap:
+        result["decision"], result["reason"] = "HOLD", "dispatch_daily_cap_reached"
+        return result
     if attempts >= cap:
         result["decision"], result["reason"] = "HOLD", "dispatch_cap_reached"
         return result
@@ -506,6 +519,7 @@ def run(repo: str, output: Path, max_dispatches_per_cycle: int = 2) -> dict[str,
             "auto_promotion": False,
             "fail_closed": True,
             "max_heavy_dispatches_per_cycle": 1,
+            "default_target_dispatch_daily_cap": 3,
         },
     }
     output.parent.mkdir(parents=True, exist_ok=True)
