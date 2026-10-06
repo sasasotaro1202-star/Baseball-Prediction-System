@@ -213,6 +213,11 @@ def archive_shadow_output(
             archived += 1
         existing[key] = record
 
+    if archived == 0 and updated == 0:
+        # Do not materialize an empty archive when every incoming snapshot is
+        # pre-epoch/quarantined. The reset state should remain physically empty.
+        return {"archived": 0, "skipped": 0, "updated": 0}
+
     rows = sorted(
         existing.values(),
         key=lambda r: (
