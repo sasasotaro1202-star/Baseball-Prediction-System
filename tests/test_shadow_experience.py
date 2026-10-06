@@ -37,6 +37,12 @@ def _prediction():
                 "pit_status": "PASS",
                 "home": "東京ヤクルトスワローズ",
                 "away": "読売ジャイアンツ",
+                "competition": "npb_regular",
+                "competition_stage": "regular_season",
+                "season_type": "regular_season",
+                "game_class": "official",
+                "competition_key": "NPB:npb_regular:regular_season",
+                "competition_classification_status": "classified",
                 "home_starter": "A",
                 "away_starter": "B",
                 "home_win_pct": 55.0,
@@ -322,3 +328,21 @@ def test_shadow_reconcile_excludes_pre_epoch_predictions(tmp_path, monkeypatch):
     assert summary["status"] == "NO_SHADOW_PREDICTIONS"
     assert summary["prediction_rows"] == 0
     assert not (root / "shadow_experience_ledger.csv").exists()
+
+
+def test_archive_rejects_unknown_competition_identity(tmp_path, monkeypatch):
+    root = tmp_path / "research_shadow"
+    monkeypatch.setattr(shadow, "SHADOW_ROOT", root)
+    monkeypatch.setattr(shadow, "PRED_DIR", root / "predictions")
+    input_path = tmp_path / "shadow.json"
+    payload = _prediction()
+    payload["predictions"][0]["competition_classification_status"] = "unknown"
+    payload["predictions"][0]["competition"] = "npb_unknown"
+    payload["predictions"][0]["competition_stage"] = "unknown"
+    payload["predictions"][0]["season_type"] = "unknown"
+    payload["predictions"][0]["game_class"] = "unknown"
+    payload["predictions"][0]["competition_key"] = "NPB:npb_unknown:unknown"
+    input_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="UNKNOWN|non-classified"):
+        shadow.archive_shadow_output(input_path, run_id="r1")
