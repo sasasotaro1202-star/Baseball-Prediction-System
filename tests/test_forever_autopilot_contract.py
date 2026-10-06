@@ -85,6 +85,7 @@ def test_forever_autopilot_executes_control_plane_locally():
 
 def test_request_recovery_uses_existing_run_rerun():
     text = WORKFLOW.read_text(encoding="utf-8")
-    assert 'gh_retry run rerun "${request_latest_id}" --repo "$GH_REPO"' in text
+    assert 'gh_retry run rerun "$request_latest_id" --repo "$GH_REPO"' in text or 'gh_retry run rerun "${request_latest_id}" --repo "${GH_REPO}"' in text
     assert 'gh_retry workflow run "$REQUEST_WORKFLOW"' not in text
-    assert "request_run_attempt" in text
+    assert "request_rerun_attempt" in text
+    assert "request_verified_run_id" in text
