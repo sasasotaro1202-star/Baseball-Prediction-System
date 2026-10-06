@@ -190,6 +190,14 @@ def test_autonomous_control_plane_is_governed():
     assert ".github/workflows/baseball_forever_autopilot.yml" in WORKFLOW_CONTRACTS
 
 
+def test_governance_autopilot_avoids_main_push_bootstrap_race():
+    workflow = Path(".github/workflows/baseball_governance_autopilot.yml").read_text(encoding="utf-8")
+    trigger = workflow.split("permissions:", 1)[0]
+    assert "push:" not in trigger
+    assert "workflow_dispatch: {}" in trigger
+    assert 'cron: "13 */6 * * *"' in trigger
+
+
 def test_action_health_uses_active_forever_heartbeat_as_control_plane(monkeypatch):
     from datetime import datetime, timezone
     from research import project_governance as governance
