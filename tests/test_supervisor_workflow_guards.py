@@ -64,6 +64,8 @@ def test_supervisor_monitors_scheduled_pregame_runs_and_recovers_missed_schedule
     assert 'Pregame missed-schedule daily cap reached' in text
     assert 'pregame_recovery_attempts_24h}" -ge 3' in text
 
+    assert "Latest pregame terminal state is not eligible for speculative restart; preserving authoritative failure/blocked state.\n          fi\n\n          if [ \"${pregame_dispatch}\" -eq 1 ]; then" in text
+
 
 def test_autonomous_control_plane_avoids_workflow_file_push_startup_trigger() -> None:
     text = _text(ROOT / ".github" / "workflows" / "baseball_forever_autopilot.yml")
