@@ -181,7 +181,7 @@ jobs:
           PY
 
       - name: Persist changed learned policy
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && steps.experience_input.outputs.has_experience == 'true'
         run: |
           set -euo pipefail
           mkdir -p data/experience
