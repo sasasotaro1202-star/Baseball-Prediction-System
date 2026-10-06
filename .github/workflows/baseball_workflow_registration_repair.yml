@@ -90,7 +90,20 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          target_ids="375399090 375399444 359633887 375842323 375843510"
+          target_ids="374504043 375853241 375399090 375399444 359633887 375842323 375843510"
+          workflow_state() {
+            local workflow_id="$1"
+            local response
+            if response="$(gh api "repos/${GH_REPO}/actions/workflows/${workflow_id}" 2>&1)"; then
+              printf "%s\n" "$response" | jq -r '.state // "unknown"'
+            elif printf "%s" "$response" | grep -Eq 'HTTP 404|Not Found'; then
+              printf "%s\n" "deleted"
+            else
+              printf "%s\n" "$response" >&2
+              return 1
+            fi
+          }
+
           for workflow_id in ${target_ids}; do
             state="$(workflow_state "${workflow_id}")"
             case "${state}" in
@@ -109,7 +122,7 @@ jobs:
         run: |
           {
             echo "## Baseball Workflow Registration Repair"
-            echo "- target registrations: 2 exact retired ghost IDs"
+            echo "- target registrations: 7 exact retired ghost IDs"
             echo "- policy: disable-only, exact allowlist, fail-closed"
             echo "- production/model/data mutation: none"
             echo "- timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
