@@ -50,14 +50,20 @@ def _read_prediction_rows() -> list[dict[str, Any]]:
 
 
 def _method_signature(obj: dict[str, Any]) -> str:
-    """Identify the exact forecast method without conflating later revisions."""
+    """Identify the forecast algorithm without splitting on infrastructure-only commits."""
+    predictions = obj.get("predictions")
+    if not isinstance(predictions, list) or not predictions:
+        raise ValueError("research-shadow output contains no predictions for method identity")
+    model_labels = sorted({str(row.get("model") or "").strip() for row in predictions})
+    if not model_labels or any(not label for label in model_labels):
+        raise ValueError("research-shadow output is missing per-prediction model identity")
     parts = (
         str(obj.get("schema_version") or "unknown"),
         str(obj.get("feature_set_id") or "unknown"),
         str(obj.get("feature_schema_hash") or "unknown"),
         str(obj.get("feature_set_variant") or "unknown"),
         str(obj.get("feature_context_mode") or "unknown"),
-        str(obj.get("git_commit") or "unknown"),
+        "models:" + ",".join(model_labels),
     )
     if any(value == "unknown" for value in parts):
         raise ValueError("research-shadow output is missing method identity metadata")
