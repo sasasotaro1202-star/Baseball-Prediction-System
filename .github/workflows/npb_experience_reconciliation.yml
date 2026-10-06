@@ -35,7 +35,33 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements.txt
 
+      - name: Detect eligible post-epoch production predictions
+        id: production_predictions
+        env:
+          PYTHONPATH: .
+          PYTHONUNBUFFERED: '1'
+        run: |
+          set -euo pipefail
+          if python - <<'PY'
+          from research.experience_ledger import _load_predictions
+          pred = _load_predictions()
+          print(f"eligible_prediction_rows={len(pred)}")
+          raise SystemExit(0 if not pred.empty else 7)
+          PY
+          then
+            echo "has_predictions=true" >> "$GITHUB_OUTPUT"
+          else
+            rc=$?
+            if [ "$rc" -eq 7 ]; then
+              echo "No eligible post-epoch production predictions; leaving Experience state untouched."
+              echo "has_predictions=false" >> "$GITHUB_OUTPUT"
+            else
+              exit "$rc"
+            fi
+          fi
+
       - name: Reconcile canonical experience
+        if: steps.production_predictions.outputs.has_predictions == 'true'
         env:
           PYTHONPATH: .
           PYTHONUNBUFFERED: '1'
@@ -44,6 +70,7 @@ jobs:
           python -m research.experience_ledger --reconcile
 
       - name: Reconcile every pregame snapshot
+        if: steps.production_predictions.outputs.has_predictions == 'true'
         env:
           PYTHONPATH: .
           PYTHONUNBUFFERED: '1'
@@ -52,6 +79,7 @@ jobs:
           python -m research.experience_rollup
 
       - name: Validate reconciliation outputs
+        if: steps.production_predictions.outputs.has_predictions == 'true'
         run: |
           set -euo pipefail
           test -f data/experience/experience_summary.json
@@ -86,6 +114,7 @@ jobs:
           PY
 
       - name: Commit experience metrics
+        if: steps.production_predictions.outputs.has_predictions == 'true'
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
