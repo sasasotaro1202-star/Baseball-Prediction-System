@@ -42,14 +42,14 @@ def test_closed_loop_keeps_safe_sequential_execution_and_quality_gates():
     assert "obj.get('status') != 'READY'" in text
 
 
-def test_recovery_is_bounded_and_only_retries_transient_steps():
+def test_recovery_is_bounded_and_uses_verified_dispatch_paths():
     text = SUPERVISOR.read_text(encoding="utf-8")
     _assert_official_actions_are_immutable(text)
     assert "gh_retry() {" in text
     assert "for attempt in 1 2 3 4" in text
     assert "CONTROL_PLANE_WORKFLOW: baseball_forever_autopilot.yml" in text
     assert "gh_retry run rerun" in text
-    assert "gh_retry workflow run" not in text
+    assert "gh_retry workflow run" in text
 
 def test_x_research_isolated_and_artifact_fail_closed():
     text = X_RESEARCH.read_text(encoding="utf-8")
@@ -188,7 +188,8 @@ def test_candidate_oos_watchdog_allows_validated_autonomous_control_plane_contin
     assert "candidate_oos_only" in text
     assert "control_plane_owner: baseball_forever_autopilot.yml" in text
     assert "research.autonomous_control_plane" not in text
-    assert "gh workflow run" not in text
+    assert 'gh workflow run "${CANDIDATE_WORKFLOW}" --repo "${GH_REPO}" --ref main' in text
+    assert "current_main_sha" in text
 
 def test_control_plane_and_v44_triggers_keep_bounded_main_push_scope():
     control = (ROOT / ".github" / "workflows" / "baseball_forever_autopilot.yml").read_text(encoding="utf-8")
@@ -196,8 +197,8 @@ def test_control_plane_and_v44_triggers_keep_bounded_main_push_scope():
     control_trigger = control.split("permissions:", 1)[0]
     v44_trigger = v44.split("permissions:", 1)[0]
     assert "push:" not in control_trigger
-    assert "schedule:" in control_trigger
-    assert "workflow_dispatch:" in control_trigger
+    assert 'cron: "*/5 * * * *"' in control_trigger
+    assert "workflow_dispatch: {}" in control_trigger
     assert "push:" in v44_trigger
     assert "paths:" in v44_trigger
 
@@ -226,7 +227,8 @@ def test_24h_supervisor_avoids_deterministic_failure_retry_loop():
     trigger = text.split("permissions:", 1)[0]
     assert "push:" in trigger
     assert ".github/workflows/baseball_24h_supervisor.yml" in trigger
-    assert ".github/workflows/baseball_forever_autopilot.yml" in trigger
+    assert "research/autonomous_control_plane.py" in trigger
+    assert ".github/workflows/baseball_forever_autopilot.yml" not in trigger
 
 
 def test_24h_keeper_is_bounded_control_plane_failover():
@@ -299,7 +301,7 @@ def test_pregame_zero_job_failure_has_bounded_control_plane_recovery():
     assert "latest_failure_job_count=" in recovery
     assert "pregame_recovery_attempts_24h" in recovery
     assert "PRE_GAME_ZERO_JOB_COOLDOWN" in recovery
-    assert "gh run rerun" in recovery
+    assert 'gh_retry workflow run "${PREGAME_WORKFLOW}" --repo "${GH_REPO}" --ref main --field recovery_mode="${pregame_recovery_mode}"' in recovery
 
 def test_24h_supervisor_recovers_only_latest_zero_job_pregame_failures_with_daily_cap():
     text = SUPERVISOR.read_text(encoding="utf-8")
@@ -307,7 +309,7 @@ def test_24h_supervisor_recovers_only_latest_zero_job_pregame_failures_with_dail
     assert "PREGAME_WORKFLOW=baseball_60m_pregame_auto.yml" in text
     assert "latest_failure_job_count" in text
     assert "pregame_recovery_attempts_24h" in text
-    assert "gh run rerun" in text
+    assert 'gh_retry workflow run "${PREGAME_WORKFLOW}" --repo "${GH_REPO}" --ref main --field recovery_mode="${pregame_recovery_mode}"' in text
 
 def test_research_lab_caches_are_snapshot_verified_and_file_scoped():
     """Research caches must contain only the verified evidence for their exact SHA."""
@@ -395,8 +397,9 @@ def test_actions_recovery_binds_retry_to_current_main_snapshot():
 def test_canonical_autonomous_workflows_guard_unsupported_push_execution():
     control = (ROOT / ".github" / "workflows" / "baseball_forever_autopilot.yml").read_text(encoding="utf-8")
     keeper = (ROOT / ".github" / "workflows" / "baseball_24h_research_keeper_canonical.yml").read_text(encoding="utf-8")
-    assert "cron: '*/15 * * * *'" in control
+    assert 'cron: "*/5 * * * *"' in control
     assert "workflow_dispatch: {}" in control
+    assert "push:" not in control.split("permissions:", 1)[0]
     assert "if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}" in control
     assert "workflow_dispatch:" in keeper
     assert "schedule:" in keeper
