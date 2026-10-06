@@ -71,19 +71,19 @@ jobs:
           set -e
           if [ "$rc" -ne 0 ]; then
             python - "$rc" <<'PY'
-import json
-import os
-import sys
-from pathlib import Path
-Path("results/control_plane/forever_runtime_failure.json").write_text(json.dumps({
-    "schema_version": 1,
-    "status": "FAILED",
-    "failure_class": "FOREVER_AUTONOMOUS_CONTROL_PLANE",
-    "exit_code": int(sys.argv[1]),
-    "git_commit": os.environ.get("GITHUB_SHA"),
-    "log_path": "results/control_plane/forever_runtime.log",
-}, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")
-PY
+          import json
+          import os
+          import sys
+          from pathlib import Path
+          Path("results/control_plane/forever_runtime_failure.json").write_text(json.dumps({
+              "schema_version": 1,
+              "status": "FAILED",
+              "failure_class": "FOREVER_AUTONOMOUS_CONTROL_PLANE",
+              "exit_code": int(sys.argv[1]),
+              "git_commit": os.environ.get("GITHUB_SHA"),
+              "log_path": "results/control_plane/forever_runtime.log",
+          }, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")
+          PY
             echo "Autonomous control plane failed; preserving failure evidence." >&2
             exit "$rc"
           fi
@@ -95,17 +95,17 @@ PY
           set -euo pipefail
           if [ -s results/control_plane/forever_autonomous_control_plane.json ]; then
             python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
-import json
-from pathlib import Path
-d=json.loads(Path("results/control_plane/forever_autonomous_control_plane.json").read_text(encoding="utf-8"))
-print("## Baseball Forever Autopilot")
-print(f"- control_plane_status: {d.get('control_plane_status')}")
-print(f"- cycle_dispatch_count: {d.get('cycle_dispatch_count')}")
-print(f"- cycle_heavy_dispatch_count: {d.get('cycle_heavy_dispatch_count')}")
-print(f"- deterministic_failure_targets: {len(d.get('deterministic_failure_targets', []))}")
-print("- fail_closed: true")
-print("- auto_promotion: false")
-PY
+          import json
+          from pathlib import Path
+          d=json.loads(Path("results/control_plane/forever_autonomous_control_plane.json").read_text(encoding="utf-8"))
+          print("## Baseball Forever Autopilot")
+          print(f"- control_plane_status: {d.get('control_plane_status')}")
+          print(f"- cycle_dispatch_count: {d.get('cycle_dispatch_count')}")
+          print(f"- cycle_heavy_dispatch_count: {d.get('cycle_heavy_dispatch_count')}")
+          print(f"- deterministic_failure_targets: {len(d.get('deterministic_failure_targets', []))}")
+          print("- fail_closed: true")
+          print("- auto_promotion: false")
+          PY
           else
             echo "## Baseball Forever Autopilot" >> "$GITHUB_STEP_SUMMARY"
             echo "- control_plane_status: FAILED_OR_SUPERSEDED" >> "$GITHUB_STEP_SUMMARY"
