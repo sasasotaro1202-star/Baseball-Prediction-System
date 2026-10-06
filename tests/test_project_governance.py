@@ -393,7 +393,7 @@ def test_current_forever_legacy_push_run_is_ignored_after_self_trigger_removal(m
     report = governance.action_health("owner/repo", datetime(2026, 10, 5, 10, 0, tzinfo=timezone.utc))
     entry = report["workflows"][".github/workflows/baseball_forever_autopilot.yml"]
     assert entry["state"] == "DEFERRED"
-    assert entry["event"] == "push"
+    assert entry["reasons"] == ["only_unsupported_event_runs", "ignored_run_event=push"]
 
 def test_workflow_dispatch_empty_mapping_is_supported():
     from research import project_governance as governance
