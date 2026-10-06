@@ -175,13 +175,19 @@ if git diff --cached --quiet; then
   exit 0
 fi
 for attempt in 1 2 3; do
+  # The experience commit is the durable checkpoint. If main advanced between
+  # commit and push, merge the latest main tip without discarding the staged
+  # Experience ledger or the immutable prediction output.
   git fetch origin main
   if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
-    git reset --hard origin/main
+    if ! git merge --no-edit origin/main; then
+      echo "Experience push race produced a merge conflict; preserving failure evidence and refusing to discard the local checkpoint." >&2
+      exit 1
+    fi
   fi
 
-  # Re-archive the immutable prediction output after every push race
-  # recovery. We never rebase generated prediction JSONL state.
+  # Re-archive the immutable prediction output after every successful merge
+  # recovery only when it is still present in the workspace.
   while IFS= read -r date; do
     [ -n "$date" ] || continue
     output="results/npb_production_$date.json"
