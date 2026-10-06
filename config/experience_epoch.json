@@ -1,0 +1,6 @@
+{
+  "schema_version": "baseball-experience-epoch-v1",
+  "epoch_utc": "2026-10-06T07:31:37Z",
+  "scope": "NPB_EXPERIENCE_RESET",
+  "policy": "Only prediction snapshots generated_at >= epoch_utc may enter the new Experience ledger. Pre-epoch history is permanently excluded from current-method performance."
+}
