@@ -183,6 +183,31 @@ def test_critical_ci_targets_are_under_control_plane_supervision():
     assert ".github/workflows/baseball_v44_compatibility.yml" in workflows
     assert ".github/workflows/npb_game_state_research.yml" in workflows
 
+def test_zero_job_failure_respects_per_target_daily_recovery_cap():
+    from research.autonomous_control_plane import Target
+    now = control_plane.datetime.now(control_plane.timezone.utc)
+    target = Target("wf.yml", 12.0, heavy=True, pending_recover_minutes=60, max_runtime_hours=3.0, dispatch_daily_cap=3)
+    runs = [
+        {
+            "id": idx,
+            "status": "completed",
+            "conclusion": "failure",
+            "created_at": (now - control_plane.timedelta(minutes=20 + idx)).isoformat(),
+            "updated_at": now.isoformat(),
+            "head_sha": "sha",
+            "head_branch": "main",
+            "event": "workflow_dispatch",
+            "path": "wf.yml",
+            "job_count": 0,
+        }
+        for idx in (1, 2, 3)
+    ]
+    result = control_plane.decide(target, runs, now, cap=2, current_sha="sha")
+    assert result["decision"] == "HOLD"
+    assert result["reason"] == "dispatch_daily_cap_reached"
+    assert result["dispatch_attempts_24h"] == 3
+
+
 def test_zero_job_failure_is_recoverable_startup_failure():
     from research.autonomous_control_plane import Target
     now = control_plane.datetime.now(control_plane.timezone.utc)
