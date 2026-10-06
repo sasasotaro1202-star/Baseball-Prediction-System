@@ -69,16 +69,20 @@ jobs:
 
       - name: Check Experience epoch
         id: epoch_gate
+        env:
+          PREDICTION_ARTIFACT_DIR: ${{ runner.temp }}/npb-production
         run: |
           set -euo pipefail
           python - <<'PY' >> "$GITHUB_OUTPUT"
           import json
+          import os
           from datetime import datetime, timezone
           from pathlib import Path
 
           epoch = json.loads(Path("config/experience_epoch.json").read_text(encoding="utf-8"))
           epoch_dt = datetime.fromisoformat(str(epoch["epoch_utc"]).replace("Z", "+00:00"))
-          files = sorted(Path("${RUNNER_TEMP}/npb-production").glob("**/npb_production_*.json"))
+          artifact_dir = Path(os.environ["PREDICTION_ARTIFACT_DIR"])
+          files = sorted(artifact_dir.glob("**/npb_production_*.json"))
           if not files:
               raise SystemExit("production artifact missing")
           payload = json.loads(files[-1].read_text(encoding="utf-8"))
