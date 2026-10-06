@@ -2,18 +2,6 @@ name: Baseball Governance Autopilot
 
 "on":
   workflow_dispatch: {}
-  push:
-    branches: [main]
-    paths:
-      - "PROJECT_SOURCE.md"
-      - "PROJECT_SOURCE_PROVENANCE.json"
-      - "PROJECT_INSTRUCTIONS.md"
-      - "BASEBALL_SYSTEM_SPEC.md"
-      - "config/current_production_runtime.json"
-      - "research/project_governance.py"
-      - "research/action_preflight.py"
-      - "tests/test_project_governance.py"
-      - ".github/workflows/**"
   schedule:
     - cron: "13 */6 * * *"
 
