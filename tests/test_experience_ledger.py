@@ -717,3 +717,16 @@ def test_load_predictions_filters_pre_epoch_history(tmp_path, monkeypatch):
 
     loaded = exp._load_predictions()
     assert loaded.empty
+
+
+def test_reconcile_empty_state_does_not_materialize_derived_summary(tmp_path, monkeypatch):
+    monkeypatch.setattr(exp, "EXPERIENCE", tmp_path / "experience")
+    monkeypatch.setattr(exp, "PRED_DIR", tmp_path / "experience" / "predictions")
+    monkeypatch.setattr(exp, "RESULT_DIR", tmp_path / "experience" / "official_results")
+    monkeypatch.setattr(exp, "SUMMARY_PATH", tmp_path / "experience" / "experience_summary.json")
+
+    summary = exp.reconcile()
+
+    assert summary["status"] == "NO_PREDICTIONS"
+    assert summary["matched_rows"] == 0
+    assert not (tmp_path / "experience" / "experience_summary.json").exists()
