@@ -51,3 +51,16 @@ def test_manual_current_production_entrypoint_remains_independent_of_60m_schedul
     assert "--pregame-only" in text
     # The live current-production entry point itself has no 60m scheduler gate.
     assert "preferred-lead-minutes" not in text
+
+
+def test_user_prediction_shadow_experience_archive_is_automatic_and_fail_closed():
+    workflow = (ROOT / ".github/workflows/npb_user_prediction_experience_archive.yml").read_text(encoding="utf-8")
+    script = (ROOT / "scripts/archive_user_prediction_experience.py").read_text(encoding="utf-8")
+    assert "Baseball User Prediction Request" in workflow
+    assert 'prediction_requests/results/**' in workflow
+    assert "python scripts/archive_user_prediction_experience.py" in workflow
+    assert "data/experience/research_shadow/predictions" in workflow
+    assert "fail_closed" in script
+    assert '"UNKNOWN_IDENTITY"' in script
+    assert "RESEARCH_SHADOW_EXECUTED" in script
+    assert "production_eligibility" in script
