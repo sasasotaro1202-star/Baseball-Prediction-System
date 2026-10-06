@@ -16,6 +16,7 @@ def test_recovery_defines_bounded_gh_cli_retry():
     workflow = WORKFLOW.read_text(encoding="utf-8")
     assert "gh_retry() {" in workflow
     assert "for attempt in 1 2 3 4" in workflow
+    assert "gh_retry run rerun" in workflow
     assert "gh_retry workflow run" in workflow
 
 
@@ -28,6 +29,7 @@ def test_recovery_marks_unverified_zero_job_redispatch_as_failure():
 def test_zero_job_path_defines_retry_helper_before_first_use():
     workflow = WORKFLOW.read_text(encoding="utf-8")
     assert workflow.index("gh_retry() {") < workflow.index("gh_retry workflow run")
+    assert workflow.index("gh_retry() {") < workflow.index("gh_retry run rerun")
     assert "latest_failure_job_count=" in workflow
     assert "pregame_recovery_attempts_24h" in workflow
 
