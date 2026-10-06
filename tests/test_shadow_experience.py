@@ -346,3 +346,19 @@ def test_archive_rejects_unknown_competition_identity(tmp_path, monkeypatch):
 
     with pytest.raises(ValueError, match="UNKNOWN|non-classified"):
         shadow.archive_shadow_output(input_path, run_id="r1")
+
+
+def test_archive_does_not_create_empty_file_for_pre_epoch_snapshot(tmp_path, monkeypatch):
+    root = tmp_path / "research_shadow"
+    monkeypatch.setattr(shadow, "SHADOW_ROOT", root)
+    monkeypatch.setattr(shadow, "PRED_DIR", root / "predictions")
+    input_path = tmp_path / "shadow.json"
+    payload = _prediction()
+    payload["predictions"][0]["prediction_generated_at"] = "2026-09-30T08:56:00+00:00"
+    payload["predictions"][0]["prediction_cutoff_utc"] = "2026-09-30T08:55:00+00:00"
+    payload["predictions"][0]["starter_evidence_observed_at_utc"] = "2026-09-30T08:54:00+00:00"
+    input_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    result = shadow.archive_shadow_output(input_path, run_id="r1")
+    assert result == {"archived": 0, "skipped": 0, "updated": 0}
+    assert not (root / "predictions").exists()
