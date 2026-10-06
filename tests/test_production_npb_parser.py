@@ -98,3 +98,16 @@ def test_competition_metadata_uses_explicit_game_content_not_navigation():
     assert label["stage"] == "regular_season"
     assert label["source_field"] == "npb_game_content_competition_marker"
     assert "セ・リーグ公式戦" in label["source_value"]
+
+
+def test_daily_game_metadata_uses_japanese_official_game_page():
+    import production_npb
+    assert production_npb.NPB_DAY_URL == "https://npb.jp/bis/{year}/games/gm{date}.html"
+    label = production_npb._official_daily_competition_metadata(
+        "<h1>2026年10月6日 公式戦〖試合予定〗</h1>",
+        "https://npb.jp/bis/2026/games/gm20261006.html",
+        "2026-10-06",
+    )
+    assert label["status"] == "classified"
+    assert label["competition"] == "npb_regular"
+    assert label["stage"] == "regular_season"
