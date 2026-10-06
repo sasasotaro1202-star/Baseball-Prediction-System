@@ -64,3 +64,11 @@ def test_user_prediction_shadow_experience_archive_is_automatic_and_fail_closed(
     assert '"UNKNOWN_IDENTITY"' in script
     assert "RESEARCH_SHADOW_EXECUTED" in script
     assert "production_eligibility" in script
+
+
+def test_experience_learning_persistence_is_fail_closed_without_input_or_artifacts():
+    text = (ROOT / ".github/workflows/npb_experience_learning.yml").read_text(encoding="utf-8")
+    assert 'steps.experience_input.outputs.has_experience' in text
+    assert 'No eligible Experience input; persistence is deferred.' in text
+    assert '[ ! -s results/experience_learning_policy.json ]' in text
+    assert '[ ! -s results/experience_learning_gate.json ]' in text
