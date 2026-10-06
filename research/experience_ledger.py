@@ -470,6 +470,11 @@ def archive_production_output(input_json: str | Path, *, run_id: str | None = No
         else:
             updated += 1
 
+    if archived == 0 and updated == 0:
+        # All incoming snapshots were quarantined or produced no state change.
+        # Do not materialize an empty archive file in the new Experience epoch.
+        return {"archived": 0, "skipped": 0, "updated": 0}
+
     rows = sorted(
         existing.values(),
         key=lambda x: (str(x.get("datetime_jst", "")), str(x.get("prediction_cutoff_utc", "")), str(x.get("game_id", "")))
