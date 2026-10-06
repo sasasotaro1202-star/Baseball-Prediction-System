@@ -1,10 +1,10 @@
 {
-  "generated_at_utc": "2026-10-06T07:25:33.269656+00:00",
+  "generated_at_utc": "2026-10-06T07:26:52.291639+00:00",
   "status": "UPDATED",
   "evidence": {
     "scope": "HISTORICAL_POSTGAME_EXPERIENCE",
     "performance_status": "HISTORICAL_ONLY_NOT_CURRENT_MODEL_VERIFICATION",
-    "generated_from_commit": "8dc7ca07874cd022e0bc8d581e2e283eb5df0732",
+    "generated_from_commit": "cc16cf2f982c55bc65956a24ceee4e05475009ee",
     "prediction_source_commits": [],
     "prediction_models": [
       "BaseballBacktest.fit_ensemble + fit_score_ensemble + NPB extra-inning result calibration",
