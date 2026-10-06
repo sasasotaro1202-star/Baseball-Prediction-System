@@ -2,8 +2,18 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 import research.shadow_experience as shadow
+
+
+@pytest.fixture(autouse=True)
+def _current_experience_epoch(monkeypatch):
+    monkeypatch.setattr(
+        shadow,
+        "_experience_epoch",
+        lambda: pd.Timestamp("2026-10-01T00:00:00+00:00"),
+    )
 
 
 def _prediction():
@@ -276,3 +286,30 @@ def test_shadow_reconcile_reports_current_method_separately(tmp_path, monkeypatc
     assert current["production_modified"] is False
     assert current["method_signature"] == summary["current_method_signature"]
     assert set(summary["by_method"]) == {"old-method", late["method_signature"]}
+
+
+def test_shadow_reconcile_excludes_pre_epoch_predictions(tmp_path, monkeypatch):
+    root = tmp_path / "research_shadow"
+    pred_dir = root / "predictions"
+    pred_dir.mkdir(parents=True)
+    monkeypatch.setattr(shadow, "SHADOW_ROOT", root)
+    monkeypatch.setattr(shadow, "PRED_DIR", pred_dir)
+    monkeypatch.setattr(shadow, "LEDGER_PATH", root / "shadow_experience_ledger.csv")
+    monkeypatch.setattr(shadow, "LEDGER_JSONL", root / "shadow_experience_ledger.jsonl")
+    monkeypatch.setattr(shadow, "SUMMARY_PATH", root / "shadow_experience_summary.json")
+    monkeypatch.setattr(shadow, "CURRENT_METHOD_SUMMARY_PATH", root / "current_method_performance.json")
+
+    row = dict(_prediction()["predictions"][0])
+    row["prediction_id"] = "pre-epoch"
+    row["prediction_generated_at"] = "2026-09-30T08:56:00+00:00"
+    row["prediction_cutoff_utc"] = "2026-09-30T08:55:00+00:00"
+    row["starter_evidence_observed_at_utc"] = "2026-09-30T08:54:00+00:00"
+    pred_dir.joinpath("2026-09-30.jsonl").write_text(
+        json.dumps(row, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+    summary = shadow.reconcile_shadow()
+    assert summary["status"] == "NO_SHADOW_PREDICTIONS"
+    assert summary["prediction_rows"] == 0
+    assert not (root / "shadow_experience_ledger.csv").exists()
