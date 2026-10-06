@@ -81,7 +81,7 @@ jobs:
           import json
           from pathlib import Path
           import sys
-p=Path(sys.argv[1])
+          p=Path(sys.argv[1])
           d=json.loads(p.read_text(encoding="utf-8"))
           with open(r"${{ github.step_summary }}", "a", encoding="utf-8") as out:
               out.write("## Baseball Governance Autopilot\n")
