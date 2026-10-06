@@ -15,9 +15,12 @@ def test_forever_autopilot_exists_and_is_scheduled():
 
 def test_forever_autopilot_has_narrow_bootstrap_trigger():
     text = WORKFLOW.read_text(encoding="utf-8")
-    assert "push:" in text
-    assert "branches: [main]" in text
-    assert 'paths:\n      - ".github/workflows/baseball_forever_autopilot.yml"' in text
+    trigger = text.split("permissions:", 1)[0]
+    assert "push:" not in trigger
+    assert "schedule:" in trigger
+    assert 'cron: "*/5 * * * *"' in trigger
+    assert "workflow_dispatch: {}" in trigger
+    assert "workflow_run:" not in trigger
 
 
 def test_forever_autopilot_uses_minimal_permissions_and_current_sha_gate():
@@ -31,22 +34,26 @@ def test_forever_autopilot_uses_minimal_permissions_and_current_sha_gate():
 
 def test_forever_autopilot_delegates_to_active_control_plane():
     text = WORKFLOW.read_text(encoding="utf-8")
-    assert "baseball_forever_autopilot.yml" in text
+    control = (ROOT / "research" / "autonomous_control_plane.py").read_text(encoding="utf-8")
     assert "research.autonomous_control_plane" in text
-    assert "--ref main" in text
-    assert "--max-dispatches-per-cycle" not in text
+    assert "--max-dispatches-per-cycle 2" in text
+    assert "--ref main" in control
     assert "DAILY_DISPATCH_CAP" in text
+    assert "CONTROL_WORKFLOW" not in text
 
 
 def test_forever_autopilot_recovers_only_bounded_states():
-    text = WORKFLOW.read_text(encoding="utf-8")
-    assert "scheduler_stuck_queued" in text
-    assert "stale_in_progress_run" in text
-    assert "startup_failure_no_jobs" in text
-    assert "deterministic_failure_or_unverifiable_startup_state" in text
-    assert "daily_dispatch_cap_reached" in text
-    assert "gh run cancel" not in text
-    assert "gh_retry run cancel" in text
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    control = (ROOT / "research" / "autonomous_control_plane.py").read_text(encoding="utf-8")
+    assert "scheduler_stuck_pending" in control
+    assert "stale_in_progress_run" in control
+    assert "startup_failure_no_jobs" in control
+    assert "deterministic_failure_or_unverifiable_startup_state" in control
+    assert "cycle_dispatch_cap_reached" in control
+    assert "max_heavy_dispatches_per_cycle" in control
+    assert "cancel_run" in control
+    assert "dispatch_and_verify" in control
+    assert "gh run cancel" not in workflow
 
 
 def test_forever_autopilot_preserves_evidence_and_never_promotes():
