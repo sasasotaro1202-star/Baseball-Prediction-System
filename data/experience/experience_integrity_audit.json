@@ -1,0 +1,10 @@
+{
+  "generated_at_utc": "2026-10-06T07:25:33.706942+00:00",
+  "source_head": "8dc7ca07874cd022e0bc8d581e2e283eb5df0732",
+  "status": "PASS_WITH_LEGACY_QUARANTINE",
+  "prediction_files": 7,
+  "prediction_rows": 234,
+  "pit_pass_rows": 234,
+  "legacy_quarantined_rows": 4,
+  "unique_prediction_ids": 238
+}
