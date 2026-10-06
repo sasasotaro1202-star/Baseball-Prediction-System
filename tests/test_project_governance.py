@@ -367,7 +367,7 @@ def test_unsupported_current_push_run_does_not_override_valid_scheduled_run(monk
     assert entry["event"] == "schedule"
     assert "actions_ignored_unsupported_event:.github/workflows/baseball_24h_research_autopilot_canonical.yml:push" in report["deferred"]
 
-def test_current_forever_push_run_is_tracked_as_valid(monkeypatch):
+def test_current_forever_legacy_push_run_is_ignored_after_self_trigger_removal(monkeypatch):
     from datetime import datetime, timezone
     from research import project_governance as governance
 
@@ -392,7 +392,8 @@ def test_current_forever_push_run_is_tracked_as_valid(monkeypatch):
     monkeypatch.setattr(governance, "_gh_json", fake_gh_json)
     report = governance.action_health("owner/repo", datetime(2026, 10, 5, 10, 0, tzinfo=timezone.utc))
     entry = report["workflows"][".github/workflows/baseball_forever_autopilot.yml"]
-    assert entry["state"] == "HEALTHY"
+    assert entry["state"] == "DEFERRED"
+    assert entry["event"] == "push"
 
 def test_workflow_dispatch_empty_mapping_is_supported():
     from research import project_governance as governance
