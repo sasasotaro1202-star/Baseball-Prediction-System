@@ -247,7 +247,7 @@ def test_shadow_reconcile_reports_current_method_separately(tmp_path, monkeypatc
     late["prediction_generated_at"] = "2026-10-03T08:01:00+00:00"
     late["method_signature"] = (
         "npb-production-v1|feature-contract-v1:PIT_SAFE_CONTEXT_ACTIVE:testhash|"
-        "testhash|FULL_VALIDATED_ENSEMBLE|PIT_SAFE_CONTEXT_ACTIVE|test-commit-vnext"
+        "testhash|FULL_VALIDATED_ENSEMBLE|PIT_SAFE_CONTEXT_ACTIVE|models:TestCurrentMethod"
     )
 
     pred_dir.joinpath("2026-10-03.jsonl").write_text(
