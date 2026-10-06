@@ -190,6 +190,38 @@ def test_autonomous_control_plane_is_governed():
     assert ".github/workflows/baseball_forever_autopilot.yml" in WORKFLOW_CONTRACTS
 
 
+def test_action_health_uses_active_forever_heartbeat_as_control_plane(monkeypatch):
+    from datetime import datetime, timezone
+    from research import project_governance as governance
+
+    monkeypatch.setenv("GITHUB_SHA", "current")
+
+    def fake_gh_json(args):
+        endpoint = args[0]
+        if "baseball_forever_autopilot.yml/runs" in endpoint:
+            return {"workflow_runs": [{
+                "path": ".github/workflows/baseball_forever_autopilot.yml",
+                "status": "in_progress",
+                "conclusion": None,
+                "created_at": "2026-10-06T07:00:00Z",
+                "updated_at": "2026-10-06T07:01:00Z",
+                "head_sha": "current",
+                "id": 999,
+                "run_number": 999,
+                "event": "schedule",
+            }]}
+        return {"workflow_runs": []}
+
+    monkeypatch.setattr(governance, "_gh_json", fake_gh_json)
+    report = governance.action_health(
+        "owner/repo",
+        datetime(2026, 10, 6, 7, 5, tzinfo=timezone.utc),
+    )
+    assert report["control_plane"]["workflow"] == ".github/workflows/baseball_forever_autopilot.yml"
+    assert report["control_plane"]["state"] == "HEALTHY"
+
+
+
 def test_no_run_is_deferred_when_autonomous_control_plane_is_active(monkeypatch):
     from datetime import datetime, timezone
     from research import project_governance as governance
