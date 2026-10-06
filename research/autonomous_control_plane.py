@@ -171,7 +171,7 @@ def list_runs(repo: str) -> list[dict[str, Any]]:
             "--limit",
             "50",
             "--json",
-            "databaseId,status,conclusion,createdAt,updatedAt,headSha,headBranch,event,path",
+            "databaseId,status,conclusion,createdAt,updatedAt,headSha,headBranch,event",
         ])
         try:
             payload = json.loads(raw)
@@ -201,7 +201,7 @@ def list_runs(repo: str) -> list[dict[str, Any]]:
                     "head_sha": item.get("headSha"),
                     "head_branch": item.get("headBranch"),
                     "event": item.get("event"),
-                    "path": item.get("path") or target.workflow,
+                    "path": target.workflow,
                 }
             )
 
