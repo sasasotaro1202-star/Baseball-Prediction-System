@@ -110,6 +110,7 @@ def test_shadow_reconcile_uses_latest_snapshot_per_game(tmp_path, monkeypatch):
     monkeypatch.setattr(shadow, "LEDGER_PATH", root / "shadow_experience_ledger.csv")
     monkeypatch.setattr(shadow, "LEDGER_JSONL", root / "shadow_experience_ledger.jsonl")
     monkeypatch.setattr(shadow, "SUMMARY_PATH", root / "shadow_experience_summary.json")
+    monkeypatch.setattr(shadow, "CURRENT_METHOD_SUMMARY_PATH", root / "current_method_performance.json")
 
     early = _prediction()["predictions"][0]
     late = dict(early)
@@ -156,6 +157,7 @@ def test_shadow_reconcile_records_horizon_breakdown(tmp_path, monkeypatch):
     monkeypatch.setattr(shadow, "LEDGER_PATH", root / "shadow_experience_ledger.csv")
     monkeypatch.setattr(shadow, "LEDGER_JSONL", root / "shadow_experience_ledger.jsonl")
     monkeypatch.setattr(shadow, "SUMMARY_PATH", root / "shadow_experience_summary.json")
+    monkeypatch.setattr(shadow, "CURRENT_METHOD_SUMMARY_PATH", root / "current_method_performance.json")
 
     row = dict(_prediction()["predictions"][0])
     row["prediction_id"] = "horizon-test"
@@ -195,6 +197,7 @@ def test_shadow_reconcile_keeps_horizon_breakdown_case_level(tmp_path, monkeypat
     monkeypatch.setattr(shadow, "LEDGER_PATH", root / "shadow_experience_ledger.csv")
     monkeypatch.setattr(shadow, "LEDGER_JSONL", root / "shadow_experience_ledger.jsonl")
     monkeypatch.setattr(shadow, "SUMMARY_PATH", root / "shadow_experience_summary.json")
+    monkeypatch.setattr(shadow, "CURRENT_METHOD_SUMMARY_PATH", root / "current_method_performance.json")
 
     early = dict(_prediction()["predictions"][0])
     early["prediction_id"] = "early"
@@ -261,6 +264,7 @@ def test_shadow_reconcile_reports_current_method_separately(tmp_path, monkeypatc
     late["prediction_cutoff_utc"] = "2026-10-03T08:00:00+00:00"
     late["prediction_generated_at"] = "2026-10-03T08:01:00+00:00"
     late["method_signature"] = (
+    late["starter_evidence_observed_at_utc"] = "2026-10-03T07:59:00+00:00"
         "npb-production-v1|feature-contract-v1:PIT_SAFE_CONTEXT_ACTIVE:testhash|"
         "testhash|FULL_VALIDATED_ENSEMBLE|PIT_SAFE_CONTEXT_ACTIVE|models:TestCurrentMethod"
     )
