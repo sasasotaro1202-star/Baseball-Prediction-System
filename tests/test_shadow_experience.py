@@ -10,6 +10,12 @@ def _prediction():
     return {
         "execution_status": "RESEARCH_SHADOW_EXECUTED",
         "target_date": "2026-10-03",
+        "schema_version": "npb-production-v1",
+        "feature_set_id": "feature-contract-v1:PIT_SAFE_CONTEXT_ACTIVE:testhash",
+        "feature_schema_hash": "testhash",
+        "feature_set_variant": "FULL_VALIDATED_ENSEMBLE",
+        "feature_context_mode": "PIT_SAFE_CONTEXT_ACTIVE",
+        "git_commit": "test-commit-vnext",
         "predictions": [
             {
                 "game_id": "NPB-2026-10-03-1",
@@ -42,6 +48,23 @@ def _prediction():
             }
         ],
     }
+
+
+def test_archive_persists_method_identity(tmp_path, monkeypatch):
+    root = tmp_path / "research_shadow"
+    monkeypatch.setattr(shadow, "SHADOW_ROOT", root)
+    monkeypatch.setattr(shadow, "PRED_DIR", root / "predictions")
+    input_path = tmp_path / "shadow.json"
+    input_path.write_text(json.dumps(_prediction(), ensure_ascii=False), encoding="utf-8")
+
+    result = shadow.archive_shadow_output(input_path, run_id="r1")
+    assert result["archived"] == 1
+    row = json.loads((root / "predictions" / "2026-10-03.jsonl").read_text().splitlines()[0])
+    assert row["method_signature"] == (
+        "npb-production-v1|feature-contract-v1:PIT_SAFE_CONTEXT_ACTIVE:testhash|"
+        "testhash|FULL_VALIDATED_ENSEMBLE|PIT_SAFE_CONTEXT_ACTIVE|test-commit-vnext"
+    )
+    assert row["feature_schema_hash"] == "testhash"
 
 
 def test_archive_shadow_output_is_separate_and_idempotent(tmp_path, monkeypatch):
@@ -196,3 +219,59 @@ def test_shadow_reconcile_keeps_horizon_breakdown_case_level(tmp_path, monkeypat
     assert summary["by_horizon"]["30_TO_60M"]["rows"] == 1
     assert set(summary["canonical_by_horizon"]) == {"30_TO_60M"}
     assert summary["canonical_by_horizon"]["30_TO_60M"]["rows"] == 1
+
+
+def test_shadow_reconcile_reports_current_method_separately(tmp_path, monkeypatch):
+    root = tmp_path / "research_shadow"
+    pred_dir = root / "predictions"
+    pred_dir.mkdir(parents=True)
+    monkeypatch.setattr(shadow, "SHADOW_ROOT", root)
+    monkeypatch.setattr(shadow, "PRED_DIR", pred_dir)
+    monkeypatch.setattr(shadow, "LEDGER_PATH", root / "shadow_experience_ledger.csv")
+    monkeypatch.setattr(shadow, "LEDGER_JSONL", root / "shadow_experience_ledger.jsonl")
+    monkeypatch.setattr(shadow, "SUMMARY_PATH", root / "shadow_experience_summary.json")
+    monkeypatch.setattr(shadow, "CURRENT_METHOD_SUMMARY_PATH", root / "current_method_performance.json")
+
+    base = _prediction()["predictions"][0]
+    early = dict(base)
+    early["prediction_id"] = "old-method"
+    early["prediction_cutoff_utc"] = "2026-10-03T04:00:00+00:00"
+    early["prediction_generated_at"] = "2026-10-03T04:01:00+00:00"
+    early["method_signature"] = "old-method"
+    early["feature_schema_hash"] = "oldhash"
+
+    late = dict(base)
+    late["prediction_id"] = "current-method"
+    late["prediction_cutoff_utc"] = "2026-10-03T08:00:00+00:00"
+    late["prediction_generated_at"] = "2026-10-03T08:01:00+00:00"
+    late["method_signature"] = (
+        "npb-production-v1|feature-contract-v1:PIT_SAFE_CONTEXT_ACTIVE:testhash|"
+        "testhash|FULL_VALIDATED_ENSEMBLE|PIT_SAFE_CONTEXT_ACTIVE|test-commit-vnext"
+    )
+
+    pred_dir.joinpath("2026-10-03.jsonl").write_text(
+        "".join(json.dumps(x, ensure_ascii=False) + "\\n" for x in (early, late)),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        shadow,
+        "_load_cached_results",
+        lambda dates: pd.DataFrame([{
+            "date": "2026-10-03",
+            "home": "東京ヤクルトスワローズ",
+            "away": "読売ジャイアンツ",
+            "home_score": 3,
+            "away_score": 2,
+            "source_url": "test://npb",
+        }]),
+    )
+
+    summary = shadow.reconcile_shadow()
+    assert summary["status"] == "UPDATED"
+    assert summary["current_method_signature"] == early["method_signature"]
+    assert summary["current_method_performance"]["canonical_cases"] == 1
+    current = json.loads((root / "current_method_performance.json").read_text(encoding="utf-8"))
+    assert current["scope"] == "RESEARCH_SHADOW_CURRENT_METHOD"
+    assert current["production_modified"] is False
+    assert current["method_signature"] == summary["current_method_signature"]
+    assert set(summary["by_method"]) == {"old-method", late["method_signature"]}
