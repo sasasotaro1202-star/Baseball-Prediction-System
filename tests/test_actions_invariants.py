@@ -297,7 +297,7 @@ def test_pregame_experience_persist_skips_absent_optional_shadow_dir():
 
 def test_pregame_zero_job_failure_has_bounded_control_plane_recovery():
     recovery = SUPERVISOR.read_text(encoding="utf-8")
-    assert "Baseball 60m Pregame Auto Prediction" in recovery
+    assert "PREGAME_WORKFLOW=baseball_60m_pregame_auto.yml" in recovery
     assert "latest_failure_job_count=" in recovery
     assert "pregame_recovery_attempts_24h" in recovery
     assert "PRE_GAME_ZERO_JOB_COOLDOWN" in recovery
