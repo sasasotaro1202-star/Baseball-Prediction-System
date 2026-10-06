@@ -45,6 +45,7 @@ def _prediction():
                 "prediction_source": "RESEARCH_SHADOW_AUTO_60M",
                 "prediction_schedule": "scheduled",
                 "prediction_target_lead_minutes": 60.0,
+                "model": "TestCurrentMethod",
             }
         ],
     }
@@ -62,7 +63,7 @@ def test_archive_persists_method_identity(tmp_path, monkeypatch):
     row = json.loads((root / "predictions" / "2026-10-03.jsonl").read_text().splitlines()[0])
     assert row["method_signature"] == (
         "npb-production-v1|feature-contract-v1:PIT_SAFE_CONTEXT_ACTIVE:testhash|"
-        "testhash|FULL_VALIDATED_ENSEMBLE|PIT_SAFE_CONTEXT_ACTIVE|test-commit-vnext"
+        "testhash|FULL_VALIDATED_ENSEMBLE|PIT_SAFE_CONTEXT_ACTIVE|models:TestCurrentMethod"
     )
     assert row["feature_schema_hash"] == "testhash"
 
