@@ -68,8 +68,8 @@ def test_autonomous_control_plane_avoids_workflow_file_push_startup_trigger() ->
 
     trigger = text.split("permissions:", 1)[0]
     assert "push:" not in trigger
-    assert "schedule:" in trigger
-    assert "workflow_dispatch:" in trigger
+    assert 'cron: "*/5 * * * *"' in trigger
+    assert "workflow_dispatch: {}" in trigger
     assert "workflow_run:" not in trigger
 
 

@@ -67,7 +67,9 @@ jobs:
           set -e
           if [ "$rc" -ne 0 ]; then
             echo "=== autonomous control-plane runtime log (tail) ===" >&2
-            tail -n 200 results/control_plane/forever_runtime.log >&2 || true
+            if [ -f results/control_plane/forever_runtime.log ]; then
+              tail -n 200 results/control_plane/forever_runtime.log >&2
+            fi
             python - "$rc" <<'PY'
           import json
           import os
