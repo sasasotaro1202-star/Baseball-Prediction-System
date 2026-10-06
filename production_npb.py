@@ -89,7 +89,7 @@ NPB_TARGET_CONTRACTS = {
     for target, strategy in NPB_TARGET_STRATEGIES.items()
 }
 NPB_STARTER_URL = "https://npb.jp/announcement/starter/"
-NPB_DAY_URL = "https://npb.jp/bis/eng/{year}/games/gm{date}.html"
+NPB_DAY_URL = "https://npb.jp/bis/{year}/games/gm{date}.html"
 
 TEAM_MAP = {
     "Yomiuri":"読売ジャイアンツ","Yakult":"東京ヤクルトスワローズ",
