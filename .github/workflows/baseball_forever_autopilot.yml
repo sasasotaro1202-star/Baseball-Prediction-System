@@ -5,10 +5,6 @@ on:
   schedule:
     - cron: "*/5 * * * *"
   workflow_dispatch: {}
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/baseball_forever_autopilot.yml"
 
 permissions:
   actions: write
@@ -20,7 +16,7 @@ concurrency:
 
 jobs:
   heartbeat:
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
