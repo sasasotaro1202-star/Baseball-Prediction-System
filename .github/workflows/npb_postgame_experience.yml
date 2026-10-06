@@ -7,7 +7,6 @@ on:
     paths:
       - "data/experience/predictions/**"
       - "data/experience/research_shadow/predictions/**"
-      - ".github/workflows/npb_postgame_experience.yml"
   schedule:
     # Reconcile several times each day so afternoon/evening results are learned quickly.
     # A workflow-file push also forces an immediate fail-closed reconciliation after pipeline repairs.
