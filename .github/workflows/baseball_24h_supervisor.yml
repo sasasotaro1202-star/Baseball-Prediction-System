@@ -194,20 +194,51 @@ jobs:
           fi
 
           if [ "$control_plane_dispatch" -eq 1 ]; then
-            if [ -z "$control_plane_latest_id" ]; then
-              echo "No existing forever heartbeat run to rerun; preserving state for the next scheduled heartbeat."
-              printf "%s\n" "Forever heartbeat recovery deferred: no existing run to rerun." >> "$GITHUB_STEP_SUMMARY"
-            elif [ -n "$control_plane_latest_sha" ] && [ "$control_plane_latest_sha" != "$GITHUB_SHA" ]; then
-              echo "Latest forever heartbeat is superseded; refusing to rerun stale code."
-              printf "%s\n" "Forever heartbeat recovery deferred: superseded SHA=${control_plane_latest_sha}." >> "$GITHUB_STEP_SUMMARY"
+            # Recovery must always execute the current main snapshot. Re-running
+            # an older SHA would silently revive stale orchestration code.
+            if [ -z "$control_plane_latest_id" ] || [ -z "$control_plane_latest_sha" ] || [ "$control_plane_latest_sha" != "$GITHUB_SHA" ]; then
+              echo "Dispatching current-main forever heartbeat: $control_plane_reason"
+              dispatch_epoch="$(date +%s)"
+              gh_retry workflow run "$CONTROL_PLANE_WORKFLOW" --repo "$GH_REPO" --ref main
+              verified=0
+              new_control_plane_run_id=""
+              for attempt in 1 2 3 4 5; do
+                sleep 3
+                runs_after="$(gh_retry api "repos/$GH_REPO/actions/runs?branch=main&per_page=100")"
+                new_control_plane_run_id="$(printf "%s" "$runs_after" |
+                  jq -r --arg workflow "$CONTROL_PLANE_WORKFLOW" --argjson cutoff "$dispatch_epoch" '
+                    [.workflow_runs[]
+                     | select(.path == (".github/workflows/" + $workflow))
+                     | select(.head_branch == "main")
+                     | select(.event == "workflow_dispatch")
+                     | select((.created_at | fromdateiso8601) >= $cutoff)
+                    ] | sort_by(.created_at) | reverse | .[0].id // empty')"
+                active_after="$(printf "%s" "$runs_after" |
+                  jq --arg workflow "$CONTROL_PLANE_WORKFLOW" '
+                    [.workflow_runs[]
+                     | select(.path == (".github/workflows/" + $workflow))
+                     | select(.head_branch == "main")
+                     | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")
+                    ] | length')"
+                echo "Forever current-main bootstrap verification ${attempt}/5: active=${active_after} new_run_id=${new_control_plane_run_id:-<none>}"
+                if [ -n "$new_control_plane_run_id" ] || [ "$active_after" -gt 0 ]; then
+                  verified=1
+                  break
+                fi
+              done
+              if [ "$verified" -ne 1 ]; then
+                echo "Current-main forever heartbeat dispatch accepted but no new/current run was observed." >&2
+                exit 1
+              fi
+              printf "%s\n" "Forever current-main bootstrap verified: run_id=${new_control_plane_run_id:-<active-unresolved>} reason=$control_plane_reason" >> "$GITHUB_STEP_SUMMARY"
             else
               echo "Rerunning current-main forever heartbeat: $control_plane_reason"
-              previous_attempt="$(gh_retry api "repos/${GH_REPO}/actions/runs/${control_plane_latest_id}" --jq .run_attempt)"
-              gh_retry run rerun "${control_plane_latest_id}" --repo "${GH_REPO}"
+              previous_attempt="$(gh_retry api "repos/$GH_REPO/actions/runs/$control_plane_latest_id" --jq .run_attempt)"
+              gh_retry run rerun "$control_plane_latest_id" --repo "$GH_REPO"
               verified=0
               for attempt in 1 2 3 4 5; do
                 sleep 2
-                next_attempt="$(gh_retry api "repos/${GH_REPO}/actions/runs/${control_plane_latest_id}" --jq .run_attempt)"
+                next_attempt="$(gh_retry api "repos/$GH_REPO/actions/runs/$control_plane_latest_id" --jq .run_attempt)"
                 echo "Forever rerun verification ${attempt}/5: run_id=${control_plane_latest_id} attempt=${next_attempt}"
                 if [ "${next_attempt}" -gt "${previous_attempt}" ]; then
                   verified=1
