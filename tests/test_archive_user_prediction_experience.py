@@ -9,10 +9,10 @@ from scripts.archive_user_prediction_experience import archive_result_file
 def _outer(classification="classified"):
     row = {
         "game_id": "NPB-2026-10-03-1",
-        "datetime_jst": "2026-10-03T18:00:00+09:00",
-        "prediction_cutoff_utc": "2026-10-03T08:55:00+00:00",
-        "prediction_generated_at": "2026-10-03T08:56:00+00:00",
-        "starter_evidence_observed_at_utc": "2026-10-03T08:54:00+00:00",
+        "datetime_jst": "2026-10-07T18:00:00+09:00",
+        "prediction_cutoff_utc": "2026-10-07T08:55:00+00:00",
+        "prediction_generated_at": "2026-10-07T08:56:00+00:00",
+        "starter_evidence_observed_at_utc": "2026-10-07T08:54:00+00:00",
         "starter_evidence_status": "official_announced",
         "pit_status": "PASS",
         "home": "東京ヤクルトスワローズ",
