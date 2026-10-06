@@ -1,0 +1,334 @@
+{
+  "schema_version": "baseball-user-prediction-result-v1",
+  "request_id": "npb-2026-10-06-all-games-v5",
+  "request_fingerprint": "ed5633fb179e305c856c06433eedc2f934d92a44a716f2218878a3adbb034e05",
+  "request": {
+    "schema_version": "baseball-prediction-request-v1",
+    "request_id": "npb-2026-10-06-all-games-v5",
+    "competition_id": "NPB",
+    "target_date": "2026-10-06",
+    "requested_at_utc": "2026-10-06T07:07:39.308Z",
+    "force_refresh": true
+  },
+  "target_date": "2026-10-06",
+  "competition_id": "NPB",
+  "source_repository": "sasasotaro1202-star/Baseball-Prediction-System",
+  "source_commit": "52f698545ad23d38466bf7288deac0483114cda4",
+  "generation_lane": "VALIDATED_RESEARCH_SHADOW",
+  "generation_status": "RESEARCH_SHADOW_EXECUTED",
+  "generated_at_utc": "2026-10-06T07:10:09.018057+00:00",
+  "reused_from_request_id": null,
+  "prediction_output": {
+    "schema_version": "npb-production-v1",
+    "target_date": "2026-10-06",
+    "execution_status": "RESEARCH_SHADOW_EXECUTED",
+    "scope": "RESEARCH_SHADOW",
+    "production_eligibility": false,
+    "pit_status": "PASS",
+    "starter_gate": "PASS",
+    "model_status": "FITTED_ON_PIT_SAFE_HISTORY",
+    "target_strategy_contracts": {
+      "win_3way": {
+        "competition_id": "NPB",
+        "stage": "regular_season",
+        "target": "win_3way",
+        "probability_contract": "HOME_DRAW_AWAY",
+        "model_family": "classification_ensemble_with_regime_router",
+        "update_policy": "chronological_retrain_and_regime_reweight",
+        "calibration_policy": "target_specific_temperature_when_oos_supported",
+        "status": "RESEARCH"
+      },
+      "low_high": {
+        "competition_id": "NPB",
+        "stage": "regular_season",
+        "target": "low_high",
+        "probability_contract": "LOW_TOTAL_LE_6_HIGH_TOTAL_GE_7",
+        "model_family": "run_distribution",
+        "update_policy": "run_model_refresh_then_recompute",
+        "calibration_policy": "distribution_calibration_when_oos_supported",
+        "status": "RESEARCH"
+      },
+      "exact_score": {
+        "competition_id": "NPB",
+        "stage": "regular_season",
+        "target": "exact_score",
+        "probability_contract": "EXACT_SCORE_TOP4_FROM_FULL_DISTRIBUTION",
+        "model_family": "correlated_run_distribution",
+        "update_policy": "run_model_refresh_then_recompute",
+        "calibration_policy": "distribution_calibration_when_oos_supported",
+        "status": "RESEARCH"
+      }
+    },
+    "git_commit": "52f698545ad23d38466bf7288deac0483114cda4",
+    "data_quality_status": "PASS",
+    "historical_score_mean_total": 7.220501,
+    "historical_score_zero_rate": 0.001192,
+    "feature_manifest_version": "feature-contract-v1",
+    "feature_set_variant": "FULL_VALIDATED_ENSEMBLE",
+    "feature_family_counts": {
+      "bullpen": 36,
+      "context": 1,
+      "core": 185,
+      "interaction": 27,
+      "offense": 165,
+      "starter": 39,
+      "volatility": 30,
+      "weather": 1
+    },
+    "feature_set_id": "feature-contract-v1:PIT_SAFE_CONTEXT_ACTIVE:99cd3dc2e2eb60bc",
+    "feature_count": 484,
+    "feature_schema_hash": "99cd3dc2e2eb60bcf81225c312d3865e7eeae5006148b3df79d11fb4528af519",
+    "feature_context_mode": "PIT_SAFE_CONTEXT_ACTIVE",
+    "predictions": [
+      {
+        "game_id": "NPB-2026-10-06-1",
+        "datetime_jst": "2026-10-06T18:00:00+09:00",
+        "home": "阪神タイガース",
+        "away": "広島東洋カープ",
+        "home_starter": "大竹 耕太郎",
+        "away_starter": "工藤 泰己",
+        "competition": "npb_regular",
+        "competition_stage": "regular_season",
+        "season_type": "regular_season",
+        "game_class": "official",
+        "competition_key": "NPB:npb_regular:regular_season",
+        "competition_classification_status": "classified",
+        "competition_metadata_source": "https://npb.jp/bis/2026/games/gm20261006.html",
+        "competition_metadata_source_field": "npb_daily_schedule_heading",
+        "competition_metadata_source_value": "公式戦【試合予定】",
+        "starter_evidence_status": "official_announced",
+        "starter_source": "https://npb.jp/announcement/starter/",
+        "starter_evidence_observed_at_utc": "2026-10-06T07:08:35.014209+00:00",
+        "prediction_cutoff_utc": "2026-10-06T07:08:35.014209+00:00",
+        "prediction_deadline_utc": "2026-10-06T08:30:00+00:00",
+        "preferred_prediction_cutoff_utc": "2026-10-06T08:30:00+00:00",
+        "preferred_prediction_target_lead_minutes": 30.0,
+        "preferred_target_met": true,
+        "preferred_60m_met": true,
+        "preferred_30m_met": true,
+        "lead_minutes_at_generation": 111.41642985,
+        "home_win_pct": 68.8021,
+        "draw_pct": 2.169,
+        "away_win_pct": 29.0289,
+        "low_pct": 48.2871,
+        "high_pct": 51.7129,
+        "top4_exact_scores": [
+          {
+            "score": "4-2",
+            "prob_pct": 4.7205
+          },
+          {
+            "score": "3-2",
+            "prob_pct": 4.6859
+          },
+          {
+            "score": "4-3",
+            "prob_pct": 4.3291
+          },
+          {
+            "score": "3-3",
+            "prob_pct": 4.2974
+          }
+        ],
+        "lambda_home": 4.02949530935242,
+        "lambda_away": 2.751274849348288,
+        "shared_lambda": 0.0,
+        "model": "Production ML ensemble + PIT-safe chronological direct run-rate recovery",
+        "regime": "s2_e1_m2",
+        "classification_regime_model_weights": {
+          "RandomForest": 0.31767261073686054,
+          "ExtraTrees": 0.2878215804527991,
+          "HierarchicalDrawResult": 0.21745908721529816,
+          "HistGB": 0.17704672159504214
+        },
+        "score_regime": "recovery",
+        "score_regime_model_weights": {},
+        "situation_tags": [
+          "regime:s2_e1_m2",
+          "starter:balanced",
+          "starter_recent:balanced",
+          "offense:balanced",
+          "bullpen:balanced",
+          "rest:away",
+          "environment:high",
+          "trend:home"
+        ],
+        "validation_scores": {
+          "RandomForest": 0.7771716267282107,
+          "ExtraTrees": 0.8164792388732126,
+          "HierarchicalDrawResult": 0.9393296748268514,
+          "HistGB": 1.0410291209651508
+        },
+        "historical_games_used": 839,
+        "pit_status": "PASS",
+        "prediction_generated_at": "2026-10-06T07:10:08.402011+00:00",
+        "player_context_snapshot_id": null,
+        "home_starter_player_context": null,
+        "away_starter_player_context": null,
+        "roster_context_snapshot_id": null,
+        "home_roster_context": null,
+        "away_roster_context": null,
+        "team_player_context_snapshot_id": null,
+        "home_team_player_context": null,
+        "away_team_player_context": null,
+        "pregame_context_snapshot_id": null,
+        "pregame_context": null
+      },
+      {
+        "game_id": "NPB-2026-10-06-2",
+        "datetime_jst": "2026-10-06T18:00:00+09:00",
+        "home": "千葉ロッテマリーンズ",
+        "away": "埼玉西武ライオンズ",
+        "home_starter": "Ｊ．ルケーシー",
+        "away_starter": "武内 夏暉",
+        "competition": "npb_regular",
+        "competition_stage": "regular_season",
+        "season_type": "regular_season",
+        "game_class": "official",
+        "competition_key": "NPB:npb_regular:regular_season",
+        "competition_classification_status": "classified",
+        "competition_metadata_source": "https://npb.jp/bis/2026/games/gm20261006.html",
+        "competition_metadata_source_field": "npb_daily_schedule_heading",
+        "competition_metadata_source_value": "公式戦【試合予定】",
+        "starter_evidence_status": "official_announced",
+        "starter_source": "https://npb.jp/announcement/starter/",
+        "starter_evidence_observed_at_utc": "2026-10-06T07:08:35.014209+00:00",
+        "prediction_cutoff_utc": "2026-10-06T07:08:35.014209+00:00",
+        "prediction_deadline_utc": "2026-10-06T08:30:00+00:00",
+        "preferred_prediction_cutoff_utc": "2026-10-06T08:30:00+00:00",
+        "preferred_prediction_target_lead_minutes": 30.0,
+        "preferred_target_met": true,
+        "preferred_60m_met": true,
+        "preferred_30m_met": true,
+        "lead_minutes_at_generation": 111.41642985,
+        "home_win_pct": 49.4322,
+        "draw_pct": 2.1611,
+        "away_win_pct": 48.4067,
+        "low_pct": 41.5577,
+        "high_pct": 58.4423,
+        "top4_exact_scores": [
+          {
+            "score": "3-3",
+            "prob_pct": 4.4889
+          },
+          {
+            "score": "4-3",
+            "prob_pct": 4.077
+          },
+          {
+            "score": "3-4",
+            "prob_pct": 4.0403
+          },
+          {
+            "score": "3-2",
+            "prob_pct": 3.7405
+          }
+        ],
+        "lambda_home": 3.6329869128642542,
+        "lambda_away": 3.6002241806831154,
+        "shared_lambda": 0.0,
+        "model": "Production ML ensemble + PIT-safe chronological direct run-rate recovery",
+        "regime": "s2_e1_m2",
+        "classification_regime_model_weights": {
+          "RandomForest": 0.31767261073686054,
+          "ExtraTrees": 0.2878215804527991,
+          "HierarchicalDrawResult": 0.21745908721529816,
+          "HistGB": 0.17704672159504214
+        },
+        "score_regime": "recovery",
+        "score_regime_model_weights": {},
+        "situation_tags": [
+          "regime:s2_e1_m2",
+          "starter:balanced",
+          "starter_recent:balanced",
+          "offense:balanced",
+          "bullpen:balanced",
+          "rest:away",
+          "environment:high",
+          "trend:balanced"
+        ],
+        "validation_scores": {
+          "RandomForest": 0.7771716267282107,
+          "ExtraTrees": 0.8164792388732126,
+          "HierarchicalDrawResult": 0.9393296748268514,
+          "HistGB": 1.0410291209651508
+        },
+        "historical_games_used": 839,
+        "pit_status": "PASS",
+        "prediction_generated_at": "2026-10-06T07:10:08.558428+00:00",
+        "player_context_snapshot_id": null,
+        "home_starter_player_context": null,
+        "away_starter_player_context": null,
+        "roster_context_snapshot_id": null,
+        "home_roster_context": null,
+        "away_roster_context": null,
+        "team_player_context_snapshot_id": null,
+        "home_team_player_context": null,
+        "away_team_player_context": null,
+        "pregame_context_snapshot_id": null,
+        "pregame_context": null
+      }
+    ],
+    "player_context_status": "DEFERRED_FAST_MODE",
+    "player_context_snapshot_id": null,
+    "player_context_requested_count": 4,
+    "player_context_resolved_count": 0,
+    "player_context": {
+      "schema_version": "npb-player-context-v1",
+      "status": "DEFERRED_FAST_MODE",
+      "players_requested": [
+        "大竹 耕太郎",
+        "工藤 泰己",
+        "Ｊ．ルケーシー",
+        "武内 夏暉"
+      ],
+      "players_resolved": 0,
+      "players": [],
+      "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN"
+    },
+    "team_player_context_status": "DEFERRED_FAST_MODE",
+    "team_player_context_snapshot_id": null,
+    "team_player_context_requested_count": 4,
+    "team_player_context_resolved_count": 0,
+    "team_player_context": {
+      "schema_version": "npb-team-player-context-v1",
+      "status": "DEFERRED_FAST_MODE",
+      "teams_requested": [
+        "阪神タイガース",
+        "広島東洋カープ",
+        "千葉ロッテマリーンズ",
+        "埼玉西武ライオンズ"
+      ],
+      "teams": {},
+      "historical_oos_consumption": "BLOCKED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
+      "season": 2026
+    },
+    "pregame_context_status": "DEFERRED_FAST_MODE",
+    "pregame_context_snapshot_id": null,
+    "pregame_context_attached_prediction_count": 0,
+    "pregame_context": {
+      "schema_version": "npb-pregame-context-v1",
+      "target_date": "2026-10-06",
+      "status": "DEFERRED_FAST_MODE",
+      "games": [],
+      "historical_oos_consumption": "DISABLED_UNLESS_HISTORICAL_AVAILABILITY_PROVEN",
+      "attached_prediction_count": 0
+    },
+    "fast_mode": true,
+    "model_runtime_profile": "FAST_SHADOW",
+    "model_runtime_profile_config": {
+      "BASEBALL_FAST_OOS": "1",
+      "BASEBALL_HISTGB_MAX_ITER": "140",
+      "BASEBALL_RF_ESTIMATORS": "140",
+      "BASEBALL_ET_ESTIMATORS": "140",
+      "BASEBALL_LGBM_ESTIMATORS": "140",
+      "BASEBALL_XGB_ESTIMATORS": "100",
+      "BASEBALL_CATBOOST_ITERATIONS": "100",
+      "BASEBALL_FAST_MODEL_POOL_NPB": "HistGB,RandomForest,ExtraTrees,HierarchicalDrawResult",
+      "BASEBALL_FAST_SCORE_MODEL_POOL_NPB": "Poisson,HistPoisson,ExtraTreesReg",
+      "promotion_status": "RESEARCH_ONLY"
+    },
+    "observation_enrichment_mode": "DEFERRED_FAST_MODE",
+    "fast_lane_contract": "Canonical production_npb probability/PIT path with observation-only enrichment deferred; no probability-input substitution."
+  }
+}
