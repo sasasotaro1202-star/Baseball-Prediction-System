@@ -21,10 +21,13 @@ on:
     paths:
       - "research/experience_ledger.py"
       - "research/shadow_experience.py"
+      - "scripts/archive_user_prediction_experience.py"
       - "research/experience_*.py"
       - "config/experience_epoch.json"
       - "tests/test_experience_ledger.py"
       - "tests/test_shadow_experience.py"
+      - "tests/test_archive_user_prediction_experience.py"
+      - "tests/test_experience_automation_contract.py"
       - ".github/workflows/baseball_core_tests.yml"
       - "requirements.txt"
   schedule:
