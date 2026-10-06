@@ -6,7 +6,11 @@ on:
     paths-ignore:
       - 'data/pit/**'
       - 'prediction_requests/**'
-      - '.github/workflows/**'
+      - 'tests/**'
+  pull_request:
+    paths-ignore:
+      - 'data/pit/**'
+      - 'prediction_requests/**'
       - 'tests/**'
   workflow_dispatch:
 
@@ -138,10 +142,10 @@ jobs:
           grep -Fq 'cron: "13 */6 * * *"' "$governance"
           grep -Fq 'research.project_governance --actions' "$governance"
           grep -Fq 'actions: read' "$governance"
-          recovery=".github/workflows/baseball_actions_recovery.yml"
+          control=".github/workflows/baseball_forever_autopilot.yml"
           test -s "$closed"
           test -s "$supervisor"
-          test -s "$recovery"
+          test -s "$control"
 
           grep -Fq "cancel-in-progress: false" "$closed"
           grep -Fq "cron: '17 0,3,6,9,12,15,18,21 * * *'" "$closed"
@@ -153,15 +157,16 @@ jobs:
           grep -Fq "run view" "$supervisor"
           grep -Fq "headSha" "$supervisor"
           grep -Fq 'git/ref/heads/main' "$supervisor"
+          grep -Fq 'CONTROL_PLANE_WORKFLOW: baseball_forever_autopilot.yml' "$supervisor"
+          grep -Fq 'gh_retry run rerun' "$supervisor"
+          grep -Fq 'verified_pregame' "$supervisor"
 
-          grep -Fq "Re-run failed jobs with bounded recovery" "$recovery"
-          grep -Fq "RUN_ATTEMPT" "$recovery"
-          grep -Fq "Mixed transient and deterministic failures detected" "$recovery"
-
-          grep -Fq "FAILED_WITH_LIMIT" "$recovery"
-          grep -Fq "FAILED_NO_RETRYABLE_STEP" "$recovery"
-          grep -Fq "FAILED_MIXED_FAILURES" "$recovery"
-          grep -Fq "FAILED_RERUN_REQUEST" "$recovery"
+          grep -Fq 'cron: "*/5 * * * *"' "$control"
+          grep -Fq 'research.autonomous_control_plane' "$control"
+          grep -Fq -- '--max-dispatches-per-cycle 2' "$control"
+          grep -Fq 'results/control_plane/forever_runtime_failure.json' "$control"
+          grep -Fq 'fail_closed:true' "$control"
+          grep -Fq 'auto_promotion:false' "$control"
 
           if grep -nE '\\.fillna\\([[:space:]]*0([.]0)?[[:space:]]*\\)' production_npb.py; then
             echo 'Production NPB target-feature implicit zero imputation detected.' >&2
