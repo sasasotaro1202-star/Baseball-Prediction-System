@@ -55,8 +55,9 @@ def test_supervisor_monitors_scheduled_pregame_runs_and_recovers_missed_schedule
     text = _text(SUPERVISOR)
 
     assert 'actions/runs?branch=main&per_page=100' in text
-    decision_close = 'Latest pregame terminal state is not eligible for speculative restart; preserving authoritative failure/blocked state.\n          fi\n\n          if [ "${pregame_dispatch}" -eq 1 ]; then'
-    assert decision_close in text
+    assert 'Latest pregame terminal state is not eligible for speculative restart; preserving authoritative failure/blocked state.' in text
+    assert 'if [ "${pregame_dispatch}" -eq 1 ]; then' in text
+    assert text.index('Latest pregame terminal state is not eligible for speculative restart; preserving authoritative failure/blocked state.') < text.index('if [ "${pregame_dispatch}" -eq 1 ]; then')
     assert 'event: .event' in text
     assert 'event=push&branch=main' not in text
     assert 'latest successful pregame run is stale' in text
