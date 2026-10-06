@@ -1,5 +1,7 @@
 name: Baseball Core Experience Tests
 
+# Current-main trigger for complete Experience contract coverage
+
 on:
   pull_request:
     paths:
