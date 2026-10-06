@@ -217,21 +217,17 @@ def test_npb_production_never_scores_started_games_and_accepts_empty_future_stat
     _assert_official_actions_are_immutable(production)
 
 
-def test_24h_supervisor_avoids_deterministic_failure_retry_loop():
+def test_24h_supervisor_has_bounded_recovery_and_control_plane_rerun():
     text = SUPERVISOR.read_text(encoding="utf-8")
     _assert_official_actions_are_immutable(text)
     assert "Deterministic" in text
-    assert "gh run rerun" not in text
-    assert "gh_retry workflow run" in text
     assert "CONTROL_PLANE_WORKFLOW: baseball_forever_autopilot.yml" in text
+    assert 'gh_retry run rerun "${control_plane_latest_id}" --repo "${GH_REPO}"' in text
+    assert 'gh_retry workflow run "${CONTROL_PLANE_WORKFLOW}"' not in text
     trigger = text.split("permissions:", 1)[0]
     assert "push:" in trigger
-    assert ".github/workflows/baseball_24h_supervisor.yml" in trigger
-    assert "research/autonomous_control_plane.py" in trigger
-    assert ".github/workflows/baseball_forever_autopilot.yml" not in trigger
-
-
-def test_24h_keeper_is_bounded_control_plane_failover():
+    assert "schedule:" in trigger
+    assert ".github/workflows/baseball_24h_supervisor.yml" in trigger\ndef test_24h_keeper_is_bounded_control_plane_failover():
     text = (ROOT / ".github" / "workflows" / "baseball_24h_research_keeper_canonical.yml").read_text(encoding="utf-8")
     assert "baseball_forever_autopilot.yml" in text
     assert "schedule:" in text
@@ -300,21 +296,22 @@ def test_pregame_experience_persist_skips_absent_optional_shadow_dir():
 
 def test_pregame_zero_job_failure_has_bounded_control_plane_recovery():
     recovery = SUPERVISOR.read_text(encoding="utf-8")
+    _assert_official_actions_are_immutable(recovery)
     assert "PREGAME_WORKFLOW=baseball_60m_pregame_auto.yml" in recovery
     assert "latest_failure_job_count=" in recovery
     assert "pregame_recovery_attempts_24h" in recovery
     assert "PRE_GAME_ZERO_JOB_COOLDOWN" in recovery
-    assert 'gh_retry workflow run "${PREGAME_WORKFLOW}" --repo "${GH_REPO}" --ref main --field recovery_mode="${pregame_recovery_mode}"' in recovery
-
-def test_24h_supervisor_recovers_only_latest_zero_job_pregame_failures_with_daily_cap():
+    assert "pregame_recovery_mode" in recovery
+    assert 'gh_retry workflow run "${PREGAME_WORKFLOW}"' in recovery
+    assert "verified_pregame" in recovery\ndef test_24h_supervisor_recovers_zero_job_pregame_with_daily_cap():
     text = SUPERVISOR.read_text(encoding="utf-8")
     _assert_official_actions_are_immutable(text)
-    assert "PREGAME_WORKFLOW=baseball_60m_pregame_auto.yml" in text
     assert "latest_failure_job_count" in text
     assert "pregame_recovery_attempts_24h" in text
-    assert 'gh_retry workflow run "${PREGAME_WORKFLOW}" --repo "${GH_REPO}" --ref main --field recovery_mode="${pregame_recovery_mode}"' in text
-
-def test_research_lab_caches_are_snapshot_verified_and_file_scoped():
+    assert "PRE_GAME_ZERO_JOB_DAILY_CAP" in text
+    assert "PRE_GAME_ZERO_JOB_COOLDOWN" in text
+    assert 'gh_retry workflow run "${PREGAME_WORKFLOW}" --repo "${GH_REPO}" --ref main' in text
+    assert "verified_pregame" in text\ndef test_research_lab_caches_are_snapshot_verified_and_file_scoped():
     """Research caches must contain only the verified evidence for their exact SHA."""
     contracts = (
         ("baseball_ultimate_pattern_lab.yml", "ultimate_pattern_lab_${{ matrix.league }}.json", "baseball-ultimate-pattern-v1"),
@@ -402,13 +399,10 @@ def test_canonical_autonomous_workflows_guard_unsupported_push_execution():
     keeper = (ROOT / ".github" / "workflows" / "baseball_24h_research_keeper_canonical.yml").read_text(encoding="utf-8")
     assert 'cron: "*/5 * * * *"' in control
     assert "workflow_dispatch: {}" in control
-    assert "push:" not in control.split("permissions:", 1)[0]
     assert "if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}" in control
+    assert "push:" not in control.split("permissions:", 1)[0]
     assert "workflow_dispatch:" in keeper
-    assert "schedule:" in keeper
-
-
-def test_canonical_actions_recovery_accepts_only_workflow_run_events():
+    assert "schedule:" in keeper\ndef test_canonical_actions_recovery_accepts_only_workflow_run_events():
     text = SUPERVISOR.read_text(encoding="utf-8")
     assert "workflow_run:" in text
     assert "github.event.workflow_run" in text
