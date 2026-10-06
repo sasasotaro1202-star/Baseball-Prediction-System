@@ -37,7 +37,7 @@ def test_forever_autopilot_delegates_to_active_control_plane():
     control = (ROOT / "research" / "autonomous_control_plane.py").read_text(encoding="utf-8")
     assert "research.autonomous_control_plane" in text
     assert "--max-dispatches-per-cycle 2" in text
-    assert "--ref main" in control
+    assert '"--ref", "main"' in control
     assert "DAILY_DISPATCH_CAP" in text
     assert "CONTROL_WORKFLOW" not in text
 
