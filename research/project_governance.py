@@ -268,16 +268,58 @@ def _gh_json(args: list[str]) -> Any:
     return json.loads(result.stdout)
 
 
-def _workflow_runs(repo: str, workflow_path: str) -> list[dict[str, Any]]:
-    """Read Actions history per workflow so high-frequency jobs cannot hide low-frequency lanes."""
-    workflow_id = Path(workflow_path).name
-    payload = _gh_json(
-        [f"repos/{repo}/actions/workflows/{workflow_id}/runs?per_page=50&branch=main"]
-    )
-    runs = payload.get("workflow_runs", [])
+def _workflow_runs(repo: str, workflow_path: str, *, per_page: int = 50) -> list[dict[str, Any]]:
+    """Fetch workflow history independently of repository-wide Actions volume."""
+    filename = Path(workflow_path).name
+    payload = _gh_json([
+        f"repos/{repo}/actions/workflows/{filename}/runs?per_page={per_page}&branch=main"
+    ])
+    runs = payload.get("workflow_runs")
     if not isinstance(runs, list):
-        raise RuntimeError(f"workflow-run payload is not a list: {workflow_path}")
-    return [r for r in runs if isinstance(r, dict)]
+        raise RuntimeError(
+            f"invalid workflow-runs payload for {workflow_path}: "
+            f"expected list, got {type(runs).__name__}"
+        )
+    for row in runs:
+        if not isinstance(row, dict):
+            raise RuntimeError(
+                f"workflow-run row is not an object for {workflow_path}"
+            )
+    return runs
+
+
+def _parse_time(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _workflow_declares_event(workflow_path: str, event: str) -> bool:
+    """Return whether the checked-in workflow declares the observed event."""
+    if not event:
+        return True
+    path = ROOT / workflow_path
+    if not path.is_file():
+        return True
+    try:
+        text = _read(path)
+    except OSError:
+        return True
+    pattern = r"(?m)^  " + re.escape(event) + r":\s*(?:\{\})?\s*(?:#.*)?$"
+    return bool(re.search(pattern, text))
+
+
+def _supported_workflow_runs(
+    runs: list[dict[str, Any]],
+    workflow_path: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    supported: list[dict[str, Any]] = []
+    unsupported: list[dict[str, Any]] = []
+    for run in runs:
+        event = str(run.get("event", "")).strip()
+        if _workflow_declares_event(workflow_path, event):
+            supported.append(run)
+        else:
+            unsupported.append(run)
+    return supported, unsupported
 
 
 def action_health(repo: str, now: datetime | None = None) -> dict[str, Any]:
