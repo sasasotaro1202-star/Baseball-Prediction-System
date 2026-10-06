@@ -56,6 +56,10 @@ def _prediction():
                 "prediction_schedule": "scheduled",
                 "prediction_target_lead_minutes": 60.0,
                 "model": "TestCurrentMethod",
+                "method_signature": (
+                    "npb-production-v1|feature-contract-v1:PIT_SAFE_CONTEXT_ACTIVE:testhash|"
+                    "testhash|FULL_VALIDATED_ENSEMBLE|PIT_SAFE_CONTEXT_ACTIVE|models:TestCurrentMethod"
+                ),
             }
         ],
     }
@@ -250,6 +254,7 @@ def test_shadow_reconcile_reports_current_method_separately(tmp_path, monkeypatc
     early["prediction_generated_at"] = "2026-10-03T04:01:00+00:00"
     early["method_signature"] = "old-method"
     early["feature_schema_hash"] = "oldhash"
+    early["starter_evidence_observed_at_utc"] = "2026-10-03T03:59:00+00:00"
 
     late = dict(base)
     late["prediction_id"] = "current-method"
