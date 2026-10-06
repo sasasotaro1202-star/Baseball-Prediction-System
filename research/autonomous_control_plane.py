@@ -21,6 +21,7 @@ from typing import Any
 ACTIVE = {"queued", "pending", "waiting", "requested", "in_progress"}
 QUEUED = {"queued", "pending", "waiting", "requested"}
 RECOVERABLE = {"cancelled", "timed_out", "startup_failure"}
+RUN_LIST_JSON_FIELDS = "databaseId,status,conclusion,createdAt,updatedAt,headSha,headBranch,event"
 
 @dataclass(frozen=True)
 class Target:
@@ -422,7 +423,7 @@ def dispatch_and_verify(repo: str, target: Target, dispatch_epoch: int) -> int:
             "--limit",
             "10",
             "--json",
-            "databaseId,status,conclusion,createdAt,updatedAt,headSha,headBranch,event,path",
+            RUN_LIST_JSON_FIELDS,
         ])
         try:
             payload = json.loads(raw)
