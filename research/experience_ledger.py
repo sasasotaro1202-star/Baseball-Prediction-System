@@ -31,10 +31,38 @@ RESULT_DIR = EXPERIENCE / "official_results"
 SUMMARY_PATH = EXPERIENCE / "experience_summary.json"
 LEDGER_PATH = EXPERIENCE / "experience_ledger.csv"
 LEDGER_JSONL = EXPERIENCE / "experience_ledger.jsonl"
+EXPERIENCE_EPOCH_PATH = ROOT / "config" / "experience_epoch.json"
 
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _experience_epoch() -> pd.Timestamp:
+    """Return the start of the current Experience generation era."""
+    try:
+        payload = json.loads(EXPERIENCE_EPOCH_PATH.read_text(encoding="utf-8"))
+        if payload.get("schema_version") != "baseball-experience-epoch-v1":
+            raise ValueError("unsupported experience epoch schema")
+        epoch = pd.Timestamp(str(payload.get("epoch_utc") or ""))
+        if epoch.tzinfo is None:
+            raise ValueError("experience epoch must be timezone-aware")
+        return epoch.tz_convert("UTC")
+    except Exception as exc:
+        raise RuntimeError("experience epoch is missing or invalid; refusing Experience reuse") from exc
+
+
+def _is_before_experience_epoch(row: Mapping[str, Any]) -> bool:
+    raw = row.get("prediction_generated_at")
+    if raw in (None, "") or (isinstance(raw, float) and pd.isna(raw)):
+        raise ValueError("prediction snapshot missing prediction_generated_at for Experience epoch gate")
+    try:
+        generated = pd.Timestamp(raw)
+    except Exception as exc:
+        raise ValueError("prediction snapshot contains invalid prediction_generated_at") from exc
+    if generated.tzinfo is None:
+        raise ValueError("prediction_generated_at must be timezone-aware for Experience epoch gate")
+    return bool(generated.tz_convert("UTC") < _experience_epoch())
 
 
 def _finite(v: Any) -> float:
@@ -397,6 +425,13 @@ def archive_production_output(input_json: str | Path, *, run_id: str | None = No
         if not pred.get("game_id") or not pred.get("prediction_cutoff_utc"):
             raise ValueError("prediction row missing game_id or cutoff")
         record = dict(pred)
+        if _is_before_experience_epoch(record):
+            print(json.dumps({
+                "event": "EXPERIENCE_PRE_EPOCH_QUARANTINE",
+                "game_id": str(record.get("game_id") or ""),
+                "prediction_generated_at": str(record.get("prediction_generated_at") or ""),
+            }, ensure_ascii=False))
+            continue
         legacy_scheduled_cutoff = _is_legacy_scheduled_cutoff(record)
         if not legacy_scheduled_cutoff:
             _validate_prediction_time_contract(record)
@@ -457,6 +492,16 @@ def _load_predictions() -> pd.DataFrame:
     if not rows:
         return pd.DataFrame()
     df = pd.DataFrame(rows)
+    pre_epoch_mask = df.apply(_is_before_experience_epoch, axis=1)
+    if bool(pre_epoch_mask.any()):
+        print(json.dumps({
+            "event": "EXPERIENCE_PRE_EPOCH_QUARANTINE",
+            "rows": int(pre_epoch_mask.sum()),
+            "reason": "prediction_generated_at is before the current Experience epoch",
+        }, ensure_ascii=False))
+    df = df.loc[~pre_epoch_mask].copy()
+    if df.empty:
+        return pd.DataFrame()
     if "prediction_id" not in df:
         df["prediction_id"] = df.apply(lambda r: _prediction_id(r.to_dict()), axis=1)
 
