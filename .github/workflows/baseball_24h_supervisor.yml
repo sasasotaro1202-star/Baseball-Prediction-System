@@ -259,6 +259,52 @@ jobs:
           PREGAME_WORKFLOW=baseball_60m_pregame_auto.yml
           test -s ".github/workflows/${PREGAME_WORKFLOW}"
 
+          # A checked-in workflow file does not by itself prove that GitHub
+          # Actions has an active workflow registration. Reconcile this exact
+          # registration before any schedule/dispatch recovery.
+          pregame_registration_api="$(gh_retry api \
+            "repos/${GH_REPO}/actions/workflows?per_page=100")"
+          pregame_registration="$(printf '%s' "${pregame_registration_api}" | jq -c --arg workflow "${PREGAME_WORKFLOW}" \
+            '[.workflows[]
+              | select(.path == (".github/workflows/" + $workflow))
+              | {id: .id, path: .path, state: .state}] | .[0] // empty')"
+          if [ -z "${pregame_registration}" ]; then
+            echo "Pregame workflow registration is absent/unverifiable for ${PREGAME_WORKFLOW}; preserving fail-closed state." >&2
+            printf '%s\n' 'Pregame terminal state: PRE_GAME_REGISTRATION_UNVERIFIABLE.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          pregame_registration_id="$(printf '%s' "${pregame_registration}" | jq -r '.id // empty')"
+          pregame_registration_state="$(printf '%s' "${pregame_registration}" | jq -r '.state // empty')"
+          echo "Pregame workflow registration: id=${pregame_registration_id:-<none>} state=${pregame_registration_state:-<none>} path=${PREGAME_WORKFLOW}"
+          case "${pregame_registration_state}" in
+            active)
+              ;;
+            disabled_manually|disabled_inactivity)
+              echo "Pregame workflow registration is disabled; enabling exact registered workflow ${pregame_registration_id}."
+              gh_retry api --method PUT "repos/${GH_REPO}/actions/workflows/${pregame_registration_id}/enable" >/dev/null
+              verified_registration=0
+              for attempt in 1 2 3 4 5; do
+                sleep 2
+                pregame_registration_state_after="$(gh_retry api "repos/${GH_REPO}/actions/workflows/${pregame_registration_id}" --jq '.state // empty')"
+                echo "Pregame registration enable verification ${attempt}/5: state=${pregame_registration_state_after:-<none>}"
+                if [ "${pregame_registration_state_after}" = "active" ]; then
+                  verified_registration=1
+                  break
+                fi
+              done
+              if [ "${verified_registration}" -ne 1 ]; then
+                echo "Pregame workflow registration enable accepted but did not become active." >&2
+                printf '%s\n' 'Pregame terminal state: PRE_GAME_REGISTRATION_ENABLE_UNVERIFIED.' >> "$GITHUB_STEP_SUMMARY"
+                exit 1
+              fi
+              ;;
+            *)
+              echo "Pregame workflow registration state=${pregame_registration_state:-<none>} is unverifiable/unsupported; refusing recovery." >&2
+              printf '%s\n' 'Pregame terminal state: PRE_GAME_REGISTRATION_STATE_UNVERIFIABLE.' >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+              ;;
+          esac
+
           # Startup failures with zero jobs are not reliably emitted as
           # workflow_run events. Observe the complete pregame run ledger from
           # the scheduled supervisor instead of filtering to push events only;
