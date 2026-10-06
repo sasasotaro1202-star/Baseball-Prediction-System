@@ -32,7 +32,6 @@ LEDGER_PATH = SHADOW_ROOT / "shadow_experience_ledger.csv"
 LEDGER_JSONL = SHADOW_ROOT / "shadow_experience_ledger.jsonl"
 SUMMARY_PATH = SHADOW_ROOT / "shadow_experience_summary.json"
 CURRENT_METHOD_SUMMARY_PATH = SHADOW_ROOT / "current_method_performance.json"
-CURRENT_METHOD_SUMMARY_PATH = SHADOW_ROOT / "current_method_performance.json"
 
 
 def _read_prediction_rows() -> list[dict[str, Any]]:
@@ -128,13 +127,6 @@ def archive_shadow_output(input_json: str | Path, *, run_id: str | None = None) 
         record["source_run_id"] = str(run_id) if run_id is not None else None
         record["prediction_scope"] = "RESEARCH_SHADOW"
         record["production_eligible"] = False
-        record["method_signature"] = method_signature
-        record["method_git_commit"] = str(obj.get("git_commit"))
-        record["feature_set_id"] = str(obj.get("feature_set_id"))
-        record["feature_schema_hash"] = str(obj.get("feature_schema_hash"))
-        record["feature_manifest_version"] = str(obj.get("feature_manifest_version"))
-        record["feature_set_variant"] = str(obj.get("feature_set_variant"))
-        record["feature_context_mode"] = str(obj.get("feature_context_mode"))
         record["method_signature"] = method_signature
         record["method_git_commit"] = str(obj.get("git_commit"))
         record["feature_set_id"] = str(obj.get("feature_set_id"))
@@ -370,7 +362,6 @@ def reconcile_shadow() -> dict[str, Any]:
         "actual_lead_minutes", "prediction_horizon", "source_url",
     ]
     ledger = matched[[c for c in keep if c in matched.columns]].copy()
-    ledger["method_signature"] = matched["method_signature"].values
     ledger["method_signature"] = matched["method_signature"].values
     ledger.to_csv(LEDGER_PATH, index=False)
     LEDGER_JSONL.write_text(
