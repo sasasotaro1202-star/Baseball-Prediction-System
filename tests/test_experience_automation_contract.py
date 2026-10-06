@@ -72,3 +72,10 @@ def test_experience_learning_persistence_is_fail_closed_without_input_or_artifac
     assert 'No eligible Experience input; persistence is deferred.' in text
     assert '[ ! -s results/experience_learning_policy.json ]' in text
     assert '[ ! -s results/experience_learning_gate.json ]' in text
+
+
+def test_experience_learning_triggers_from_active_postgame_reconciliation():
+    text = (ROOT / ".github/workflows/npb_experience_learning.yml").read_text(encoding="utf-8")
+    assert "NPB Prediction Experience Reconciliation" in text
+    assert "NPB Postgame Experience Reconciliation" in text
+    assert "types: [completed]" in text
