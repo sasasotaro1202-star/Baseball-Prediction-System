@@ -67,7 +67,34 @@ jobs:
           find "${RUNNER_TEMP}/npb-production" -type f -maxdepth 5 -print
           test "$(find "${RUNNER_TEMP}/npb-production" -type f -name 'npb_production_*.json' | wc -l | tr -d ' ')" -ge 1
 
+      - name: Check Experience epoch
+        id: epoch_gate
+        run: |
+          set -euo pipefail
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          epoch = json.loads(Path("config/experience_epoch.json").read_text(encoding="utf-8"))
+          epoch_dt = datetime.fromisoformat(str(epoch["epoch_utc"]).replace("Z", "+00:00"))
+          files = sorted(Path("${RUNNER_TEMP}/npb-production").glob("**/npb_production_*.json"))
+          if not files:
+              raise SystemExit("production artifact missing")
+          payload = json.loads(files[-1].read_text(encoding="utf-8"))
+          generated = [
+              datetime.fromisoformat(str(p["prediction_generated_at"]).replace("Z", "+00:00"))
+              for p in payload.get("predictions", [])
+              if p.get("prediction_generated_at")
+          ]
+          eligible = bool(generated) and all(x.astimezone(timezone.utc) >= epoch_dt.astimezone(timezone.utc) for x in generated)
+          print("eligible=" + str(eligible).lower())
+          print("epoch_utc=" + epoch_dt.astimezone(timezone.utc).isoformat())
+          print("artifact_prediction_rows=" + str(len(generated)))
+          PY
+          cat "$GITHUB_OUTPUT"
       - name: Archive prediction experience
+        if: steps.epoch_gate.outputs.eligible == 'true'
         env:
           RUN_ID: ${{ steps.download.outputs.run_id }}
         run: |
@@ -103,6 +130,7 @@ jobs:
           PY
 
       - name: Commit experience archive
+        if: steps.epoch_gate.outputs.eligible == 'true'
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
