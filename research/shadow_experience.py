@@ -117,7 +117,45 @@ def _write_summary(payload: dict[str, Any]) -> None:
     )
 
 
-def archive_shadow_output(input_json: str | Path, *, run_id: str | None = None) -> dict[str, int]:
+def _validate_competition_identity(record: dict[str, Any], obj: dict[str, Any]) -> None:
+    """Fail closed when competition/season/phase/event identity is missing or UNKNOWN."""
+    competition_id = str(obj.get("competition_id") or "NPB").strip().upper()
+    if competition_id != "NPB":
+        raise ValueError(f"research-shadow archive only accepts NPB; got {competition_id!r}")
+
+    required = {
+        "competition",
+        "competition_stage",
+        "season_type",
+        "game_class",
+        "competition_key",
+        "competition_classification_status",
+    }
+    missing = [key for key in required if str(record.get(key) or "").strip() == ""]
+    if missing:
+        raise ValueError(f"research-shadow prediction missing competition identity: {missing}")
+
+    status = str(record.get("competition_classification_status") or "").strip().lower()
+    competition = str(record.get("competition") or "").strip().lower()
+    stage = str(record.get("competition_stage") or "").strip().lower()
+    season_type = str(record.get("season_type") or "").strip().lower()
+    game_class = str(record.get("game_class") or "").strip().lower()
+    key = str(record.get("competition_key") or "").strip()
+
+    if status != "classified":
+        raise ValueError(f"research-shadow prediction has non-classified competition identity: {status!r}")
+    if not key or competition in {"unknown", "npb_unknown", ""} or competition.endswith("_unknown"):
+        raise ValueError("research-shadow prediction has UNKNOWN competition identity")
+    if stage in {"unknown", ""} or season_type in {"unknown", ""} or game_class in {"unknown", ""}:
+        raise ValueError("research-shadow prediction has UNKNOWN season/phase/event identity")
+
+
+def archive_shadow_output(
+    input_json: str | Path,
+    *,
+    run_id: str | None = None,
+    request_id: str | None = None,
+) -> dict[str, int]:
     src = Path(input_json)
     obj = json.loads(src.read_text(encoding="utf-8"))
     if obj.get("execution_status") != "RESEARCH_SHADOW_EXECUTED":
@@ -146,6 +184,7 @@ def archive_shadow_output(input_json: str | Path, *, run_id: str | None = None) 
         if not isinstance(pred, dict):
             raise ValueError("shadow prediction row must be an object")
         record = dict(pred)
+        _validate_competition_identity(record, obj)
         _validate_prediction_time_contract(record)
         _validate_prediction_probability_contract(record)
         if _is_before_experience_epoch(record):
@@ -157,6 +196,7 @@ def archive_shadow_output(input_json: str | Path, *, run_id: str | None = None) 
             continue
         record["prediction_id"] = str(record.get("prediction_id") or _prediction_id(record))
         record["source_run_id"] = str(run_id) if run_id is not None else None
+        record["request_id"] = str(request_id) if request_id is not None else record.get("request_id")
         record["prediction_scope"] = "RESEARCH_SHADOW"
         record["production_eligible"] = False
         record["method_signature"] = method_signature
