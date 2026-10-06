@@ -222,6 +222,62 @@ def test_action_health_uses_active_forever_heartbeat_as_control_plane(monkeypatc
 
 
 
+
+def test_control_plane_no_run_is_bootstrap_only_within_grace(monkeypatch):
+    from datetime import datetime, timezone
+    from research import project_governance as governance
+
+    monkeypatch.setenv("GITHUB_SHA", "current")
+
+    def fake_gh_json(args):
+        endpoint = args[0]
+        if endpoint == "repos/owner/repo/commits/current":
+            return {"commit": {"committer": {"date": "2026-10-06T08:05:00Z"}}}
+        if "baseball_forever_autopilot.yml/runs" in endpoint:
+            return {"workflow_runs": []}
+        return {"workflow_runs": []}
+
+    monkeypatch.setattr(governance, "_gh_json", fake_gh_json)
+    report = governance.action_health(
+        "owner/repo",
+        datetime(2026, 10, 6, 8, 10, tzinfo=timezone.utc),
+    )
+
+    assert report["control_plane"]["state"] == "BOOTSTRAP"
+    assert report["control_plane"]["bootstrap_commit_age_minutes"] == 5.0
+    assert not any(
+        blocker.startswith("actions_no_recent_run:")
+        for blocker in report["blockers"]
+    )
+
+
+def test_control_plane_no_run_exits_bootstrap_after_grace(monkeypatch):
+    from datetime import datetime, timezone
+    from research import project_governance as governance
+
+    monkeypatch.setenv("GITHUB_SHA", "current")
+
+    def fake_gh_json(args):
+        endpoint = args[0]
+        if endpoint == "repos/owner/repo/commits/current":
+            return {"commit": {"committer": {"date": "2026-10-06T07:00:00Z"}}}
+        if "baseball_forever_autopilot.yml/runs" in endpoint:
+            return {"workflow_runs": []}
+        return {"workflow_runs": []}
+
+    monkeypatch.setattr(governance, "_gh_json", fake_gh_json)
+    report = governance.action_health(
+        "owner/repo",
+        datetime(2026, 10, 6, 8, 0, tzinfo=timezone.utc),
+    )
+
+    assert report["control_plane"]["state"] == "NO_RUN"
+    assert any(
+        blocker.startswith("actions_no_recent_run:")
+        for blocker in report["blockers"]
+    )
+
+
 def test_no_run_is_deferred_when_autonomous_control_plane_is_active(monkeypatch):
     from datetime import datetime, timezone
     from research import project_governance as governance
