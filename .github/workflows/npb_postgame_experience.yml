@@ -9,7 +9,6 @@ on:
       - "data/experience/research_shadow/predictions/**"
   schedule:
     # Reconcile several times each day so afternoon/evening results are learned quickly.
-    # A workflow-file push also forces an immediate fail-closed reconciliation after pipeline repairs.
     # UTC -> JST: 01:30, 04:30, 07:30, 10:30, 13:30, 16:30, 19:30, 22:30.
     - cron: "30 1,4,7,10,13,16,19,22 * * *"
   workflow_dispatch:
