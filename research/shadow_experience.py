@@ -32,6 +32,31 @@ LEDGER_PATH = SHADOW_ROOT / "shadow_experience_ledger.csv"
 LEDGER_JSONL = SHADOW_ROOT / "shadow_experience_ledger.jsonl"
 SUMMARY_PATH = SHADOW_ROOT / "shadow_experience_summary.json"
 CURRENT_METHOD_SUMMARY_PATH = SHADOW_ROOT / "current_method_performance.json"
+EXPERIENCE_EPOCH_PATH = ROOT / "config" / "experience_epoch.json"
+
+
+def _experience_epoch() -> pd.Timestamp:
+    """Return the start of the current Experience generation era."""
+    try:
+        payload = json.loads(EXPERIENCE_EPOCH_PATH.read_text(encoding="utf-8"))
+        if payload.get("schema_version") != "baseball-experience-epoch-v1":
+            raise ValueError("unsupported experience epoch schema")
+        epoch = pd.Timestamp(str(payload.get("epoch_utc") or ""))
+        if epoch.tzinfo is None:
+            raise ValueError("experience epoch must be timezone-aware")
+        return epoch.tz_convert("UTC")
+    except Exception as exc:
+        raise RuntimeError("experience epoch is missing or invalid; refusing Shadow Experience reuse") from exc
+
+
+def _is_before_experience_epoch(row: dict[str, Any]) -> bool:
+    raw = row.get("prediction_generated_at")
+    if raw in (None, "") or (isinstance(raw, float) and pd.isna(raw)):
+        raise ValueError("shadow prediction missing prediction_generated_at for Experience epoch gate")
+    ts = pd.Timestamp(raw)
+    if ts.tzinfo is None:
+        raise ValueError("shadow prediction_generated_at must be timezone-aware for Experience epoch gate")
+    return bool(ts.tz_convert("UTC") < _experience_epoch())
 
 
 def _read_prediction_rows() -> list[dict[str, Any]]:
@@ -123,6 +148,13 @@ def archive_shadow_output(input_json: str | Path, *, run_id: str | None = None) 
         record = dict(pred)
         _validate_prediction_time_contract(record)
         _validate_prediction_probability_contract(record)
+        if _is_before_experience_epoch(record):
+            print(json.dumps({
+                "event": "SHADOW_PRE_EPOCH_QUARANTINE",
+                "prediction_id": str(record.get("prediction_id") or ""),
+                "reason": "prediction_generated_at is before the current Experience epoch",
+            }, ensure_ascii=False))
+            continue
         record["prediction_id"] = str(record.get("prediction_id") or _prediction_id(record))
         record["source_run_id"] = str(run_id) if run_id is not None else None
         record["prediction_scope"] = "RESEARCH_SHADOW"
@@ -159,6 +191,14 @@ def archive_shadow_output(input_json: str | Path, *, run_id: str | None = None) 
 def reconcile_shadow() -> dict[str, Any]:
     rows = _read_prediction_rows()
     generated_at = datetime.now(timezone.utc).isoformat()
+    pre_epoch = [row for row in rows if _is_before_experience_epoch(row)]
+    if pre_epoch:
+        print(json.dumps({
+            "event": "SHADOW_PRE_EPOCH_QUARANTINE",
+            "rows": len(pre_epoch),
+            "reason": "pre-epoch prediction snapshots are excluded from Shadow Experience",
+        }, ensure_ascii=False))
+        rows = [row for row in rows if row not in pre_epoch]
     if not rows:
         payload = {
             "generated_at_utc": generated_at,
