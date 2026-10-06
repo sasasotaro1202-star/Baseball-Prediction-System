@@ -569,7 +569,22 @@ jobs:
 
             if [ "${governance_dispatch}" -eq 1 ]; then
               echo "Dispatching Governance Autopilot: ${governance_reason}"
-              gh_retry workflow run "${GOVERNANCE_WORKFLOW}" --repo "${GH_REPO}" --ref main
+              set +e
+              governance_dispatch_output="$(gh_retry workflow run "${GOVERNANCE_WORKFLOW}" --repo "${GH_REPO}" --ref main 2>&1)"
+              governance_dispatch_rc=$?
+              set -e
+              if [ "${governance_dispatch_rc}" -ne 0 ]; then
+                echo "Governance Autopilot dispatch was not accepted; preserving evidence and continuing supervisor cycle."
+                echo "Governance dispatch rc=${governance_dispatch_rc}: ${governance_dispatch_output}" >> "$GITHUB_STEP_SUMMARY"
+                if printf '%s' "${governance_dispatch_output}" | grep -Fq "does not have 'workflow_dispatch' trigger"; then
+                  echo "Governance dispatch capability is unavailable on the current registration; deferring to its scheduled trigger."
+                  echo "Governance Autopilot dispatch deferred: workflow_dispatch unavailable on current registration." >> "$GITHUB_STEP_SUMMARY"
+                else
+                  echo "Unexpected Governance dispatch failure; preserving the failure signal while allowing independent supervisor duties to continue." >&2
+                  echo "Governance Autopilot dispatch FAILED (independent supervisor duties continue)." >> "$GITHUB_STEP_SUMMARY"
+                fi
+                governance_dispatch=0
+              fi
               governance_verified=0
               for attempt in 1 2 3 4 5; do
                 sleep 2
