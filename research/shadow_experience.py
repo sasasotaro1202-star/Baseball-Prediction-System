@@ -166,7 +166,6 @@ def archive_shadow_output(
         raise ValueError("research-shadow output contains no predictions")
     method_signature = _method_signature(obj)
 
-    PRED_DIR.mkdir(parents=True, exist_ok=True)
     target_date = str(obj.get("target_date") or "")
     if not target_date:
         raise ValueError("research-shadow output missing target_date")
@@ -194,6 +193,9 @@ def archive_shadow_output(
                 "reason": "prediction_generated_at is before the current Experience epoch",
             }, ensure_ascii=False))
             continue
+        # Materialize the destination directory only after a snapshot has passed all
+        # fail-closed gates. This keeps quarantined/pre-epoch inputs side-effect free.
+        PRED_DIR.mkdir(parents=True, exist_ok=True)
         record["prediction_id"] = str(record.get("prediction_id") or _prediction_id(record))
         record["source_run_id"] = str(run_id) if run_id is not None else None
         record["request_id"] = str(request_id) if request_id is not None else record.get("request_id")
