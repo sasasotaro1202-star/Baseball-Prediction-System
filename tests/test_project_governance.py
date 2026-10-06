@@ -468,7 +468,7 @@ def test_registration_repair_targets_exact_known_retired_ids():
 
 def test_supervisor_ghost_repair_allowlist_covers_all_target_registrations():
     workflow = Path(".github/workflows/baseball_24h_supervisor.yml").read_text(encoding="utf-8")
-    assert 'target_ids="375399090 359633887 375842323 375843510"' in workflow
+    assert 'target_ids="374504043 375853241 375399090 375399444 359633887 375842323 375843510"' in workflow
 
 def test_candidate_watchdog_does_not_disable_active_workflow_registrations():
     workflow = Path(".github/workflows/baseball_candidate_oos_watchdog.yml").read_text(encoding="utf-8")
