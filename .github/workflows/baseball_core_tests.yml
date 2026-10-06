@@ -5,10 +5,13 @@ on:
     paths:
       - "research/experience_ledger.py"
       - "research/shadow_experience.py"
+      - "scripts/archive_user_prediction_experience.py"
       - "research/experience_*.py"
       - "config/experience_epoch.json"
       - "tests/test_experience_ledger.py"
       - "tests/test_shadow_experience.py"
+      - "tests/test_archive_user_prediction_experience.py"
+      - "tests/test_experience_automation_contract.py"
       - ".github/workflows/baseball_core_tests.yml"
       - "requirements.txt"
   push:
@@ -58,12 +61,12 @@ jobs:
       - name: Compile Experience modules
         run: |
           set -euo pipefail
-          python -m py_compile             research/experience_ledger.py             research/shadow_experience.py             tests/test_experience_ledger.py             tests/test_shadow_experience.py
+          python -m py_compile             research/experience_ledger.py             research/shadow_experience.py             scripts/archive_user_prediction_experience.py             tests/test_experience_ledger.py             tests/test_shadow_experience.py             tests/test_archive_user_prediction_experience.py             tests/test_experience_automation_contract.py
 
       - name: Run Experience tests
         run: |
           set -euo pipefail
-          python -m pytest -q             tests/test_experience_ledger.py             tests/test_shadow_experience.py
+          python -m pytest -q             tests/test_experience_ledger.py             tests/test_shadow_experience.py             tests/test_archive_user_prediction_experience.py             tests/test_experience_automation_contract.py
 
       - name: Verify epoch contract
         run: |
