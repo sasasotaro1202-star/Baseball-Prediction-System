@@ -347,7 +347,7 @@ def action_health(repo: str, now: datetime | None = None) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     current_sha = os.environ.get("GITHUB_SHA", "").strip() or None
 
-    control_path = ".github/workflows/baseball_autonomous_control_plane_stable.yml"
+    control_path = ".github/workflows/baseball_forever_autopilot.yml"
     control_runs_all = _workflow_runs(repo, control_path)
     control_runs, control_unsupported_runs = _supported_workflow_runs(
         control_runs_all,
