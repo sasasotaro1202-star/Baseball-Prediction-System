@@ -765,15 +765,15 @@ def _parse_top4(row: Any) -> list[tuple[str, float]]:
 def reconcile() -> dict[str, Any]:
     pred = _load_predictions()
     if pred.empty:
-        payload = {
+        # An empty ledger is a valid initial state, but it should not materialize
+        # derived summary files. This keeps a reset repository physically empty
+        # until the first eligible post-epoch prediction is produced.
+        return {
             "generated_at_utc": _utc_now(),
             "status": "NO_PREDICTIONS",
             "matched_rows": 0,
             "new_experiences": 0,
         }
-        EXPERIENCE.mkdir(parents=True, exist_ok=True)
-        SUMMARY_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        return payload
 
     dates = [d for d in pred["datetime_jst"] if pd.notna(d)]
     results = _load_cached_results(dates)
