@@ -51,6 +51,19 @@ def test_candidate_oos_never_cancels_an_in_progress_validation() -> None:
     assert "matrix:\n        league: [NPB, MLB]" in text
     assert "timeout-minutes: 260" in text
 
+def test_supervisor_reconciles_exact_pregame_workflow_registration_before_recovery() -> None:
+    text = _text(SUPERVISOR)
+
+    assert 'PREGAME_WORKFLOW=baseball_60m_pregame_auto.yml' in text
+    assert 'actions/workflows?per_page=100' in text
+    assert 'select(.path == (".github/workflows/" + $workflow))' in text
+    assert 'disabled_manually|disabled_inactivity' in text
+    assert 'actions/workflows/\${pregame_registration_id}/enable' in text
+    assert 'Pregame terminal state: PRE_GAME_REGISTRATION_UNVERIFIABLE.' in text
+    assert 'Pregame terminal state: PRE_GAME_REGISTRATION_ENABLE_UNVERIFIED.' in text
+    assert 'Pregame terminal state: PRE_GAME_REGISTRATION_STATE_UNVERIFIABLE.' in text
+
+
 def test_supervisor_monitors_scheduled_pregame_runs_and_recovers_missed_schedule() -> None:
     text = _text(SUPERVISOR)
 
