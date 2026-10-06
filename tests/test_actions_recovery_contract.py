@@ -21,8 +21,8 @@ def test_recovery_defines_bounded_gh_cli_retry():
 
 def test_recovery_marks_unverified_zero_job_redispatch_as_failure():
     workflow = WORKFLOW.read_text(encoding="utf-8")
-    assert "PRE_GAME_ZERO_JOB_REDISPATCHED" in workflow
-    assert "PRE_GAME_ZERO_JOB_DISPATCH_FAILED" in workflow or "Pregame recovery dispatch was accepted but no active run was observed." in workflow
+    assert "PRE_GAME_ZERO_JOB_COOLDOWN" in workflow
+    assert "Pregame workflow_dispatch completed but no new/current run was observed." in workflow
 
 
 def test_zero_job_path_defines_retry_helper_before_first_use():
