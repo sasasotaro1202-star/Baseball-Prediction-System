@@ -20,6 +20,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 
+CONTROL_PLANE_BOOTSTRAP_GRACE_MINUTES = 15.0
+
 REQUIRED_FILES = (
     "PROJECT_SOURCE.md",
     "PROJECT_SOURCE_PROVENANCE.json",
@@ -292,6 +294,25 @@ def _parse_time(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
+def _current_commit_age_minutes(repo: str, current_sha: str | None, now: datetime) -> float | None:
+    """Return current main commit age when GitHub can prove its timestamp."""
+    if not current_sha:
+        return None
+    try:
+        payload = _gh_json([f"repos/{repo}/commits/{current_sha}"])
+    except Exception:
+        return None
+    commit = payload.get("commit") if isinstance(payload, dict) else None
+    committer = commit.get("committer") if isinstance(commit, dict) else None
+    date = committer.get("date") if isinstance(committer, dict) else None
+    if not isinstance(date, str) or not date:
+        return None
+    try:
+        return max(0.0, (now - _parse_time(date)).total_seconds() / 60.0)
+    except (TypeError, ValueError):
+        return None
+
+
 def _workflow_declares_event(workflow_path: str, event: str) -> bool:
     """Return whether the checked-in workflow declares the observed event."""
     if not event:
@@ -337,6 +358,12 @@ def action_health(repo: str, now: datetime | None = None) -> dict[str, Any]:
     control = control_runs[0] if control_runs else None
     control_age_hours = None
     control_healthy = False
+    control_bootstrap_age_minutes = _current_commit_age_minutes(repo, current_sha, now)
+    control_bootstrap = (
+        control is None
+        and control_bootstrap_age_minutes is not None
+        and control_bootstrap_age_minutes <= CONTROL_PLANE_BOOTSTRAP_GRACE_MINUTES
+    )
     if control:
         control_age_hours = max(
             0.0,
@@ -353,13 +380,15 @@ def action_health(repo: str, now: datetime | None = None) -> dict[str, Any]:
         "query_strategy": "workflow_scoped_actions_history",
         "control_plane": {
             "workflow": control_path,
-            "state": "HEALTHY" if control_healthy else ("NO_RUN" if control is None else "STALE_OR_FAILED"),
+            "state": "HEALTHY" if control_healthy else ("BOOTSTRAP" if control_bootstrap else ("NO_RUN" if control is None else "STALE_OR_FAILED")),
             "run_id": control.get("id") if control else None,
             "status": control.get("status") if control else None,
             "conclusion": control.get("conclusion") if control else None,
             "event": control.get("event") if control else None,
             "age_hours": round(control_age_hours, 3) if control_age_hours is not None else None,
             "ignored_unsupported_event_runs": len(control_unsupported_runs),
+            "bootstrap_grace_minutes": CONTROL_PLANE_BOOTSTRAP_GRACE_MINUTES,
+            "bootstrap_commit_age_minutes": round(control_bootstrap_age_minutes, 3) if control_bootstrap_age_minutes is not None else None,
         },
         "workflows": {},
         "blockers": [],
@@ -408,9 +437,13 @@ def action_health(repo: str, now: datetime | None = None) -> dict[str, Any]:
                 report["deferred"].append(
                     f"actions_only_unsupported_event_runs:{workflow_path}"
                 )
-            elif workflow_path != control_path and control_healthy:
+            elif workflow_path != control_path and (control_healthy or control_bootstrap):
                 entry["state"] = "DEFERRED"
-                entry["reasons"] = ["awaiting_autonomous_control_plane_reconciliation"]
+                entry["reasons"] = [
+                    "awaiting_autonomous_control_plane_reconciliation"
+                    if control_healthy
+                    else "awaiting_initial_control_plane_heartbeat"
+                ]
                 report["deferred"].append(f"actions_no_recent_run:{workflow_path}")
             else:
                 entry["reasons"] = ["no_recent_run"]
@@ -462,10 +495,14 @@ def action_health(repo: str, now: datetime | None = None) -> dict[str, Any]:
             reasons.append("superseded_sha_failure_not_current")
             report["deferred"].append(f"actions_superseded_failure:{workflow_path}")
 
-        if state in {"FAILED", "STALE"} and workflow_path != control_path and control_healthy:
+        if state in {"FAILED", "STALE"} and workflow_path != control_path and (control_healthy or control_bootstrap):
             report["deferred"].append(f"actions_{state.lower()}_owned_by_control_plane:{workflow_path}")
             state = "DEFERRED"
-            reasons.append("autonomous_control_plane_owns_recovery")
+            reasons.append(
+                "autonomous_control_plane_owns_recovery"
+                if control_healthy
+                else "initial_control_plane_heartbeat_pending"
+            )
 
         if state == "DEFERRED":
             report["deferred"].append(f"actions_deferred:{workflow_path}")
