@@ -156,27 +156,51 @@ def test_pending_actions_status_is_treated_as_active(monkeypatch):
 
     monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
     monkeypatch.setenv("GITHUB_SHA", "current")
-    class Fake:
-        pass
 
     def fake_gh_json(args):
-        return {
-            "workflow_runs": [{
-                "path": ".github/workflows/baseball_governance_autopilot.yml",
-                "status": "pending",
-                "conclusion": None,
-                "created_at": "2026-10-04T09:00:00Z",
-                "updated_at": "2026-10-04T09:00:00Z",
-                "head_sha": "current",
-                "id": 1,
-                "run_number": 1,
-            }]
-        }
+        endpoint = args[0]
+        if "baseball_forever_autopilot.yml/runs" in endpoint:
+            return {
+                "workflow_runs": [{
+                    "path": ".github/workflows/baseball_forever_autopilot.yml",
+                    "status": "in_progress",
+                    "conclusion": None,
+                    "created_at": "2026-10-04T09:00:00Z",
+                    "updated_at": "2026-10-04T09:00:00Z",
+                    "head_sha": "current",
+                    "id": 10,
+                    "run_number": 10,
+                    "event": "schedule",
+                }]
+            }
+        if "npb_experience_learning.yml/runs" in endpoint:
+            return {
+                "workflow_runs": [{
+                    "path": ".github/workflows/npb_experience_learning.yml",
+                    "status": "pending",
+                    "conclusion": None,
+                    "created_at": "2026-10-04T09:00:00Z",
+                    "updated_at": "2026-10-04T09:00:00Z",
+                    "head_sha": "current",
+                    "id": 11,
+                    "run_number": 11,
+                    "event": "schedule",
+                }]
+            }
+        return {"workflow_runs": []}
 
     monkeypatch.setattr(governance, "_gh_json", fake_gh_json)
     from datetime import datetime, timezone
     report = governance.action_health("owner/repo", datetime(2026, 10, 4, 9, 30, tzinfo=timezone.utc))
-    assert report["workflows"][".github/workflows/baseball_governance_autopilot.yml"]["state"] == "HEALTHY"
+    assert report["workflows"][".github/workflows/npb_experience_learning.yml"]["state"] == "HEALTHY"
+
+
+def test_governance_autopilot_is_contract_governed_but_not_self_monitored():
+    from research import project_governance as governance
+
+    contract = governance.WORKFLOW_CONTRACTS[".github/workflows/baseball_governance_autopilot.yml"]
+    assert contract["monitor"] is False
+    assert contract["max_age_hours"] == 8
 
 
 def test_phase1_and_universal_readiness_are_monitored():
