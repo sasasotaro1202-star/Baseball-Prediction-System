@@ -1,9 +1,147 @@
 {
-  "generated_at_utc": "2026-10-07T14:37:32.694981+00:00",
-  "status": "NO_COMPLETED_RESULTS",
+  "generated_at_utc": "2026-10-07T21:24:36.721786+00:00",
+  "status": "UPDATED",
   "scope": "RESEARCH_SHADOW",
   "production_modified": false,
   "prediction_rows": 3,
-  "matched_snapshots": 0,
-  "canonical_cases": 0
+  "matched_snapshots": 3,
+  "canonical_cases": 1,
+  "all_snapshot_metrics": {
+    "rows": 3,
+    "accuracy": 1.0,
+    "logloss": 0.4474036547752569,
+    "brier": 0.23900785204199995,
+    "ece": 0.359627,
+    "low_high_accuracy": 1.0,
+    "top1_exact_hit_rate": 0.0,
+    "top4_exact_hit_rate": 0.3333333333333333,
+    "score_mae": 1.2536163536129357,
+    "mean_actual_lead_minutes": 461.47586224444444,
+    "revision_rate": 0.0
+  },
+  "canonical_metrics": {
+    "rows": 1,
+    "accuracy": 1.0,
+    "logloss": 0.5304400687695687,
+    "brier": 0.310226678216,
+    "ece": 0.41165399999999996,
+    "low_high_accuracy": 1.0,
+    "top1_exact_hit_rate": 0.0,
+    "top4_exact_hit_rate": 1.0,
+    "score_mae": 1.1318588328896686,
+    "mean_actual_lead_minutes": 51.1800097,
+    "revision_rate": 0.0
+  },
+  "by_prediction_source": {},
+  "by_method": {
+    "npb-production-v1|feature-contract-v1:PIT_SAFE_CONTEXT_ACTIVE:99cd3dc2e2eb60bc|99cd3dc2e2eb60bcf81225c312d3865e7eeae5006148b3df79d11fb4528af519|FULL_VALIDATED_ENSEMBLE|PIT_SAFE_CONTEXT_ACTIVE|models:BaseballBacktest.fit_ensemble + fit_score_ensemble + NPB extra-inning result calibration": {
+      "snapshot_metrics": {
+        "rows": 3,
+        "accuracy": 1.0,
+        "logloss": 0.4474036547752569,
+        "brier": 0.23900785204199995,
+        "ece": 0.359627,
+        "low_high_accuracy": 1.0,
+        "top1_exact_hit_rate": 0.0,
+        "top4_exact_hit_rate": 0.3333333333333333,
+        "score_mae": 1.2536163536129357,
+        "mean_actual_lead_minutes": 461.47586224444444,
+        "revision_rate": 0.0
+      },
+      "canonical_metrics": {
+        "rows": 1,
+        "accuracy": 1.0,
+        "logloss": 0.5304400687695687,
+        "brier": 0.310226678216,
+        "ece": 0.41165399999999996,
+        "low_high_accuracy": 1.0,
+        "top1_exact_hit_rate": 0.0,
+        "top4_exact_hit_rate": 1.0,
+        "score_mae": 1.1318588328896686,
+        "mean_actual_lead_minutes": 51.1800097,
+        "revision_rate": 0.0
+      },
+      "prediction_rows": 3,
+      "canonical_cases": 1,
+      "first_prediction_generated_at": "2026-10-06 21:20:46.331432+00:00",
+      "last_prediction_generated_at": "2026-10-07 08:08:49.199418+00:00"
+    }
+  },
+  "current_method_signature": "npb-production-v1|feature-contract-v1:PIT_SAFE_CONTEXT_ACTIVE:99cd3dc2e2eb60bc|99cd3dc2e2eb60bcf81225c312d3865e7eeae5006148b3df79d11fb4528af519|FULL_VALIDATED_ENSEMBLE|PIT_SAFE_CONTEXT_ACTIVE|models:BaseballBacktest.fit_ensemble + fit_score_ensemble + NPB extra-inning result calibration",
+  "current_method_performance": {
+    "method_signature": "npb-production-v1|feature-contract-v1:PIT_SAFE_CONTEXT_ACTIVE:99cd3dc2e2eb60bc|99cd3dc2e2eb60bcf81225c312d3865e7eeae5006148b3df79d11fb4528af519|FULL_VALIDATED_ENSEMBLE|PIT_SAFE_CONTEXT_ACTIVE|models:BaseballBacktest.fit_ensemble + fit_score_ensemble + NPB extra-inning result calibration",
+    "snapshot_metrics": {
+      "rows": 3,
+      "accuracy": 1.0,
+      "logloss": 0.4474036547752569,
+      "brier": 0.23900785204199995,
+      "ece": 0.359627,
+      "low_high_accuracy": 1.0,
+      "top1_exact_hit_rate": 0.0,
+      "top4_exact_hit_rate": 0.3333333333333333,
+      "score_mae": 1.2536163536129357,
+      "mean_actual_lead_minutes": 461.47586224444444,
+      "revision_rate": 0.0
+    },
+    "canonical_metrics": {
+      "rows": 1,
+      "accuracy": 1.0,
+      "logloss": 0.5304400687695687,
+      "brier": 0.310226678216,
+      "ece": 0.41165399999999996,
+      "low_high_accuracy": 1.0,
+      "top1_exact_hit_rate": 0.0,
+      "top4_exact_hit_rate": 1.0,
+      "score_mae": 1.1318588328896686,
+      "mean_actual_lead_minutes": 51.1800097,
+      "revision_rate": 0.0
+    },
+    "prediction_rows": 3,
+    "canonical_cases": 1,
+    "first_prediction_generated_at": "2026-10-06 21:20:46.331432+00:00",
+    "last_prediction_generated_at": "2026-10-07 08:08:49.199418+00:00"
+  },
+  "by_horizon": {
+    "30_TO_60M": {
+      "rows": 1,
+      "accuracy": 1.0,
+      "logloss": 0.5304400687695687,
+      "brier": 0.310226678216,
+      "ece": 0.41165399999999996,
+      "low_high_accuracy": 1.0,
+      "top1_exact_hit_rate": 0.0,
+      "top4_exact_hit_rate": 1.0,
+      "score_mae": 1.1318588328896686,
+      "mean_actual_lead_minutes": 51.1800097,
+      "revision_rate": 0.0
+    },
+    "GE_6H": {
+      "rows": 2,
+      "accuracy": 1.0,
+      "logloss": 0.405885447778101,
+      "brier": 0.20339843895499998,
+      "ece": 0.3336135,
+      "low_high_accuracy": 1.0,
+      "top1_exact_hit_rate": 0.0,
+      "top4_exact_hit_rate": 0.0,
+      "score_mae": 1.314495113974569,
+      "mean_actual_lead_minutes": 666.6237885166667,
+      "revision_rate": 0.0
+    }
+  },
+  "canonical_by_horizon": {
+    "30_TO_60M": {
+      "rows": 1,
+      "accuracy": 1.0,
+      "logloss": 0.5304400687695687,
+      "brier": 0.310226678216,
+      "ece": 0.41165399999999996,
+      "low_high_accuracy": 1.0,
+      "top1_exact_hit_rate": 0.0,
+      "top4_exact_hit_rate": 1.0,
+      "score_mae": 1.1318588328896686,
+      "mean_actual_lead_minutes": 51.1800097,
+      "revision_rate": 0.0
+    }
+  }
 }
