@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -121,14 +122,14 @@ def test_shadow_reconcile_preserves_earliest_experience_availability(tmp_path, m
     row = dict(_prediction()["predictions"][0])
     row["prediction_id"] = "availability-test"
     pred_dir.joinpath("2026-10-03.jsonl").write_text(
-        json.dumps(row, ensure_ascii=False) + "\\n",
+        json.dumps(row, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
     root.joinpath("shadow_experience_ledger.jsonl").write_text(
         json.dumps({
             "game_id": row["game_id"],
             "experience_available_at_utc": "2026-10-03T12:00:00+00:00",
-        }, ensure_ascii=False) + "\\n",
+        }, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
 
