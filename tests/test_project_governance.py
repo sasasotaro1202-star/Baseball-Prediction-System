@@ -8,7 +8,7 @@ from research.project_governance import (
 )
 
 
-def test_source_contract_accepts_all_85_sections():
+def test_source_contract_accepts_all_122_sections():
     text = "\n".join(
         f"⸻\n\n{i}. SECTION {i}"
         for i in range(0, 122)
@@ -38,7 +38,7 @@ def test_source_contract_accepts_all_85_sections():
 def test_source_contract_rejects_missing_section_and_invariant():
     text = "\n".join(
         f"⸻\n\n{i}. Section {i}"
-        for i in range(0, 122)
+        for i in range(0, 121)
     )
     errors = source_contract_errors(text)
     assert any("project_source_sections_invalid" in x for x in errors)
