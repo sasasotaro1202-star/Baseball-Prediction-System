@@ -95,6 +95,52 @@ def _method_signature(obj: dict[str, Any]) -> str:
     return "|".join(parts)
 
 
+def _load_prior_experience_availability(now: datetime) -> dict[str, str]:
+    """Load the earliest verified result-availability timestamp per game.
+
+    The timestamp is system-observed evidence, not an inferred publication time.
+    Invalid/future persisted timestamps fail closed so a corrupted ledger cannot
+    create artificial historical availability for chronological learning.
+    """
+    if not LEDGER_JSONL.exists():
+        return {}
+
+    earliest: dict[str, datetime] = {}
+    for line_no, line in enumerate(LEDGER_JSONL.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"invalid prior shadow ledger JSON at line {line_no}") from exc
+        if not isinstance(row, dict):
+            raise ValueError(f"prior shadow ledger row is not an object at line {line_no}")
+        game_id = str(row.get("game_id") or "").strip()
+        raw = str(row.get("experience_available_at_utc") or "").strip()
+        if not game_id or not raw:
+            continue
+        try:
+            observed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError(
+                f"invalid prior experience_available_at_utc at line {line_no}: {raw!r}"
+            ) from exc
+        if observed.tzinfo is None:
+            raise ValueError(
+                f"prior experience_available_at_utc must be timezone-aware at line {line_no}"
+            )
+        observed = observed.astimezone(timezone.utc)
+        if observed > now:
+            raise ValueError(
+                f"prior experience_available_at_utc is in the future at line {line_no}: {raw!r}"
+            )
+        prior = earliest.get(game_id)
+        if prior is None or observed < prior:
+            earliest[game_id] = observed
+
+    return {game_id: observed.isoformat() for game_id, observed in earliest.items()}
+
+
 def _write_summary(payload: dict[str, Any]) -> None:
     SHADOW_ROOT.mkdir(parents=True, exist_ok=True)
     SUMMARY_PATH.write_text(
@@ -282,12 +328,12 @@ def reconcile_shadow() -> dict[str, Any]:
         _write_summary(payload)
         return payload
 
-    # Record the time this reconciliation process obtained/validated the official
-    # result snapshot. This is intentionally conservative: cached historical results
-    # are assigned the current retrieval/validation time rather than an inferred
-    # publication time, so downstream learning can only see the case after the
-    # system actually had the completed-result evidence available.
-    experience_available_at_utc = datetime.now(timezone.utc).isoformat()
+    # Record when the system first had verified completed-result evidence available.
+    # We never infer a publication timestamp. If a prior reconciliation already
+    # verified this game's official result, preserve the earliest observed time so
+    # repeated reconciliation does not artificially delay chronological learning.
+    reconciliation_time = datetime.now(timezone.utc)
+    prior_availability = _load_prior_experience_availability(reconciliation_time)
     df["date_key"] = df["datetime_jst"].dt.tz_convert("Asia/Tokyo").dt.strftime("%Y-%m-%d")
     results["date_key"] = pd.to_datetime(results["date"], errors="coerce").dt.strftime("%Y-%m-%d")
     for col in ("home", "away"):
@@ -314,8 +360,12 @@ def reconcile_shadow() -> dict[str, Any]:
         _write_summary(payload)
         return payload
 
-    matched["experience_available_at_utc"] = experience_available_at_utc
-    matched["official_result_retrieved_at_utc"] = experience_available_at_utc
+    matched["experience_available_at_utc"] = matched["game_id"].map(
+        lambda game_id: prior_availability.get(str(game_id), reconciliation_time.isoformat())
+    )
+    matched["official_result_retrieved_at_utc"] = matched["game_id"].map(
+        lambda game_id: prior_availability.get(str(game_id), reconciliation_time.isoformat())
+    )
     matched["target"] = matched.get("target", pd.Series(index=matched.index, dtype=object)).fillna("NPB").astype(str)
     matched["target"] = matched["target"].replace({"", "nan", "None"}, "NPB")
     matched["actual_home_score"] = matched["home_score"].astype(int)
