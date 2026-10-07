@@ -152,6 +152,13 @@ def test_shadow_reconcile_uses_latest_snapshot_per_game(tmp_path, monkeypatch):
     assert summary["canonical_metrics"]["accuracy"] == 1.0
     assert summary["production_modified"] is False
 
+    ledger = pd.read_csv(root / "shadow_experience_ledger.csv")
+    assert set(["prediction_id", "game_id", "target", "experience_available_at_utc", "actual_outcome"]).issubset(ledger.columns)
+    assert set(ledger["target"].astype(str)) == {"NPB"}
+    assert ledger["experience_available_at_utc"].notna().all()
+    pd.to_datetime(ledger["experience_available_at_utc"], utc=True, errors="raise")
+    assert ledger["method_signature"].notna().all()
+
 
 
 def test_shadow_reconcile_records_horizon_breakdown(tmp_path, monkeypatch):
