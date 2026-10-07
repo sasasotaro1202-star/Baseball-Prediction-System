@@ -77,6 +77,31 @@ def test_autonomous_control_plane_avoids_workflow_file_push_startup_trigger() ->
     assert "workflow_run:" not in trigger
 
 
+def test_forever_autonomy_has_primary_and_failover_heartbeat_chain() -> None:
+    forever = _text(ROOT / ".github" / "workflows" / "baseball_forever_autopilot.yml")
+    supervisor = _text(SUPERVISOR)
+    keeper = _text(ROOT / ".github" / "workflows" / "baseball_24h_research_keeper_canonical.yml")
+
+    # Primary heartbeat is schedule-only: code pushes must not race the current-main
+    # control-plane snapshot or create a second orchestration owner.
+    assert 'cron: "*/5 * * * *"' in forever
+    forever_trigger = forever.split("permissions:", 1)[0]
+    assert "push:" not in forever_trigger
+    assert "workflow_run:" not in forever_trigger
+    assert "research.autonomous_control_plane" in forever
+
+    # Supervisor and keeper provide independent heartbeat/failover coverage.
+    assert "cron: '*/15 * * * *'" in supervisor
+    assert "CONTROL_PLANE_WORKFLOW: baseball_forever_autopilot.yml" in supervisor
+    assert "cron: '*/5 * * * *'" in keeper
+    assert "CONTROL_WORKFLOW: baseball_forever_autopilot.yml" in keeper
+
+    # Ownership remains fail-closed: the keeper checks the supervisor before taking
+    # emergency ownership instead of dispatching another scheduler in the healthy case.
+    assert "Primary supervisor is healthy/active; keeper remains passive" in keeper
+    assert "CONTROL_PLANE_RECOVERED" in keeper
+
+
 def test_keeper_recovers_control_plane_before_24h_failover() -> None:
     text = _text(ROOT / ".github" / "workflows" / "baseball_24h_research_keeper_canonical.yml")
 
