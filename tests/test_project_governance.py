@@ -25,6 +25,8 @@ def test_source_contract_accepts_all_122_sections():
             "PIT Integrity",
             "critical PIT unknownはproduction fail-closed。",
             "failed job→success",
+            "unknown PIT→valid",
+            "research result→production result",
             "Future Generalization",
             "Case-Level Correctness",
             "Calibration",
@@ -397,7 +399,7 @@ def test_superseded_failure_is_not_a_current_governance_blocker(monkeypatch):
     assert "superseded_sha_failure_not_current" in entry["reasons"]
     assert "actions_superseded_failure:.github/workflows/baseball_governance_autopilot.yml" in report["deferred"]
     assert not any(
-        "actions_failed:.github/workflows/baseball_governance_autopilot.yml" == blocker
+        "actions_failed:.github/workflows/npb-production.yml" == blocker
         for blocker in report["blockers"]
     )
 
