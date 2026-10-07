@@ -377,7 +377,7 @@ def test_superseded_failure_is_not_a_current_governance_blocker(monkeypatch):
     def fake_gh_json(args):
         return {
             "workflow_runs": [{
-                "path": ".github/workflows/baseball_governance_autopilot.yml",
+                "path": ".github/workflows/npb-production.yml",
                 "status": "completed",
                 "conclusion": "failure",
                 "created_at": "2026-10-05T09:00:00Z",
@@ -394,10 +394,10 @@ def test_superseded_failure_is_not_a_current_governance_blocker(monkeypatch):
         "owner/repo",
         datetime(2026, 10, 5, 10, 0, tzinfo=timezone.utc),
     )
-    entry = report["workflows"][".github/workflows/baseball_governance_autopilot.yml"]
+    entry = report["workflows"][".github/workflows/npb-production.yml"]
     assert entry["state"] == "DEFERRED"
     assert "superseded_sha_failure_not_current" in entry["reasons"]
-    assert "actions_superseded_failure:.github/workflows/baseball_governance_autopilot.yml" in report["deferred"]
+    assert "actions_superseded_failure:.github/workflows/npb-production.yml" in report["deferred"]
     assert not any(
         "actions_failed:.github/workflows/npb-production.yml" == blocker
         for blocker in report["blockers"]
