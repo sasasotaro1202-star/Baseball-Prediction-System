@@ -224,7 +224,10 @@ jobs:
           unexpected=0
           for path in "${changed_files[@]}"; do
             case "$path" in
-              data/experience/*|tests/*|.github/workflows/baseball_candidate_oos_watchdog.yml)
+              # Append-only experience and current PIT observations are
+              # continuity data. They do not modify the candidate computation,
+              # candidate selection, or locked evaluation snapshot.
+              data/experience/*|data/pit/*|tests/*|.github/workflows/baseball_candidate_oos_watchdog.yml)
                 echo "Allowed non-runtime main update: $path"
                 ;;
               *)
