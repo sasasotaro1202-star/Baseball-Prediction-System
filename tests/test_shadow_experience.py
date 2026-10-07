@@ -149,7 +149,9 @@ def test_shadow_reconcile_preserves_earliest_experience_availability(tmp_path, m
     assert summary["status"] == "UPDATED"
     ledger = pd.read_csv(root / "shadow_experience_ledger.csv")
     assert set(ledger["experience_available_at_utc"]) == {"2026-10-03T12:00:00+00:00"}
-    assert set(ledger["official_result_retrieved_at_utc"]) == {"2026-10-03T12:00:00+00:00"}
+    retrieved = pd.to_datetime(ledger["official_result_retrieved_at_utc"], utc=True, errors="raise")
+    available = pd.to_datetime(ledger["experience_available_at_utc"], utc=True, errors="raise")
+    assert (retrieved > available).all()
 
 
 def test_shadow_reconcile_uses_latest_snapshot_per_game(tmp_path, monkeypatch):
