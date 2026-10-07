@@ -189,6 +189,20 @@ def source_provenance_errors(root: Path = ROOT) -> list[str]:
     expected_bytes = payload.get("source_bytes")
     if isinstance(expected_bytes, int) and source.stat().st_size != expected_bytes:
         return [f"project_source_bytes_mismatch:{source.stat().st_size}!={expected_bytes}"]
+
+    expected_lines = payload.get("source_lines")
+    if isinstance(expected_lines, int):
+        actual_lines = len(_read(source).splitlines())
+        if actual_lines != expected_lines:
+            return [f"project_source_lines_mismatch:{actual_lines}!={expected_lines}"]
+
+    expected_blob = str(payload.get("source_git_blob_sha1") or "").strip().lower()
+    if expected_blob:
+        actual_blob = hashlib.sha1(
+            f"blob {source.stat().st_size}\0".encode("utf-8") + source.read_bytes()
+        ).hexdigest()
+        if actual_blob != expected_blob:
+            return [f"project_source_git_blob_sha1_mismatch:{actual_blob}!={expected_blob}"]
     return []
 
 
