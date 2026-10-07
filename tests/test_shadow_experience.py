@@ -107,6 +107,51 @@ def test_archive_shadow_output_is_separate_and_idempotent(tmp_path, monkeypatch)
     assert rows[0]["production_eligible"] is False
 
 
+def test_shadow_reconcile_preserves_earliest_experience_availability(tmp_path, monkeypatch):
+    root = tmp_path / "research_shadow"
+    pred_dir = root / "predictions"
+    pred_dir.mkdir(parents=True)
+    monkeypatch.setattr(shadow, "SHADOW_ROOT", root)
+    monkeypatch.setattr(shadow, "PRED_DIR", pred_dir)
+    monkeypatch.setattr(shadow, "LEDGER_PATH", root / "shadow_experience_ledger.csv")
+    monkeypatch.setattr(shadow, "LEDGER_JSONL", root / "shadow_experience_ledger.jsonl")
+    monkeypatch.setattr(shadow, "SUMMARY_PATH", root / "shadow_experience_summary.json")
+    monkeypatch.setattr(shadow, "CURRENT_METHOD_SUMMARY_PATH", root / "current_method_performance.json")
+
+    row = dict(_prediction()["predictions"][0])
+    row["prediction_id"] = "availability-test"
+    pred_dir.joinpath("2026-10-03.jsonl").write_text(
+        json.dumps(row, ensure_ascii=False) + "\\n",
+        encoding="utf-8",
+    )
+    root.joinpath("shadow_experience_ledger.jsonl").write_text(
+        json.dumps({
+            "game_id": row["game_id"],
+            "experience_available_at_utc": "2026-10-03T12:00:00+00:00",
+        }, ensure_ascii=False) + "\\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        shadow,
+        "_load_cached_results",
+        lambda dates: pd.DataFrame([{
+            "date": "2026-10-03",
+            "home": "東京ヤクルトスワローズ",
+            "away": "読売ジャイアンツ",
+            "home_score": 3,
+            "away_score": 2,
+            "source_url": "test://npb",
+        }]),
+    )
+
+    summary = shadow.reconcile_shadow()
+    assert summary["status"] == "UPDATED"
+    ledger = pd.read_csv(root / "shadow_experience_ledger.csv")
+    assert set(ledger["experience_available_at_utc"]) == {"2026-10-03T12:00:00+00:00"}
+    assert set(ledger["official_result_retrieved_at_utc"]) == {"2026-10-03T12:00:00+00:00"}
+
+
 def test_shadow_reconcile_uses_latest_snapshot_per_game(tmp_path, monkeypatch):
     root = tmp_path / "research_shadow"
     pred_dir = root / "predictions"
