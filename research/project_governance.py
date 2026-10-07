@@ -76,7 +76,12 @@ WORKFLOW_CONTRACTS: dict[str, dict[str, Any]] = {
     },
 
     ".github/workflows/baseball_governance_autopilot.yml": {
-        "monitor": True,
+        # This workflow is the observer of the other automation lanes. Monitoring
+        # its own latest run creates a self-referential failure loop: a blocked
+        # governance run would report itself as the blocker on the next run.
+        # Keep the workflow contract governed statically, but exclude its own
+        # runtime result from the live health quorum.
+        "monitor": False,
         "max_age_hours": 8,
         "required": ("schedule:", "cron: \"13 */6 * * *\"", "actions: read", "--actions"),
     },
