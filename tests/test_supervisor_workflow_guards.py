@@ -129,6 +129,15 @@ def test_24h_keeper_is_main_scoped_bounded_failover_only() -> None:
     assert 'latest successful 24h cycle is at least 24h old' in text
     assert 'consecutive_failure_streak' not in text
 
+def test_closed_loop_watchdog_has_bounded_supervisor_bootstrap() -> None:
+    text = _text(ROOT / ".github" / "workflows" / "baseball_closed_loop_watchdog.yml")
+    assert "Emergency control-plane bootstrap: Supervisor and Forever heartbeat are both stale/absent." in text
+    assert 'gh_retry workflow run baseball_24h_supervisor.yml --repo "${REPO}" --ref main' in text
+    assert "supervisor_recovery_count" in text
+    assert '[ "${supervisor_recovery_count}" -lt 2 ]' in text
+    assert "Supervisor failover dispatch verified." in text
+    assert "Supervisor/Forever heartbeat healthy enough; watchdog remains non-invasive." in text
+
 def test_supervisor_recovery_bootstraps_current_main_and_reruns_current_run():
     text = SUPERVISOR.read_text(encoding="utf-8")
     assert 'CONTROL_PLANE_WORKFLOW: baseball_forever_autopilot.yml' in text
