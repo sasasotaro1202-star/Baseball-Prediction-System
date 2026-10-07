@@ -154,6 +154,24 @@ def test_shadow_reconcile_preserves_earliest_experience_availability(tmp_path, m
     assert (retrieved > available).all()
 
 
+def test_prior_future_experience_availability_fails_closed(tmp_path, monkeypatch):
+    root = tmp_path / "research_shadow"
+    root.mkdir(parents=True)
+    monkeypatch.setattr(shadow, "LEDGER_JSONL", root / "shadow_experience_ledger.jsonl")
+    shadow.LEDGER_JSONL.write_text(
+        json.dumps({
+            "game_id": "NPB-2026-10-03-1",
+            "experience_available_at_utc": "2099-01-01T00:00:00+00:00",
+        }, ensure_ascii=False) + "\\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="in the future"):
+        shadow._load_prior_experience_availability(
+            datetime(2026, 10, 7, 12, 0, tzinfo=timezone.utc)
+        )
+
+
 def test_shadow_reconcile_uses_latest_snapshot_per_game(tmp_path, monkeypatch):
     root = tmp_path / "research_shadow"
     pred_dir = root / "predictions"
