@@ -282,6 +282,12 @@ def reconcile_shadow() -> dict[str, Any]:
         _write_summary(payload)
         return payload
 
+    # Record the time this reconciliation process obtained/validated the official
+    # result snapshot. This is intentionally conservative: cached historical results
+    # are assigned the current retrieval/validation time rather than an inferred
+    # publication time, so downstream learning can only see the case after the
+    # system actually had the completed-result evidence available.
+    experience_available_at_utc = datetime.now(timezone.utc).isoformat()
     df["date_key"] = df["datetime_jst"].dt.tz_convert("Asia/Tokyo").dt.strftime("%Y-%m-%d")
     results["date_key"] = pd.to_datetime(results["date"], errors="coerce").dt.strftime("%Y-%m-%d")
     for col in ("home", "away"):
@@ -308,6 +314,10 @@ def reconcile_shadow() -> dict[str, Any]:
         _write_summary(payload)
         return payload
 
+    matched["experience_available_at_utc"] = experience_available_at_utc
+    matched["official_result_retrieved_at_utc"] = experience_available_at_utc
+    matched["target"] = matched.get("target", pd.Series(index=matched.index, dtype=object)).fillna("NPB").astype(str)
+    matched["target"] = matched["target"].replace({"", "nan", "None"}, "NPB")
     matched["actual_home_score"] = matched["home_score"].astype(int)
     matched["actual_away_score"] = matched["away_score"].astype(int)
     matched["actual_total_runs"] = matched["actual_home_score"] + matched["actual_away_score"]
@@ -440,16 +450,19 @@ def reconcile_shadow() -> dict[str, Any]:
             by_source[str(source)] = metrics(frame)
 
     keep = [
-        "prediction_id", "game_id", "datetime_jst", "prediction_cutoff_utc", "prediction_generated_at",
+        "prediction_id", "game_id", "target", "datetime_jst", "prediction_cutoff_utc",
+        "prediction_generated_at", "experience_available_at_utc", "official_result_retrieved_at_utc",
         "prediction_source", "prediction_schedule", "prediction_target_lead_minutes",
         "home", "away", "home_starter", "away_starter",
         "home_win_pct", "draw_pct", "away_win_pct", "actual_outcome", "outcome_correct",
         "logloss", "brier", "low_pct", "high_pct", "low_high_actual", "low_high_correct",
         "top1_exact_hit", "top4_hit", "score_mae", "lambda_home", "lambda_away",
         "actual_lead_minutes", "prediction_horizon", "source_url",
+        "regime", "score_regime", "model", "situation_tags", "method_signature",
     ]
     ledger = matched[[c for c in keep if c in matched.columns]].copy()
-    ledger["method_signature"] = matched["method_signature"].values
+    if "method_signature" not in ledger.columns:
+        raise ValueError("shadow experience ledger requires method_signature")
     ledger.to_csv(LEDGER_PATH, index=False)
     LEDGER_JSONL.write_text(
         "".join(json.dumps(r, ensure_ascii=False, default=str, sort_keys=True) + "\n"
