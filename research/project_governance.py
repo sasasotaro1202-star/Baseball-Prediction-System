@@ -131,18 +131,22 @@ REQUIRED_SOURCE_PHRASES = (
     "HOME\nAWAY",
     "LOW = total runs <= 6",
     "HIGH = total runs >= 7",
-    "random split禁止",
+    "random splitをproduction evidenceとしない。",
     "PIT Integrity",
-    "PIT violations = 0",
-    "NO-FAKE-SUCCESS",
+    "critical PIT unknownはproduction fail-closed。",
     "Future Generalization",
     "Case-Level Correctness",
     "Calibration",
     "Uncertainty Quality",
     "Safe Degradation > False Prediction",
+    "failed job→success",
+    "unknown PIT→valid",
+    "research result→production result",
 )
 
-SECTION_RE = re.compile(r"(?m)^(?:⸻\n\n)?\s*(\d+)\.\s+([A-Z0-9][A-Z0-9 /_&/-]+)\s*$")
+SECTION_RE = re.compile(
+    r"(?m)^(?:⸻\n\n|[IVXLCDM]+\.\s+[^\n]+\n\n)\s*(\d+)\.\s+([^\n]+?)\s*$"
+)
 
 
 def _read(path: Path) -> str:
@@ -153,7 +157,10 @@ def source_contract_errors(text: str) -> list[str]:
     errors: list[str] = []
     matches = SECTION_RE.findall(text)
     numbers = [int(n) for n, _ in matches]
-    expected = list(range(1, 86))
+    # Canonical master source is numbered 0..121 (122 sections). Section
+    # headings are separated from numbered lists by the section separator or
+    # the Roman-numeral chapter heading, so ordinary list items are excluded.
+    expected = list(range(0, 122))
     if numbers != expected:
         missing = [n for n in expected if n not in numbers]
         unexpected = [n for n in numbers if n not in expected]

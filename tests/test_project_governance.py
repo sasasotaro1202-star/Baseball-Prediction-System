@@ -9,7 +9,10 @@ from research.project_governance import (
 
 
 def test_source_contract_accepts_all_85_sections():
-    text = "\n".join(f"\n{i}. SECTION {i}" for i in range(1, 86))
+    text = "\n".join(
+        f"⸻\n\n{i}. SECTION {i}"
+        for i in range(0, 122)
+    )
     text += "\n" + "\n".join(
         [
             "available_at <= prediction_cutoff",
@@ -18,10 +21,10 @@ def test_source_contract_accepts_all_85_sections():
             "HOME\nAWAY",
             "LOW = total runs <= 6",
             "HIGH = total runs >= 7",
-            "random split禁止",
+            "random splitをproduction evidenceとしない。",
             "PIT Integrity",
-            "PIT violations = 0",
-            "NO-FAKE-SUCCESS",
+            "critical PIT unknownはproduction fail-closed。",
+            "failed job→success",
             "Future Generalization",
             "Case-Level Correctness",
             "Calibration",
@@ -33,7 +36,10 @@ def test_source_contract_accepts_all_85_sections():
 
 
 def test_source_contract_rejects_missing_section_and_invariant():
-    text = "\n".join(f"{i}. Section {i}" for i in range(1, 85))
+    text = "\n".join(
+        f"⸻\n\n{i}. Section {i}"
+        for i in range(0, 122)
+    )
     errors = source_contract_errors(text)
     assert any("project_source_sections_invalid" in x for x in errors)
     assert any("project_source_required_text_missing" in x for x in errors)
@@ -92,7 +98,11 @@ def test_source_file_is_present():
 
 def test_source_section_parser_ignores_numbered_lists():
     from research.project_governance import SECTION_RE
-    text = "71. COST FIREWALL\n\n1. verified free\n2. free quota\n3. OSS/local\n\n⸻\n\n72. SECURITY / DATA GOVERNANCE\n"
+    text = (
+        "⸻\n\n71. COST FIREWALL\n\n"
+        "1. verified free\n2. free quota\n3. OSS/local\n\n"
+        "⸻\n\n72. SECURITY / DATA GOVERNANCE\n"
+    )
     assert [int(m[0]) for m in SECTION_RE.findall(text)] == [71, 72]
 
 def test_source_provenance_accepts_matching_hash(tmp_path: Path):
