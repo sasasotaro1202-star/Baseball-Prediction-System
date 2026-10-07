@@ -77,8 +77,74 @@ jobs:
             fi
           done
 
-          # Dispatch remains exclusively owned by baseball_24h_supervisor.yml.
-          # This watchdog only drains scheduler-blocked closed-loop runs.
-          if [ "${active}" -eq 0 ] && [ "${blocked}" -eq 0 ]; then
-            echo 'No active or blocked canonical run; 24h supervisor owns dispatch.'
+          # Normal closed-loop dispatch remains owned by the Supervisor.
+          # Emergency role only: when both the Supervisor and the Forever
+          # heartbeat are stale/absent, restore the Supervisor itself. This
+          # watchdog never dispatches the research workflow directly.
+          supervisor_runs="$(gh_retry run list --repo "${REPO}" --workflow baseball_24h_supervisor.yml --branch main --limit 10 --json databaseId,status,conclusion,createdAt,headSha,event)"
+          forever_runs="$(gh_retry run list --repo "${REPO}" --workflow baseball_forever_autopilot.yml --branch main --limit 10 --json databaseId,status,conclusion,createdAt,headSha,event)"
+
+          supervisor_active="$(printf '%s' "${supervisor_runs}" | jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+          forever_active="$(printf '%s' "${forever_runs}" | jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+
+          supervisor_latest="$(printf '%s' "${supervisor_runs}" | jq -c 'sort_by(.createdAt) | reverse | .[0] // {}')"
+          supervisor_created="$(printf '%s' "${supervisor_latest}" | jq -r '.createdAt // empty')"
+          supervisor_conclusion="$(printf '%s' "${supervisor_latest}" | jq -r '.conclusion // empty')"
+          supervisor_age=999999
+          if [ -n "${supervisor_created}" ]; then
+            supervisor_age=$(( (now - $(date -d "${supervisor_created}" +%s)) / 60 ))
+          fi
+
+          forever_latest="$(printf '%s' "${forever_runs}" | jq -c 'sort_by(.createdAt) | reverse | .[0] // {}')"
+          forever_created="$(printf '%s' "${forever_latest}" | jq -r '.createdAt // empty')"
+          forever_conclusion="$(printf '%s' "${forever_latest}" | jq -r '.conclusion // empty')"
+          forever_age=999999
+          if [ -n "${forever_created}" ]; then
+            forever_age=$(( (now - $(date -d "${forever_created}" +%s)) / 60 ))
+          fi
+
+          echo "supervisor_active=${supervisor_active} supervisor_age=${supervisor_age} supervisor_conclusion=${supervisor_conclusion}"
+          echo "forever_active=${forever_active} forever_age=${forever_age} forever_conclusion=${forever_conclusion}"
+
+          supervisor_recovery_count="$(printf '%s' "${supervisor_runs}" | jq '[.[] | select(.event == "workflow_dispatch") | select((.createdAt | fromdateiso8601) >= (now - 86400))] | length')"
+
+          supervisor_healthy=0
+          if [ "${supervisor_active}" -gt 0 ]; then
+            supervisor_healthy=1
+          elif [ "${supervisor_conclusion}" = "success" ] && [ "${supervisor_age}" -lt 20 ]; then
+            supervisor_healthy=1
+          fi
+
+          forever_healthy=0
+          if [ "${forever_active}" -gt 0 ]; then
+            forever_healthy=1
+          elif [ "${forever_conclusion}" = "success" ] && [ "${forever_age}" -lt 15 ]; then
+            forever_healthy=1
+          fi
+
+          if [ "${supervisor_healthy}" -eq 0 ] &&
+             [ "${forever_healthy}" -eq 0 ] &&
+             [ "${supervisor_recovery_count}" -lt 2 ]; then
+            echo 'Emergency control-plane bootstrap: Supervisor and Forever heartbeat are both stale/absent.'
+            gh_retry workflow run baseball_24h_supervisor.yml --repo "${REPO}" --ref main
+
+            verified=0
+            for attempt in 1 2 3 4 5; do
+              sleep 3
+              current_supervisor_runs="$(gh_retry run list --repo "${REPO}" --workflow baseball_24h_supervisor.yml --branch main --limit 10 --json databaseId,status,conclusion,createdAt,headSha,event)"
+              active_after="$(printf '%s' "${current_supervisor_runs}" | jq --arg sha "${current_sha}" '[.[] | select(.event == "workflow_dispatch") | select(.headSha == $sha) | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+              echo "Supervisor failover verification ${attempt}/5: current_sha_active=${active_after}"
+              if [ "${active_after}" -gt 0 ]; then
+                verified=1
+                break
+              fi
+            done
+
+            if [ "${verified}" -ne 1 ]; then
+              echo 'Supervisor failover dispatch accepted but current-main run was not observed.' >&2
+              exit 1
+            fi
+            echo 'Supervisor failover dispatch verified.'
+          else
+            echo 'Supervisor/Forever heartbeat healthy enough; watchdog remains non-invasive.'
           fi
