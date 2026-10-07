@@ -381,6 +381,23 @@ def test_user_prediction_request_is_under_control_plane_supervision():
     assert target.pending_recover_minutes <= 60
 
 
+def test_experience_learning_lanes_are_under_control_plane_supervision():
+    from research.autonomous_control_plane import TARGETS
+
+    targets = {target.workflow: target for target in TARGETS}
+    expected = {
+        ".github/workflows/npb_user_prediction_experience_archive.yml": 8.0,
+        ".github/workflows/npb_postgame_experience.yml": 4.0,
+        ".github/workflows/npb_experience_learning.yml": 8.0,
+    }
+    for workflow, max_age in expected.items():
+        assert workflow in targets
+        target = targets[workflow]
+        assert target.heavy is False
+        assert target.max_age_hours == max_age
+        assert target.pending_recover_minutes <= 60
+
+
 def test_superseded_terminal_failure_dispatches_current_main():
     now = datetime(2026, 10, 4, 10, 0, tzinfo=timezone.utc)
     runs = [{
