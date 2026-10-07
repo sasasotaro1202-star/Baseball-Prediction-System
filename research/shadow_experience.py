@@ -363,9 +363,7 @@ def reconcile_shadow() -> dict[str, Any]:
     matched["experience_available_at_utc"] = matched["game_id"].map(
         lambda game_id: prior_availability.get(str(game_id), reconciliation_time.isoformat())
     )
-    matched["official_result_retrieved_at_utc"] = matched["game_id"].map(
-        lambda game_id: prior_availability.get(str(game_id), reconciliation_time.isoformat())
-    )
+    matched["official_result_retrieved_at_utc"] = reconciliation_time.isoformat()
     matched["target"] = matched.get("target", pd.Series(index=matched.index, dtype=object)).fillna("NPB").astype(str)
     matched["target"] = matched["target"].replace({"", "nan", "None"}, "NPB")
     matched["actual_home_score"] = matched["home_score"].astype(int)
