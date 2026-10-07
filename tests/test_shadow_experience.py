@@ -163,7 +163,7 @@ def test_prior_future_experience_availability_fails_closed(tmp_path, monkeypatch
         json.dumps({
             "game_id": "NPB-2026-10-03-1",
             "experience_available_at_utc": "2099-01-01T00:00:00+00:00",
-        }, ensure_ascii=False) + "\\n",
+        }, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
 
