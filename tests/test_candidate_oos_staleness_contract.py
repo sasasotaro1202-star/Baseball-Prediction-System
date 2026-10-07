@@ -34,7 +34,7 @@ def test_candidate_oos_watchdog_monitors_all_candidate_dependencies():
 def test_candidate_oos_allows_only_non_runtime_main_updates():
     workflow = (ROOT / '.github' / 'workflows' / 'baseball_candidate_oos.yml').read_text(encoding='utf-8')
     assert 'mapfile -t changed_files' in workflow
-    allowed_pattern = 'data/experience/*|tests/*|.github/workflows/baseball_candidate_oos_watchdog.yml)'
+    allowed_pattern = 'data/experience/*|data/pit/*|tests/*|.github/workflows/baseball_candidate_oos_watchdog.yml)'
     assert workflow.count(allowed_pattern) == 2
     start_check = workflow.split('name: Verify main snapshot is evidence-current', 1)[1].split('name: Set up Python', 1)[0]
     end_check = workflow.split('name: Verify candidate OOS snapshot remains evidence-current', 1)[1].split('name: Verify lifecycle decision is explicit', 1)[0]
