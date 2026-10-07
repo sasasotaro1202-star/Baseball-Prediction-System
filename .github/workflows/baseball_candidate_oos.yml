@@ -90,7 +90,11 @@ jobs:
           unexpected=0
           for path in "${changed_files[@]}"; do
             case "$path" in
-              data/experience/*|tests/*|.github/workflows/baseball_candidate_oos_watchdog.yml)
+              # Candidate OOS is a historical/research snapshot. Current PIT
+              # acquisition observations are continuity data collected by the
+              # control plane and are not candidate model inputs, so they must
+              # not invalidate an otherwise reproducible OOS replay.
+              data/experience/*|data/pit/*|tests/*|.github/workflows/baseball_candidate_oos_watchdog.yml)
                 echo "Allowed non-runtime main update: $path"
                 ;;
               *)
