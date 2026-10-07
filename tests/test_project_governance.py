@@ -112,16 +112,44 @@ def test_source_provenance_accepts_matching_hash(tmp_path: Path):
     provenance = tmp_path / "PROJECT_SOURCE_PROVENANCE.json"
     payload = "canonical source\n"
     source.write_text(payload, encoding="utf-8")
+    raw = payload.encode("utf-8")
+    blob_sha = hashlib.sha1(f"blob {len(raw)}\0".encode("utf-8") + raw).hexdigest()
     provenance.write_text(
         json.dumps({
             "schema_version": 1,
-            "source_sha256": hashlib.sha256(payload.encode("utf-8")).hexdigest(),
-            "source_bytes": len(payload.encode("utf-8")),
+            "source_sha256": hashlib.sha256(raw).hexdigest(),
+            "source_git_blob_sha1": blob_sha,
+            "source_bytes": len(raw),
+            "source_lines": len(payload.splitlines()),
         }),
         encoding="utf-8",
     )
     assert source_provenance_errors(tmp_path) == []
 
+
+def test_source_provenance_rejects_line_or_git_blob_drift(tmp_path: Path):
+    import hashlib
+    import json
+
+    source = tmp_path / "PROJECT_SOURCE.md"
+    provenance = tmp_path / "PROJECT_SOURCE_PROVENANCE.json"
+    payload = "canonical\nsource\n"
+    raw = payload.encode("utf-8")
+    source.write_text(payload, encoding="utf-8")
+    good_blob = hashlib.sha1(f"blob {len(raw)}\0".encode("utf-8") + raw).hexdigest()
+    provenance.write_text(
+        json.dumps({
+            "schema_version": 1,
+            "source_sha256": hashlib.sha256(raw).hexdigest(),
+            "source_git_blob_sha1": good_blob,
+            "source_bytes": len(raw),
+            "source_lines": len(payload.splitlines()),
+        }),
+        encoding="utf-8",
+    )
+    source.write_text("canonical\nsource\nextra\n", encoding="utf-8")
+    errors = source_provenance_errors(tmp_path)
+    assert errors[0].startswith("project_source_sha256_mismatch:")
 
 def test_source_provenance_rejects_drift(tmp_path: Path):
     import hashlib
