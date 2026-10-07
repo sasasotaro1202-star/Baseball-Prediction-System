@@ -40,9 +40,8 @@ def test_candidate_oos_allows_only_non_runtime_main_updates():
     assert workflow.count(pit_pattern) == 1
     start_check = workflow.split('name: Verify main snapshot is evidence-current', 1)[1].split('name: Set up Python', 1)[0]
     end_check = workflow.split('name: Verify candidate OOS snapshot remains evidence-current', 1)[1].split('name: Verify lifecycle decision is explicit', 1)[0]
-    assert allowed_pattern in start_check
+    assert pit_pattern in start_check
     assert pit_pattern in end_check
-    assert 'data/pit/*' not in start_check
     assert 'Evidence-affecting main update detected' in workflow
     assert 'refusing mixed-snapshot evidence' in workflow
 
