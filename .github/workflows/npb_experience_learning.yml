@@ -266,3 +266,175 @@ jobs:
             data/experience/experience_learning_policy.json
           if-no-files-found: warn
           retention-days: 14
+  shadow_research:
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+
+      - name: Install dependencies
+        run: python -m pip install --disable-pip-version-check --retries 10 --timeout 120 --prefer-binary -r requirements-ci.txt
+
+      - name: Detect usable research-shadow Experience input
+        id: shadow_input
+        env:
+          PYTHONPATH: .
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -euo pipefail
+          if [ ! -s data/experience/research_shadow/shadow_experience_ledger.csv ]; then
+            echo "No research-shadow Experience ledger yet; shadow learning remains deferred."
+            echo "has_experience=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          rows="$(python - <<'PY'
+          import pandas as pd
+          from pathlib import Path
+          path = Path("data/experience/research_shadow/shadow_experience_ledger.csv")
+          try:
+              frame = pd.read_csv(path)
+          except Exception as exc:
+              raise SystemExit(f"research-shadow Experience ledger is unreadable: {exc}")
+          required = {
+              "prediction_id", "game_id", "target", "prediction_cutoff_utc",
+              "experience_available_at_utc", "actual_outcome",
+              "home_win_pct", "draw_pct", "away_win_pct",
+          }
+          missing = sorted(required - set(frame.columns))
+          if missing:
+              raise SystemExit(f"research-shadow Experience ledger missing required fields: {missing}")
+          print(len(frame))
+          PY
+          )"
+          echo "shadow_experience_rows=$rows"
+          if [ "$rows" -le 0 ]; then
+            echo "Research-shadow Experience ledger contains zero rows; shadow learning remains deferred."
+            echo "has_experience=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_experience=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build PIT-safe research-shadow learned policy
+        if: steps.shadow_input.outputs.has_experience == 'true'
+        env:
+          PYTHONPATH: .
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -euo pipefail
+          rm -f results/experience_learning_policy.json results/experience_learning_gate.json
+          python -m research.experience_learning \
+            --input data/experience/research_shadow/shadow_experience_ledger.csv \
+            --min-group-rows 30 \
+            --prior-strength 50 \
+            --correction-strength 0.50 \
+            --max-log-ratio 0.35
+          python -m research.experience_learning_gate \
+            --input data/experience/research_shadow/shadow_experience_ledger.csv
+
+      - name: Validate research-shadow learning contract
+        if: steps.shadow_input.outputs.has_experience == 'true'
+        run: |
+          set -euo pipefail
+          test -s results/experience_learning_policy.json
+          test -s results/experience_learning_gate.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          policy = json.loads(Path("results/experience_learning_policy.json").read_text(encoding="utf-8"))
+          gate = json.loads(Path("results/experience_learning_gate.json").read_text(encoding="utf-8"))
+
+          if policy.get("status") not in {"READY", "INSUFFICIENT_EXPERIENCE", "NO_EXPERIENCE", "NO_MATURED_EXPERIENCE"}:
+              raise SystemExit(f"invalid shadow learner status: {policy.get('status')}")
+          if gate.get("promotion_status") not in {"HOLD", "PROMOTION_CANDIDATE"}:
+              raise SystemExit(f"invalid shadow gate status: {gate.get('promotion_status')}")
+
+          contract = gate.get("selection_contract", {})
+          if contract.get("holdout_outcomes_used_to_build_policy") is not False:
+              raise SystemExit("shadow holdout outcomes entered policy construction")
+          if contract.get("holdout_used_for_parameter_selection") is not False:
+              raise SystemExit("shadow holdout was used for parameter selection")
+          if contract.get("production_modified") is not False:
+              raise SystemExit("shadow learner may not modify production")
+          if contract.get("auto_promotion") is not False:
+              raise SystemExit("shadow learner may not auto-promote")
+
+          replay = policy.get("replay_contract", {})
+          required = {
+              "chronological_prediction_cutoff",
+              "experience_available_at_le_prediction_time",
+              "current_row_excluded_from_learning",
+              "future_outcomes_excluded",
+              "production_model_modified",
+              "promotion_enabled",
+          }
+          missing = sorted(required - set(replay))
+          if missing:
+              raise SystemExit(f"missing shadow replay contract fields: {missing}")
+          if replay["chronological_prediction_cutoff"] is not True:
+              raise SystemExit("shadow chronological replay contract is not enforced")
+          if replay["experience_available_at_le_prediction_time"] is not True:
+              raise SystemExit("shadow Experience availability PIT contract is not enforced")
+          if replay["current_row_excluded_from_learning"] is not True:
+              raise SystemExit("shadow current-row leakage guard is not enforced")
+          if replay["future_outcomes_excluded"] is not True:
+              raise SystemExit("shadow future-outcome leakage guard is not enforced")
+          if replay["production_model_modified"] is not False:
+              raise SystemExit("shadow learner production_model_modified must remain false")
+          if replay["promotion_enabled"] is not False:
+              raise SystemExit("shadow learner promotion_enabled must remain false")
+
+          print(json.dumps({
+              "scope": "RESEARCH_SHADOW_ONLY",
+              "policy_status": policy.get("status"),
+              "matured_rows": policy.get("matured_rows"),
+              "gate_status": gate.get("status"),
+              "promotion_status": gate.get("promotion_status"),
+              "holdout_cases": gate.get("holdout_cases"),
+              "improvement": gate.get("improvement"),
+              "uncertainty": gate.get("uncertainty"),
+              "production_modified": False,
+              "auto_promotion": False,
+          }, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Preserve research-shadow learning evidence
+        if: always() && steps.shadow_input.outputs.has_experience == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          if [ -s results/experience_learning_policy.json ]; then
+            cp results/experience_learning_policy.json results/research_shadow_experience_learning_policy.json
+          fi
+          if [ -s results/experience_learning_gate.json ]; then
+            cp results/experience_learning_gate.json results/research_shadow_experience_learning_gate.json
+          fi
+          if [ -s results/experience_learning_replay.csv ]; then
+            cp results/experience_learning_replay.csv results/research_shadow_experience_learning_replay.csv
+          fi
+
+      - name: Upload research-shadow learning evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: npb-research-shadow-learning-${{ github.run_id }}
+          path: |
+            results/research_shadow_experience_learning_policy.json
+            results/research_shadow_experience_learning_gate.json
+            results/research_shadow_experience_learning_replay.csv
+          if-no-files-found: warn
+          retention-days: 14
