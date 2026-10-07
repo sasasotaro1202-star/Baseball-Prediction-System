@@ -79,3 +79,13 @@ def test_experience_learning_triggers_from_active_postgame_reconciliation():
     assert "NPB Prediction Experience Reconciliation" in text
     assert "NPB Postgame Experience Reconciliation" in text
     assert "types: [completed]" in text
+
+def test_experience_learning_has_research_shadow_holdout_lane():
+    text = (ROOT / ".github/workflows/npb_experience_learning.yml").read_text(encoding="utf-8")
+    assert "shadow_research:" in text
+    assert "data/experience/research_shadow/shadow_experience_ledger.csv" in text
+    assert "experience_available_at_utc" in text
+    assert "research_shadow_experience_learning_policy.json" in text
+    assert "research_shadow_experience_learning_gate.json" in text
+    assert '"production_modified": False' in text
+    assert '"auto_promotion": False' in text
