@@ -1,0 +1,29 @@
+{
+  "schema_version": "baseball-user-prediction-result-v1",
+  "request_id": "mlb-2026-10-09-all-games-v1",
+  "request_fingerprint": "5a4f4351abf2eaafef7996710f2904367fa0b051c99dc705f03cc594457f69a3",
+  "request": {
+    "schema_version": "baseball-prediction-request-v1",
+    "request_id": "mlb-2026-10-09-all-games-v1",
+    "competition_id": "MLB",
+    "target_date": "2026-10-09",
+    "requested_at_utc": "2026-10-08T13:35:00Z",
+    "force_refresh": true
+  },
+  "target_date": "2026-10-09",
+  "competition_id": "MLB",
+  "source_repository": "sasasotaro1202-star/Baseball-Prediction-System",
+  "source_commit": "bea00380bccfb6d9d20b75e22f72d68f9ce8eebe",
+  "generation_lane": "COMPETITION_SPECIFIC_RESEARCH_RUNTIME",
+  "generation_status": "GENERATION_FAILED",
+  "generated_at_utc": "2026-10-08T13:44:25.567757+00:00",
+  "reused_from_request_id": null,
+  "prediction_output": {
+    "execution_status": "GENERATION_FAILED",
+    "pit_status": "UNKNOWN",
+    "predictions": [],
+    "returncode": 1,
+    "stderr": "ore/fromnumeric.py:83: RuntimeWarning: invalid value encountered in reduce\n  return ufunc.reduce(obj, axis, dtype, out, **passkwargs)\n/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/sklearn/linear_model/_linear_loss.py:356: RuntimeWarning: invalid value encountered in matmul\n  X_grad = X.T @ grad_pointwise\n/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/numpy/_core/fromnumeric.py:83: RuntimeWarning: invalid value encountered in reduce\n  return ufunc.reduce(obj, axis, dtype, out, **passkwargs)\n/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/sklearn/linear_model/_linear_loss.py:356: RuntimeWarning: invalid value encountered in matmul\n  X_grad = X.T @ grad_pointwise\n/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/sklearn/linear_model/_linear_loss.py:356: RuntimeWarning: invalid value encountered in matmul\n  X_grad = X.T @ grad_pointwise\n/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/sklearn/linear_model/_linear_loss.py:356: RuntimeWarning: invalid value encountered in matmul\n  X_grad = X.T @ grad_pointwise\n/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/sklearn/linear_model/_linear_loss.py:356: RuntimeWarning: invalid value encountered in matmul\n  X_grad = X.T @ grad_pointwise\nTraceback (most recent call last):\n  File \"/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/pandas/core/indexes/base.py\", line 3641, in get_loc\n    return self._engine.get_loc(casted_key)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"pandas/_libs/index.pyx\", line 168, in pandas._libs.index.IndexEngine.get_loc\n  File \"pandas/_libs/index.pyx\", line 197, in pandas._libs.index.IndexEngine.get_loc\n  File \"pandas/_libs/hashtable_class_helper.pxi\", line 7668, in pandas._libs.hashtable.PyObjectHashTable.get_item\n  File \"pandas/_libs/hashtable_class_helper.pxi\", line 7676, in pandas._libs.hashtable.PyObjectHashTable.get_item\nKeyError: 'league'\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"<frozen runpy>\", line 198, in _run_module_as_main\n  File \"<frozen runpy>\", line 88, in _run_code\n  File \"/home/runner/work/Baseball-Prediction-System/Baseball-Prediction-System/prediction/mlb_research_preview.py\", line 315, in <module>\n    raise SystemExit(main())\n                     ^^^^^^\n  File \"/home/runner/work/Baseball-Prediction-System/Baseball-Prediction-System/prediction/mlb_research_preview.py\", line 310, in main\n    result = run_prediction(date=args.date, data_dir=args.data_dir, output=args.output)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/Baseball-Prediction-System/Baseball-Prediction-System/prediction/mlb_research_preview.py\", line 182, in run_prediction\n    xf = _future_features(bt, row, list(X.columns))\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/Baseball-Prediction-System/Baseball-Prediction-System/prediction/mlb_research_preview.py\", line 111, in _future_features\n    out = pd.DataFrame([bt.match_features(pd.Series(row))]).reindex(columns=columns)\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/Baseball-Prediction-System/Baseball-Prediction-System/baseball_backtest.py\", line 932, in match_features\n    league = row[\"league\"]\n             ~~~^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/pandas/core/series.py\", line 959, in __getitem__\n    return self._get_value(key)\n           ^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/pandas/core/series.py\", line 1046, in _get_value\n    loc = self.index.get_loc(label)\n          ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/pandas/core/indexes/base.py\", line 3648, in get_loc\n    raise KeyError(key) from err\nKeyError: 'league'\n",
+    "stdout_tail": "[MLB] downloading schedule 2020\n[MLB] downloading schedule 2021\n[MLB] downloading schedule 2022\n[MLB] downloading schedule 2023\n[MLB] downloading schedule 2024\n[MLB] downloading schedule 2025\n[MLB] downloading schedule 2026\n[PLAYER LOAD] no player-level corpus yet; using team-only features\n"
+  }
+}
