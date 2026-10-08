@@ -33,7 +33,8 @@ def test_pregame_automation_is_five_minute_60m_pit_gated_and_archives_experience
     assert "starter evidence observed after prediction information cutoff" in script
     assert "--min-lead-minutes 50" in script
     assert "--preferred-lead-minutes 60" in script
-    assert "--scan-ahead-minutes 60" in script
+    assert "--scan-ahead-minutes 180" in script
+    assert "--maximum-lead-minutes 180" in script
     assert "--prediction-source AUTO_60M" in script
     assert "automatic target is approximately 60m before first pitch." in script
     assert "python -m research.experience_ledger --archive" in script
@@ -89,3 +90,32 @@ def test_experience_learning_has_research_shadow_holdout_lane():
     assert "research_shadow_experience_learning_gate.json" in text
     assert '"production_modified": False' in text
     assert '"auto_promotion": False' in text
+
+
+def test_pregame_automation_keeps_production_and_shadow_lanes_independent():
+    script = (ROOT / "scripts/pregame_auto.sh").read_text(encoding="utf-8")
+    assert "production_due_dates.txt" in script
+    assert 'grep -qxF "$date" production_due_dates.txt' in script
+    assert 'grep -qxF "$date" research_shadow_due_dates.txt' in script
+    assert 'python -m prediction.current_production --league NPB --date "$date" --data-dir data --pregame-only' in script
+    assert 'python production_npb.py --date "$date" --data-dir data --pregame-only --research-shadow' in script
+    assert 'production_output="results/npb_production_$date.json"' in script
+    assert 'shadow_output="results/npb_shadow_$date.json"' in script
+
+
+def test_pregame_automation_never_relabels_shadow_output_as_auto_60m():
+    script = (ROOT / "scripts/pregame_auto.sh").read_text(encoding="utf-8")
+    start = script.index('for path in sorted(Path("results").glob("npb_production_*.json")):')
+    end = script.index('\nPY', start)
+    labeling_block = script[start:end]
+    assert 'npb_production_*.json' in labeling_block
+    assert 'npb_shadow_*.json' not in labeling_block
+    assert 'prediction_source"] = "AUTO_60M"' in labeling_block
+    assert 'prediction_target_lead_minutes"] = 60.0' in labeling_block
+
+
+def test_pregame_automation_archives_production_and_shadow_outputs_separately():
+    script = (ROOT / "scripts/pregame_auto.sh").read_text(encoding="utf-8")
+    assert 'python -m research.experience_ledger --archive "$production_output" --run-id "$GITHUB_RUN_ID"' in script
+    assert 'python -m research.shadow_experience --archive "$shadow_output" --run-id "$GITHUB_RUN_ID"' in script
+    assert 'if [ ! -s "$production_output" ]; then' not in script
