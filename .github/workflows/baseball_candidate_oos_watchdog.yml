@@ -157,6 +157,11 @@ jobs:
                 stale_in_progress=1
               fi
             fi
+          if [[ "${stale_in_progress}" -eq 1 ]]; then
+            sleep 3
+            runs="$(gh run list --repo "${GH_REPO}" --workflow "${CANDIDATE_WORKFLOW}" --limit 50 \
+              --json databaseId,status,conclusion,createdAt,headSha,number)"
+          fi
           in_progress_count="$(jq '[.[] | select(.status == "in_progress")] | length' <<<"${runs}")"
           if [[ "${in_progress_count}" -gt 0 ]]; then
             echo "Candidate OOS has in-progress work; do not interrupt expensive research."
