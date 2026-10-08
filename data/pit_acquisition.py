@@ -18,6 +18,7 @@ from html.parser import HTMLParser
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
+from zoneinfo import ZoneInfo
 
 from core.http import get_json as http_get_json, get_text as http_get_text, session as http_session
 from core.pit_snapshot import append_snapshot, make_snapshot, payload_hash
@@ -686,12 +687,233 @@ def acquire_mlb() -> int:
 
 
 
+NPB_STARTER_URL = "https://npb.jp/announcement/starter/"
+NPB_STARTER_PIT_SNAPSHOT_SCHEMA = "npb-official-starter-snapshot-v1"
+
+
+def _npb_today_jst() -> str:
+    return datetime.now(timezone.utc).astimezone(
+        ZoneInfo("Asia/Tokyo")
+    ).strftime("%Y-%m-%d")
+
+
+def _starter_key(row: dict[str, Any]) -> tuple[str, str, str]:
+    return (
+        _clean_npb_text(row.get("home", "")),
+        _clean_npb_text(row.get("away", "")),
+        _clean_npb_text(row.get("official_start_time", "")),
+    )
+
+
+def _build_npb_starter_pit_records(
+    starter_rows: list[dict[str, Any]],
+    *,
+    target_date: str,
+    retrieved_at: str,
+    schedule_rows: Iterable[dict[str, Any]] = (),
+) -> list[dict[str, Any]]:
+    """Convert an official starter-page observation into auditable PIT rows.
+
+    retrieved_at is the only safe availability bound represented by this
+    observation. It does not claim the actual editorial/publication timestamp.
+    """
+    schedule_by_key = {
+        _starter_key({
+            "home": row.get("home_team"),
+            "away": row.get("away_team"),
+            "official_start_time": row.get("start_time_local"),
+        }): row
+        for row in schedule_rows
+    }
+    output: list[dict[str, Any]] = []
+    for starter in starter_rows:
+        home = _clean_npb_text(starter.get("home", ""))
+        away = _clean_npb_text(starter.get("away", ""))
+        home_starter = _clean_npb_text(starter.get("home_starter", ""))
+        away_starter = _clean_npb_text(starter.get("away_starter", ""))
+        start_time = _clean_npb_text(starter.get("official_start_time", ""))
+        if not all((home, away, home_starter, away_starter, start_time)):
+            raise ValueError("official starter observation contains incomplete game data")
+        if home == away or home_starter == away_starter:
+            raise ValueError("official starter observation contains contradictory game data")
+
+        schedule = schedule_by_key.get(_starter_key(starter))
+        identity_key = "|".join((target_date, home, away, start_time))
+        digest = hashlib.sha256(identity_key.encode("utf-8")).hexdigest()[:24]
+        source = str(starter.get("starter_source") or NPB_STARTER_URL)
+        output.append({
+            "event_id": str(schedule.get("event_id")) if schedule else f"NPB:official-starter:{digest}",
+            "game_id": str(schedule.get("game_id")) if schedule else f"NPB-STARTER-{digest}",
+            "league": "NPB",
+            "home_team": home,
+            "away_team": away,
+            "home_starter": home_starter,
+            "away_starter": away_starter,
+            "home_starter_announced_at": None,
+            "away_starter_announced_at": None,
+            "home_starter_available_at": retrieved_at,
+            "away_starter_available_at": retrieved_at,
+            "starter_evidence_level": "OFFICIAL_NPB_PAGE_OBSERVED",
+            "starter_status": "ANNOUNCED",
+            "starter_pit_proof": "OFFICIAL_NPB_STARTER_PAGE_OBSERVED_AT_RETRIEVAL",
+            "observed_at": retrieved_at,
+            "prediction_cutoff": retrieved_at,
+            "source": source,
+            "home_starter_source": source,
+            "away_starter_source": source,
+            "available_at": retrieved_at,
+            "event_date": target_date,
+            "start_time_local": start_time,
+            "venue": "",
+            "observation_semantics": "available_at_is_observation_time; announcement_time_not_claimed",
+        })
+    return output
+
+
+def acquire_npb_official_starter_observation(
+    target_date: str | None = None,
+    *,
+    schedule_rows: Iterable[dict[str, Any]] = (),
+) -> int:
+    """Observe the live official NPB announced-starter page without backdating."""
+    target = str(target_date or _npb_today_jst()).strip()
+    if not target:
+        raise ValueError("target_date is required")
+
+    from production_npb import (
+        _starter_rows_sane,
+        fetch_text,
+        parse_official_league_starters_html,
+        parse_official_starters_html,
+    )
+
+    retrieved = now_utc()
+    primary_url = NPB_STARTER_URL + "?_ts=" + str(int(time.time()))
+    source_urls: list[str] = [NPB_STARTER_URL]
+    rows: list[dict[str, Any]] = []
+    try:
+        page = fetch_text(primary_url)
+        rows = parse_official_starters_html(page, target)
+        if not _starter_rows_sane(rows):
+            raise RuntimeError("official NPB starter page produced structurally suspect rows")
+    except Exception as primary_exc:
+        league_rows: list[dict[str, Any]] = []
+        for source_url in ("https://npb.jp/cl/", "https://npb.jp/pl/"):
+            page = fetch_text(source_url + "?_ts=" + str(int(time.time())))
+            parsed = parse_official_league_starters_html(page, target, source_url, min_games=1)
+            league_rows.extend(parsed)
+        if not _starter_rows_sane(league_rows):
+            raise RuntimeError("NPB official starter observation failed on primary and league pages") from primary_exc
+        rows = league_rows
+        source_urls = ["https://npb.jp/cl/", "https://npb.jp/pl/"]
+
+    enriched: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        item["starter_source"] = str(row.get("starter_source") or source_urls[0])
+        enriched.append(item)
+
+    pit_rows = _build_npb_starter_pit_records(
+        enriched,
+        target_date=target,
+        retrieved_at=retrieved,
+        schedule_rows=schedule_rows,
+    )
+
+    _record_snapshot(
+        event_id="NPB-STARTERS",
+        league="NPB",
+        entity_type="official_starters",
+        entity_id=target,
+        source=source_urls[0],
+        payload={
+            "target_date": target,
+            "source_urls": source_urls,
+            "games": enriched,
+            "evidence_semantics": "observed_at_is_available_at_bound; publication_time_unknown",
+        },
+        retrieved_at=retrieved,
+        available_at=retrieved,
+        status="KNOWN",
+    )
+
+    for row in pit_rows:
+        _append_jsonl(EVENT_LOG, row)
+        _append_jsonl(
+            AVAILABILITY_LOG,
+            {
+                **row,
+                "status": "KNOWN",
+                "starter_status": "ANNOUNCED",
+            },
+        )
+
+    snapshot_path = ROOT / "data" / "official_starters" / f"{target}.json"
+    snapshot = {
+        "schema_version": NPB_STARTER_PIT_SNAPSHOT_SCHEMA,
+        "target_date": target,
+        "source_url": source_urls[0],
+        "source_urls": source_urls,
+        "source_type": "NPB_OFFICIAL",
+        "retrieved_at_utc": retrieved,
+        "available_at_utc": retrieved,
+        "evidence_note": (
+            "Observed from an official NPB announced-starters page. "
+            "This records observed availability at retrieval and does not infer "
+            "the original editorial announcement time."
+        ),
+        "games": [
+            {
+                "home": row["home_team"],
+                "away": row["away_team"],
+                "home_starter": row["home_starter"],
+                "away_starter": row["away_starter"],
+                "official_start_time": row["start_time_local"],
+            }
+            for row in pit_rows
+        ],
+    }
+    existing = None
+    if snapshot_path.exists():
+        try:
+            existing = json.loads(snapshot_path.read_text(encoding="utf-8"))
+        except Exception:
+            existing = None
+    current_games = existing.get("games") if isinstance(existing, dict) else None
+    if current_games != snapshot["games"]:
+        snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+        snapshot_path.write_text(
+            json.dumps(snapshot, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+    print(json.dumps({
+        "status": "NPB_STARTER_OBSERVATION_RECORDED",
+        "target_date": target,
+        "games": len(pit_rows),
+        "retrieved_at_utc": retrieved,
+        "available_at_semantics": "retrieval_time_only",
+        "announcement_time_inferred": False,
+        "source_urls": source_urls,
+    }, ensure_ascii=False))
+    return len(pit_rows)
+
+
 def acquire_npb() -> int:
     start_dt = datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)
     end_dt = datetime.now(timezone.utc) + timedelta(days=LOOKAHEAD_DAYS)
     start = start_dt.date()
     end = end_dt.date()
     count = 0
+
+    # Observe today's official announced starters without backdating.
+    try:
+        acquire_npb_official_starter_observation(
+            _npb_today_jst(),
+            schedule_rows=(),
+        )
+    except Exception as exc:
+        print(f"[PIT][NPB][STARTERS] observation unavailable: {exc}")
 
     # First-party NPB.jp month-detail pages are the primary schedule identity
     # source for the acquisition window.
