@@ -33,7 +33,12 @@ if any(row.get("status") == "RESEARCH_DUE" for row in obj.get("due_games", [])):
     raise SystemExit("research candidate leaked into production due_games")
 if any(row.get("prediction_eligibility") != "RESEARCH_ONLY_BLOCKED_UNTIL_OFFICIAL_STARTERS" for row in research_due):
     raise SystemExit("research candidate has unsafe production eligibility")
-all_due_dates = sorted(set(due_dates) | set(research_shadow_due_dates))
+production_due_dates = list(due_dates)
+all_due_dates = sorted(set(production_due_dates) | set(research_shadow_due_dates))
+Path("production_due_dates.txt").write_text(
+    "\n".join(str(x) for x in production_due_dates) + ("\n" if production_due_dates else ""),
+    encoding="utf-8",
+)
 Path("due_dates.txt").write_text(
     "\n".join(str(x) for x in all_due_dates) + ("\n" if all_due_dates else ""),
     encoding="utf-8",
@@ -117,7 +122,7 @@ if status not in {"EXECUTED", "RESEARCH_SHADOW_EXECUTED", "BLOCKED_STARTERS", "N
     raise SystemExit("unexpected prediction status: " + str(status))
 if status not in {"EXECUTED", "RESEARCH_SHADOW_EXECUTED"}:
     print(json.dumps({"status": status, "block_reason": obj.get("block_reason")}, ensure_ascii=False))
-    continue
+    raise SystemExit(0)
 for pred in obj.get("predictions", []):
     cutoff = datetime.fromisoformat(pred["prediction_cutoff_utc"].replace("Z", "+00:00"))
     generated = datetime.fromisoformat(pred["prediction_generated_at"].replace("Z", "+00:00"))
@@ -144,7 +149,7 @@ fi
 python - <<'PY'
 import json
 from pathlib import Path
-for path in sorted(list(Path("results").glob("npb_production_*.json")) + list(Path("results").glob("npb_shadow_*.json"))):
+for path in sorted(Path("results").glob("npb_production_*.json")):
     obj = json.loads(path.read_text(encoding="utf-8"))
     if obj.get("execution_status") != "EXECUTED":
         continue
@@ -161,16 +166,13 @@ if [ ! -s due_dates.txt ]; then
 fi
 while IFS= read -r date; do
   [ -n "$date" ] || continue
-  output="results/npb_production_$date.json"
-  if [ ! -s "$output" ]; then
-    output="results/npb_shadow_$date.json"
+  production_output="results/npb_production_$date.json"
+  shadow_output="results/npb_shadow_$date.json"
+  if [ -s "$production_output" ]; then
+    python -m research.experience_ledger --archive "$production_output" --run-id "$GITHUB_RUN_ID"
   fi
-  if [ -s "$output" ]; then
-    if grep -q '"RESEARCH_SHADOW_EXECUTED"' "$output"; then
-      python -m research.shadow_experience --archive "$output" --run-id "$GITHUB_RUN_ID"
-    else
-      python -m research.experience_ledger --archive "$output" --run-id "$GITHUB_RUN_ID"
-    fi
+  if [ -s "$shadow_output" ]; then
+    python -m research.shadow_experience --archive "$shadow_output" --run-id "$GITHUB_RUN_ID"
   fi
 done < due_dates.txt
 
@@ -205,16 +207,13 @@ for attempt in 1 2 3; do
   # recovery only when it is still present in the workspace.
   while IFS= read -r date; do
     [ -n "$date" ] || continue
-    output="results/npb_production_$date.json"
-    if [ ! -s "$output" ]; then
-      output="results/npb_shadow_$date.json"
+    production_output="results/npb_production_$date.json"
+    shadow_output="results/npb_shadow_$date.json"
+    if [ -s "$production_output" ]; then
+      python -m research.experience_ledger --archive "$production_output" --run-id "$GITHUB_RUN_ID"
     fi
-    if [ -s "$output" ]; then
-      if grep -q '"RESEARCH_SHADOW_EXECUTED"' "$output"; then
-        python -m research.shadow_experience --archive "$output" --run-id "$GITHUB_RUN_ID"
-      else
-        python -m research.experience_ledger --archive "$output" --run-id "$GITHUB_RUN_ID"
-      fi
+    if [ -s "$shadow_output" ]; then
+      python -m research.shadow_experience --archive "$shadow_output" --run-id "$GITHUB_RUN_ID"
     fi
   done < due_dates.txt
 
