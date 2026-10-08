@@ -85,6 +85,7 @@ def _schedule(bt: BaseballBacktest, target, cutoff):
                 "game_type": gt,
                 "series_description": sd,
                 "season": str(game.get("season") or target.year),
+                "league": "MLB",
                 "competition": cls.competition,
                 "competition_stage": cls.stage,
                 "competition_key": cls.competition_key,
