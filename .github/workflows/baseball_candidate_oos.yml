@@ -41,10 +41,9 @@ concurrency:
   group: baseball-candidate-oos-${{ github.ref }}
   # A candidate replay is valid only for its checked-out evidence snapshot.
   # Never interrupt an active OOS lifecycle; stale runs are recovered by the
-  # dedicated watchdog after explicit evidence-snapshot checks. of keeping it in an hours-long queue.
+  # dedicated watchdog after explicit evidence-snapshot checks.
   # Within one run, NPB/MLB matrix legs still execute concurrently.
   cancel-in-progress: false
-
 env:
   PYTHONPATH: .
   PYTHONUNBUFFERED: '1'
