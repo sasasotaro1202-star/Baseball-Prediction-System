@@ -394,3 +394,40 @@ def test_mlb_research_preview_contract_is_explicitly_nonproduction():
     assert OUTPUT_SCHEMA == "baseball-mlb-research-preview-v1"
     assert MODEL_VERSION == "mlb-research-preview-ensemble-v1"
 
+
+
+
+def test_mlb_preview_schedule_rows_include_backtest_league_key(monkeypatch):
+    from prediction.mlb_research_preview import _schedule
+    import pandas as pd
+
+    class FakeBacktest:
+        def _get_json(self, url, params):
+            return {
+                "dates": [{
+                    "date": "2026-10-09",
+                    "games": [{
+                        "gamePk": 123,
+                        "gameDate": "2026-10-09T23:00:00Z",
+                        "status": {"abstractGameState": "Preview"},
+                        "gameType": "R",
+                        "seriesDescription": "Regular Season",
+                        "season": "2026",
+                        "teams": {
+                            "home": {"team": {"name": "Home Team"}},
+                            "away": {"team": {"name": "Away Team"}},
+                        },
+                        "venue": {"name": "Test Park"},
+                    }],
+                }]
+            }
+
+    rows, retrieved = _schedule(
+        FakeBacktest(),
+        pd.Timestamp("2026-10-09", tz="Asia/Tokyo").date(),
+        pd.Timestamp("2026-10-08T13:00:00Z").to_pydatetime(),
+    )
+    assert rows
+    assert rows[0]["league"] == "MLB"
+    assert rows[0]["competition_classification_status"] == "classified"
+    assert retrieved
