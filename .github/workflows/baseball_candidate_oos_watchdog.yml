@@ -53,8 +53,8 @@ jobs:
           echo "${runs}" | jq '.[0:12]'
 
           # A newer main commit supersedes any queued/pending candidate run, unless
-          # the complete diff is limited to non-runtime continuity files. Never
-          # interrupt an already-running OOS lifecycle for those control-plane-only changes.
+          # the complete diff is limited to explicitly non-evidence continuity files.
+          # Never interrupt an already-running OOS lifecycle for those control-plane-only changes.
           stale_cancelled=0
           while IFS= read -r row; do
             [ -n "${row}" ] || continue
