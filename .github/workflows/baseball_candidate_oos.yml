@@ -91,10 +91,8 @@ jobs:
           unexpected=0
           for path in "${changed_files[@]}"; do
             case "$path" in
-              # Candidate OOS is a historical/research snapshot. Current PIT
-              # acquisition observations are continuity data collected by the
-              # control plane and are not candidate model inputs, so they must
-              # not invalidate an otherwise reproducible OOS replay.
+              # Candidate OOS is a historical/research snapshot. PIT observation
+              # changes are evidence-affecting inputs and invalidate the replay.
               tests/*|.github/workflows/baseball_candidate_oos_watchdog.yml)
                 echo "Allowed non-runtime main update: $path"
                 ;;
@@ -225,10 +223,9 @@ jobs:
           unexpected=0
           for path in "${changed_files[@]}"; do
             case "$path" in
-              # Append-only experience and current PIT observations are
-              # continuity data. They do not modify the candidate computation,
-              # candidate selection, or locked evaluation snapshot.
-              tests/*|data/pit/**|.github/workflows/baseball_candidate_oos_watchdog.yml)
+              # Append-only experience and this watchdog are non-runtime
+              # continuity data. PIT observations remain evidence-affecting.
+              tests/*|.github/workflows/baseball_candidate_oos_watchdog.yml)
                 echo "Allowed non-runtime main update: $path"
                 ;;
               *)
