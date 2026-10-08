@@ -249,6 +249,29 @@ def test_rollup_low_high_threshold_uses_normalized_probability_scale():
     assert scored["low_high_correct"].tolist() == [1, 1]
 
 
+
+
+def test_rollup_missing_score_outputs_are_unevaluable_not_incorrect():
+    merged = pd.DataFrame([{
+        "game_id": "missing-score",
+        "datetime_jst": pd.Timestamp("2026-09-26T14:00:00+09:00"),
+        "prediction_cutoff_utc": pd.Timestamp("2026-09-26T02:00:00+00:00"),
+        "home_score": 4,
+        "away_score": 2,
+        "home_win_pct": 60.0,
+        "draw_pct": 5.0,
+        "away_win_pct": 35.0,
+        "low_pct": 70.0,
+        "high_pct": 30.0,
+        "lambda_home": np.nan,
+        "lambda_away": np.nan,
+        "top4_exact_scores": [],
+    }])
+    scored = roll._evaluate(merged)
+    assert pd.isna(scored.loc[0, "score_mae"])
+    assert pd.isna(scored.loc[0, "top1_exact_hit"])
+    assert pd.isna(scored.loc[0, "top4_hit"])
+
 def test_rollup_missing_generation_timestamp_is_unknown_horizon():
     merged = pd.DataFrame(
         [{
