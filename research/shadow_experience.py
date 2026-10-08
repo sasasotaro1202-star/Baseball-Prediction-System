@@ -14,6 +14,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from research.adoption_gate import GatePolicy
 from research.experience_ledger import (
     _binary_ece,
     _horizon_bucket,
@@ -155,6 +156,7 @@ def _write_summary(payload: dict[str, Any]) -> None:
         "production_modified": False,
         "method_signature": payload.get("current_method_signature"),
         "metrics": current,
+        "evaluation_quality": payload.get("evaluation_quality"),
         "source": "data/experience/research_shadow/shadow_experience_summary.json",
     }
     CURRENT_METHOD_SUMMARY_PATH.write_text(
@@ -394,17 +396,25 @@ def reconcile_shadow() -> dict[str, Any]:
         matched["low_high_predicted"] == matched["low_high_actual"]
     ).astype(int)
 
-    def score_eval(row: pd.Series) -> tuple[float, int, int]:
+    def score_eval(row: pd.Series) -> tuple[float, float, float]:
+        # Missing score predictions are not equivalent to an incorrect prediction.
+        # Keep score-derived metrics unevaluable when the required inputs are absent.
         picks = _parse_top4(row.get("top4_exact_scores"))
         actual = f"{int(row['actual_home_score'])}-{int(row['actual_away_score'])}"
-        top1 = picks[0][0] if picks else None
-        top4 = int(actual in {x[0] for x in picks})
-        top1_hit = int(actual == top1) if top1 else 0
-        mae = (
-            abs(float(row.get("lambda_home", 0.0)) - row["actual_home_score"])
-            + abs(float(row.get("lambda_away", 0.0)) - row["actual_away_score"])
-        ) / 2.0
-        return float(mae), top4, top1_hit
+
+        lambda_home = pd.to_numeric(row.get("lambda_home"), errors="coerce")
+        lambda_away = pd.to_numeric(row.get("lambda_away"), errors="coerce")
+        if pd.notna(lambda_home) and pd.notna(lambda_away):
+            mae = (
+                abs(float(lambda_home) - row["actual_home_score"])
+                + abs(float(lambda_away) - row["actual_away_score"])
+            ) / 2.0
+        else:
+            mae = np.nan
+
+        top1_hit = float(actual == picks[0][0]) if picks else np.nan
+        top4_hit = float(actual in {x[0] for x in picks}) if len(picks) == 4 else np.nan
+        return float(mae), top4_hit, top1_hit
 
     score_values = matched.apply(score_eval, axis=1, result_type="expand")
     score_values.columns = ["score_mae", "top4_hit", "top1_exact_hit"]
@@ -418,6 +428,12 @@ def reconcile_shadow() -> dict[str, Any]:
     matched = matched.sort_values(["game_id", "prediction_cutoff_utc", "prediction_id"])
     canonical = matched.drop_duplicates("game_id", keep="last").copy()
 
+    def _mean_or_none(series: pd.Series) -> float | None:
+        values = pd.to_numeric(series, errors="coerce")
+        if int(values.notna().sum()) == 0:
+            return None
+        return float(values.mean())
+
     def metrics(frame: pd.DataFrame) -> dict[str, Any]:
         probs = p[frame.index] if set(frame.index).issubset(set(matched.index)) else None
         if probs is None:
@@ -425,23 +441,47 @@ def reconcile_shadow() -> dict[str, Any]:
         else:
             pp = probs
         yy = frame["actual_outcome"].map({"HOME_WIN": 0, "DRAW": 1, "AWAY_WIN": 2}).to_numpy(int)
-        lowprob = to_unit(frame["high_pct"].to_numpy(float))
         return {
             "rows": int(len(frame)),
-            "accuracy": float(frame["outcome_correct"].mean()),
-            "logloss": float(frame["logloss"].mean()),
-            "brier": float(frame["brier"].mean()),
+            "accuracy": _mean_or_none(frame["outcome_correct"]),
+            "logloss": _mean_or_none(frame["logloss"]),
+            "brier": _mean_or_none(frame["brier"]),
             "ece": _multiclass_ece(pp, yy),
-            "low_high_accuracy": float(frame["low_high_correct"].mean()),
-            "top1_exact_hit_rate": float(frame["top1_exact_hit"].mean()),
-            "top4_exact_hit_rate": float(frame["top4_hit"].mean()),
-            "score_mae": float(frame["score_mae"].mean()),
-            "mean_actual_lead_minutes": float(frame["actual_lead_minutes"].mean()),
+            "low_high_accuracy": _mean_or_none(frame["low_high_correct"]),
+            "top1_exact_hit_rate": _mean_or_none(frame["top1_exact_hit"]),
+            "top4_exact_hit_rate": _mean_or_none(frame["top4_hit"]),
+            "score_mae": _mean_or_none(frame["score_mae"]),
+            "score_evaluable_rows": int(pd.to_numeric(frame["score_mae"], errors="coerce").notna().sum()),
+            "top1_evaluable_rows": int(pd.to_numeric(frame["top1_exact_hit"], errors="coerce").notna().sum()),
+            "top4_evaluable_rows": int(pd.to_numeric(frame["top4_hit"], errors="coerce").notna().sum()),
+            "mean_actual_lead_minutes": _mean_or_none(frame["actual_lead_minutes"]),
             "revision_rate": float(frame.get("revision_status", pd.Series(index=frame.index, dtype=object)).eq("REVISED").mean()),
         }
 
     all_metrics = metrics(matched)
     canonical_metrics = metrics(canonical)
+
+    formal_oos_min_rows = int(GatePolicy().min_oos_rows)
+    canonical_cases_count = int(len(canonical))
+    snapshot_rows_count = int(len(matched))
+    canonical_coverage = (
+        float(canonical_cases_count / snapshot_rows_count)
+        if snapshot_rows_count
+        else 0.0
+    )
+    evaluation_quality = {
+        "status": (
+            "FORMAL_OOS_SAMPLE_SUFFICIENT"
+            if canonical_cases_count >= formal_oos_min_rows
+            else "INSUFFICIENT_CANONICAL_SAMPLE"
+        ),
+        "canonical_cases": canonical_cases_count,
+        "snapshot_rows": snapshot_rows_count,
+        "formal_oos_min_rows": formal_oos_min_rows,
+        "formal_oos_sample_sufficient": bool(canonical_cases_count >= formal_oos_min_rows),
+        "canonical_case_coverage": canonical_coverage,
+        "snapshot_duplicate_rate": float(1.0 - canonical_coverage),
+    }
 
     by_method: dict[str, Any] = {}
     for method_signature, method_frame in matched.groupby("method_signature", dropna=False):
@@ -531,7 +571,11 @@ def reconcile_shadow() -> dict[str, Any]:
         "by_prediction_source": by_source,
         "by_method": by_method,
         "current_method_signature": current_method_signature,
-        "current_method_performance": current_method_performance,
+        "current_method_performance": {
+            **current_method_performance,
+            "evaluation_quality": evaluation_quality,
+        },
+        "evaluation_quality": evaluation_quality,
         "by_horizon": by_horizon,
         "canonical_by_horizon": canonical_by_horizon,
     }
