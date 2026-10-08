@@ -863,16 +863,23 @@ def reconcile() -> dict[str, Any]:
     matched["low_high_predicted"] = (matched["high_probability"] >= 0.5).astype(int)
     matched["low_high_correct"] = (matched["low_high_predicted"] == matched["low_high_actual"]).astype(int)
 
-    def score_eval(row: pd.Series) -> tuple[float, int, int]:
+    def score_eval(row: pd.Series) -> tuple[float, float, float]:
         picks = _parse_top4(row.get("top4_exact_scores"))
         actual = f"{int(row['actual_home_score'])}-{int(row['actual_away_score'])}"
-        top1 = picks[0][0] if picks else None
-        hit = int(actual in {x[0] for x in picks})
-        top1_hit = int(actual == top1) if top1 else 0
-        # MAE of the 4-candidate mean is intentionally not claimed as exact-score accuracy.
-        pred_lambda_h = float(row.get("lambda_home", 0.0))
-        pred_lambda_a = float(row.get("lambda_away", 0.0))
-        mae = (abs(pred_lambda_h - row["actual_home_score"]) + abs(pred_lambda_a - row["actual_away_score"])) / 2.0
+        # Missing ranked-score output is unevaluable, not an incorrect score.
+        hit = float(actual in {x[0] for x in picks}) if len(picks) == 4 else np.nan
+        top1_hit = float(actual == picks[0][0]) if picks else np.nan
+
+        pred_lambda_h = pd.to_numeric(row.get("lambda_home"), errors="coerce")
+        pred_lambda_a = pd.to_numeric(row.get("lambda_away"), errors="coerce")
+        if pd.isna(pred_lambda_h) or pd.isna(pred_lambda_a):
+            mae = np.nan
+        else:
+            # MAE of the expected-run pair is not claimed as exact-score accuracy.
+            mae = (
+                abs(float(pred_lambda_h) - row["actual_home_score"])
+                + abs(float(pred_lambda_a) - row["actual_away_score"])
+            ) / 2.0
         return float(mae), hit, top1_hit
 
     score_vals = matched.apply(score_eval, axis=1, result_type="expand")
