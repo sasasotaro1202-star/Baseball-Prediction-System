@@ -99,3 +99,15 @@ def test_pipeline_rejects_missing_evaluation_period_evidence():
     record = run_validation_pipeline(**kw)
     assert record.decision == "REJECT"
     assert "evaluation_period_stability_not_evaluated" in record.locked_holdout["reasons"]
+
+
+def test_pipeline_cannot_weaken_starter_pit_requirement_with_permissive_policy():
+    kw = _kwargs()
+    kw["pit_starter_evidence_ok"] = False
+    kw["holdout_pit_starter_evidence_ok"] = False
+    from research.adoption_gate import GatePolicy
+    kw["policy"] = GatePolicy(require_pit_starter_evidence=False)
+    record = run_validation_pipeline(**kw)
+    assert record.decision == "REJECT"
+    assert "development_starter_pit_evidence_not_verified" in record.locked_holdout["reasons"]
+    assert "holdout_starter_pit_evidence_not_verified" in record.locked_holdout["reasons"]
