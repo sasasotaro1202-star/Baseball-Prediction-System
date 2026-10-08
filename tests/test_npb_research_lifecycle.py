@@ -38,6 +38,10 @@ def test_npb_adoption_requires_draw_metrics():
             {"baseline_LogLoss": 0.95, "candidate_LogLoss": 0.90},
             {"baseline_LogLoss": 0.94, "candidate_LogLoss": 0.90},
         ],
+        holdout_uncertainty={
+            "improvement_ci95": {"LogLoss": [0.01, 0.10]},
+            "p_improvement_positive": {"LogLoss": 0.99},
+        },
     )
     assert result["decision"] == "ADOPT"
     assert "npb_three_way" in result["targets"]

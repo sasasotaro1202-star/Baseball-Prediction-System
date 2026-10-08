@@ -38,7 +38,9 @@ class GatePolicy:
     # Production adoption requires prediction-time starter PIT evidence for every league.
     # Callers cannot weaken this baseline requirement through permissive configuration.
     require_pit_starter_evidence: bool = True
-    require_uncertainty_check: bool = False
+    # Production adoption must prove robust improvement under uncertainty.
+    # Callers cannot weaken this baseline requirement through permissive configuration.
+    require_uncertainty_check: bool = True
     min_logloss_improvement_ci_lower: float = 0.0
     min_positive_improvement_probability: float = 0.95
     # Reference stability benchmark from project governance: >=70% of evaluation periods must be non-worse.
@@ -148,7 +150,9 @@ def evaluate_locked_holdout(
             reasons.append("holdout_starter_pit_evidence_not_verified")
 
     uncertainty_result: dict[str, object] = {}
-    if policy.require_uncertainty_check:
+    # Production adoption must always verify uncertainty evidence.
+    effective_uncertainty_required = True
+    if effective_uncertainty_required:
         if not isinstance(holdout_uncertainty, Mapping):
             reasons.append("uncertainty_check_missing")
         else:

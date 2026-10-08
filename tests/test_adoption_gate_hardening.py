@@ -178,3 +178,29 @@ def test_default_auxiliary_brier_gate_requires_one_percent_relative_gain():
     )
     assert result["decision"] == "REJECT"
     assert "brier_improvement_below_gate" in result["reasons"]
+
+def test_adoption_gate_cannot_be_weakened_by_disabling_uncertainty_check():
+    from research.adoption_gate import GatePolicy
+
+    result = evaluate_locked_holdout(
+        {"rows": 300, "LogLoss": 0.70, "Brier": 0.50, "Accuracy": 0.55},
+        {"rows": 300, "LogLoss": 0.67, "Brier": 0.49, "Accuracy": 0.56},
+        policy=GatePolicy(
+            require_score_check=False,
+            require_hilo_check=False,
+            require_npb_three_way_check=False,
+            require_uncertainty_check=False,
+        ),
+        validation_windows=2,
+        calibration_ok=True,
+        no_future_target_data=True,
+        reproducible=True,
+        pit_starter_evidence_ok=True,
+        holdout_pit_starter_evidence_ok=True,
+        evaluation_periods=[
+            {"baseline_LogLoss": 0.70, "candidate_LogLoss": 0.68},
+            {"baseline_LogLoss": 0.69, "candidate_LogLoss": 0.68},
+        ],
+    )
+    assert result["decision"] == "REJECT"
+    assert "uncertainty_check_missing" in result["reasons"]
