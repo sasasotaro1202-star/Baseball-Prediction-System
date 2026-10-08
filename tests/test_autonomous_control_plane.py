@@ -424,3 +424,16 @@ def test_workflow_dispatch_registration_error_is_classified_not_transient():
     assert not control_plane._is_workflow_dispatch_registration_error(
         "HTTP 502 Bad Gateway"
     )
+
+def test_disabled_workflow_dispatch_error_is_classified_target_locally():
+    message = (
+        "HTTP 422: Cannot trigger a 'workflow_dispatch' on a disabled workflow "
+        "(https://api.github.com/repos/owner/repo/actions/workflows/123/dispatches)"
+    )
+    assert control_plane._is_workflow_dispatch_unavailable_error(message)
+
+
+def test_disabled_workflow_dispatch_does_not_count_as_transient():
+    message = "HTTP 422: Cannot trigger a 'workflow_dispatch' on a disabled workflow"
+    assert not control_plane._is_transient_gh_failure(message)
+
