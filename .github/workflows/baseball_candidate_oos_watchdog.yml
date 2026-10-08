@@ -131,20 +131,32 @@ jobs:
             if [[ "${status}" == "in_progress" ]] && [[ -n "${created}" ]]; then
               created_epoch="$(date -d "${created}" +%s)"
               age_minutes=$(( (now_epoch - created_epoch) / 60 ))
-              if [[ "${age_minutes}" -ge 360 ]]; then
-                if [[ "${sha}" == "${current_sha}" ]]; then
-                  echo "Cancelling stale same-SHA in-progress candidate run ${id} after ${age_minutes}m."
+
+              cancel_in_progress=0
+              if [[ "${sha}" != "${current_sha}" ]]; then
+                # A superseded run cannot produce evidence-current output when
+                # main changed through any evidence-affecting path. Keep it only
+                # for continuity-only updates; otherwise free the concurrency
+                # slot immediately instead of waiting hours for a doomed replay.
+                if is_non_runtime_only_change "${sha}"; then
+                  echo "Keeping superseded in-progress candidate run ${id}: main moved only through non-runtime files."
                 else
-                  echo "Cancelling stale superseded-SHA in-progress candidate run ${id} after ${age_minutes}m (${sha} -> ${current_sha})."
+                  cancel_in_progress=1
+                  echo "Cancelling evidence-stale superseded in-progress candidate run ${id} (${sha} -> ${current_sha})."
                 fi
+              elif [[ "${age_minutes}" -ge 360 ]]; then
+                cancel_in_progress=1
+                echo "Cancelling stale same-SHA in-progress candidate run ${id} after ${age_minutes}m."
+              fi
+
+              if [[ "${cancel_in_progress}" -eq 1 ]]; then
                 if ! gh run cancel "${id}" --repo "${GH_REPO}"; then
-                  echo "Failed to cancel stale in-progress candidate run ${id}; refusing to dispatch a duplicate." >&2
+                  echo "Failed to cancel stale/superseded in-progress candidate run ${id}; refusing to dispatch a duplicate." >&2
                   exit 1
                 fi
                 stale_in_progress=1
               fi
             fi
-          done < <(jq -c '.[]' <<<"${runs}")
           in_progress_count="$(jq '[.[] | select(.status == "in_progress")] | length' <<<"${runs}")"
           if [[ "${in_progress_count}" -gt 0 ]]; then
             echo "Candidate OOS has in-progress work; do not interrupt expensive research."
