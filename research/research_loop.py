@@ -18,23 +18,36 @@ OBJECTIVES=[
  ('batting','打線・対左右・直近フォーム',['Accuracy','MeanAbsoluteScoreError']),
  ('environment','球場・天候・日程環境',['MeanAbsoluteScoreError','LowHighAccuracy']),
 ]
+from research.adoption_gate import GatePolicy
+
+_FORMAL_GATE = GatePolicy()
+
+# This module chooses research priorities; it never grants adoption. All
+# candidate promotion must ultimately pass research.adoption_gate on locked
+# unseen holdout data. Keep the planning contract synchronized with that gate.
 PROMOTION_GATE={
+ 'formal_gate_module':'research.adoption_gate.GatePolicy',
+ 'auto_promotion':False,
  'require_oos':True,
- 'min_oos_rows':200,
- 'min_relative_improvement':0.01,
- 'max_logloss_regression':0.005,
- 'max_brier_regression':0.005,
- 'max_accuracy_regression':0.005,
- 'require_two_validation_windows':True,
- 'require_calibration_check':True,
- 'require_no_future_target_data':True,
- 'require_reproducible_candidate':True,
- 'require_npb_three_way_check':True,
- 'max_draw_recall_regression':0.0,
- 'max_draw_probability_mae_regression':0.005,
- 'require_score_check':True,
- 'require_hilo_check':True,
+ 'min_oos_rows':_FORMAL_GATE.min_oos_rows,
+ 'min_relative_improvement':_FORMAL_GATE.min_relative_improvement,
+ 'min_relative_brier_improvement':_FORMAL_GATE.min_relative_brier_improvement,
+ 'max_logloss_regression':_FORMAL_GATE.max_logloss_regression,
+ 'max_brier_regression':_FORMAL_GATE.max_brier_regression,
+ 'max_accuracy_regression':_FORMAL_GATE.max_accuracy_regression,
+ 'require_two_validation_windows':_FORMAL_GATE.require_two_validation_windows,
+ 'require_calibration_check':_FORMAL_GATE.require_calibration_check,
+ 'require_no_future_target_data':_FORMAL_GATE.require_no_future_target_data,
+ 'require_reproducible_candidate':_FORMAL_GATE.require_reproducible_candidate,
+ 'require_npb_three_way_check':_FORMAL_GATE.require_npb_three_way_check,
+ 'max_draw_recall_regression':_FORMAL_GATE.max_draw_recall_regression,
+ 'max_draw_probability_mae_regression':_FORMAL_GATE.max_draw_probability_mae_regression,
+ 'require_score_check':_FORMAL_GATE.require_score_check,
+ 'require_hilo_check':_FORMAL_GATE.require_hilo_check,
+ 'min_non_worsening_period_fraction':_FORMAL_GATE.min_non_worsening_period_fraction,
+ 'require_evaluation_period_stability':_FORMAL_GATE.require_evaluation_period_stability,
  'rollback_on_post_promotion_regression':True,
+ 'holdout_selection_forbidden':True,
 }
 
 def read_csv(name):
@@ -86,7 +99,7 @@ def build_state():
   'processing_budget_seconds':int(os.getenv('BASEBALL_TIME_BUDGET_SEC','3600')),
   'focus':focus,'weaknesses':weaknesses[:20],'leagues':leagues,
   'promotion_gate':PROMOTION_GATE,
-  'next_research':{'objective':focus['objective'],'league':focus['league'],'reason':focus['reason'],'rule':'candidate must pass the fixed promotion gate and improve OOS without unacceptable regression; NPB must preserve the Draw class'},
+  'next_research':{'objective':focus['objective'],'league':focus['league'],'reason':focus['reason'],'rule':'research priority only; candidate must pass the formal locked-holdout adoption gate before any adoption, with no holdout use during selection; NPB must preserve the Draw class'},
  }
 
 def append_history(state):
