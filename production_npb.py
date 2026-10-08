@@ -1805,6 +1805,9 @@ def main():
         action="store_true",
         help="Explicit research-only PIT-safe forecast lane; never unlocks production.",
     )
+    ap.add_argument("--minimum-lead-minutes", type=float, default=None)
+    ap.add_argument("--maximum-lead-minutes", type=float, default=None)
+    ap.add_argument("--preferred-lead-minutes", type=float, default=None)
     args=ap.parse_args()
     print(json.dumps(
         predict(
@@ -1812,8 +1815,17 @@ def main():
             args.data_dir,
             pregame_only=args.pregame_only,
             research_shadow=args.research_shadow,
-            minimum_lead_minutes=(0.0 if args.research_shadow and not args.pregame_only else None),
-            preferred_lead_minutes=(60.0 if args.pregame_only else None),
+            minimum_lead_minutes=(
+                args.minimum_lead_minutes
+                if args.minimum_lead_minutes is not None
+                else (0.0 if args.research_shadow and not args.pregame_only else None)
+            ),
+            maximum_lead_minutes=args.maximum_lead_minutes,
+            preferred_lead_minutes=(
+                args.preferred_lead_minutes
+                if args.preferred_lead_minutes is not None
+                else (60.0 if args.pregame_only else None)
+            ),
         ),
         ensure_ascii=False,
         indent=2,
