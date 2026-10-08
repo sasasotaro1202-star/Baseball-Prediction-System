@@ -39,6 +39,7 @@ PROMOTION_GATE={
  'require_calibration_check':_FORMAL_GATE.require_calibration_check,
  'require_no_future_target_data':_FORMAL_GATE.require_no_future_target_data,
  'require_reproducible_candidate':_FORMAL_GATE.require_reproducible_candidate,
+ 'require_pit_starter_evidence':_FORMAL_GATE.require_pit_starter_evidence,
  'require_npb_three_way_check':_FORMAL_GATE.require_npb_three_way_check,
  'max_draw_recall_regression':_FORMAL_GATE.max_draw_recall_regression,
  'max_draw_probability_mae_regression':_FORMAL_GATE.max_draw_probability_mae_regression,
