@@ -270,27 +270,26 @@ def _evaluate(merged: pd.DataFrame) -> pd.DataFrame:
         x["low_high_predicted"] == x["low_high_actual"]
     ).astype(int)
 
-    x["top4_hit"] = [
-        int(f"{h}-{a}" in set(_top4(r.get("top4_exact_scores"))))
-        for h, a, r in zip(
-            x["actual_home_score"], x["actual_away_score"], x.to_dict("records")
-        )
-    ]
-    x["top1_exact_hit"] = [
-        int(
-            bool(_top4(r.get("top4_exact_scores")))
-            and f"{h}-{a}" == _top4(r.get("top4_exact_scores"))[0]
-        )
-        for h, a, r in zip(
-            x["actual_home_score"], x["actual_away_score"], x.to_dict("records")
-        )
-    ]
+    top4_values = []
+    top1_values = []
+    for h, a, r in zip(
+        x["actual_home_score"], x["actual_away_score"], x.to_dict("records")
+    ):
+        picks = _top4(r.get("top4_exact_scores"))
+        actual = f"{h}-{a}"
+        # Missing score-ranked predictions are unevaluable, not incorrect.
+        top4_values.append(float(actual in set(picks)) if len(picks) == 4 else np.nan)
+        top1_values.append(float(actual == picks[0]) if picks else np.nan)
+    x["top4_hit"] = top4_values
+    x["top1_exact_hit"] = top1_values
 
-    lh = pd.to_numeric(x.get("lambda_home"), errors="coerce").fillna(0.0)
-    la = pd.to_numeric(x.get("lambda_away"), errors="coerce").fillna(0.0)
-    x["score_mae"] = (
-        np.abs(lh.to_numpy(float) - x["actual_home_score"].to_numpy(float))
-        + np.abs(la.to_numpy(float) - x["actual_away_score"].to_numpy(float))
+    lh = pd.to_numeric(x.get("lambda_home"), errors="coerce")
+    la = pd.to_numeric(x.get("lambda_away"), errors="coerce")
+    valid_score = lh.notna() & la.notna()
+    x["score_mae"] = np.nan
+    x.loc[valid_score, "score_mae"] = (
+        np.abs(lh.loc[valid_score].to_numpy(float) - x.loc[valid_score, "actual_home_score"].to_numpy(float))
+        + np.abs(la.loc[valid_score].to_numpy(float) - x.loc[valid_score, "actual_away_score"].to_numpy(float))
     ) / 2.0
 
     x["prediction_horizon_minutes"] = (
@@ -509,12 +508,18 @@ def rollup() -> dict[str, Any]:
         vals["accuracy"] /= max(1, vals["rows"])
         vals["logloss"] /= max(1, vals["rows"])
 
-    def compact(df: pd.DataFrame) -> dict[str, float]:
+    def _mean_or_none(series: pd.Series) -> float | None:
+        values = pd.to_numeric(series, errors="coerce")
+        if int(values.notna().sum()) == 0:
+            return None
+        return float(values.mean())
+
+    def compact(df: pd.DataFrame) -> dict[str, float | None]:
         return {
             "rows": int(len(df)),
-            "accuracy": float(df["outcome_correct"].mean()),
-            "logloss": float(df["logloss"].mean()),
-            "brier": float(df["brier"].mean()),
+            "accuracy": _mean_or_none(df["outcome_correct"]),
+            "logloss": _mean_or_none(df["logloss"]),
+            "brier": _mean_or_none(df["brier"]),
             "draw_recall": float(
                 (
                     (df["predicted_outcome"] == "DRAW")
@@ -522,10 +527,13 @@ def rollup() -> dict[str, Any]:
                 ).sum()
                 / max(1, (df["actual_outcome"] == "DRAW").sum())
             ),
-            "low_high_accuracy": float(df["low_high_correct"].mean()),
-            "top1_exact_hit_rate": float(df["top1_exact_hit"].mean()),
-            "top4_exact_hit_rate": float(df["top4_hit"].mean()),
-            "score_mae": float(df["score_mae"].mean()),
+            "low_high_accuracy": _mean_or_none(df["low_high_correct"]),
+            "top1_exact_hit_rate": _mean_or_none(df["top1_exact_hit"]),
+            "top4_exact_hit_rate": _mean_or_none(df["top4_hit"]),
+            "score_mae": _mean_or_none(df["score_mae"]),
+            "score_evaluable_rows": int(pd.to_numeric(df["score_mae"], errors="coerce").notna().sum()),
+            "top1_evaluable_rows": int(pd.to_numeric(df["top1_exact_hit"], errors="coerce").notna().sum()),
+            "top4_evaluable_rows": int(pd.to_numeric(df["top4_hit"], errors="coerce").notna().sum()),
         }
 
     result = {

@@ -745,11 +745,22 @@ def _prediction_target_metrics(frame: pd.DataFrame) -> dict[str, dict[str, Any]]
 
     required = {"top1_exact_hit", "top4_hit", "score_mae"}
     if required.issubset(frame.columns) and len(frame):
+        top1 = pd.to_numeric(frame["top1_exact_hit"], errors="coerce")
+        top4 = pd.to_numeric(frame["top4_hit"], errors="coerce")
+        mae = pd.to_numeric(frame["score_mae"], errors="coerce")
         out["exact_score"] = {
             "rows": int(len(frame)),
-            "top1_exact_hit_rate": float(frame["top1_exact_hit"].mean()),
-            "top4_exact_hit_rate": float(frame["top4_hit"].mean()),
-            "score_mae": float(frame["score_mae"].mean()),
+            "top1_evaluable_rows": int(top1.notna().sum()),
+            "top4_evaluable_rows": int(top4.notna().sum()),
+            "score_evaluable_rows": int(mae.notna().sum()),
+            "top1_exact_hit_rate": float(top1.mean()) if top1.notna().any() else None,
+            "top4_exact_hit_rate": float(top4.mean()) if top4.notna().any() else None,
+            "score_mae": float(mae.mean()) if mae.notna().any() else None,
+            "status": (
+                "UPDATED"
+                if top1.notna().any() or top4.notna().any() or mae.notna().any()
+                else "UNAVAILABLE"
+            ),
         }
     else:
         out["exact_score"] = {"rows": 0, "status": "UNAVAILABLE"}
@@ -863,16 +874,23 @@ def reconcile() -> dict[str, Any]:
     matched["low_high_predicted"] = (matched["high_probability"] >= 0.5).astype(int)
     matched["low_high_correct"] = (matched["low_high_predicted"] == matched["low_high_actual"]).astype(int)
 
-    def score_eval(row: pd.Series) -> tuple[float, int, int]:
+    def score_eval(row: pd.Series) -> tuple[float, float, float]:
         picks = _parse_top4(row.get("top4_exact_scores"))
         actual = f"{int(row['actual_home_score'])}-{int(row['actual_away_score'])}"
-        top1 = picks[0][0] if picks else None
-        hit = int(actual in {x[0] for x in picks})
-        top1_hit = int(actual == top1) if top1 else 0
-        # MAE of the 4-candidate mean is intentionally not claimed as exact-score accuracy.
-        pred_lambda_h = float(row.get("lambda_home", 0.0))
-        pred_lambda_a = float(row.get("lambda_away", 0.0))
-        mae = (abs(pred_lambda_h - row["actual_home_score"]) + abs(pred_lambda_a - row["actual_away_score"])) / 2.0
+        # Missing ranked-score output is unevaluable, not an incorrect score.
+        hit = float(actual in {x[0] for x in picks}) if len(picks) == 4 else np.nan
+        top1_hit = float(actual == picks[0][0]) if picks else np.nan
+
+        pred_lambda_h = pd.to_numeric(row.get("lambda_home"), errors="coerce")
+        pred_lambda_a = pd.to_numeric(row.get("lambda_away"), errors="coerce")
+        if pd.isna(pred_lambda_h) or pd.isna(pred_lambda_a):
+            mae = np.nan
+        else:
+            # MAE of the expected-run pair is not claimed as exact-score accuracy.
+            mae = (
+                abs(float(pred_lambda_h) - row["actual_home_score"])
+                + abs(float(pred_lambda_a) - row["actual_away_score"])
+            ) / 2.0
         return float(mae), hit, top1_hit
 
     score_vals = matched.apply(score_eval, axis=1, result_type="expand")
@@ -1031,6 +1049,16 @@ def reconcile() -> dict[str, Any]:
         encoding="utf-8",
     )
 
+    def _mean_or_none(series: pd.Series) -> float | None:
+        values = pd.to_numeric(series, errors="coerce")
+        if not values.notna().any():
+            return None
+        return float(values.mean())
+
+    top1_metrics = pd.to_numeric(experience["top1_exact_hit"], errors="coerce")
+    top4_metrics = pd.to_numeric(experience["top4_hit"], errors="coerce")
+    score_mae_metrics = pd.to_numeric(experience["score_mae"], errors="coerce")
+
     summary: dict[str, Any] = {
         "generated_at_utc": _utc_now(),
         "evidence": build_experience_evidence(experience),
@@ -1051,9 +1079,12 @@ def reconcile() -> dict[str, Any]:
             & (experience["actual_outcome"] == "DRAW")
         ).sum() / max(1, (experience["actual_outcome"] == "DRAW").sum())),
         "low_high_accuracy": float(experience["low_high_correct"].mean()),
-        "score_mae": float(experience["score_mae"].mean()),
-        "top1_exact_hit_rate": float(experience["top1_exact_hit"].mean()),
-        "top4_exact_hit_rate": float(experience["top4_hit"].mean()),
+        "score_mae": _mean_or_none(experience["score_mae"]),
+        "top1_exact_hit_rate": _mean_or_none(experience["top1_exact_hit"]),
+        "top4_exact_hit_rate": _mean_or_none(experience["top4_hit"]),
+        "score_evaluable_rows": int(score_mae_metrics.notna().sum()),
+        "top1_evaluable_rows": int(top1_metrics.notna().sum()),
+        "top4_evaluable_rows": int(top4_metrics.notna().sum()),
         "by_regime": {},
         "by_target": {},
         "by_prediction_target": _prediction_target_metrics(experience),
