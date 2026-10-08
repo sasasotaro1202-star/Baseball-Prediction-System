@@ -68,6 +68,32 @@ def _prediction(tmp: Path):
     return path
 
 
+def test_exact_score_metrics_are_unavailable_when_all_score_inputs_missing():
+    from research.experience_ledger import _prediction_target_metrics
+
+    frame = pd.DataFrame([{
+        "home_win_pct": 60.0,
+        "draw_pct": 5.0,
+        "away_win_pct": 35.0,
+        "actual_outcome": "HOME_WIN",
+        "high_pct": 30.0,
+        "low_pct": 70.0,
+        "low_high_actual": 0,
+        "top1_exact_hit": np.nan,
+        "top4_hit": np.nan,
+        "score_mae": np.nan,
+    }])
+    result = _prediction_target_metrics(frame)
+    exact = result["exact_score"]
+    assert exact["status"] == "UNAVAILABLE"
+    assert exact["top1_evaluable_rows"] == 0
+    assert exact["top4_evaluable_rows"] == 0
+    assert exact["score_evaluable_rows"] == 0
+    assert exact["top1_exact_hit_rate"] is None
+    assert exact["top4_exact_hit_rate"] is None
+    assert exact["score_mae"] is None
+
+
 def test_reconcile_preserves_prediction_time_competition_metadata(tmp_path, monkeypatch):
     monkeypatch.setattr(exp, "EXPERIENCE", tmp_path / "experience")
     monkeypatch.setattr(exp, "PRED_DIR", tmp_path / "experience" / "predictions")
