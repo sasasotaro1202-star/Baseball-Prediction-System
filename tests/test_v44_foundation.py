@@ -55,6 +55,10 @@ def test_metrics_and_multi_target_gate():
             {"baseline_LogLoss": 0.60, "candidate_LogLoss": 0.58},
             {"baseline_LogLoss": 0.59, "candidate_LogLoss": 0.58},
         ],
+        holdout_uncertainty={
+            "improvement_ci95": {"LogLoss": [0.005, 0.04]},
+            "p_improvement_positive": {"LogLoss": 0.99},
+        },
     )
     assert result["adopt"] is True
 
