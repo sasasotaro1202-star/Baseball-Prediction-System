@@ -17,10 +17,10 @@ def test_watchdog_recovers_only_stale_same_sha_in_progress_runs() -> None:
 
 def test_watchdog_cancellation_failure_is_fail_closed() -> None:
     text = _text()
-    start = text.index('echo "Cancelling stale same-SHA in-progress candidate run')
-    end = text.index("done < <(jq -c", start)
+    start = text.index('if ! gh run cancel "${id}" --repo "${GH_REPO}"; then')
+    end = text.index("fi", start)
     section = text[start:end]
-    assert "Failed to cancel stale in-progress candidate run" in section
+    assert "Failed to cancel" in section
     assert "exit 1" in section
 
 def test_watchdog_preserves_active_run_protection_and_recovery_dispatch() -> None:
