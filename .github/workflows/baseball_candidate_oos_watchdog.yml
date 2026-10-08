@@ -4,6 +4,26 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '*/15 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - "research/npb_candidate_replay.py"
+      - "research/mlb_candidate_replay.py"
+      - "research/real_data_validation.py"
+      - "research/validation_pipeline.py"
+      - "research/candidates.py"
+      - "research/individually_calibrated_ensemble.py"
+      - "research/adoption_gate.py"
+      - "research/regime_router.py"
+      - "research/correlated_score.py"
+      - "research/competition_taxonomy.py"
+      - "research/competition_strategy.py"
+      - "research/hierarchical_result_model.py"
+      - "baseball_backtest.py"
+      - "core/**"
+      - "evaluation/**"
+      - ".github/workflows/baseball_candidate_oos.yml"
+      - ".github/workflows/baseball_candidate_oos_watchdog.yml"
 
 permissions:
   contents: read
