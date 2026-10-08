@@ -307,6 +307,41 @@ def test_reconcile_computes_real_game_experience(tmp_path, monkeypatch):
     assert summary["outcome_accuracy"] == 1.0
 
 
+def test_reconcile_top_level_score_metrics_are_unavailable_when_inputs_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(exp, "EXPERIENCE", tmp_path / "experience")
+    monkeypatch.setattr(exp, "PRED_DIR", tmp_path / "experience" / "predictions")
+    monkeypatch.setattr(exp, "RESULT_DIR", tmp_path / "experience" / "official_results")
+    monkeypatch.setattr(exp, "LEDGER_PATH", tmp_path / "experience" / "experience_ledger.csv")
+    monkeypatch.setattr(exp, "LEDGER_JSONL", tmp_path / "experience" / "experience_ledger.jsonl")
+    monkeypatch.setattr(exp, "SUMMARY_PATH", tmp_path / "experience" / "experience_summary.json")
+
+    prediction_path = _prediction(tmp_path)
+    payload = json.loads(prediction_path.read_text(encoding="utf-8"))
+    pred = payload["predictions"][0]
+    pred["lambda_home"] = None
+    pred["lambda_away"] = None
+    pred["top4_exact_scores"] = []
+    prediction_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    exp.archive_production_output(prediction_path)
+    exp._load_cached_results = lambda dates: pd.DataFrame([{
+        "date": "2026-09-26",
+        "home": "横浜DeNAベイスターズ",
+        "away": "阪神タイガース",
+        "home_score": 4,
+        "away_score": 2,
+        "source_url": "test://npb",
+    }])
+
+    summary = exp.reconcile()
+    assert summary["score_mae"] is None
+    assert summary["top1_exact_hit_rate"] is None
+    assert summary["top4_exact_hit_rate"] is None
+    assert summary["score_evaluable_rows"] == 0
+    assert summary["top1_evaluable_rows"] == 0
+    assert summary["top4_evaluable_rows"] == 0
+
+
+
 def test_reconcile_preserves_first_experience_availability_timestamp(tmp_path, monkeypatch):
     monkeypatch.setattr(exp, "EXPERIENCE", tmp_path / "experience")
     monkeypatch.setattr(exp, "PRED_DIR", tmp_path / "experience" / "predictions")
