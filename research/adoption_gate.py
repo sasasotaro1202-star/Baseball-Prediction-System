@@ -179,7 +179,11 @@ def evaluate_locked_holdout(
     if policy.require_evaluation_period_stability:
         if not isinstance(evaluation_periods, list) or not evaluation_periods:
             reasons.append("evaluation_period_stability_not_evaluated")
-        elif len(evaluation_periods) < max(2, int(validation_windows)):
+        # Holdout stability periods are a separate diagnostic partition from
+        # Development OOS validation windows. Do not require one period per
+        # development window: the replay intentionally summarizes the locked
+        # holdout into a small chronological set (currently up to four).
+        elif len(evaluation_periods) < 2:
             reasons.append("insufficient_evaluation_periods")
         else:
             valid_periods = 0
