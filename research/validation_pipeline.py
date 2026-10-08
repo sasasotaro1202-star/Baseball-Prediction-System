@@ -46,16 +46,13 @@ def run_validation_pipeline(
     """
     locked = candidate_lock(development_metrics=development_metrics, candidate_id=candidate_id)
 
-    # Production-style validation cannot weaken uncertainty checking. MLB also
-    # always requires authoritative starter PIT evidence regardless of caller
-    # defaults.
+    # Production-style validation cannot weaken uncertainty checking or starter PIT requirements.
+    # All production-adoption lanes require authoritative starter PIT evidence regardless of league.
     effective_policy = GatePolicy(
         **{
             **asdict(policy),
             "require_uncertainty_check": True,
-            "require_pit_starter_evidence": bool(
-                policy.require_pit_starter_evidence or league == "MLB"
-            ),
+            "require_pit_starter_evidence": True,
             "require_evaluation_period_stability": True,
         }
     )
