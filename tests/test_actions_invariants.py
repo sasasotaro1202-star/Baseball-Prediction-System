@@ -414,3 +414,9 @@ def test_canonical_actions_recovery_accepts_only_workflow_run_events():
     assert "TARGET_WORKFLOW: baseball_closed_loop.yml" in text
     assert "CONTROL_PLANE_WORKFLOW: baseball_forever_autopilot.yml" in text
 
+
+
+def test_pregame_context_workflow_uses_pytest_runner():
+    workflow = (ROOT / ".github" / "workflows" / "baseball_pregame_context.yml").read_text(encoding="utf-8")
+    assert "python -m pytest -q tests/test_npb_pregame_context.py" in workflow
+    assert "python -m unittest discover -s tests -p 'test_npb_pregame_context.py' -v" not in workflow
