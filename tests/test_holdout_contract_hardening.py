@@ -113,3 +113,29 @@ def test_adoption_requires_starter_pit_evidence_for_npb_too():
 def test_default_gate_policy_requires_starter_pit_evidence():
     from research.adoption_gate import GatePolicy
     assert GatePolicy().require_pit_starter_evidence is True
+
+
+def test_adoption_gate_cannot_be_weakened_by_permissive_policy():
+    from research.adoption_gate import GatePolicy, evaluate_locked_holdout
+    result = evaluate_locked_holdout(
+        {"rows": 250, "LogLoss": 0.70, "Brier": 0.25, "Accuracy": 0.60, "DrawRecall": 0.20, "DrawProbabilityMAE": 0.01},
+        {"rows": 250, "LogLoss": 0.67, "Brier": 0.24, "Accuracy": 0.61, "DrawRecall": 0.20, "DrawProbabilityMAE": 0.01},
+        policy=GatePolicy(require_pit_starter_evidence=False),
+        validation_windows=2,
+        calibration_ok=True,
+        no_future_target_data=True,
+        reproducible=True,
+        league="NPB",
+        holdout_score_baseline={"ScoreMAE": 3.0},
+        holdout_score_candidate={"ScoreMAE": 2.9},
+        holdout_hilo_baseline={"LogLoss": 0.69, "Brier": 0.24, "Accuracy": 0.60},
+        holdout_hilo_candidate={"LogLoss": 0.68, "Brier": 0.23, "Accuracy": 0.61},
+        holdout_uncertainty={"improvement_ci95": {"LogLoss": [0.01, 0.05]}, "p_improvement_positive": {"LogLoss": 0.99}},
+        evaluation_periods=[
+            {"baseline_LogLoss": 0.70, "candidate_LogLoss": 0.68},
+            {"baseline_LogLoss": 0.69, "candidate_LogLoss": 0.68},
+        ],
+    )
+    assert result["decision"] == "REJECT"
+    assert "development_starter_pit_evidence_not_verified" in result["reasons"]
+    assert "holdout_starter_pit_evidence_not_verified" in result["reasons"]
