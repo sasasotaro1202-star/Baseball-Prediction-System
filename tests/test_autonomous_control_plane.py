@@ -437,3 +437,37 @@ def test_disabled_workflow_dispatch_does_not_count_as_transient():
     message = "HTTP 422: Cannot trigger a 'workflow_dispatch' on a disabled workflow"
     assert not control_plane._is_transient_gh_failure(message)
 
+def test_disabled_workflow_dispatch_does_not_abort_other_targets(monkeypatch, tmp_path):
+    targets = [
+        Target("disabled.yml", 1.0),
+        Target("healthy.yml", 1.0),
+    ]
+    monkeypatch.setattr(control_plane, "TARGETS", tuple(targets))
+    monkeypatch.setattr(control_plane, "list_runs", lambda repo: [])
+    monkeypatch.setattr(control_plane, "current_main_sha", lambda repo: "current")
+
+    calls = []
+
+    def fake_dispatch(repo, target, epoch):
+        calls.append(target.workflow)
+        if target.workflow == "disabled.yml":
+            raise RuntimeError(
+                "gh command failed rc=1 (attempt 1/3): "
+                "could not create workflow dispatch event: HTTP 422: "
+                "Cannot trigger a 'workflow_dispatch' on a disabled workflow"
+            )
+        return 123
+
+    monkeypatch.setattr(control_plane, "dispatch_and_verify", fake_dispatch)
+    output = tmp_path / "control.json"
+
+    report = control_plane.run("owner/repo", output, max_dispatches_per_cycle=2)
+    decisions = {x["workflow"]: x for x in report["targets"]}
+
+    assert calls == ["disabled.yml", "healthy.yml"]
+    assert decisions["disabled.yml"]["decision"] == "HOLD"
+    assert decisions["disabled.yml"]["reason"] == "workflow_dispatch_target_disabled"
+    assert decisions["healthy.yml"]["decision"] == "DISPATCHED"
+    assert decisions["healthy.yml"]["dispatched_run_id"] == 123
+    assert report["control_plane_status"] == "EXECUTED_WITH_BLOCKERS"
+
