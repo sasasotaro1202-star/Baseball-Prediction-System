@@ -10,7 +10,7 @@ echo "=== Baseball 60m Pregame Auto Prediction ==="
 
 set -euo pipefail
 python -m py_compile prediction/pregame_scheduler.py
-python prediction/pregame_scheduler.py             --min-lead-minutes 50             --preferred-lead-minutes 60             --scan-ahead-minutes 60             --prediction-source AUTO_60M > pregame_scheduler.json
+python prediction/pregame_scheduler.py             --min-lead-minutes 50             --preferred-lead-minutes 60             --scan-ahead-minutes 180             --prediction-source AUTO_60M > pregame_scheduler.json
 cat pregame_scheduler.json
 python - <<'PY'
 import json
@@ -33,7 +33,12 @@ if any(row.get("status") == "RESEARCH_DUE" for row in obj.get("due_games", [])):
     raise SystemExit("research candidate leaked into production due_games")
 if any(row.get("prediction_eligibility") != "RESEARCH_ONLY_BLOCKED_UNTIL_OFFICIAL_STARTERS" for row in research_due):
     raise SystemExit("research candidate has unsafe production eligibility")
-all_due_dates = sorted(set(due_dates) | set(research_shadow_due_dates))
+production_due_dates = list(due_dates)
+all_due_dates = sorted(set(production_due_dates) | set(research_shadow_due_dates))
+Path("production_due_dates.txt").write_text(
+    "\n".join(str(x) for x in production_due_dates) + ("\n" if production_due_dates else ""),
+    encoding="utf-8",
+)
 Path("due_dates.txt").write_text(
     "\n".join(str(x) for x in all_due_dates) + ("\n" if all_due_dates else ""),
     encoding="utf-8",
@@ -85,15 +90,28 @@ fi
 while IFS= read -r date; do
   [ -n "$date" ] || continue
   echo "=== pregame production/shadow prediction: $date ==="
-  if [ -s research_shadow_due_dates.txt ] && grep -qxF "$date" research_shadow_due_dates.txt; then
-    python production_npb.py --date "$date" --data-dir data --pregame-only --research-shadow
-    output="results/npb_shadow_$date.json"
-  else
+  production_output="results/npb_production_$date.json"
+  shadow_output="results/npb_shadow_$date.json"
+  outputs=()
+
+  # Production and research-shadow lanes are independent even when they share
+  # the same JST game date. A shadow discovery must never displace a production
+  # forecast, and a shadow result must never be mislabeled as AUTO_60M.
+  if grep -qxF "$date" production_due_dates.txt; then
     python -m prediction.current_production --league NPB --date "$date" --data-dir data --pregame-only
-    output="results/npb_production_$date.json"
+    test -s "$production_output"
+    outputs+=("$production_output")
   fi
-  test -s "$output"
-  python - "$output" <<'PY'
+
+  if grep -qxF "$date" research_shadow_due_dates.txt; then
+    python production_npb.py --date "$date" --data-dir data --pregame-only --research-shadow \
+      --minimum-lead-minutes 0 --maximum-lead-minutes 180 --preferred-lead-minutes 60
+    test -s "$shadow_output"
+    outputs+=("$shadow_output")
+  fi
+
+  for output in "${outputs[@]}"; do
+    python - "$output" <<'PY'
 import json
 import sys
 from datetime import datetime
@@ -120,7 +138,9 @@ for pred in obj.get("predictions", []):
         raise SystemExit("prediction is not PIT PASS")
 print("Pregame PIT validation passed; automatic target is approximately 60m before first pitch.")
 PY
+  done
 done < due_dates.txt
+
 
 set -euo pipefail
 if [ ! -s due_dates.txt ]; then
@@ -129,7 +149,7 @@ fi
 python - <<'PY'
 import json
 from pathlib import Path
-for path in sorted(list(Path("results").glob("npb_production_*.json")) + list(Path("results").glob("npb_shadow_*.json"))):
+for path in sorted(Path("results").glob("npb_production_*.json")):
     obj = json.loads(path.read_text(encoding="utf-8"))
     if obj.get("execution_status") != "EXECUTED":
         continue
@@ -146,16 +166,13 @@ if [ ! -s due_dates.txt ]; then
 fi
 while IFS= read -r date; do
   [ -n "$date" ] || continue
-  output="results/npb_production_$date.json"
-  if [ ! -s "$output" ]; then
-    output="results/npb_shadow_$date.json"
+  production_output="results/npb_production_$date.json"
+  shadow_output="results/npb_shadow_$date.json"
+  if [ -s "$production_output" ]; then
+    python -m research.experience_ledger --archive "$production_output" --run-id "$GITHUB_RUN_ID"
   fi
-  if [ -s "$output" ]; then
-    if grep -q '"RESEARCH_SHADOW_EXECUTED"' "$output"; then
-      python -m research.shadow_experience --archive "$output" --run-id "$GITHUB_RUN_ID"
-    else
-      python -m research.experience_ledger --archive "$output" --run-id "$GITHUB_RUN_ID"
-    fi
+  if [ -s "$shadow_output" ]; then
+    python -m research.shadow_experience --archive "$shadow_output" --run-id "$GITHUB_RUN_ID"
   fi
 done < due_dates.txt
 
@@ -190,16 +207,13 @@ for attempt in 1 2 3; do
   # recovery only when it is still present in the workspace.
   while IFS= read -r date; do
     [ -n "$date" ] || continue
-    output="results/npb_production_$date.json"
-    if [ ! -s "$output" ]; then
-      output="results/npb_shadow_$date.json"
+    production_output="results/npb_production_$date.json"
+    shadow_output="results/npb_shadow_$date.json"
+    if [ -s "$production_output" ]; then
+      python -m research.experience_ledger --archive "$production_output" --run-id "$GITHUB_RUN_ID"
     fi
-    if [ -s "$output" ]; then
-      if grep -q '"RESEARCH_SHADOW_EXECUTED"' "$output"; then
-        python -m research.shadow_experience --archive "$output" --run-id "$GITHUB_RUN_ID"
-      else
-        python -m research.experience_ledger --archive "$output" --run-id "$GITHUB_RUN_ID"
-      fi
+    if [ -s "$shadow_output" ]; then
+      python -m research.shadow_experience --archive "$shadow_output" --run-id "$GITHUB_RUN_ID"
     fi
   done < due_dates.txt
 
