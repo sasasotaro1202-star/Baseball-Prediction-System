@@ -375,6 +375,19 @@ def test_research_prediction_rejects_unknown_competition_classification():
     with pytest.raises(ValueError, match="competition classification must be explicit"):
         router._validate_generated_output(payload, request, "VALIDATED_RESEARCH_SHADOW")
 
+
+def test_repository_policy_registers_mlb_research_preview_without_production_promotion():
+    policy = json.loads(
+        (Path(__file__).resolve().parents[1] / "config" / "prediction_request_policy.json")
+        .read_text(encoding="utf-8")
+    )
+    command = policy["competition_specific_research_commands"]["MLB"]
+    assert command[:3] == ["python", "-m", "prediction.mlb_research_preview"]
+    assert policy["output_paths"]["MLB"]["COMPETITION_SPECIFIC_RESEARCH_RUNTIME"].startswith(
+        "results/mlb_research_preview_"
+    )
+
+
 def test_mlb_research_preview_contract_is_explicitly_nonproduction():
     from prediction.mlb_research_preview import OUTPUT_SCHEMA, MODEL_VERSION
 
