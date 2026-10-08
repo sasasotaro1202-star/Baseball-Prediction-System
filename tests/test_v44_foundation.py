@@ -45,6 +45,8 @@ def test_metrics_and_multi_target_gate():
         calibration_ok=True,
         no_future_target_data=True,
         reproducible=True,
+        pit_starter_evidence_ok=True,
+        holdout_pit_starter_evidence_ok=True,
         baseline_score={"ScoreMAE": 2.0},
         candidate_score={"ScoreMAE": 1.9},
         baseline_hilo={"LogLoss": 0.60, "Brier": 0.20, "Accuracy": 0.70},
