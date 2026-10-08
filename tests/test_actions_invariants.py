@@ -435,3 +435,13 @@ def test_hardening_fast_gate_concurrency_isolated_by_ref():
     workflow = (ROOT / '.github/workflows/baseball_hardening_fast_gate.yml').read_text(encoding='utf-8')
     assert 'group: baseball-hardening-fast-gate-${{ github.event.pull_request.number || github.ref }}' in workflow
     assert 'group: baseball-hardening-fast-gate\n' not in workflow
+
+def test_pregame_auto_keeps_production_slot_and_three_hour_shadow_slot_separate():
+    script = (ROOT / "scripts/pregame_auto.sh").read_text(encoding="utf-8")
+    assert "--min-lead-minutes 50" in script
+    assert "--preferred-lead-minutes 60" in script
+    assert "--scan-ahead-minutes 180" in script
+    assert "--maximum-lead-minutes 180" in script
+    assert "RESEARCH_SHADOW_TODAY" in script
+    assert "AUTO_60M" in script
+    assert 'status not in {"EXECUTED", "RESEARCH_SHADOW_EXECUTED"}' in script
