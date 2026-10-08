@@ -51,3 +51,15 @@ def test_watchdog_does_not_dispatch_duplicate_when_current_sha_is_queued() -> No
     text = _text()
     assert 'current_pending_count=' in text
     assert 'Candidate OOS already has current-main queued/pending work; no duplicate dispatch.' in text
+def test_watchdog_cancels_evidence_stale_superseded_in_progress_runs_immediately() -> None:
+    text = _text()
+    assert 'if [[ "${sha}" != "${current_sha}" ]]' in text
+    assert 'is_non_runtime_only_change "${sha}"' in text
+    assert 'Cancelling evidence-stale superseded in-progress candidate run' in text
+    assert 'elif [[ "${age_minutes}" -ge 360 ]]' in text
+
+
+def test_watchdog_keeps_superseded_in_progress_for_continuity_only_changes() -> None:
+    text = _text()
+    assert 'Keeping superseded in-progress candidate run' in text
+    assert 'main moved only through non-runtime files.' in text
