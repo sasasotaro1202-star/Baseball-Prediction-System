@@ -429,3 +429,9 @@ def test_pregame_context_workflow_uses_pytest_runner():
     workflow = (ROOT / ".github/workflows/baseball_pregame_context.yml").read_text(encoding="utf-8")
     assert "python -m pytest -q tests/test_npb_pregame_context.py" in workflow
     assert "python -m unittest discover -s tests -p 'test_npb_pregame_context.py' -v" not in workflow
+
+
+def test_hardening_fast_gate_concurrency_isolated_by_ref():
+    workflow = (ROOT / '.github/workflows/baseball_hardening_fast_gate.yml').read_text(encoding='utf-8')
+    assert 'group: baseball-hardening-fast-gate-${{ github.event.pull_request.number || github.ref }}' in workflow
+    assert 'group: baseball-hardening-fast-gate\n' not in workflow
