@@ -1,8 +1,8 @@
-from dataclasses import asdict
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Autonomous baseball research controller with fixed promotion policy."""
 from __future__ import annotations
+from dataclasses import asdict
 import json, math, os
 from datetime import datetime, timezone
 from pathlib import Path
