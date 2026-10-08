@@ -555,3 +555,99 @@ def test_schedule_parser_ignores_navigation_team_links_before_schedule_heading(m
         "away": "横浜DeNAベイスターズ",
         "official_start_time": "18:00",
     }]
+
+def test_auto_60m_production_lane_remains_capped_when_shadow_scan_is_widened(monkeypatch):
+    _disable_external_research_discovery(monkeypatch)
+    monkeypatch.setattr(
+        scheduler,
+        "load_runtimes",
+        lambda: {
+            "NPB": {
+                "formal_adoption_status": "CURRENT_PRODUCTION",
+                "entrypoint": "production_npb",
+            }
+        },
+    )
+    monkeypatch.setattr(
+        scheduler,
+        "_schedule_for_date",
+        lambda target_date: [
+            {
+                "home": "読売ジャイアンツ",
+                "away": "阪神タイガース",
+                "official_start_time": "18:00",
+            }
+        ],
+    )
+    monkeypatch.setattr(scheduler, "_archived_prediction_keys", lambda target_date: set())
+    monkeypatch.setattr(scheduler, "_archived_prediction_sources", lambda target_date: set())
+    now = datetime(2026, 10, 1, 6, 0, tzinfo=timezone.utc)
+    result = scheduler.due_games(
+        now_utc=now,
+        min_lead_minutes=50.0,
+        preferred_lead_minutes=60.0,
+        scan_ahead_minutes=180.0,
+        prediction_source="AUTO_60M",
+    )
+    assert result["due_games"] == []
+    assert len(result["research_shadow_due_games"]) == 1
+    assert result["research_shadow_due_games"][0]["lead_minutes"] == 180.0
+
+
+def test_auto_60m_production_lane_allows_60m_but_not_61m(monkeypatch):
+    _disable_external_research_discovery(monkeypatch)
+    monkeypatch.setattr(
+        scheduler,
+        "load_runtimes",
+        lambda: {
+            "NPB": {
+                "formal_adoption_status": "CURRENT_PRODUCTION",
+                "entrypoint": "production_npb",
+            }
+        },
+    )
+    monkeypatch.setattr(
+        scheduler,
+        "_schedule_for_date",
+        lambda target_date: [
+            {
+                "home": "読売ジャイアンツ",
+                "away": "阪神タイガース",
+                "official_start_time": "18:00",
+            }
+        ],
+    )
+    monkeypatch.setattr(scheduler, "_archived_prediction_keys", lambda target_date: set())
+    monkeypatch.setattr(scheduler, "_archived_prediction_sources", lambda target_date: set())
+    now = datetime(2026, 10, 1, 8, 0, tzinfo=timezone.utc)
+    result = scheduler.due_games(
+        now_utc=now,
+        min_lead_minutes=50.0,
+        preferred_lead_minutes=60.0,
+        scan_ahead_minutes=180.0,
+        prediction_source="AUTO_60M",
+    )
+    assert len(result["due_games"]) == 1
+    assert result["due_games"][0]["lead_minutes"] == 60.0
+    assert len(result["research_shadow_due_games"]) == 1
+    assert result["research_shadow_due_games"][0]["lead_minutes"] == 60.0
+
+    # One minute earlier is intentionally outside the AUTO_60M production
+    # window but remains eligible for the broader research-shadow lane.
+    monkeypatch.setattr(
+        scheduler, "_archived_prediction_keys", lambda target_date: set()
+    )
+    monkeypatch.setattr(
+        scheduler, "_archived_prediction_sources", lambda target_date: set()
+    )
+    now_61 = datetime(2026, 10, 1, 7, 59, tzinfo=timezone.utc)
+    result_61 = scheduler.due_games(
+        now_utc=now_61,
+        min_lead_minutes=50.0,
+        preferred_lead_minutes=60.0,
+        scan_ahead_minutes=180.0,
+        prediction_source="AUTO_60M",
+    )
+    assert result_61["due_games"] == []
+    assert len(result_61["research_shadow_due_games"]) == 1
+    assert result_61["research_shadow_due_games"][0]["lead_minutes"] == 61.0
