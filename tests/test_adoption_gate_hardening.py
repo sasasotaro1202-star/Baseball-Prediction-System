@@ -204,3 +204,33 @@ def test_adoption_gate_cannot_be_weakened_by_disabling_uncertainty_check():
     )
     assert result["decision"] == "REJECT"
     assert "uncertainty_check_missing" in result["reasons"]
+
+def test_holdout_stability_uses_holdout_period_count_not_development_window_count():
+    from research.adoption_gate import evaluate_locked_holdout
+
+    result = evaluate_locked_holdout(
+        {"rows": 300, "LogLoss": 0.70, "Brier": 0.50, "Accuracy": 0.55},
+        {"rows": 300, "LogLoss": 0.67, "Brier": 0.49, "Accuracy": 0.56},
+        validation_windows=70,
+        calibration_ok=True,
+        no_future_target_data=True,
+        reproducible=True,
+        baseline_score={"ScoreMAE": 2.0},
+        candidate_score={"ScoreMAE": 1.9},
+        baseline_hilo={"LogLoss": 0.60, "Brier": 0.40, "Accuracy": 0.60},
+        candidate_hilo={"LogLoss": 0.59, "Brier": 0.39, "Accuracy": 0.61},
+        league="MLB",
+        pit_starter_evidence_ok=True,
+        holdout_pit_starter_evidence_ok=True,
+        holdout_uncertainty={
+            "improvement_ci95": {"LogLoss": [0.005, 0.04]},
+            "p_improvement_positive": {"LogLoss": 0.97},
+        },
+        evaluation_periods=[
+            {"baseline_LogLoss": 0.71, "candidate_LogLoss": 0.69},
+            {"baseline_LogLoss": 0.69, "candidate_LogLoss": 0.68},
+        ],
+    )
+    assert "insufficient_evaluation_periods" not in result["reasons"]
+    assert result["decision"] == "ADOPT"
+
