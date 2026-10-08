@@ -435,11 +435,11 @@ def reconcile_shadow() -> dict[str, Any]:
         return float(values.mean())
 
     def metrics(frame: pd.DataFrame) -> dict[str, Any]:
-        probs = p[frame.index] if set(frame.index).issubset(set(matched.index)) else None
-        if probs is None:
-            pp = to_unit(frame[["home_win_pct", "draw_pct", "away_win_pct"]].to_numpy(float))
-        else:
-            pp = probs
+        # Always derive probabilities from the frame itself. The frame is sorted
+        # and de-duplicated before metrics are computed, so indexing into the
+        # pre-sort probability array can silently pair the wrong probability with
+        # the wrong outcome.
+        pp = to_unit(frame[["home_win_pct", "draw_pct", "away_win_pct"]].to_numpy(float))
         yy = frame["actual_outcome"].map({"HOME_WIN": 0, "DRAW": 1, "AWAY_WIN": 2}).to_numpy(int)
         return {
             "rows": int(len(frame)),
