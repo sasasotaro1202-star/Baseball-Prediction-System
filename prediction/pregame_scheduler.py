@@ -440,6 +440,7 @@ def due_games(
     research_shadow_due: list[dict] = []
     # NPB research-shadow discovery is independent of production runtime eligibility.
     # This lane must continue collecting PIT-safe future-game evidence even when
+    # Keep shadow discovery independent from current-production eligibility.
     # NPB production is enabled, blocked, or otherwise unavailable.
     for target_date in sorted(dates):
         try:
