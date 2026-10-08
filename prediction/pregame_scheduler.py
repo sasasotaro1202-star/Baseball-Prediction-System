@@ -371,6 +371,13 @@ def due_games(
 
     due: list[dict] = []
     research_due: list[dict] = []
+    # AUTO_60M keeps the production lane hard-capped at 50-60 minutes even
+    # when the caller widens scan_ahead_minutes for research-shadow discovery.
+    production_scan_ahead = (
+        min(float(scan_ahead_minutes), 60.0)
+        if str(prediction_source or "").strip() == "AUTO_60M"
+        else float(scan_ahead_minutes)
+    )
     research_errors: list[dict] = []
     research_scope_error = None
     try:
@@ -408,7 +415,7 @@ def due_games(
                     and (game["home"], game["away"], source_key) in archived_sources
                 )
                 if (
-                    float(min_lead_minutes) < lead <= float(scan_ahead_minutes)
+                    float(min_lead_minutes) < lead <= production_scan_ahead
                     and (game["home"], game["away"], cutoff_iso) not in archived
                     and not already_sourced
                 ):
