@@ -408,7 +408,7 @@ def test_mlb_preview_schedule_rows_include_backtest_league_key(monkeypatch):
                     "date": "2026-10-09",
                     "games": [{
                         "gamePk": 123,
-                        "gameDate": "2026-10-09T23:00:00Z",
+                        "gameDate": "2026-10-09T05:00:00Z",
                         "status": {"abstractGameState": "Preview"},
                         "gameType": "R",
                         "seriesDescription": "Regular Season",
