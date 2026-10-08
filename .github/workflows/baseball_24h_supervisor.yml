@@ -174,9 +174,12 @@ jobs:
           control_plane_reason=
           if [ "$control_plane_active" -gt 0 ]; then
             echo "Autonomous Control Plane active; bootstrap not required."
-          elif [ "$control_plane_dispatch_count" -ge 3 ]; then
-            echo "Control Plane bootstrap daily cap reached ($control_plane_dispatch_count/3); preserving state."
-            printf '%s\n' 'Control Plane terminal state: BOOTSTRAP_DAILY_CAP.' >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$control_plane_dispatch_count" -ge 3 ] && [ "$control_plane_latest_age_minutes" -lt 120 ]; then
+            # A long liveness gap must remain recoverable even when earlier
+            # bootstrap attempts consumed the normal 24h budget. The 120-minute
+            # cooldown prevents a broken registration from becoming a dispatch loop.
+            echo "Control Plane bootstrap cooldown active: $control_plane_dispatch_count dispatches/24h but latest run is only $control_plane_latest_age_minutes m old."
+            printf '%s\n' 'Control Plane terminal state: BOOTSTRAP_COOLDOWN.' >> "$GITHUB_STEP_SUMMARY"
           elif [ -z "$control_plane_latest_id" ]; then
             control_plane_dispatch=1
             control_plane_reason='no control-plane run observed on main'
@@ -474,6 +477,144 @@ jobs:
             echo "Candidate OOS already active; no recovery dispatch required."
           fi
 
+          # Recover lightweight monitoring lanes whose normal schedules
+          # have been absent for longer than two hours. Deterministic failures
+          # remain authoritative; only missing/stale-success scheduler gaps are
+          # eligible, and each lane has its own two-hour dispatch cooldown.
+          RECOVERY_STALE_MINUTES=120
+          RECOVERY_COOLDOWN_MINUTES=120
+
+          CANDIDATE_WATCHDOG_WORKFLOW=baseball_candidate_oos_watchdog.yml
+          test -s ".github/workflows/$CANDIDATE_WATCHDOG_WORKFLOW"
+          candidate_watchdog_runs="$(gh_retry run list --repo "$GH_REPO" --workflow "$CANDIDATE_WATCHDOG_WORKFLOW" --branch main --limit 30 --json databaseId,status,conclusion,createdAt,updatedAt,headSha,event)"
+          candidate_watchdog_active="$(printf '%s' "$candidate_watchdog_runs" | jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+          if [ "$candidate_watchdog_active" -eq 0 ]; then
+            candidate_watchdog_latest="$(printf '%s' "$candidate_watchdog_runs" | jq -c 'sort_by(.createdAt) | last // {}')"
+            candidate_watchdog_created="$(printf '%s' "$candidate_watchdog_latest" | jq -r '.createdAt // empty')"
+            candidate_watchdog_conclusion="$(printf '%s' "$candidate_watchdog_latest" | jq -r '.conclusion // empty')"
+            candidate_watchdog_age_minutes=999999
+            if [ -n "$candidate_watchdog_created" ]; then
+              candidate_watchdog_age_minutes=$(( (now_epoch - $(date -d "$candidate_watchdog_created" +%s)) / 60 ))
+            fi
+            candidate_watchdog_last_dispatch_created="$(printf '%s' "$candidate_watchdog_runs" | jq -r '[.[] | select(.event == "workflow_dispatch")] | sort_by(.createdAt) | reverse | .[0].createdAt // empty')"
+            candidate_watchdog_dispatch_age_minutes=999999
+            if [ -n "$candidate_watchdog_last_dispatch_created" ]; then
+              candidate_watchdog_dispatch_age_minutes=$(( (now_epoch - $(date -d "$candidate_watchdog_last_dispatch_created" +%s)) / 60 ))
+            fi
+
+            candidate_watchdog_dispatch=0
+            candidate_watchdog_reason=""
+            if [ -z "$candidate_watchdog_created" ]; then
+              candidate_watchdog_dispatch=1
+              candidate_watchdog_reason="no candidate watchdog run observed"
+            elif [ "$candidate_watchdog_conclusion" = "success" ] && [ "$candidate_watchdog_age_minutes" -ge "$RECOVERY_STALE_MINUTES" ]; then
+              if [ "$candidate_watchdog_dispatch_age_minutes" -ge "$RECOVERY_COOLDOWN_MINUTES" ]; then
+                candidate_watchdog_dispatch=1
+                candidate_watchdog_reason="candidate watchdog success is stale at $candidate_watchdog_age_minutes m"
+              else
+                echo "Candidate watchdog recovery cooldown active: last workflow_dispatch $candidate_watchdog_dispatch_age_minutes m ago."
+              fi
+            elif [ "$candidate_watchdog_conclusion" != "success" ] && [ -n "$candidate_watchdog_conclusion" ]; then
+              echo "Candidate watchdog terminal state $candidate_watchdog_conclusion remains authoritative; no speculative retry."
+            fi
+
+            if [ "$candidate_watchdog_dispatch" -eq 1 ]; then
+              dispatch_epoch="$(date +%s)"
+              echo "Dispatching candidate watchdog: $candidate_watchdog_reason"
+              gh_retry workflow run "$CANDIDATE_WATCHDOG_WORKFLOW" --repo "$GH_REPO" --ref main
+              verified_candidate_watchdog=0
+              new_candidate_watchdog_run_id=""
+              for attempt in 1 2 3 4 5; do
+                sleep 3
+                recovery_runs_after="$(gh_retry api "repos/$GH_REPO/actions/runs?branch=main&per_page=100")"
+                new_candidate_watchdog_run_id="$(printf "%s" "$recovery_runs_after" |
+                  jq -r --arg workflow "$CANDIDATE_WATCHDOG_WORKFLOW" --argjson cutoff "$dispatch_epoch" '
+                    [.workflow_runs[]
+                     | select(.path == (".github/workflows/" + $workflow))
+                     | select(.head_branch == "main")
+                     | select(.event == "workflow_dispatch")
+                     | select((.created_at | fromdateiso8601) >= $cutoff)
+                    ] | sort_by(.created_at) | reverse | .[0].id // empty')"
+                echo "Candidate watchdog recovery verification $attempt/5: run_id=$new_candidate_watchdog_run_id"
+                if [ -n "$new_candidate_watchdog_run_id" ]; then
+                  verified_candidate_watchdog=1
+                  break
+                fi
+              done
+              if [ "$verified_candidate_watchdog" -ne 1 ]; then
+                echo "Candidate watchdog dispatch accepted but no new run was observed." >&2
+                exit 1
+              fi
+            fi
+          else
+            echo "Candidate watchdog already active; no recovery dispatch."
+          fi
+
+          PRODUCTION_RUNTIME_HEALTH_WORKFLOW=baseball-production-runtime-health.yml
+          test -s ".github/workflows/$PRODUCTION_RUNTIME_HEALTH_WORKFLOW"
+          runtime_health_runs="$(gh_retry run list --repo "$GH_REPO" --workflow "$PRODUCTION_RUNTIME_HEALTH_WORKFLOW" --branch main --limit 30 --json databaseId,status,conclusion,createdAt,updatedAt,headSha,event)"
+          runtime_health_active="$(printf '%s' "$runtime_health_runs" | jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
+          if [ "$runtime_health_active" -eq 0 ]; then
+            runtime_health_latest="$(printf '%s' "$runtime_health_runs" | jq -c 'sort_by(.createdAt) | last // {}')"
+            runtime_health_created="$(printf '%s' "$runtime_health_latest" | jq -r '.createdAt // empty')"
+            runtime_health_conclusion="$(printf '%s' "$runtime_health_latest" | jq -r '.conclusion // empty')"
+            runtime_health_age_minutes=999999
+            if [ -n "$runtime_health_created" ]; then
+              runtime_health_age_minutes=$(( (now_epoch - $(date -d "$runtime_health_created" +%s)) / 60 ))
+            fi
+            runtime_health_last_dispatch_created="$(printf '%s' "$runtime_health_runs" | jq -r '[.[] | select(.event == "workflow_dispatch")] | sort_by(.createdAt) | reverse | .[0].createdAt // empty')"
+            runtime_health_dispatch_age_minutes=999999
+            if [ -n "$runtime_health_last_dispatch_created" ]; then
+              runtime_health_dispatch_age_minutes=$(( (now_epoch - $(date -d "$runtime_health_last_dispatch_created" +%s)) / 60 ))
+            fi
+
+            runtime_health_dispatch=0
+            runtime_health_reason=""
+            if [ -z "$runtime_health_created" ]; then
+              runtime_health_dispatch=1
+              runtime_health_reason="no production runtime health run observed"
+            elif [ "$runtime_health_conclusion" = "success" ] && [ "$runtime_health_age_minutes" -ge "$RECOVERY_STALE_MINUTES" ]; then
+              if [ "$runtime_health_dispatch_age_minutes" -ge "$RECOVERY_COOLDOWN_MINUTES" ]; then
+                runtime_health_dispatch=1
+                runtime_health_reason="production runtime health success is stale at $runtime_health_age_minutes m"
+              else
+                echo "Production runtime health recovery cooldown active: last workflow_dispatch $runtime_health_dispatch_age_minutes m ago."
+              fi
+            elif [ "$runtime_health_conclusion" != "success" ] && [ -n "$runtime_health_conclusion" ]; then
+              echo "Production runtime health terminal state $runtime_health_conclusion remains authoritative; no speculative retry."
+            fi
+
+            if [ "$runtime_health_dispatch" -eq 1 ]; then
+              dispatch_epoch="$(date +%s)"
+              echo "Dispatching production runtime health: $runtime_health_reason"
+              gh_retry workflow run "$PRODUCTION_RUNTIME_HEALTH_WORKFLOW" --repo "$GH_REPO" --ref main
+              verified_runtime_health=0
+              new_runtime_health_run_id=""
+              for attempt in 1 2 3 4 5; do
+                sleep 3
+                recovery_runs_after="$(gh_retry api "repos/$GH_REPO/actions/runs?branch=main&per_page=100")"
+                new_runtime_health_run_id="$(printf "%s" "$recovery_runs_after" |
+                  jq -r --arg workflow "$PRODUCTION_RUNTIME_HEALTH_WORKFLOW" --argjson cutoff "$dispatch_epoch" '
+                    [.workflow_runs[]
+                     | select(.path == (".github/workflows/" + $workflow))
+                     | select(.head_branch == "main")
+                     | select(.event == "workflow_dispatch")
+                     | select((.created_at | fromdateiso8601) >= $cutoff)
+                    ] | sort_by(.created_at) | reverse | .[0].id // empty')"
+                echo "Production runtime health recovery verification $attempt/5: run_id=$new_runtime_health_run_id"
+                if [ -n "$new_runtime_health_run_id" ]; then
+                  verified_runtime_health=1
+                  break
+                fi
+              done
+              if [ "$verified_runtime_health" -ne 1 ]; then
+                echo "Production runtime health dispatch accepted but no new run was observed." >&2
+                exit 1
+              fi
+            fi
+          else
+            echo "Production runtime health already active; no recovery dispatch."
+          fi
           active_count="$(gh_retry run list             --repo "${GH_REPO}"             --workflow "${TARGET_WORKFLOW}"             --limit 30             --json status             --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .status == "in_progress")] | length')"
           echo "Active canonical closed-loop runs after Candidate OOS recovery: ${active_count}"
 
