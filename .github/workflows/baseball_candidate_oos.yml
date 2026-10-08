@@ -38,10 +38,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: baseball-candidate-oos
-  # Candidate OOS is expensive evidence generation. Never interrupt a running
-  # validation; a newer pending cycle can take the next slot.
-  cancel-in-progress: false
+  group: baseball-candidate-oos-${{ github.ref }}
+  # A candidate replay is valid only for its checked-out evidence snapshot.
+  # When a newer evidence-affecting main commit triggers a replacement run,
+  # cancel the stale replay instead of keeping it in an hours-long queue.
+  # Within one run, NPB/MLB matrix legs still execute concurrently.
+  cancel-in-progress: true
 
 env:
   PYTHONPATH: .
