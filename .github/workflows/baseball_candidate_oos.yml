@@ -227,7 +227,7 @@ jobs:
               # Append-only experience and current PIT observations are
               # continuity data. They do not modify the candidate computation,
               # candidate selection, or locked evaluation snapshot.
-              data/experience/*|data/pit/*|tests/*|.github/workflows/baseball_candidate_oos_watchdog.yml)
+              tests/*|.github/workflows/baseball_candidate_oos_watchdog.yml)
                 echo "Allowed non-runtime main update: $path"
                 ;;
               *)
