@@ -228,6 +228,7 @@ def _default_output_template(competition_id: str, lane: str) -> str | None:
         ("NPB", "VALIDATED_RESEARCH_SHADOW"): "results/npb_shadow_{target_date}.json",
         ("MLB", "CURRENT_PRODUCTION_RUNTIME"): "results/mlb_production_{target_date}.json",
         ("MLB", "VALIDATED_RESEARCH_SHADOW"): "results/mlb_shadow_{target_date}.json",
+        ("MLB", "COMPETITION_SPECIFIC_RESEARCH_RUNTIME"): "results/mlb_research_preview_{target_date}.json",
     }
     return prefixes.get((str(competition_id).upper(), str(lane)))
 
