@@ -293,7 +293,7 @@ jobs:
           if run.get("execution_status") != "EXECUTED":
               raise SystemExit("lifecycle did not execute successfully")
           if stage == "locked_holdout_evaluated":
-              holdout_path = Path("$" + "{HOLDOUT_ARTIFACT}")
+              holdout_path = Path("results/npb_locked_holdout.json" if league == "NPB" else "results/mlb_locked_holdout.json")
               if not holdout_path.is_file() or holdout_path.stat().st_size == 0:
                   raise SystemExit("locked holdout stage was reported but holdout artifact is missing")
           elif stage == "development_evaluated" and decision == "NO_CHANGE":
