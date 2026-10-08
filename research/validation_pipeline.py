@@ -52,9 +52,7 @@ def run_validation_pipeline(
         **{
             **asdict(policy),
             "require_uncertainty_check": True,
-            "require_pit_starter_evidence": bool(
-                policy.require_pit_starter_evidence or league == "MLB"
-            ),
+            "require_pit_starter_evidence": True,
             "require_evaluation_period_stability": True,
         }
     )
