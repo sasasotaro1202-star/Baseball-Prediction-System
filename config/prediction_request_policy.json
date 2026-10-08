@@ -54,14 +54,28 @@
     "research_shadow": "Explicit research lane only; never changes Champion/Production state.",
     "unknown_competition": "Must fail closed.",
     "missing_output": "Must fail closed; never substitute an independently generated forecast.",
-    "fast_mode": "Fast user requests use a dedicated wrapper that defers observation-only NPB enrichment; the canonical probability/PIT path is unchanged."
+    "fast_mode": "Fast user requests use a dedicated wrapper that defers observation-only NPB enrichment; the canonical probability/PIT path is unchanged.",
+    "competition_specific_research_runtime": "Explicit competition-specific research only; never promotes or substitutes for missing production runtime."
   },
   "max_verified_cache_age_seconds": 900,
   "output_paths": {
     "NPB": {
       "CURRENT_PRODUCTION_RUNTIME": "results/npb_production_{target_date}.json",
       "VALIDATED_RESEARCH_SHADOW": "results/npb_shadow_{target_date}.json"
+    },
+    "MLB": {
+      "COMPETITION_SPECIFIC_RESEARCH_RUNTIME": "results/mlb_research_preview_{target_date}.json"
     }
   },
-  "competition_specific_research_commands": {}
+  "competition_specific_research_commands": {
+    "MLB": [
+      "python",
+      "-m",
+      "prediction.mlb_research_preview",
+      "--date",
+      "{target_date}",
+      "--data-dir",
+      "data"
+    ]
+  }
 }
