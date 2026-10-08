@@ -162,10 +162,13 @@ def test_candidate_oos_fails_closed_on_incomplete_evidence():
 
     assert "- name: Verify candidate evidence completeness" in text
     assert 'test -s results/real_data_validation.json' in text
-    assert 'test -s results/npb_candidate_development.json' in text
-    assert 'test -s results/npb_locked_holdout.json' in text
-    assert 'test -s results/mlb_candidate_development.json' in text
-    assert 'test -s results/mlb_locked_holdout.json' in text
+    assert 'test -s "$DEV_ARTIFACT"' in text
+    assert 'stage == "locked_holdout_evaluated"' in text
+    assert 'decision == "NO_CHANGE"' in text
+    assert 'results/npb_candidate_development.json' in text
+    assert 'results/npb_locked_holdout.json' in text
+    assert 'results/mlb_candidate_development.json' in text
+    assert 'results/mlb_locked_holdout.json' in text
     assert "if-no-files-found: error" in text
     assert "if-no-files-found: warn" not in text
 
@@ -416,15 +419,14 @@ def test_canonical_actions_recovery_accepts_only_workflow_run_events():
 
 
 
-def test_candidate_oos_treats_only_append_only_pit_updates_as_continuity():
+def test_candidate_oos_invalidates_pit_observation_drift():
     workflow = (ROOT / ".github/workflows/baseball_candidate_oos.yml").read_text(encoding="utf-8")
     watchdog = (ROOT / ".github/workflows/baseball_candidate_oos_watchdog.yml").read_text(encoding="utf-8")
 
-    # PIT acquisition is append-only continuity evidence and is not consumed as
-    # a candidate model input in this replay configuration. Result artifacts must
-    # never be treated as continuity because they can alter evaluation evidence.
-    assert "data/pit/**" in workflow
-    assert "data/pit/**" in watchdog
+    # PIT is evidence-affecting. A changed ledger must supersede a queued or
+    # running candidate snapshot rather than mixing PIT states across evidence.
+    assert "data/pit/**" not in workflow
+    assert "data/pit/**" not in watchdog
     assert "results/*" not in workflow
     assert "results/*" not in watchdog
 
