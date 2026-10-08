@@ -54,3 +54,12 @@ def test_development_selection_returns_none_when_all_fail_calibration():
         "BadB": {"Accuracy": 0.55, "LogLoss": 0.73, "Brier": 0.49, "ECE": 0.050},
     }
     assert _select_development_candidate(development, baseline, 0.005) is None
+
+def test_npb_candidate_replay_propagates_holdout_starter_pit_evidence():
+    import inspect
+    from research import npb_candidate_replay
+
+    source = inspect.getsource(npb_candidate_replay.run_npb_candidate_cycle)
+    assert "holdout_pit_starter_evidence_ok=starter_pit_safe" in source
+    assert '"holdout_starter_pit_evidence_ok": bool(starter_pit_safe)' in source
+
