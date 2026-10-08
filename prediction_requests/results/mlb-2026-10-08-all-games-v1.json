@@ -1,0 +1,33 @@
+{
+  "schema_version": "baseball-user-prediction-result-v1",
+  "request_id": "mlb-2026-10-08-all-games-v1",
+  "request_fingerprint": "06cbc12c9a80382df69a1d679d61835c12bc5d80908ebbe399cdd1f49b538c17",
+  "request": {
+    "schema_version": "baseball-prediction-request-v1",
+    "request_id": "mlb-2026-10-08-all-games-v1",
+    "competition_id": "MLB",
+    "target_date": "2026-10-08",
+    "requested_at_utc": "2026-10-08T13:25:00Z",
+    "force_refresh": true
+  },
+  "target_date": "2026-10-08",
+  "competition_id": "MLB",
+  "source_repository": "sasasotaro1202-star/Baseball-Prediction-System",
+  "source_commit": "7838d0e014e9d9ba9647b6bf12eecf3ba4e994e7",
+  "generation_lane": "COMPETITION_SPECIFIC_RESEARCH_RUNTIME",
+  "generation_status": "NO_FUTURE_GAMES",
+  "generated_at_utc": "2026-10-08T13:30:55.736060+00:00",
+  "reused_from_request_id": null,
+  "prediction_output": {
+    "schema_version": "baseball-mlb-research-preview-v1",
+    "target_date": "2026-10-08",
+    "execution_status": "NO_FUTURE_GAMES",
+    "scope": "RESEARCH_SHADOW",
+    "production_eligibility": false,
+    "pit_status": "UNVERIFIABLE",
+    "prediction_cutoff": "2026-10-08T13:30:00.479165+00:00",
+    "schedule_available_at": "2026-10-08T13:30:55.571866+00:00",
+    "history_rows": 18130,
+    "predictions": []
+  }
+}
