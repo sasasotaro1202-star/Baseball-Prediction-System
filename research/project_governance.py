@@ -52,7 +52,9 @@ WORKFLOW_CONTRACTS: dict[str, dict[str, Any]] = {
     ".github/workflows/baseball_candidate_oos.yml": {
         "monitor": False,
         "max_age_hours": 0,
-        "required": ("schedule:", "cancel-in-progress: false"),
+        # Candidate OOS is evidence-snapshot scoped: a newer run replaces stale
+        # work instead of allowing an old evidence snapshot to occupy the queue.
+        "required": ("schedule:", "cancel-in-progress: true"),
     },
     ".github/workflows/baseball-production-runtime-health.yml": {
         "monitor": True,
