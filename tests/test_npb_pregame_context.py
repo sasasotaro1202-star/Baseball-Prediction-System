@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pandas as pd
 
@@ -258,3 +259,13 @@ def test_parse_monthly_schedule_falls_back_to_non_table_game_blocks():
     assert len(rows) == 2
     assert rows[0]["home"] == "東京ヤクルトスワローズ"
     assert rows[0]["away"] == "広島東洋カープ"
+
+def test_pregame_workflow_does_not_escape_jst_date_expression():
+    workflow = (
+        Path(__file__).resolve().parents[1]
+        / ".github"
+        / "workflows"
+        / "baseball_pregame_context.yml"
+    ).read_text(encoding="utf-8")
+    assert '--date "\\${{ github.event.inputs.date || steps.date.outputs.date }}"' not in workflow
+    assert '--date "${{ github.event.inputs.date || steps.date.outputs.date }}"' in workflow
