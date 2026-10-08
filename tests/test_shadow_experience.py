@@ -316,6 +316,12 @@ def test_shadow_reconcile_keeps_horizon_breakdown_case_level(tmp_path, monkeypat
     assert summary["by_horizon"]["30_TO_60M"]["rows"] == 1
     assert set(summary["canonical_by_horizon"]) == {"30_TO_60M"}
     assert summary["canonical_by_horizon"]["30_TO_60M"]["rows"] == 1
+    assert summary["evaluation_quality"]["canonical_cases"] == 1
+    assert summary["evaluation_quality"]["snapshot_rows"] == 2
+    assert summary["evaluation_quality"]["formal_oos_min_rows"] == 200
+    assert summary["evaluation_quality"]["formal_oos_sample_sufficient"] is False
+    assert summary["evaluation_quality"]["status"] == "INSUFFICIENT_CANONICAL_SAMPLE"
+    assert summary["evaluation_quality"]["snapshot_duplicate_rate"] == 0.5
 
 
 def test_shadow_reconcile_reports_current_method_separately(tmp_path, monkeypatch):
@@ -435,3 +441,49 @@ def test_archive_does_not_create_empty_file_for_pre_epoch_snapshot(tmp_path, mon
     result = shadow.archive_shadow_output(input_path, run_id="r1")
     assert result == {"archived": 0, "skipped": 0, "updated": 0}
     assert not (root / "predictions").exists()
+
+def test_shadow_reconcile_does_not_turn_missing_score_inputs_into_failures(tmp_path, monkeypatch):
+    root = tmp_path / "research_shadow"
+    pred_dir = root / "predictions"
+    pred_dir.mkdir(parents=True)
+    monkeypatch.setattr(shadow, "SHADOW_ROOT", root)
+    monkeypatch.setattr(shadow, "PRED_DIR", pred_dir)
+    monkeypatch.setattr(shadow, "LEDGER_PATH", root / "shadow_experience_ledger.csv")
+    monkeypatch.setattr(shadow, "LEDGER_JSONL", root / "shadow_experience_ledger.jsonl")
+    monkeypatch.setattr(shadow, "SUMMARY_PATH", root / "shadow_experience_summary.json")
+    monkeypatch.setattr(shadow, "CURRENT_METHOD_SUMMARY_PATH", root / "current_method_performance.json")
+
+    row = dict(_prediction()["predictions"][0])
+    row["prediction_id"] = "missing-score"
+    row.pop("lambda_home", None)
+    row.pop("lambda_away", None)
+    row.pop("top4_exact_scores", None)
+    pred_dir.joinpath("2026-10-03.jsonl").write_text(
+        json.dumps(row, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        shadow,
+        "_load_cached_results",
+        lambda dates: pd.DataFrame([{
+            "date": "2026-10-03",
+            "home": "東京ヤクルトスワローズ",
+            "away": "読売ジャイアンツ",
+            "home_score": 3,
+            "away_score": 2,
+            "source_url": "test://npb",
+        }]),
+    )
+
+    summary = shadow.reconcile_shadow()
+    assert summary["status"] == "UPDATED"
+    metrics = summary["canonical_metrics"]
+    assert metrics["score_evaluable_rows"] == 0
+    assert metrics["top1_evaluable_rows"] == 0
+    assert metrics["top4_evaluable_rows"] == 0
+    assert metrics["score_mae"] is None
+    assert metrics["top1_exact_hit_rate"] is None
+    assert metrics["top4_exact_hit_rate"] is None
+
+
