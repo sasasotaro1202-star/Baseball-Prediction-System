@@ -76,11 +76,11 @@ jobs:
             exit 0
           fi
 
-          # Candidate OOS may survive only non-runtime continuity updates between
-          # queue time and job start: append-only historical experience data,
-          # tests, or this watchdog's control-plane workflow. Candidate runtime,
-          # configuration, PIT, evaluation, or other data changes remain evidence-
-          # affecting and fail closed.
+          # Candidate OOS may survive only explicitly non-evidence continuity
+          # updates between queue time and job start: tests or this watchdog's
+          # control-plane workflow. Candidate runtime, configuration, PIT,
+          # results, experience, evaluation, or other data changes remain
+          # evidence-affecting and fail closed.
           mapfile -t changed_files < <(git diff --name-only "$EXPECTED_REF" "$current_main")
           if [ "${#changed_files[@]}" -eq 0 ]; then
             echo "Unable to determine main-branch changes." >&2
@@ -90,10 +90,9 @@ jobs:
           unexpected=0
           for path in "${changed_files[@]}"; do
             case "$path" in
-              # Candidate OOS is a historical/research snapshot. Current PIT
-              # acquisition observations are continuity data collected by the
-              # control plane and are not candidate model inputs, so they must
-              # not invalidate an otherwise reproducible OOS replay.
+              # Only non-evidence continuity changes may preserve an OOS run.
+              # PIT, results, experience, runtime, configuration and evaluation
+              # changes invalidate the snapshot and require a fresh replay.
               tests/*|.github/workflows/baseball_candidate_oos_watchdog.yml)
                 echo "Allowed non-runtime main update: $path"
                 ;;
