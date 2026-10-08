@@ -43,6 +43,7 @@ def test_candidate_oos_allows_only_non_evidence_continuity_updates():
     assert continuity_pattern in start_check
     assert continuity_pattern in end_check
     assert 'Evidence-affecting main update detected' in workflow
+    assert 'Candidate OOS snapshot is no longer evidence-current' in workflow
     assert 'refusing mixed-snapshot evidence' in workflow
 
 
