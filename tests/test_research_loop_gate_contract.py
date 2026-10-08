@@ -11,6 +11,7 @@ def test_research_loop_uses_formal_adoption_gate():
     assert PROMOTION_GATE["min_oos_rows"] == gate.min_oos_rows
     assert PROMOTION_GATE["min_non_worsening_period_fraction"] == gate.min_non_worsening_period_fraction
     assert PROMOTION_GATE["holdout_selection_forbidden"] is True
+    assert PROMOTION_GATE["require_pit_starter_evidence"] is True
 
 
 def test_research_loop_gate_is_not_weaker_than_reference_policy():
