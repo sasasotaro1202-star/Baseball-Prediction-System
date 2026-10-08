@@ -1224,6 +1224,11 @@ def predict(
             if maximum_lead_minutes is not None
             else (60.0 if pregame_only else None)
         )
+        # Production pregame execution is hard-capped at 60 minutes even when
+        # a caller supplies a wider bound. Only the explicit research-shadow
+        # lane may request the wider three-hour discovery window.
+        if pregame_only and not research_shadow and effective_maximum_lead is not None:
+            effective_maximum_lead = min(effective_maximum_lead, 60.0)
         effective_preferred_lead = (
             float(preferred_lead_minutes)
             if preferred_lead_minutes is not None
@@ -1805,6 +1810,9 @@ def main():
         action="store_true",
         help="Explicit research-only PIT-safe forecast lane; never unlocks production.",
     )
+    ap.add_argument("--minimum-lead-minutes", type=float, default=None)
+    ap.add_argument("--maximum-lead-minutes", type=float, default=None)
+    ap.add_argument("--preferred-lead-minutes", type=float, default=None)
     args=ap.parse_args()
     print(json.dumps(
         predict(
@@ -1812,8 +1820,17 @@ def main():
             args.data_dir,
             pregame_only=args.pregame_only,
             research_shadow=args.research_shadow,
-            minimum_lead_minutes=(0.0 if args.research_shadow and not args.pregame_only else None),
-            preferred_lead_minutes=(60.0 if args.pregame_only else None),
+            minimum_lead_minutes=(
+                args.minimum_lead_minutes
+                if args.minimum_lead_minutes is not None
+                else (0.0 if args.research_shadow and not args.pregame_only else None)
+            ),
+            maximum_lead_minutes=args.maximum_lead_minutes,
+            preferred_lead_minutes=(
+                args.preferred_lead_minutes
+                if args.preferred_lead_minutes is not None
+                else (60.0 if args.pregame_only else None)
+            ),
         ),
         ensure_ascii=False,
         indent=2,
