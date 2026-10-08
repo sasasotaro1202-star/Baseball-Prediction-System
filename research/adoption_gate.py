@@ -139,12 +139,10 @@ def evaluate_locked_holdout(
     # Production adoption for MLB must always prove prediction-time starter
     # evidence. Callers cannot weaken this requirement through a permissive
     # default GatePolicy.
+    # A caller may not weaken the production adoption gate by constructing
+    # a permissive GatePolicy. The field is retained for compatibility, but
+    # production adoption remains fail-closed on starter PIT evidence.
     effective_pit_required = True
-    if not policy.require_pit_starter_evidence:
-        # A caller may not weaken the production adoption gate by constructing
-        # a permissive GatePolicy. The argument is retained for compatibility,
-        # but production adoption remains fail-closed on starter PIT evidence.
-        effective_pit_required = True
     if effective_pit_required:
         if not pit_starter_evidence_ok:
             reasons.append("development_starter_pit_evidence_not_verified")
