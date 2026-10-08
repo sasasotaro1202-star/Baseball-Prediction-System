@@ -1,4 +1,5 @@
 import pytest
+import pandas as pd
 from pathlib import Path
 from production_npb import (
     _official_daily_competition_metadata,
@@ -33,7 +34,6 @@ def test_parser_extracts_six_official_games_without_network():
 
 def test_20260920_has_six_pit_safe_games(monkeypatch):
     import production_npb as p
-    import pandas as pd
     monkeypatch.setattr(p, "fetch_text", lambda url: fixture_html())
     monkeypatch.setattr(p, "_official_daily_start_times", lambda target_date, **kwargs: {
         ("読売ジャイアンツ", "東京ヤクルトスワローズ"): "14:00",
@@ -73,7 +73,6 @@ def fixture_html_20260921_five_games():
         )
     return '<h4>9月21日の予告先発投手</h4>' + ''.join(parts)
 
-
 def test_parser_extracts_five_official_games_and_exact_starters():
     d = parse_official_starters_html(fixture_html_20260921_five_games(), "2026-09-21")
     assert len(d) == 5
@@ -95,7 +94,6 @@ def test_recovery_regime_diagnostics_are_recomputed_per_game():
 
 def test_target_rows_reject_non_official_starter_source(monkeypatch):
     import production_npb as p
-    import pandas as pd
 
     monkeypatch.setattr(
         p,
@@ -208,7 +206,6 @@ def test_daily_schedule_time_parser_accepts_pair_time_stream(monkeypatch):
 
 def test_target_rows_preserves_prediction_time_competition_metadata(monkeypatch):
     import production_npb as p
-    import pandas as pd
 
     monkeypatch.setattr(
         p,
@@ -263,7 +260,6 @@ def test_target_rows_preserves_prediction_time_competition_metadata(monkeypatch)
 
 def test_target_rows_uses_official_daily_schedule_time_as_authoritative(monkeypatch):
     import production_npb as p
-    import pandas as pd
 
     monkeypatch.setattr(
         p,
@@ -311,10 +307,8 @@ def test_starter_time_parser_prefers_structural_game_card_over_average_duration(
     assert rows[0]["official_start_time"] == "18:00"
 
 
-
 def test_target_rows_uses_actual_information_cutoff_and_keeps_30m_as_preferred(monkeypatch):
     import production_npb as p
-    import pandas as pd
 
     monkeypatch.setattr(
         p,
@@ -358,7 +352,6 @@ def test_target_rows_uses_actual_information_cutoff_and_keeps_30m_as_preferred(m
 
 def test_pregame_only_limits_prediction_window_to_upcoming_60_minutes(monkeypatch):
     import production_npb as p
-    import pandas as pd
 
     monkeypatch.setattr(
         p,
@@ -442,7 +435,6 @@ def test_daily_schedule_competition_metadata_uses_semantic_heading_not_navigatio
     assert metadata["source_field"] == "npb_daily_schedule_heading"
     assert metadata["source_value"] == "公式戦【試合予定】"
 
-
 def test_daily_schedule_competition_metadata_classifies_interleague_without_outcome_data():
     html = "<h3>交流戦【試合予定】</h3>"
     metadata = _official_daily_competition_metadata(
@@ -454,6 +446,7 @@ def test_daily_schedule_competition_metadata_classifies_interleague_without_outc
     assert metadata["season_type"] == "regular_season"
     assert metadata["game_class"] == "official"
     assert metadata["status"] == "classified"
+
 
 
 def test_daily_schedule_competition_metadata_fails_closed_when_heading_unknown():
@@ -471,6 +464,7 @@ def test_daily_schedule_competition_metadata_fails_closed_when_heading_unknown()
     assert metadata["game_class"] == "unknown"
     assert metadata["competition_key"] == "NPB:npb_unknown:unknown"
     assert metadata["status"] == "unknown"
+
 
 
 def test_daily_schedule_metadata_path_is_outcome_free():
@@ -522,7 +516,6 @@ def test_production_pregame_execution_caps_explicit_wider_maximum_lead(monkeypat
     )
     assert result["execution_status"] == "NO_DUE_PREGAME_GAMES"
     assert captured["maximum_lead_minutes"] == 60.0
-
 
 def test_research_shadow_can_request_three_hour_lead_bound(monkeypatch, tmp_path):
     import production_npb as p
