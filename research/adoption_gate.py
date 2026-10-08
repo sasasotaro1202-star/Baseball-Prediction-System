@@ -35,7 +35,7 @@ class GatePolicy:
     require_calibration_check: bool = True
     require_no_future_target_data: bool = True
     require_reproducible_candidate: bool = True
-    require_pit_starter_evidence: bool = False
+    # Production adoption requires prediction-time starter PIT evidence for every league.\n    # League-specific gates may add stricter checks, but callers may not weaken this requirement.\n    require_pit_starter_evidence: bool = True
     require_uncertainty_check: bool = False
     min_logloss_improvement_ci_lower: float = 0.0
     min_positive_improvement_probability: float = 0.95
