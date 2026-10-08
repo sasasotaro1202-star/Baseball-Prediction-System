@@ -274,13 +274,19 @@ jobs:
           # staying inside the 120-minute lifecycle/job safety envelope.
           BASEBALL_TIME_BUDGET_SEC: '4800'
           BASEBALL_FAST_OOS: '1'
-          BASEBALL_MAX_FIT_ROWS: '6000'
+          # Keep the scheduled free-run research profile bounded enough to finish within one Actions window.
+          # This changes research compute only; production defaults remain unchanged.
+          BASEBALL_MAX_FIT_ROWS: '4000'
           BASEBALL_FAST_MODEL_POOL: 'Logistic,HistGB,ExtraTrees'
-          BASEBALL_FAST_MODEL_POOL_NPB: 'Logistic,HistGB,ExtraTrees,HierarchicalDrawResult'
+          # Keep the scheduled NPB panel bounded; the hierarchical draw challenger remains research-only elsewhere.
+          BASEBALL_FAST_MODEL_POOL_NPB: 'Logistic,HistGB,ExtraTrees'
           BASEBALL_SCORE_FAST_VALIDATION: '1'
-          BASEBALL_SCORE_TREE_ESTIMATORS: '60'
-          BASEBALL_SCORE_HIST_MAX_ITER: '100'
-          NPB_RETRAIN_EVERY: '300'
+          BASEBALL_SCORE_TREE_ESTIMATORS: '30'
+          BASEBALL_SCORE_HIST_MAX_ITER: '60'
+          BASEBALL_HISTGB_MAX_ITER: '60'
+          BASEBALL_ET_ESTIMATORS: '60'
+          # Larger chronological blocks reduce repeated full refits while retaining walk-forward order.
+          NPB_RETRAIN_EVERY: '600'
           MLB_ENRICH_STARTERS: '0'
         run: python -u research_runner_v6.py --league BOTH --mlb-start 2020 --mlb-end 2026 --retries 0
 
