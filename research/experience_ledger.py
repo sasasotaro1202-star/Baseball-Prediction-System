@@ -1049,6 +1049,16 @@ def reconcile() -> dict[str, Any]:
         encoding="utf-8",
     )
 
+    def _mean_or_none(series: pd.Series) -> float | None:
+        values = pd.to_numeric(series, errors="coerce")
+        if not values.notna().any():
+            return None
+        return float(values.mean())
+
+    top1_metrics = pd.to_numeric(experience["top1_exact_hit"], errors="coerce")
+    top4_metrics = pd.to_numeric(experience["top4_hit"], errors="coerce")
+    score_mae_metrics = pd.to_numeric(experience["score_mae"], errors="coerce")
+
     summary: dict[str, Any] = {
         "generated_at_utc": _utc_now(),
         "evidence": build_experience_evidence(experience),
@@ -1069,9 +1079,12 @@ def reconcile() -> dict[str, Any]:
             & (experience["actual_outcome"] == "DRAW")
         ).sum() / max(1, (experience["actual_outcome"] == "DRAW").sum())),
         "low_high_accuracy": float(experience["low_high_correct"].mean()),
-        "score_mae": float(experience["score_mae"].mean()),
-        "top1_exact_hit_rate": float(experience["top1_exact_hit"].mean()),
-        "top4_exact_hit_rate": float(experience["top4_hit"].mean()),
+        "score_mae": _mean_or_none(experience["score_mae"]),
+        "top1_exact_hit_rate": _mean_or_none(experience["top1_exact_hit"]),
+        "top4_exact_hit_rate": _mean_or_none(experience["top4_hit"]),
+        "score_evaluable_rows": int(score_mae_metrics.notna().sum()),
+        "top1_evaluable_rows": int(top1_metrics.notna().sum()),
+        "top4_evaluable_rows": int(top4_metrics.notna().sum()),
         "by_regime": {},
         "by_target": {},
         "by_prediction_target": _prediction_target_metrics(experience),
