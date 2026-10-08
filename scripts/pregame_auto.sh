@@ -85,16 +85,28 @@ fi
 while IFS= read -r date; do
   [ -n "$date" ] || continue
   echo "=== pregame production/shadow prediction: $date ==="
-  if [ -s research_shadow_due_dates.txt ] && grep -qxF "$date" research_shadow_due_dates.txt; then
+  production_output="results/npb_production_$date.json"
+  shadow_output="results/npb_shadow_$date.json"
+  outputs=()
+
+  # Production and research-shadow lanes are independent even when they share
+  # the same JST game date. A shadow discovery must never displace a production
+  # forecast, and a shadow result must never be mislabeled as AUTO_60M.
+  if grep -qxF "$date" production_due_dates.txt; then
+    python -m prediction.current_production --league NPB --date "$date" --data-dir data --pregame-only
+    test -s "$production_output"
+    outputs+=("$production_output")
+  fi
+
+  if grep -qxF "$date" research_shadow_due_dates.txt; then
     python production_npb.py --date "$date" --data-dir data --pregame-only --research-shadow \
       --minimum-lead-minutes 0 --maximum-lead-minutes 180 --preferred-lead-minutes 60
-    output="results/npb_shadow_$date.json"
-  else
-    python -m prediction.current_production --league NPB --date "$date" --data-dir data --pregame-only
-    output="results/npb_production_$date.json"
+    test -s "$shadow_output"
+    outputs+=("$shadow_output")
   fi
-  test -s "$output"
-  python - "$output" <<'PY'
+
+  for output in "${outputs[@]}"; do
+    python - "$output" <<'PY'
 import json
 import sys
 from datetime import datetime
@@ -105,7 +117,7 @@ if status not in {"EXECUTED", "RESEARCH_SHADOW_EXECUTED", "BLOCKED_STARTERS", "N
     raise SystemExit("unexpected prediction status: " + str(status))
 if status not in {"EXECUTED", "RESEARCH_SHADOW_EXECUTED"}:
     print(json.dumps({"status": status, "block_reason": obj.get("block_reason")}, ensure_ascii=False))
-    raise SystemExit(0)
+    continue
 for pred in obj.get("predictions", []):
     cutoff = datetime.fromisoformat(pred["prediction_cutoff_utc"].replace("Z", "+00:00"))
     generated = datetime.fromisoformat(pred["prediction_generated_at"].replace("Z", "+00:00"))
@@ -121,7 +133,9 @@ for pred in obj.get("predictions", []):
         raise SystemExit("prediction is not PIT PASS")
 print("Pregame PIT validation passed; automatic target is approximately 60m before first pitch.")
 PY
+  done
 done < due_dates.txt
+
 
 set -euo pipefail
 if [ ! -s due_dates.txt ]; then
