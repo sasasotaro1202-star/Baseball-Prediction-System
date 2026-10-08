@@ -544,6 +544,16 @@ def run_npb_candidate_cycle(
         min_relative_brier_improvement=GatePolicy().min_relative_brier_improvement,
     )
     if selected is None:
+        RESULTS.mkdir(parents=True, exist_ok=True)
+        atomic_write_json(RESULTS / "npb_candidate_development.json", {
+            "stage": "development_evaluated",
+            "decision": "NO_CHANGE",
+            "selection_reason": "No candidate passed the Development calibration guard.",
+            "development": development,
+            "candidate": None,
+            "baseline": baseline,
+            "validation_windows": validation_windows,
+        })
         return {
             "stage": "development_evaluated",
             "decision": "NO_CHANGE",
@@ -601,6 +611,21 @@ def run_npb_candidate_cycle(
             development_predictions["DrawScaled:selected"] = best_q
 
     if baseline["LogLoss"] - selected_metrics["LogLoss"] <= 0:
+        RESULTS.mkdir(parents=True, exist_ok=True)
+        atomic_write_json(RESULTS / "npb_candidate_development.json", {
+            "stage": "development_evaluated",
+            "decision": "NO_CHANGE",
+            "selection_reason": "Selected Development candidate did not beat baseline LogLoss.",
+            "development": development,
+            "candidate": {
+                "model": selected_model_name,
+                "recency_half_life": selected_half_life,
+                "temperature": selected_temperature,
+                "metrics": selected_metrics,
+            },
+            "baseline": baseline,
+            "validation_windows": validation_windows,
+        })
         return {
             "stage": "development_evaluated",
             "decision": "NO_CHANGE",
