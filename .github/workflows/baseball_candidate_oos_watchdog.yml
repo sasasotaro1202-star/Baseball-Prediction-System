@@ -59,7 +59,7 @@ jobs:
             while IFS= read -r changed_path; do
               [ -n "${changed_path}" ] || continue
               case "${changed_path}" in
-                tests/*|docs/*|README*|PROJECT_INSTRUCTIONS.md|.github/workflows/baseball_manual_prediction.yml|.github/workflows/baseball_60m_pregame_auto.yml|.github/workflows/baseball_24h_supervisor.yml|.github/workflows/baseball_closed_loop.yml|.github/workflows/baseball_actions_recovery_canonical.yml|.github/workflows/baseball_chat_async_dispatch.yml|.github/workflows/baseball_candidate_oos_watchdog.yml)
+                tests/*|docs/*|README*|PROJECT_INSTRUCTIONS.md|data/pit/**|.github/workflows/baseball_manual_prediction.yml|.github/workflows/baseball_60m_pregame_auto.yml|.github/workflows/baseball_24h_supervisor.yml|.github/workflows/baseball_closed_loop.yml|.github/workflows/baseball_actions_recovery_canonical.yml|.github/workflows/baseball_chat_async_dispatch.yml|.github/workflows/baseball_candidate_oos_watchdog.yml)
                   ;;
                 *)
                   return 1
