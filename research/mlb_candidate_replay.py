@@ -359,6 +359,21 @@ def run_mlb_candidate_cycle(*, data_dir: str | Path = "data", git_commit: str,
         selected_model_name,selected_half_life=variant_specs.get(base_selected,(base_selected,None))
 
     if baseline["LogLoss"] - selected_metrics["LogLoss"] <= 0:
+        RESULTS.mkdir(parents=True, exist_ok=True)
+        atomic_write_json(RESULTS / "mlb_candidate_development.json", {
+            "stage": "development_evaluated",
+            "decision": "NO_CHANGE",
+            "selection_reason": "Selected Development candidate did not beat baseline LogLoss.",
+            "development": development,
+            "candidate": {
+                "model": selected_model_name,
+                "recency_half_life": selected_half_life,
+                "temperature": selected_temperature,
+                "metrics": selected_metrics,
+            },
+            "baseline": baseline,
+            "validation_windows": windows,
+        })
         return {"stage":"development_evaluated","decision":"NO_CHANGE","baseline":baseline,
                 "candidate":selected_metrics,"candidate_model":selected_model_name,
                 "candidate_recency_half_life":selected_half_life,"candidate_temperature":selected_temperature,
