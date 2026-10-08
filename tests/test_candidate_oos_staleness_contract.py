@@ -36,6 +36,7 @@ def test_candidate_oos_allows_only_non_runtime_main_updates():
     assert 'mapfile -t changed_files' in workflow
     pit_pattern = 'tests/*|.github/workflows/baseball_candidate_oos_watchdog.yml)'
     assert workflow.count(pit_pattern) == 2
+    assert 'data/pit/**' not in workflow
     start_check = workflow.split('name: Verify main snapshot is evidence-current', 1)[1].split('name: Set up Python', 1)[0]
     end_check = workflow.split('name: Verify candidate OOS snapshot remains evidence-current', 1)[1].split('name: Verify lifecycle decision is explicit', 1)[0]
     assert pit_pattern in start_check
