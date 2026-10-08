@@ -35,10 +35,11 @@ def test_watchdog_has_no_failure_masking_shortcuts() -> None:
     assert "continue-on-error" not in text
 
 
-def test_watchdog_does_not_supersede_queued_runs_for_non_runtime_changes() -> None:
+def test_watchdog_does_not_supersede_queued_runs_for_non_evidence_changes() -> None:
     text = _text()
     assert "is_non_runtime_only_change()" in text
-    assert "data/experience/*" in text
+    assert "data/experience/*" not in text
+    assert "data/pit/*" not in text
     assert "tests/*" in text
     assert "docs/*" in text
     assert "PROJECT_INSTRUCTIONS.md" in text
