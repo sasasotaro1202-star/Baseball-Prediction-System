@@ -100,6 +100,22 @@ def _is_workflow_dispatch_registration_error(message: str) -> bool:
     lowered = message.lower()
     return "workflow does not have" in lowered and "workflow_dispatch" in lowered
 
+
+def _is_workflow_dispatch_unavailable_error(message: str) -> bool:
+    """Return True for a disabled/unavailable workflow_dispatch registration.
+
+    GitHub can keep a workflow registered while disabling execution. In that
+    state the dispatch API returns HTTP 422. Treat this as a target-local HOLD,
+    not as a control-plane-wide runtime exception; the remaining supervised
+    lanes must still be evaluated.
+    """
+    lowered = message.lower()
+    return (
+        "cannot trigger a 'workflow_dispatch' on a disabled workflow" in lowered
+        or "workflow_dispatch" in lowered and "disabled workflow" in lowered
+    )
+
+
 def _is_transient_gh_failure(message: str) -> bool:
     lowered = message.lower()
     transient_markers = (
@@ -492,6 +508,11 @@ def run(repo: str, output: Path, max_dispatches_per_cycle: int = 2) -> dict[str,
                 item["reason"] = "workflow_dispatch_registration_unavailable"
                 item["dispatch_error"] = message
                 continue
+            if _is_workflow_dispatch_unavailable_error(message):
+                item["decision"] = "HOLD"
+                item["reason"] = "workflow_dispatch_target_disabled"
+                item["dispatch_error"] = message
+                continue
             raise
         item["decision"] = "DISPATCHED"
         item["dispatched_run_id"] = run_id
@@ -503,7 +524,11 @@ def run(repo: str, output: Path, max_dispatches_per_cycle: int = 2) -> dict[str,
         x
         for x in decisions
         if x["decision"] == "HOLD"
-        and x["reason"] in {"deterministic_failure_or_unverifiable_startup_state", "workflow_dispatch_registration_unavailable"}
+        and x["reason"] in {
+            "deterministic_failure_or_unverifiable_startup_state",
+            "workflow_dispatch_registration_unavailable",
+            "workflow_dispatch_target_disabled",
+        }
     ]
     report = {
         "schema_version": 2,
