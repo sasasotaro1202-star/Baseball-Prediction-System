@@ -175,12 +175,12 @@ def test_candidate_oos_watchdog_recovers_stale_in_progress_runs_after_sha_drift(
     start = text.index("# Recover a runner that stayed in-progress well beyond the candidate")
     block = text[start:text.index("in_progress_count=", start)]
 
-    # A Candidate OOS run beyond the 360-minute grace period is stale even when
-    # main has advanced. Recovery must therefore not require sha == current_sha.
+    # Candidate OOS in-progress recovery must handle both evidence-stale SHA drift
+    # and same-SHA timeout, without relying on brittle prose wording.
     assert '[[ "${status}" == "in_progress" ]] && [[ -n "${created}" ]]' in block
-    assert 'if [[ "${age_minutes}" -ge 360 ]]; then' in block
-    assert 'sha="${current_sha}"' not in block.split('if [[ "${age_minutes}" -ge 360 ]]; then', 1)[0]
-    assert "stale superseded-SHA in-progress candidate run" in block
+    assert 'if [[ "${sha}" != "${current_sha}" ]]; then' in block
+    assert 'elif [[ "${age_minutes}" -ge 360 ]]; then' in block
+    assert 'is_non_runtime_only_change "${sha}"' in block
     assert 'gh run cancel "${id}" --repo "${GH_REPO}"' in block
 
 def test_candidate_oos_watchdog_allows_validated_autonomous_control_plane_continuity():
