@@ -103,22 +103,41 @@ def _select_development_candidate(
     development: dict[str, dict[str, float]],
     baseline: dict[str, float],
     calibration_tolerance: float,
+    *,
+    min_relative_logloss_improvement: float = GatePolicy().min_relative_improvement,
+    min_relative_brier_improvement: float = GatePolicy().min_relative_brier_improvement,
 ) -> tuple[str, dict[str, float]] | None:
-    """Select a candidate from Development OOS with a calibration guard.
+    """Select a candidate from Development OOS with the production benchmark guard.
 
-    Candidates are eligible only when Development ECE is finite and no worse
-    than the baseline by more than the holdout calibration tolerance. Among
-    eligible candidates, the existing LogLoss/Brier/Accuracy ordering remains
-    unchanged. Holdout data is never consulted here.
+    Development selection is deliberately stricter than "any positive improvement":
+    the candidate must meet the repository's primary relative LogLoss benchmark
+    (3%) and auxiliary Brier benchmark (1%), while staying within the calibration
+    tolerance. These thresholds are applied only to Development OOS; holdout data
+    is never consulted here.
     """
     if not np.isfinite(float(calibration_tolerance)) or calibration_tolerance < 0:
         raise ValueError("calibration_tolerance must be finite and non-negative")
+    for value, label in (
+        (min_relative_logloss_improvement, "min_relative_logloss_improvement"),
+        (min_relative_brier_improvement, "min_relative_brier_improvement"),
+    ):
+        if not np.isfinite(float(value)) or float(value) < 0:
+            raise ValueError(f"{label} must be finite and non-negative")
+
     baseline_ece = float(baseline.get("ECE", float("nan")))
+    baseline_logloss = float(baseline.get("LogLoss", float("nan")))
+    baseline_brier = float(baseline.get("Brier", float("nan")))
     if not np.isfinite(baseline_ece):
         raise ValueError("baseline ECE must be finite for Development selection")
+    if not np.isfinite(baseline_logloss) or baseline_logloss <= 0:
+        raise ValueError("baseline LogLoss must be positive and finite for Development selection")
+    if not np.isfinite(baseline_brier) or baseline_brier <= 0:
+        raise ValueError("baseline Brier must be positive and finite for Development selection")
 
     eligible: list[tuple[str, dict[str, float]]] = []
     max_ece = baseline_ece + float(calibration_tolerance)
+    min_logloss = baseline_logloss * (1.0 - float(min_relative_logloss_improvement))
+    min_brier = baseline_brier * (1.0 - float(min_relative_brier_improvement))
     for name, metrics in development.items():
         if name == "ProductionEnsemble":
             continue
@@ -128,8 +147,14 @@ def _select_development_candidate(
             continue
         if not all(np.isfinite(v) for v in values):
             continue
-        if values[0] <= max_ece:
-            eligible.append((name, metrics))
+        ece, logloss, brier, _accuracy = values
+        if ece > max_ece:
+            continue
+        if logloss > min_logloss:
+            continue
+        if brier > min_brier:
+            continue
+        eligible.append((name, metrics))
 
     if not eligible:
         return None
@@ -512,7 +537,11 @@ def run_npb_candidate_cycle(
     # Candidates outside the Development calibration envelope are not sent to
     # the locked holdout because the adoption gate would reject them anyway.
     selected = _select_development_candidate(
-        development, baseline, config.calibration_tolerance
+        development,
+        baseline,
+        config.calibration_tolerance,
+        min_relative_logloss_improvement=GatePolicy().min_relative_improvement,
+        min_relative_brier_improvement=GatePolicy().min_relative_brier_improvement,
     )
     if selected is None:
         return {
