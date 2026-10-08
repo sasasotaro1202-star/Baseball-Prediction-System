@@ -156,6 +156,24 @@ def test_chat_async_dispatcher_is_short_lived_and_allowlisted():
     assert "bash -c" not in text
 
 
+def test_24h_supervisor_recovers_stale_lightweight_monitoring_lanes_with_cooldown():
+    text = SUPERVISOR.read_text(encoding="utf-8")
+    _assert_official_actions_are_immutable(text)
+
+    # The supervisor must be able to repair scheduler gaps for the lightweight
+    # monitoring lanes without retrying deterministic failures or creating a
+    # tight workflow-dispatch loop.
+    assert "RECOVERY_STALE_MINUTES=120" in text
+    assert "RECOVERY_COOLDOWN_MINUTES=120" in text
+    assert "CANDIDATE_WATCHDOG_WORKFLOW=baseball_candidate_oos_watchdog.yml" in text
+    assert "PRODUCTION_RUNTIME_HEALTH_WORKFLOW=baseball-production-runtime-health.yml" in text
+    assert "Candidate watchdog terminal state" in text
+    assert "Production runtime health terminal state" in text
+    assert 'gh_retry workflow run "$CANDIDATE_WATCHDOG_WORKFLOW" --repo "$GH_REPO" --ref main' in text
+    assert 'gh_retry workflow run "$PRODUCTION_RUNTIME_HEALTH_WORKFLOW" --repo "$GH_REPO" --ref main' in text
+    assert "new_candidate_watchdog_run_id" in text
+    assert "new_runtime_health_run_id" in text
+
 def test_candidate_oos_fails_closed_on_incomplete_evidence():
     text = (ROOT / ".github" / "workflows" / "baseball_candidate_oos.yml").read_text(encoding="utf-8")
     _assert_official_actions_are_immutable(text)
