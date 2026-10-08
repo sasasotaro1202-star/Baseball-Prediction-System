@@ -70,3 +70,15 @@ def test_watchdog_refreshes_run_state_after_stale_in_progress_cancellation() -> 
     section = text[start:end]
     assert 'runs="$(gh run list' in section
     assert '--json databaseId,status,conclusion,createdAt,headSha,number' in section
+def test_watchdog_is_triggered_by_candidate_evidence_changes() -> None:
+    text = _text()
+    assert '  push:' in text
+    for expected in (
+        'research/npb_candidate_replay.py',
+        'research/mlb_candidate_replay.py',
+        'research/adoption_gate.py',
+        'research/validation_pipeline.py',
+        'baseball_backtest.py',
+        '.github/workflows/baseball_candidate_oos.yml',
+    ):
+        assert expected in text
