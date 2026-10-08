@@ -11,6 +11,8 @@ def _kwargs():
         calibration_ok=True,
         no_future_target_data=True,
         reproducible=True,
+        pit_starter_evidence_ok=True,
+        holdout_pit_starter_evidence_ok=True,
         holdout_score_baseline={"ScoreMAE": 2.0},
         holdout_score_candidate={"ScoreMAE": 1.9},
         holdout_hilo_baseline={"LogLoss": 0.60, "Brier": 0.20, "Accuracy": 0.70},
