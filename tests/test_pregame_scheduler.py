@@ -590,7 +590,8 @@ def test_auto_60m_production_lane_remains_capped_when_shadow_scan_is_widened(mon
         prediction_source="AUTO_60M",
     )
     assert result["due_games"] == []
-    assert result["research_shadow_due_games"] == []
+    assert len(result["research_shadow_due_games"]) == 1
+    assert result["research_shadow_due_games"][0]["lead_minutes"] == 180.0
 
 
 def test_auto_60m_production_lane_allows_60m_but_not_61m(monkeypatch):
@@ -628,3 +629,5 @@ def test_auto_60m_production_lane_allows_60m_but_not_61m(monkeypatch):
     )
     assert len(result["due_games"]) == 1
     assert result["due_games"][0]["lead_minutes"] == 60.0
+    assert len(result["research_shadow_due_games"]) == 1
+    assert result["research_shadow_due_games"][0]["lead_minutes"] == 60.0
