@@ -498,3 +498,52 @@ def test_daily_schedule_competition_metadata_ignores_non_schedule_headings():
     )
     assert metadata["competition"] == "npb_japan_series"
     assert metadata["stage"] == "japan_series"
+
+def test_production_pregame_execution_caps_explicit_wider_maximum_lead(monkeypatch, tmp_path):
+    import production_npb as p
+
+    captured = {}
+
+    def fake_build_target_rows(*args, **kwargs):
+        captured.update(kwargs)
+        return pd.DataFrame()
+
+    monkeypatch.setattr(p, "production_eligible", lambda league: True)
+    monkeypatch.setattr(p, "build_target_rows", fake_build_target_rows)
+
+    result = p.predict(
+        "2026-10-02",
+        str(tmp_path),
+        pregame_only=True,
+        research_shadow=False,
+        minimum_lead_minutes=0.0,
+        maximum_lead_minutes=180.0,
+        preferred_lead_minutes=60.0,
+    )
+    assert result["execution_status"] == "NO_DUE_PREGAME_GAMES"
+    assert captured["maximum_lead_minutes"] == 60.0
+
+
+def test_research_shadow_can_request_three_hour_lead_bound(monkeypatch, tmp_path):
+    import production_npb as p
+
+    captured = {}
+
+    def fake_build_target_rows(*args, **kwargs):
+        captured.update(kwargs)
+        return pd.DataFrame()
+
+    monkeypatch.setattr(p, "production_eligible", lambda league: False)
+    monkeypatch.setattr(p, "build_target_rows", fake_build_target_rows)
+
+    result = p.predict(
+        "2026-10-02",
+        str(tmp_path),
+        pregame_only=True,
+        research_shadow=True,
+        minimum_lead_minutes=0.0,
+        maximum_lead_minutes=180.0,
+        preferred_lead_minutes=60.0,
+    )
+    assert result["execution_status"] == "NO_DUE_PREGAME_GAMES"
+    assert captured["maximum_lead_minutes"] == 180.0
