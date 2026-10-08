@@ -745,11 +745,22 @@ def _prediction_target_metrics(frame: pd.DataFrame) -> dict[str, dict[str, Any]]
 
     required = {"top1_exact_hit", "top4_hit", "score_mae"}
     if required.issubset(frame.columns) and len(frame):
+        top1 = pd.to_numeric(frame["top1_exact_hit"], errors="coerce")
+        top4 = pd.to_numeric(frame["top4_hit"], errors="coerce")
+        mae = pd.to_numeric(frame["score_mae"], errors="coerce")
         out["exact_score"] = {
             "rows": int(len(frame)),
-            "top1_exact_hit_rate": float(frame["top1_exact_hit"].mean()),
-            "top4_exact_hit_rate": float(frame["top4_hit"].mean()),
-            "score_mae": float(frame["score_mae"].mean()),
+            "top1_evaluable_rows": int(top1.notna().sum()),
+            "top4_evaluable_rows": int(top4.notna().sum()),
+            "score_evaluable_rows": int(mae.notna().sum()),
+            "top1_exact_hit_rate": float(top1.mean()) if top1.notna().any() else None,
+            "top4_exact_hit_rate": float(top4.mean()) if top4.notna().any() else None,
+            "score_mae": float(mae.mean()) if mae.notna().any() else None,
+            "status": (
+                "UPDATED"
+                if top1.notna().any() or top4.notna().any() or mae.notna().any()
+                else "UNAVAILABLE"
+            ),
         }
     else:
         out["exact_score"] = {"rows": 0, "status": "UNAVAILABLE"}
