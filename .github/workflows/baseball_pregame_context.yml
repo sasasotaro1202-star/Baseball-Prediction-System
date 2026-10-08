@@ -54,7 +54,7 @@ jobs:
       - name: Collect context snapshot
         run: |
           mkdir -p results
-          python -m data.npb_pregame_context --date "\${{ github.event.inputs.date || steps.date.outputs.date }}" --out results/npb_pregame_context.json
+          python -m data.npb_pregame_context --date "${{ github.event.inputs.date || steps.date.outputs.date }}" --out results/npb_pregame_context.json
 
       - name: Upload context snapshot
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
