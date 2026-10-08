@@ -631,3 +631,23 @@ def test_auto_60m_production_lane_allows_60m_but_not_61m(monkeypatch):
     assert result["due_games"][0]["lead_minutes"] == 60.0
     assert len(result["research_shadow_due_games"]) == 1
     assert result["research_shadow_due_games"][0]["lead_minutes"] == 60.0
+
+    # One minute earlier is intentionally outside the AUTO_60M production
+    # window but remains eligible for the broader research-shadow lane.
+    monkeypatch.setattr(
+        scheduler, "_archived_prediction_keys", lambda target_date: set()
+    )
+    monkeypatch.setattr(
+        scheduler, "_archived_prediction_sources", lambda target_date: set()
+    )
+    now_61 = datetime(2026, 10, 1, 7, 59, tzinfo=timezone.utc)
+    result_61 = scheduler.due_games(
+        now_utc=now_61,
+        min_lead_minutes=50.0,
+        preferred_lead_minutes=60.0,
+        scan_ahead_minutes=180.0,
+        prediction_source="AUTO_60M",
+    )
+    assert result_61["due_games"] == []
+    assert len(result_61["research_shadow_due_games"]) == 1
+    assert result_61["research_shadow_due_games"][0]["lead_minutes"] == 61.0
