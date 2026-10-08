@@ -31,15 +31,17 @@ def test_candidate_oos_watchdog_monitors_all_candidate_dependencies():
     ):
         assert path in workflow
 
-def test_candidate_oos_allows_only_non_runtime_main_updates():
+def test_candidate_oos_allows_only_non_evidence_continuity_updates():
     workflow = (ROOT / '.github' / 'workflows' / 'baseball_candidate_oos.yml').read_text(encoding='utf-8')
     assert 'mapfile -t changed_files' in workflow
-    pit_pattern = 'data/experience/*|data/pit/*|tests/*|.github/workflows/baseball_candidate_oos_watchdog.yml)'
-    assert workflow.count(pit_pattern) == 2
+    continuity_pattern = 'tests/*|.github/workflows/baseball_candidate_oos_watchdog.yml)'
+    assert workflow.count(continuity_pattern) == 2
+    assert 'data/experience/*' not in workflow
+    assert 'data/pit/*' not in workflow
     start_check = workflow.split('name: Verify main snapshot is evidence-current', 1)[1].split('name: Set up Python', 1)[0]
     end_check = workflow.split('name: Verify candidate OOS snapshot remains evidence-current', 1)[1].split('name: Verify lifecycle decision is explicit', 1)[0]
-    assert pit_pattern in start_check
-    assert pit_pattern in end_check
+    assert continuity_pattern in start_check
+    assert continuity_pattern in end_check
     assert 'Evidence-affecting main update detected' in workflow
     assert 'refusing mixed-snapshot evidence' in workflow
 
