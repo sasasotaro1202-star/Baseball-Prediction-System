@@ -162,3 +162,73 @@ def test_parse_npb_schedule_accepts_utf8_text():
     rows = _parse_npb_schedule_html(html.encode("utf-8").decode("utf-8"), year=2026, month=9)
     assert rows[0]["home_team"] == "阪神"
     assert rows[0]["away_team"] == "中日"
+
+def test_build_npb_starter_pit_records_uses_observation_as_available_bound():
+    from data.pit_acquisition import _build_npb_starter_pit_records
+
+    rows = [{
+        "home": "阪神タイガース",
+        "away": "東京ヤクルトスワローズ",
+        "home_starter": "先発A",
+        "away_starter": "先発B",
+        "official_start_time": "18:00",
+        "starter_source": "https://npb.jp/announcement/starter/",
+    }]
+    schedule = [{
+        "event_id": "NPB:official-game-1",
+        "game_id": "NPB-OFFICIAL-GAME-1",
+        "home_team": "阪神タイガース",
+        "away_team": "東京ヤクルトスワローズ",
+        "start_time_local": "18:00",
+    }]
+
+    observed = "2026-10-08T08:00:00+00:00"
+    out = _build_npb_starter_pit_records(
+        rows,
+        target_date="2026-10-08",
+        retrieved_at=observed,
+        schedule_rows=schedule,
+    )
+
+    assert len(out) == 1
+    assert out[0]["game_id"] == "NPB-OFFICIAL-GAME-1"
+    assert out[0]["available_at"] == observed
+    assert out[0]["home_starter_available_at"] == observed
+    assert out[0]["away_starter_available_at"] == observed
+    assert out[0]["home_starter_announced_at"] is None
+    assert out[0]["away_starter_announced_at"] is None
+    assert out[0]["observation_semantics"] == "available_at_is_observation_time; announcement_time_not_claimed"
+
+
+def test_build_npb_starter_pit_records_rejects_incomplete_or_contradictory_rows():
+    import pytest
+    from data.pit_acquisition import _build_npb_starter_pit_records
+
+    incomplete = [{
+        "home": "阪神タイガース",
+        "away": "東京ヤクルトスワローズ",
+        "home_starter": "",
+        "away_starter": "先発B",
+        "official_start_time": "18:00",
+    }]
+    with pytest.raises(ValueError):
+        _build_npb_starter_pit_records(
+            incomplete,
+            target_date="2026-10-08",
+            retrieved_at="2026-10-08T08:00:00+00:00",
+        )
+
+    contradictory = [{
+        "home": "阪神タイガース",
+        "away": "東京ヤクルトスワローズ",
+        "home_starter": "同一投手",
+        "away_starter": "同一投手",
+        "official_start_time": "18:00",
+    }]
+    with pytest.raises(ValueError):
+        _build_npb_starter_pit_records(
+            contradictory,
+            target_date="2026-10-08",
+            retrieved_at="2026-10-08T08:00:00+00:00",
+        )
+
