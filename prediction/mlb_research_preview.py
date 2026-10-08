@@ -185,6 +185,31 @@ def run_prediction(*, date: str, data_dir: str = "data", output: str | None = No
             raise RuntimeError("invalid MLB probability vector")
         p = np.clip(p, 1e-9, 1.0)
         p /= p.sum()
+
+        # Reuse the already-fitted ensemble members to quantify disagreement;
+        # no extra fit is performed and no target/postgame data is introduced.
+        member_home = []
+        member_names = []
+        for model, weight, name in fitted:
+            member = np.asarray(
+                bt.align_proba(model.predict_proba(xf), model.classes_, "MLB")[0],
+                dtype=float,
+            )
+            if member.size != 2 or not np.isfinite(member).all():
+                raise RuntimeError(f"invalid MLB member probability vector: {name}")
+            member = np.clip(member, 1e-9, 1.0)
+            member /= member.sum()
+            member_home.append(float(member[0]))
+            member_names.append(str(name))
+        disagreement = float(np.std(np.asarray(member_home, dtype=float))) if member_home else None
+        mean_abs_member_gap = (
+            float(np.mean(np.abs(np.asarray(member_home, dtype=float) - float(p[0]))))
+            if member_home else None
+        )
+        entropy = float(
+            -np.sum(p * np.log(np.clip(p, 1e-12, 1.0))) / np.log(2.0)
+        )
+
         lam_h, lam_a, shared = bt.predict_scores(score_fit, xf, "MLB")
         start = pd.Timestamp(row["datetime"])
         preds.append({
@@ -215,7 +240,10 @@ def run_prediction(*, date: str, data_dir: str = "data", output: str | None = No
             },
             "uncertainty": {
                 "starter_pit": "UNVERIFIABLE",
-                "model_disagreement": "NOT_COMPUTED",
+                "model_disagreement": disagreement,
+                "model_disagreement_mean_abs_gap": mean_abs_member_gap,
+                "model_members": member_names,
+                "predictive_entropy_normalized": entropy,
                 "information_quality": "PARTIAL",
             },
             "confidence": None,
