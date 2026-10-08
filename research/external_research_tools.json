@@ -21,7 +21,16 @@
       "cost_policy": "verified-free-local-first; server-proxy-cost-not-allowed-as-required-dependency",
       "security_policy": "read-only research lane; no credentials or cookies in repository artifacts",
       "pit_policy": "retrieval does not establish historical availability; every candidate observation requires explicit available_at/publication/revision evidence",
-      "required_evidence": ["SOURCE_VERIFIED", "LICENSE_CHECK", "COST_CHECK", "PIT_CHECK", "LOCAL_REPRODUCTION", "OOS", "ROBUSTNESS", "HOLDOUT"]
+      "required_evidence": [
+        "SOURCE_VERIFIED",
+        "LICENSE_CHECK",
+        "COST_CHECK",
+        "PIT_CHECK",
+        "LOCAL_REPRODUCTION",
+        "OOS",
+        "ROBUSTNESS",
+        "HOLDOUT"
+      ]
     },
     {
       "tool_id": "cloudflare_security_audit_skill",
@@ -37,7 +46,14 @@
       "cost_policy": "verified-free-oss",
       "security_policy": "defensive-audit-only; findings are verification evidence, never model input",
       "pit_policy": "no prediction features; audit timestamps are operational evidence only",
-      "required_evidence": ["SOURCE_VERIFIED", "LICENSE_CHECK", "COST_CHECK", "LOCAL_REPRODUCTION", "SECURITY_VERIFICATION", "REGRESSION_TEST"]
+      "required_evidence": [
+        "SOURCE_VERIFIED",
+        "LICENSE_CHECK",
+        "COST_CHECK",
+        "LOCAL_REPRODUCTION",
+        "SECURITY_VERIFICATION",
+        "REGRESSION_TEST"
+      ]
     },
     {
       "tool_id": "agent_skills",
@@ -53,7 +69,14 @@
       "cost_policy": "verified-free-oss",
       "security_policy": "skill content is untrusted research input until locally reviewed",
       "pit_policy": "skills can change execution policy but cannot override prediction-time PIT gates",
-      "required_evidence": ["SOURCE_VERIFIED", "LICENSE_CHECK", "COST_CHECK", "LOCAL_REPRODUCTION", "CONTROL_PLANE_TESTS"]
+      "required_evidence": [
+        "SOURCE_VERIFIED",
+        "LICENSE_CHECK",
+        "COST_CHECK",
+        "LOCAL_REPRODUCTION",
+        "CONTROL_PLANE_TESTS",
+        "PIT_CHECK"
+      ]
     },
     {
       "tool_id": "superpowers",
@@ -69,7 +92,15 @@
       "cost_policy": "verified-free-oss",
       "security_policy": "methodology-only by default; do not import autonomous runtime behavior",
       "pit_policy": "development methodology cannot relax PIT, OOS, holdout, or release gates",
-      "required_evidence": ["SOURCE_VERIFIED", "LICENSE_CHECK", "COST_CHECK", "LOCAL_REPRODUCTION", "CONTROL_PLANE_TESTS", "REGRESSION_TEST"]
+      "required_evidence": [
+        "SOURCE_VERIFIED",
+        "LICENSE_CHECK",
+        "COST_CHECK",
+        "LOCAL_REPRODUCTION",
+        "CONTROL_PLANE_TESTS",
+        "REGRESSION_TEST",
+        "PIT_CHECK"
+      ]
     },
     {
       "tool_id": "playwright_mcp",
@@ -85,7 +116,14 @@
       "cost_policy": "verified-free-oss",
       "security_policy": "public-pages only by default; no credential automation",
       "pit_policy": "browser observation is not historical availability evidence",
-      "required_evidence": ["SOURCE_VERIFIED", "LICENSE_CHECK", "COST_CHECK", "LOCAL_REPRODUCTION", "PIT_CHECK", "ROBUSTNESS"]
+      "required_evidence": [
+        "SOURCE_VERIFIED",
+        "LICENSE_CHECK",
+        "COST_CHECK",
+        "LOCAL_REPRODUCTION",
+        "PIT_CHECK",
+        "ROBUSTNESS"
+      ]
     },
     {
       "tool_id": "timesfm",
@@ -101,7 +139,17 @@
       "cost_policy": "OSS-code-only-until-model-license-is-cleared",
       "security_policy": "research artifact only; no external service dependency",
       "pit_policy": "input sequences must be PIT-safe; forecasts cannot use post-cutoff observations",
-      "required_evidence": ["SOURCE_VERIFIED", "LICENSE_CHECK", "COST_CHECK", "LOCAL_REPRODUCTION", "PIT_CHECK", "OOS", "CALIBRATION", "ROBUSTNESS", "HOLDOUT"]
+      "required_evidence": [
+        "SOURCE_VERIFIED",
+        "LICENSE_CHECK",
+        "COST_CHECK",
+        "LOCAL_REPRODUCTION",
+        "PIT_CHECK",
+        "OOS",
+        "CALIBRATION",
+        "ROBUSTNESS",
+        "HOLDOUT"
+      ]
     },
     {
       "tool_id": "hindsight",
@@ -117,7 +165,14 @@
       "cost_policy": "verified-free-oss",
       "security_policy": "memory contents must remain local and provenance-tagged",
       "pit_policy": "memory retrieval cannot become prediction-time evidence unless the stored evidence has its own PIT provenance",
-      "required_evidence": ["SOURCE_VERIFIED", "LICENSE_CHECK", "COST_CHECK", "LOCAL_REPRODUCTION", "MEMORY_LINEAGE_TEST"]
+      "required_evidence": [
+        "SOURCE_VERIFIED",
+        "LICENSE_CHECK",
+        "COST_CHECK",
+        "LOCAL_REPRODUCTION",
+        "MEMORY_LINEAGE_TEST",
+        "PIT_CHECK"
+      ]
     }
   ]
 }
