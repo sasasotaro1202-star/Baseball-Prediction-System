@@ -374,3 +374,10 @@ def test_research_prediction_rejects_unknown_competition_classification():
     }
     with pytest.raises(ValueError, match="competition classification must be explicit"):
         router._validate_generated_output(payload, request, "VALIDATED_RESEARCH_SHADOW")
+
+def test_mlb_research_preview_contract_is_explicitly_nonproduction():
+    from prediction.mlb_research_preview import OUTPUT_SCHEMA, MODEL_VERSION
+
+    assert OUTPUT_SCHEMA == "baseball-mlb-research-preview-v1"
+    assert MODEL_VERSION == "mlb-research-preview-ensemble-v1"
+
