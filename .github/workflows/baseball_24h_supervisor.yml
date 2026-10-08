@@ -391,14 +391,14 @@ jobs:
               sleep 3
               pregame_dispatch_api_after="$(gh_retry api "repos/${GH_REPO}/actions/runs?event=workflow_dispatch&branch=main&per_page=100")"
               new_pregame_run_id="$(printf "%s" "${pregame_dispatch_api_after}" |
-                jq -r --arg workflow "${PREGAME_WORKFLOW}" --argjson cutoff "${dispatch_epoch}"
+                jq -r --arg workflow "${PREGAME_WORKFLOW}" --argjson cutoff "${dispatch_epoch}" \
                   '[.workflow_runs[]
                    | select(.path == (".github/workflows/" + $workflow))
                    | select(.head_branch == "main")
                    | select((.created_at | fromdateiso8601) >= $cutoff)
                   ] | sort_by(.created_at) | reverse | .[0].id // empty')"
               pregame_active_after="$(printf "%s" "${pregame_dispatch_api_after}" |
-                jq --arg workflow "${PREGAME_WORKFLOW}"
+                jq --arg workflow "${PREGAME_WORKFLOW}" \
                   '[.workflow_runs[]
                    | select(.path == (".github/workflows/" + $workflow))
                    | select(.head_branch == "main")
