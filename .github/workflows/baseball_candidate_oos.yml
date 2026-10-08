@@ -271,12 +271,36 @@ jobs:
           set -euo pipefail
           test -s results/real_data_validation.json
           if [ "${{ matrix.league }}" = "NPB" ]; then
-            test -s results/npb_candidate_development.json
-            test -s results/npb_locked_holdout.json
+            DEV_ARTIFACT="results/npb_candidate_development.json"
+            HOLDOUT_ARTIFACT="results/npb_locked_holdout.json"
           else
-            test -s results/mlb_candidate_development.json
-            test -s results/mlb_locked_holdout.json
+            DEV_ARTIFACT="results/mlb_candidate_development.json"
+            HOLDOUT_ARTIFACT="results/mlb_locked_holdout.json"
           fi
+          test -s "$DEV_ARTIFACT"
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          obj = json.loads(Path("results/real_data_validation.json").read_text(encoding="utf-8"))
+          league = "${{ matrix.league }}"
+          runs = [r for r in obj.get("runs", []) if r.get("league") == league]
+          if len(runs) != 1:
+              raise SystemExit(f"expected exactly one {league} lifecycle run")
+          run = runs[0]
+          stage = str(run.get("stage", ""))
+          decision = str(run.get("decision", ""))
+          if run.get("execution_status") != "EXECUTED":
+              raise SystemExit("lifecycle did not execute successfully")
+          if stage == "locked_holdout_evaluated":
+              holdout_path = Path("$" + "{HOLDOUT_ARTIFACT}")
+              if not holdout_path.is_file() or holdout_path.stat().st_size == 0:
+                  raise SystemExit("locked holdout stage was reported but holdout artifact is missing")
+          elif stage == "development_evaluated" and decision == "NO_CHANGE":
+              print(f"{league}: explicit Development NO_CHANGE; no locked holdout was evaluated")
+          else:
+              raise SystemExit(f"unexpected lifecycle stage/decision: {stage}/{decision}")
+          PY
           if [ -f pit_readiness_audit.json ]; then
             test -s pit_readiness_audit.json
           fi
