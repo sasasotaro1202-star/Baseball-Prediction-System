@@ -10,7 +10,7 @@ echo "=== Baseball 60m Pregame Auto Prediction ==="
 
 set -euo pipefail
 python -m py_compile prediction/pregame_scheduler.py
-python prediction/pregame_scheduler.py             --min-lead-minutes 50             --preferred-lead-minutes 60             --scan-ahead-minutes 60             --prediction-source AUTO_60M > pregame_scheduler.json
+python prediction/pregame_scheduler.py             --min-lead-minutes 50             --preferred-lead-minutes 60             --scan-ahead-minutes 180             --prediction-source AUTO_60M > pregame_scheduler.json
 cat pregame_scheduler.json
 python - <<'PY'
 import json
@@ -86,7 +86,8 @@ while IFS= read -r date; do
   [ -n "$date" ] || continue
   echo "=== pregame production/shadow prediction: $date ==="
   if [ -s research_shadow_due_dates.txt ] && grep -qxF "$date" research_shadow_due_dates.txt; then
-    python production_npb.py --date "$date" --data-dir data --pregame-only --research-shadow
+    python production_npb.py --date "$date" --data-dir data --pregame-only --research-shadow \
+      --minimum-lead-minutes 0 --maximum-lead-minutes 180 --preferred-lead-minutes 60
     output="results/npb_shadow_$date.json"
   else
     python -m prediction.current_production --league NPB --date "$date" --data-dir data --pregame-only
