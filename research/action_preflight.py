@@ -18,6 +18,7 @@ if str(ROOT) not in sys.path:
 
 REQUIRED_MODULES = (
     "research.project_governance",
+    "research.external_research_tool_gate",
     "baseball_backtest",
     "production_npb",
     "production_pit_gate",
@@ -61,6 +62,9 @@ REQUIRED_FILES = (
     Path("core/atomic_io.py"),
     Path("research/closed_loop_governance.py"),
     Path("research/oos_pit_join.py"),
+  Path("research/external_research_tools.json"),
+  Path("research/external_research_tool_gate.py"),
+  Path("tests/test_external_research_tool_gate.py"),
 )
 
 WORKFLOW_DIR = ROOT / ".github" / "workflows"
