@@ -65,3 +65,14 @@ def test_candidate_oos_runtime_does_not_depend_on_experience_archive():
     for path in source_paths:
         text = path.read_text(encoding="utf-8")
         assert not any(token in text for token in forbidden), path
+
+def test_candidate_oos_preserves_development_artifact_for_no_change():
+    npb = (ROOT / "research" / "npb_candidate_replay.py").read_text(encoding="utf-8")
+    mlb = (ROOT / "research" / "mlb_candidate_replay.py").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github" / "workflows" / "baseball_candidate_oos.yml").read_text(encoding="utf-8")
+
+    assert 'atomic_write_json(RESULTS / "npb_candidate_development.json"' in npb
+    assert 'atomic_write_json(RESULTS / "mlb_candidate_development.json"' in mlb
+    assert 'stage == "locked_holdout_evaluated"' in workflow
+    assert 'decision == "NO_CHANGE"' in workflow
+    assert 'locked holdout was evaluated' in workflow
