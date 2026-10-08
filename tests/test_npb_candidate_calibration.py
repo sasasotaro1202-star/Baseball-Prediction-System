@@ -63,3 +63,30 @@ def test_npb_candidate_replay_propagates_holdout_starter_pit_evidence():
     assert "holdout_pit_starter_evidence_ok=starter_pit_safe" in source
     assert '"holdout_starter_pit_evidence_ok": bool(starter_pit_safe)' in source
 
+def test_development_selection_requires_primary_and_auxiliary_relative_gain():
+    from research.npb_candidate_replay import _select_development_candidate
+
+    baseline = {"Accuracy": 0.52, "LogLoss": 0.80, "Brier": 0.50, "ECE": 0.02}
+    development = {
+        "SmallGain": {"Accuracy": 0.54, "LogLoss": 0.785, "Brier": 0.497, "ECE": 0.020},
+        "MeetsBoth": {"Accuracy": 0.54, "LogLoss": 0.775, "Brier": 0.495, "ECE": 0.020},
+        "BadECE": {"Accuracy": 0.60, "LogLoss": 0.70, "Brier": 0.45, "ECE": 0.030},
+        "ProductionEnsemble": baseline,
+    }
+    selected = _select_development_candidate(development, baseline, 0.005)
+    assert selected is not None
+    assert selected[0] == "MeetsBoth"
+
+
+def test_development_selection_fails_closed_for_non_positive_baseline_metrics():
+    import pytest
+    from research.npb_candidate_replay import _select_development_candidate
+
+    baseline = {"Accuracy": 0.52, "LogLoss": 0.0, "Brier": 0.50, "ECE": 0.02}
+    with pytest.raises(ValueError, match="LogLoss"):
+        _select_development_candidate(
+            {"Candidate": {"Accuracy": 0.6, "LogLoss": 0.1, "Brier": 0.4, "ECE": 0.02}},
+            baseline,
+            0.005,
+        )
+
