@@ -263,8 +263,8 @@ def test_rollup_missing_score_outputs_are_unevaluable_not_incorrect():
         "away_win_pct": 35.0,
         "low_pct": 70.0,
         "high_pct": 30.0,
-        "lambda_home": np.nan,
-        "lambda_away": np.nan,
+        "lambda_home": None,
+        "lambda_away": None,
         "top4_exact_scores": [],
     }])
     scored = roll._evaluate(merged)
