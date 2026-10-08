@@ -54,14 +54,14 @@ def test_pipeline_rejects_missing_uncertainty():
     assert "uncertainty_check_missing" in record.locked_holdout["reasons"]
 
 
-def test_pipeline_forces_mlb_starter_pit_evidence():
+def test_pipeline_forces_starter_pit_evidence_for_all_leagues():
     kw = _kwargs()
     kw["candidate_id"] = "mlb-candidate-001"
     kw["holdout_uncertainty"] = {
         "improvement_ci95": {"LogLoss": [0.005, 0.04]},
         "p_improvement_positive": {"LogLoss": 0.99},
     }
-    kw["league"] = "MLB"
+    kw["league"] = "NPB"
     kw["pit_starter_evidence_ok"] = False
     kw["holdout_pit_starter_evidence_ok"] = False
     record = run_validation_pipeline(**kw)
@@ -70,7 +70,7 @@ def test_pipeline_forces_mlb_starter_pit_evidence():
     assert "holdout_starter_pit_evidence_not_verified" in record.locked_holdout["reasons"]
 
 
-def test_pipeline_accepts_mlb_when_both_starter_pit_evidence_are_verified():
+def test_pipeline_accepts_when_both_starter_pit_evidence_are_verified():
     kw = _kwargs()
     kw["candidate_id"] = "mlb-candidate-pit-verified"
     kw["league"] = "MLB"
