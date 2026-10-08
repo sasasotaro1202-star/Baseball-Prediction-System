@@ -15,6 +15,9 @@ on:
       - 'research/external_research_tool_gate.py'
       - 'research/external_research_tools.json'
       - 'tests/test_external_research_tool_gate.py'
+      - 'research/prediction_oss_universe_gate.py'
+      - 'research/prediction_oss_universe_policy.json'
+      - 'tests/test_prediction_oss_universe_gate.py'
       - 'evaluation/calibration.py'
       - 'requirements.txt'
       - '.github/workflows/baseball_research_candidate_tests.yml'
@@ -54,7 +57,7 @@ jobs:
       - name: Compile focused sources
         run: |
           set -euo pipefail
-          python -m py_compile evaluation/calibration.py research/individually_calibrated_ensemble.py research/adoption_gate.py research/candidates.py research/validation_pipeline.py research/npb_candidate_replay.py research/mlb_candidate_replay.py tests/test_individually_calibrated_ensemble.py tests/test_holdout_contract_hardening.py tests/test_external_research_tool_gate.py
+          python -m py_compile evaluation/calibration.py research/individually_calibrated_ensemble.py research/adoption_gate.py research/candidates.py research/validation_pipeline.py research/npb_candidate_replay.py research/mlb_candidate_replay.py tests/test_individually_calibrated_ensemble.py tests/test_holdout_contract_hardening.py tests/test_external_research_tool_gate.py tests/test_prediction_oss_universe_gate.py
       - name: Run focused tests
         run: |
           set -euo pipefail

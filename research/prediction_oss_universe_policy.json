@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "universe_id": "USER_SUPPLIED_PREDICTION_OSS_TOP1000_2026_10_08",
+  "source_type": "USER_SUPPLIED_RANKING",
+  "ranking_basis": "github_stars_primary",
+  "scope": [
+    "data_acquisition",
+    "feature_engineering",
+    "machine_learning",
+    "time_series",
+    "anomaly_detection",
+    "probabilistic_modeling",
+    "simulation",
+    "agents",
+    "mlops",
+    "evaluation",
+    "monitoring",
+    "visualization",
+    "serving",
+    "orchestration",
+    "storage",
+    "retrieval",
+    "security",
+    "research_automation"
+  ],
+  "source_truth_policy": {
+    "user_ranking_order_is_preserved": true,
+    "github_repository_identity_must_be_verified": true,
+    "current_star_count_requires_retrieval_timestamp": true,
+    "ranking_is_not_performance_evidence": true,
+    "ranking_is_not_license_evidence": true,
+    "ranking_is_not_pit_evidence": true,
+    "ranking_is_not_production_eligibility": true
+  },
+  "normalization": {
+    "deduplicate_exact_repository": true,
+    "deduplicate_case_insensitive_repository": true,
+    "resolve_aliases_only_with_explicit_evidence": true,
+    "do_not_guess_repository_from_display_name": true,
+    "placeholder_terms_are_not_repositories": [
+      "系OSS",
+      "ecosystem",
+      "ecosystems",
+      "popular repositories",
+      "MLOps系人気リポジトリ群",
+      "polymarket系 OSS",
+      "TimeGPT ecosystem",
+      "Vector DB ecosystems",
+      "RAG ecosystems",
+      "RL Research",
+      "Forecasting",
+      "Prediction",
+      "Monitoring"
+    ],
+    "unknown_repository_identity_status": "UNVERIFIABLE"
+  },
+  "promotion_ladder": [
+    "RAW_UNVERIFIED",
+    "REPOSITORY_VERIFIED",
+    "SOURCE_VERIFIED",
+    "LICENSE_VERIFIED",
+    "COST_VERIFIED",
+    "SECURITY_REVIEWED",
+    "PIT_RELEVANCE_REVIEWED",
+    "LOCAL_REPRODUCED",
+    "OOS",
+    "WFO",
+    "CALIBRATION",
+    "ROBUSTNESS",
+    "FROZEN_HOLDOUT",
+    "ADOPT_CANDIDATE",
+    "ADOPTED",
+    "PRODUCTION"
+  ],
+  "fail_closed_rules": {
+    "unknown_repository_identity": "HOLD",
+    "unknown_license": "HOLD",
+    "unknown_cost": "HOLD",
+    "unknown_security_behavior": "HOLD",
+    "unknown_pit": "FAIL_CLOSED_FOR_HISTORICAL_USE",
+    "unreproduced_method": "RESEARCH_ONLY",
+    "ranking_without_local_evidence": "RESEARCH_ONLY",
+    "external_performance_claim_without_local_oos": "REJECT_AS_EVIDENCE"
+  },
+  "project_specific_priority": {
+    "tier_0": [
+      "PIT-safe data acquisition and source verification",
+      "time-series / regime modeling",
+      "probabilistic forecasting and calibration",
+      "uncertainty / abstention / conformal methods",
+      "failure detection / drift / anomaly detection",
+      "OOS/WFO / evaluation / holdout tooling",
+      "research automation without production mutation",
+      "MLOps / observability / recovery"
+    ],
+    "tier_1": [
+      "feature stores",
+      "distributed experimentation",
+      "model serving",
+      "visualization",
+      "document and web extraction"
+    ],
+    "tier_2": [
+      "generic LLM applications",
+      "finance-specific infrastructure",
+      "computer vision",
+      "speech",
+      "generic backend frameworks"
+    ]
+  },
+  "explicit_policy": "The supplied TOP1000 is a candidate universe, not a verified canonical repository registry. Only verified repositories may enter external_research_tools.json, and no universe member may become production eligible without the full local PIT/OOS/WFO/calibration/robustness/holdout gates."
+}
