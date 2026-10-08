@@ -139,6 +139,76 @@ def test_generation_failure_status_is_preserved():
     router._validate_generated_output(payload, request, "CURRENT_PRODUCTION_RUNTIME")
 
 
+def test_route_uses_mlb_competition_specific_research_runtime_when_production_missing(monkeypatch, tmp_path):
+    request = {
+        "schema_version": "baseball-prediction-request-v1",
+        "request_id": "mlb-research-route",
+        "competition_id": "MLB",
+        "target_date": "today",
+    }
+    write_json(tmp_path / "request.json", request)
+    write_json(tmp_path / "policy.json", {
+        "result_directory": "prediction_requests/results",
+        "max_runtime_seconds": 10,
+        "production_commands": {"MLB": ["python", "production.py", "{target_date}"]},
+        "validated_research_shadow_commands": {},
+        "competition_specific_research_commands": {
+            "MLB": ["python", "-m", "prediction.mlb_research_preview", "--date", "{target_date}"]
+        },
+        "output_paths": {
+            "MLB": {
+                "COMPETITION_SPECIFIC_RESEARCH_RUNTIME":
+                    "results/mlb_research_preview_{target_date}.json"
+            }
+        },
+    })
+    write_json(tmp_path / "runtime.json", {"runtimes": {"MLB": {
+        "formal_adoption_status": "BLOCKED_UNTIL_REGISTERED",
+        "entrypoint": "",
+        "model_version": "",
+        "contract": "",
+    }}})
+    monkeypatch.setattr(router, "POLICY_PATH", tmp_path / "policy.json")
+    monkeypatch.setattr(router, "RUNTIME_PATH", tmp_path / "runtime.json")
+    monkeypatch.setattr(router, "_today_jst", lambda: "2026-10-08")
+
+    calls = []
+    def fake_run(command, timeout_seconds):
+        calls.append(command)
+        generated = tmp_path / "results/mlb_research_preview_2026-10-08.json"
+        write_json(generated, {
+            "execution_status": "RESEARCH_SHADOW_EXECUTED",
+            "scope": "RESEARCH_SHADOW",
+            "production_eligibility": False,
+            "pit_status": "UNVERIFIABLE",
+            "predictions": [{
+                "game_id": "g1", "home": "H", "away": "A",
+                "competition": "mlb_regular",
+                "competition_stage": "regular_season",
+                "competition_key": "MLB:mlb_regular:regular_season",
+                "competition_classification_status": "classified",
+            }],
+        })
+        return 0, "", ""
+
+    monkeypatch.setattr(router, "_run", fake_run)
+    monkeypatch.chdir(tmp_path)
+    rc = router.main(["--request-file", str(tmp_path / "request.json")])
+
+    assert rc == 0
+    assert calls == [[
+        "python", "-m", "prediction.mlb_research_preview",
+        "--date", "2026-10-08"
+    ]]
+    result = json.loads(
+        (tmp_path / "prediction_requests/results/mlb-research-route.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert result["generation_lane"] == "COMPETITION_SPECIFIC_RESEARCH_RUNTIME"
+    assert result["generation_status"] == "RESEARCH_SHADOW_EXECUTED"
+
+
 def test_unknown_competition_fails_closed(monkeypatch, tmp_path):
     request = {
         "schema_version": "baseball-prediction-request-v1",
