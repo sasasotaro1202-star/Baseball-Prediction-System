@@ -59,7 +59,7 @@ jobs:
             while IFS= read -r changed_path; do
               [ -n "${changed_path}" ] || continue
               case "${changed_path}" in
-                tests/*|docs/*|README*|PROJECT_INSTRUCTIONS.md|data/pit/**|.github/workflows/baseball_manual_prediction.yml|.github/workflows/baseball_60m_pregame_auto.yml|.github/workflows/baseball_24h_supervisor.yml|.github/workflows/baseball_closed_loop.yml|.github/workflows/baseball_actions_recovery_canonical.yml|.github/workflows/baseball_chat_async_dispatch.yml|.github/workflows/baseball_candidate_oos_watchdog.yml)
+                tests/*|docs/*|README*|PROJECT_INSTRUCTIONS.md|.github/workflows/baseball_manual_prediction.yml|.github/workflows/baseball_60m_pregame_auto.yml|.github/workflows/baseball_24h_supervisor.yml|.github/workflows/baseball_closed_loop.yml|.github/workflows/baseball_actions_recovery_canonical.yml|.github/workflows/baseball_chat_async_dispatch.yml|.github/workflows/baseball_candidate_oos_watchdog.yml)
                   ;;
                 *)
                   return 1
@@ -73,7 +73,8 @@ jobs:
           echo "${runs}" | jq '.[0:12]'
 
           # A newer main commit supersedes any queued/pending candidate run, unless
-          # the complete diff is limited to non-runtime continuity files. Never
+          # the complete diff is limited to non-runtime continuity files. PIT
+          # observation changes are evidence-affecting and therefore supersede. Never
           # interrupt an already-running OOS lifecycle for those control-plane-only changes.
           stale_cancelled=0
           while IFS= read -r row; do
