@@ -1224,6 +1224,11 @@ def predict(
             if maximum_lead_minutes is not None
             else (60.0 if pregame_only else None)
         )
+        # Production pregame execution is hard-capped at 60 minutes even when
+        # a caller supplies a wider bound. Only the explicit research-shadow
+        # lane may request the wider three-hour discovery window.
+        if pregame_only and not research_shadow and effective_maximum_lead is not None:
+            effective_maximum_lead = min(effective_maximum_lead, 60.0)
         effective_preferred_lead = (
             float(preferred_lead_minutes)
             if preferred_lead_minutes is not None
