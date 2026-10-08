@@ -63,3 +63,10 @@ def test_watchdog_keeps_superseded_in_progress_for_continuity_only_changes() -> 
     text = _text()
     assert 'Keeping superseded in-progress candidate run' in text
     assert 'main moved only through non-runtime files.' in text
+def test_watchdog_refreshes_run_state_after_stale_in_progress_cancellation() -> None:
+    text = _text()
+    start = text.index('if [[ "${stale_in_progress}" -eq 1 ]]; then')
+    end = text.index('in_progress_count=', start)
+    section = text[start:end]
+    assert 'runs="$(gh run list' in section
+    assert '--json databaseId,status,conclusion,createdAt,headSha,number' in section
