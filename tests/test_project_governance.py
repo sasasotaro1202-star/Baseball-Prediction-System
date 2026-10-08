@@ -575,11 +575,13 @@ def test_supervisor_ghost_repair_allowlist_covers_all_target_registrations():
     workflow = Path(".github/workflows/baseball_24h_supervisor.yml").read_text(encoding="utf-8")
     assert 'target_ids="374504043 375853241 375399090 375399444 359633887 375842323 375843510"' in workflow
 
-def test_candidate_oos_allows_current_pit_observation_continuity():
+def test_candidate_oos_invalidates_current_pit_observation_drift():
     candidate = Path(".github/workflows/baseball_candidate_oos.yml").read_text(encoding="utf-8")
     watchdog = Path(".github/workflows/baseball_candidate_oos_watchdog.yml").read_text(encoding="utf-8")
-    assert "data/experience/*|data/pit/*|tests/*|.github/workflows/baseball_candidate_oos_watchdog.yml" in candidate
-    assert "data/experience/*|data/pit/*|tests/*|docs/*|README*" in watchdog
+    assert "data/pit/*" not in candidate
+    assert "results/*" not in candidate
+    assert "data/pit/*" not in watchdog
+    assert "results/*" not in watchdog
 
 
 def test_candidate_watchdog_does_not_disable_active_workflow_registrations():

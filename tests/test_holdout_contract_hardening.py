@@ -25,6 +25,8 @@ def _holdout_kwargs():
         calibration_ok=True,
         no_future_target_data=True,
         reproducible=True,
+        pit_starter_evidence_ok=True,
+        holdout_pit_starter_evidence_ok=True,
         league="NPB",
         holdout_score_baseline={"ScoreMAE": 3.0},
         holdout_score_candidate={"ScoreMAE": 2.9},
@@ -86,3 +88,53 @@ def test_validation_pipeline_never_promotes_missing_primary_metrics():
     )
     assert record.decision == "REJECT"
     assert any(reason.startswith("primary_metrics_missing_or_nonfinite") for reason in record.locked_holdout["reasons"])
+
+
+def test_adoption_requires_starter_pit_evidence_for_npb_too():
+    kwargs = _holdout_kwargs()
+    kwargs.pop("pit_starter_evidence_ok", None)
+    kwargs.pop("holdout_pit_starter_evidence_ok", None)
+    rejected = run_validation_pipeline(
+        candidate_id="cand-npb-pit-required",
+        development_metrics={"rows": 250},
+        holdout_baseline={"rows": 250, "LogLoss": 0.70, "Brier": 0.25, "Accuracy": 0.60, "DrawRecall": 0.20, "DrawProbabilityMAE": 0.01},
+        holdout_candidate={"rows": 250, "LogLoss": 0.67, "Brier": 0.24, "Accuracy": 0.61, "DrawRecall": 0.20, "DrawProbabilityMAE": 0.01},
+        **kwargs,
+        holdout_uncertainty={
+            "improvement_ci95": {"LogLoss": [0.01, 0.05]},
+            "p_improvement_positive": {"LogLoss": 0.99},
+        },
+    )
+    assert rejected.decision == "REJECT"
+    assert "development_starter_pit_evidence_not_verified" in rejected.locked_holdout["reasons"]
+    assert "holdout_starter_pit_evidence_not_verified" in rejected.locked_holdout["reasons"]
+
+
+def test_adoption_gate_cannot_be_weakened_by_permissive_policy():
+    from research.adoption_gate import GatePolicy, evaluate_locked_holdout
+
+    result = evaluate_locked_holdout(
+        {"rows": 250, "LogLoss": 0.70, "Brier": 0.25, "Accuracy": 0.60, "DrawRecall": 0.20, "DrawProbabilityMAE": 0.01},
+        {"rows": 250, "LogLoss": 0.67, "Brier": 0.24, "Accuracy": 0.61, "DrawRecall": 0.20, "DrawProbabilityMAE": 0.01},
+        policy=GatePolicy(require_pit_starter_evidence=False),
+        validation_windows=2,
+        calibration_ok=True,
+        no_future_target_data=True,
+        reproducible=True,
+        league="NPB",
+        baseline_score={"ScoreMAE": 3.0},
+        candidate_score={"ScoreMAE": 2.9},
+        baseline_hilo={"LogLoss": 0.69, "Brier": 0.24, "Accuracy": 0.60},
+        candidate_hilo={"LogLoss": 0.68, "Brier": 0.23, "Accuracy": 0.61},
+        holdout_uncertainty={
+            "improvement_ci95": {"LogLoss": [0.01, 0.05]},
+            "p_improvement_positive": {"LogLoss": 0.99},
+        },
+        evaluation_periods=[
+            {"baseline_LogLoss": 0.70, "candidate_LogLoss": 0.68},
+            {"baseline_LogLoss": 0.69, "candidate_LogLoss": 0.68},
+        ],
+    )
+    assert result["decision"] == "REJECT"
+    assert "development_starter_pit_evidence_not_verified" in result["reasons"]
+    assert "holdout_starter_pit_evidence_not_verified" in result["reasons"]

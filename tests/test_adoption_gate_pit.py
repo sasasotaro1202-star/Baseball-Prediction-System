@@ -27,7 +27,7 @@ def test_mlb_holdout_pit_evidence_is_required():
     assert "holdout_starter_pit_evidence_not_verified" in result["reasons"]
 
 
-def test_non_mlb_gate_does_not_require_holdout_pit_by_default():
+def test_all_leagues_require_holdout_pit_evidence():
     result = evaluate_locked_holdout(
         _metrics(),
         {"rows": 250, "LogLoss": 0.87, "Brier": 0.175, "Accuracy": 0.61, "DrawRecall": 0.60, "DrawProbabilityMAE": 0.10},
@@ -43,6 +43,9 @@ def test_non_mlb_gate_does_not_require_holdout_pit_by_default():
         calibration_ok=True,
         no_future_target_data=True,
         reproducible=True,
+        pit_starter_evidence_ok=True,
+        holdout_pit_starter_evidence_ok=False,
         league="NPB",
     )
-    assert result["decision"] == "ADOPT"
+    assert result["decision"] == "REJECT"
+    assert "holdout_starter_pit_evidence_not_verified" in result["reasons"]

@@ -35,7 +35,9 @@ class GatePolicy:
     require_calibration_check: bool = True
     require_no_future_target_data: bool = True
     require_reproducible_candidate: bool = True
-    require_pit_starter_evidence: bool = False
+    # Production adoption requires prediction-time starter PIT evidence for every league.
+    # Callers cannot weaken this baseline requirement through permissive configuration.
+    require_pit_starter_evidence: bool = True
     require_uncertainty_check: bool = False
     min_logloss_improvement_ci_lower: float = 0.0
     min_positive_improvement_probability: float = 0.95
@@ -136,12 +138,9 @@ def evaluate_locked_holdout(
         reasons.append("future_target_data_not_excluded")
     if policy.require_reproducible_candidate and not reproducible:
         reasons.append("candidate_not_reproducible")
-    # Production adoption for MLB must always prove prediction-time starter
-    # evidence. Callers cannot weaken this requirement through a permissive
-    # default GatePolicy.
-    effective_pit_required = bool(
-        policy.require_pit_starter_evidence or league == "MLB"
-    )
+    # Production adoption must always prove prediction-time starter evidence.
+    # Keep this fail-closed even if a caller constructs a permissive policy.
+    effective_pit_required = True
     if effective_pit_required:
         if not pit_starter_evidence_ok:
             reasons.append("development_starter_pit_evidence_not_verified")

@@ -697,7 +697,7 @@ def run_npb_candidate_cycle(
         calibration_ok=bool(calibration_ok),
         no_future_target_data=True,
         reproducible=reproducible,
-        pit_starter_evidence_ok=False,
+        pit_starter_evidence_ok=starter_pit_safe,
         holdout_score_baseline=base_score,
         holdout_score_candidate=cand_score,
         holdout_hilo_baseline=base_hilo,
