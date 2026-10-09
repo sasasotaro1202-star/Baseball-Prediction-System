@@ -13,101 +13,21 @@
   "target_date": "2026-10-09",
   "competition_id": "MLB",
   "source_repository": "sasasotaro1202-star/Baseball-Prediction-System",
-  "source_commit": "083e909ae63a25363043675c202be291ce4379a5",
+  "source_commit": "6f7e35b997ff113af432674da1b337f419d3ffb2",
   "generation_lane": "COMPETITION_SPECIFIC_RESEARCH_RUNTIME",
-  "generation_status": "RESEARCH_SHADOW_EXECUTED",
-  "generated_at_utc": "2026-10-08T17:39:26.266855+00:00",
+  "generation_status": "NO_FUTURE_GAMES",
+  "generated_at_utc": "2026-10-09T06:16:53.048214+00:00",
   "reused_from_request_id": null,
   "prediction_output": {
     "schema_version": "baseball-mlb-research-preview-v1",
     "target_date": "2026-10-09",
-    "execution_status": "RESEARCH_SHADOW_EXECUTED",
+    "execution_status": "NO_FUTURE_GAMES",
     "scope": "RESEARCH_SHADOW",
     "production_eligibility": false,
     "pit_status": "UNVERIFIABLE",
-    "prediction_cutoff": "2026-10-08T17:32:42.626713+00:00",
-    "schedule_available_at": "2026-10-08T17:33:37.709950+00:00",
-    "source": "https://statsapi.mlb.com/api/v1/schedule",
-    "history_rows": 18130,
-    "feature_rows": 18130,
-    "feature_schema_hash": "9bda020cfdcb82e2b002f3814b15a5c38b7b1574ddfbb875b6109f83c678ca7c",
-    "model_version": "mlb-research-preview-ensemble-v1",
-    "feature_version": "baseball-features-v1",
-    "predictions": [
-      {
-        "game_id": "849832",
-        "home": "Chicago White Sox",
-        "away": "Cleveland Guardians",
-        "datetime": "2026-10-09T00:00:00+00:00",
-        "venue": "Rate Field",
-        "competition": "mlb_postseason",
-        "competition_stage": "division_series",
-        "competition_key": "MLB:mlb_postseason:division_series",
-        "competition_classification_status": "classified",
-        "season": "2026",
-        "probabilities": {
-          "home": 0.45638580923760574,
-          "away": 0.5436141907623943
-        },
-        "score_candidates": [
-          {
-            "score": "4-4",
-            "probability": 0.037158549820304664
-          },
-          {
-            "score": "3-4",
-            "probability": 0.03622625723453871
-          },
-          {
-            "score": "4-5",
-            "probability": 0.035135020476628
-          },
-          {
-            "score": "3-3",
-            "probability": 0.03237529968735598
-          }
-        ],
-        "low_probability": 0.24124163797014697,
-        "high_probability": 0.758758362029853,
-        "home_run_lambda": 4.235819759732101,
-        "away_run_lambda": 4.759078838397401,
-        "shared_lambda": 1.25,
-        "starter": {
-          "home": null,
-          "away": null,
-          "evidence_status": "UNVERIFIABLE"
-        },
-        "uncertainty": {
-          "starter_pit": "UNVERIFIABLE",
-          "model_disagreement": 0.017811250739932036,
-          "model_disagreement_mean_abs_gap": 0.015730744172459548,
-          "model_members": [
-            "ExtraTrees",
-            "HistGB",
-            "RandomForest"
-          ],
-          "predictive_entropy_normalized": 0.9945044362921543,
-          "information_quality": "PARTIAL"
-        },
-        "confidence": null,
-        "predictability": null,
-        "prediction_cutoff": "2026-10-08T17:32:42.626713+00:00",
-        "available_at": "2026-10-08T17:33:37.709950+00:00",
-        "prediction_generated_at": "2026-10-08T17:32:42.626713+00:00",
-        "prediction_target_lead_minutes": 387.29,
-        "prediction_source": "MLB_STATS_API_RESEARCH_PREVIEW",
-        "prediction_schedule": "on_demand",
-        "data_snapshot_id": "mlb-history-100bbbfbf8feb294",
-        "model_version": "mlb-research-preview-ensemble-v1",
-        "feature_version": "baseball-features-v1"
-      }
-    ],
-    "uncertainty": {
-      "starter_pit": "UNVERIFIABLE",
-      "model_disagreement": "NOT_COMPUTED",
-      "information_quality": "PARTIAL"
-    },
-    "research_only": true,
-    "formal_adoption_status": "NOT_PRODUCTION"
+    "prediction_cutoff": "2026-10-09T06:15:48.815472+00:00",
+    "schedule_available_at": "2026-10-09T06:16:52.844405+00:00",
+    "history_rows": 18131,
+    "predictions": []
   }
 }
