@@ -84,6 +84,12 @@
       "fallback": null,
       "critical": false,
       "rule": "Never synthesize missing weather. Historical backtests may only consume archived observations available for the target date."
+    },
+    "research_secondary_validation": {
+      "primary": "StatsHawk connector (connected ChatGPT environment)",
+      "validation": "https://statsapi.mlb.com/api/v1",
+      "critical": false,
+      "rule": "Research-only secondary validation/acquisition. Retrieval time is not availability time; probable pitcher is not proof of historical official starter announcement; production canonical identity/result path remains MLB Stats API."
     }
   }
-}
+}\n
