@@ -186,3 +186,4 @@
 {"mlb_events": 7, "mlb_status": "OK", "npb_events": 10, "npb_status": "OK", "run_finished_at": "2026-10-15T19:15:09.018263+00:00", "run_started_at": "2026-10-15T19:15:01.186819+00:00"}
 {"mlb_events": 7, "mlb_status": "OK", "npb_events": 10, "npb_status": "OK", "run_finished_at": "2026-10-15T22:27:17.325469+00:00", "run_started_at": "2026-10-15T22:27:09.343972+00:00"}
 {"mlb_events": 8, "mlb_status": "OK", "npb_events": 10, "npb_status": "OK", "run_finished_at": "2026-10-16T00:39:55.905791+00:00", "run_started_at": "2026-10-16T00:39:48.252834+00:00"}
+{"mlb_events": 5, "mlb_status": "OK", "npb_events": 10, "npb_status": "OK", "run_finished_at": "2026-10-16T05:07:14.700530+00:00", "run_started_at": "2026-10-16T05:07:06.968791+00:00"}
