@@ -162,21 +162,21 @@
     }
   },
   "last_run": {
-    "discovered_records_touched": 5,
+    "discovered_records_touched": 0,
     "failures": [],
     "focus_scopes": [
-      "LMP",
-      "LVBP",
-      "LittleLeague_WorldSeries",
-      "MLB",
-      "MiLB",
-      "MiLB_A",
-      "MiLB_AA",
-      "MiLB_AAA",
-      "MiLB_APlus",
-      "NCAA_D1",
-      "NPB",
-      "Northwoods"
+      "WBSC_WomensBaseball",
+      "WestCoastLeague",
+      "ABL",
+      "Israel_Juveniles",
+      "Israel_Minors",
+      "Japan_Elementary",
+      "Japan_U23",
+      "LMB",
+      "MiLB_Rookie",
+      "Netherlands_Baseball",
+      "Netherlands_Youth",
+      "WBC_PlayerPrior"
     ],
     "policy": {
       "free_only": true,
@@ -186,8 +186,8 @@
     "query_count": 24,
     "result_budget_per_scope_platform": 5,
     "rotation_period_hours": 6,
-    "rotation_slot": 83105,
-    "run_at": "2026-11-19T07:18:06+00:00",
+    "rotation_slot": 83107,
+    "run_at": "2026-11-19T20:29:53+00:00",
     "selected_by_scope": {
       "MLB": [
         "AUTO_474af25a2cfd50a8"
@@ -204,40 +204,6 @@
   },
   "schema_version": 1,
   "selection_history": [
-    {
-      "discovered_records_touched": 0,
-      "failures": [],
-      "focus_scopes": [
-        "Japan_Junior_Young",
-        "Japan_U12",
-        "Japan_U15",
-        "Japan_U18",
-        "Japan_University",
-        "Japan_WomensHighSchool",
-        "Japan_WomensJunior",
-        "KBO",
-        "LBPRC",
-        "LIDOM",
-        "LMP",
-        "LVBP"
-      ],
-      "policy": {
-        "free_only": true,
-        "production_promotion": false,
-        "unknown_pit": "FAIL_CLOSED"
-      },
-      "query_count": 24,
-      "result_budget_per_scope_platform": 5,
-      "rotation_period_hours": 6,
-      "rotation_slot": 83012,
-      "run_at": "2026-10-27T04:58:27+00:00",
-      "selected_by_scope": {
-        "MLB": [
-          "AUTO_474af25a2cfd50a8"
-        ]
-      },
-      "selected_count": 1
-    },
     {
       "discovered_records_touched": 0,
       "failures": [],
@@ -2243,7 +2209,41 @@
         ]
       },
       "selected_count": 1
+    },
+    {
+      "discovered_records_touched": 0,
+      "failures": [],
+      "focus_scopes": [
+        "WBSC_WomensBaseball",
+        "WestCoastLeague",
+        "ABL",
+        "Israel_Juveniles",
+        "Israel_Minors",
+        "Japan_Elementary",
+        "Japan_U23",
+        "LMB",
+        "MiLB_Rookie",
+        "Netherlands_Baseball",
+        "Netherlands_Youth",
+        "WBC_PlayerPrior"
+      ],
+      "policy": {
+        "free_only": true,
+        "production_promotion": false,
+        "unknown_pit": "FAIL_CLOSED"
+      },
+      "query_count": 24,
+      "result_budget_per_scope_platform": 5,
+      "rotation_period_hours": 6,
+      "rotation_slot": 83107,
+      "run_at": "2026-11-19T20:29:53+00:00",
+      "selected_by_scope": {
+        "MLB": [
+          "AUTO_474af25a2cfd50a8"
+        ]
+      },
+      "selected_count": 1
     }
   ],
-  "updated_at": "2026-11-19T07:18:06+00:00"
+  "updated_at": "2026-11-19T20:29:53+00:00"
 }
